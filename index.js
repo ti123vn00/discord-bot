@@ -2,7 +2,6 @@ import { Client, GatewayIntentBits } from "discord.js";
 import { logger } from "./lib/logger";
 
 export function startBot() {
-  const TOKEN = process.env.DISCORD_TOKEN;
 
   if (!TOKEN) {
     logger.warn("DISCORD_TOKEN is not set — Discord bot will not start.");
@@ -105,6 +104,6 @@ export function startBot() {
       });
     }
   });
-
+  const TOKEN = process.env.DISCORD_TOKEN;
   client.login(TOKEN);
 }
