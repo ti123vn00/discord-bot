@@ -31,34 +31,50 @@ client.on('messageCreate', (message) => {
     const critDiv = (getVal("CritDiv") || "No").toLowerCase() === "yes";
 
     let total = 0;
-    let allCrit = true;
+    let critCount = 0;
+    let fields = [];
 
-    dmgInstances.forEach((base) => {
+    dmgInstances.forEach((base, i) => {
       const isCrit = Math.random() < critRate;
-      if (!isCrit) allCrit = false;
+      if (isCrit) critCount++;
       const multiplier = isCrit ? critMul : 1;
       const dmgThis = base * (1 + bonus) * multiplier * res;
       total += dmgThis;
+
+      const rateDisplay = (critRate * 100).toFixed(1) + "%";
+      const emoji = isCrit ? "✅" : "❌";
+      fields.push({
+        name: `#${i + 1}(${rateDisplay}) ${emoji}`,
+        value: `→ ${dmgThis.toFixed(2)}`,
+        inline: false
+      });
+
+      // Divide crit rate only if critDiv is enabled and this hit was crit
+      if (critDiv && isCrit) {
+        critRate /= 2;
+      }
     });
 
-    // If CritDiv is enabled and all instances crit, divide critRate
-    if (critDiv && allCrit && dmgInstances.length > 1) {
-      critRate = critRate / dmgInstances.length;
-    }
+    fields.unshift({
+      name: `Hits (${critCount}/${dmgInstances.length} crit)`,
+      value: "\u200B",
+      inline: false
+    });
+
+    fields.push(
+      { name: "Bonus", value: (bonus * 100).toFixed(1) + "%", inline: true },
+      { name: "CritMul", value: critMul.toString(), inline: true },
+      { name: "Res", value: res.toString(), inline: true },
+      { name: "CritRate", value: (critRate * 100).toFixed(2) + "% (after " + critCount + " crits)", inline: true },
+      { name: "CritDiv", value: critDiv ? "Yes" : "No", inline: true },
+      { name: "Final DMG", value: total.toFixed(3), inline: false }
+    );
 
     message.reply({
       embeds: [{
         title: "📊 Kết quả tính DMG",
         color: 0x00AE86,
-        fields: [
-          { name: "Dmg Instances", value: dmgInstances.join(" + "), inline: true },
-          { name: "Bonus", value: bonus.toString(), inline: true },
-          { name: "CritMul", value: critMul.toString(), inline: true },
-          { name: "Res", value: res.toString(), inline: true },
-          { name: "CritRate", value: (critRate*100).toFixed(2) + "%", inline: true },
-          { name: "CritDiv", value: critDiv ? "Yes" : "No", inline: true },
-          { name: "Final DMG", value: total.toFixed(3), inline: false }
-        ]
+        fields: fields
       }]
     });
   }
