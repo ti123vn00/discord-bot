@@ -43,16 +43,19 @@ client.on('messageCreate', (message) => {
 
       const rateDisplay = (critRate * 100).toFixed(1) + "%";
       const emoji = isCrit ? "✅" : "❌";
+      // Giữ mọi thứ trên cùng một hàng
       breakdownLines.push(`#${i + 1}(${rateDisplay}) ${emoji} → ${dmgThis.toFixed(2)}`);
 
-      // Divide crit rate only if critDiv is enabled and this hit was crit
+      // Giảm crit rate nếu CritDiv bật và hit này crit
       if (critDiv && isCrit) {
         critRate /= 2;
         if (critRate < 0.05) critRate = 0;
       }
     });
 
+    // Gộp các hit thành nhiều dòng (mỗi hit một dòng)
     const breakdownValue = breakdownLines.join("\n");
+
     const critRateDisplay =
       critDiv && critCount > 0
         ? `${(parseFloat((getVal("CritRate") || "0").replace("%","")))}% → ${(critRate * 100).toFixed(2)}% (after ${critCount} crit${critCount > 1 ? "s" : ""})`
