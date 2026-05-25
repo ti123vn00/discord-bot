@@ -57,4 +57,5 @@ client.on('messageCreate', (message) => {
   }
 });
 
+const TOKEN = process.env.DISCORD_TOKEN;
 client.login(TOKEN);
