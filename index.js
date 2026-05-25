@@ -3,7 +3,6 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-const TOKEN = "YOUR_BOT_TOKEN_HERE";
 
 client.once('ready', () => {
   console.log(`Bot đã online với tên ${client.user.tag}`);
