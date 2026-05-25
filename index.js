@@ -1,5 +1,4 @@
 import { Client, GatewayIntentBits } from "discord.js";
-import { logger } from "./lib/logger";
 
 export function startBot() {
 
