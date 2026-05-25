@@ -53,3 +53,11 @@ pnpm
 .local/
 .cache/
 .env
+
+# Discord bot logs
+logs/
+*.log
+
+# Backup archives
+*.zip
+*.rar
