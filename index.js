@@ -1,12 +1,14 @@
 // index.js
 const { Client, GatewayIntentBits } = require("discord.js");
+const express = require("express"); // 1. Add this
+
+const app = express(); // 2. Add this
 
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) {
   console.warn("DISCORD_TOKEN is not set — Discord bot will not start.");
   process.exit(1);
 }
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -126,7 +128,13 @@ client.login(TOKEN);
 
 const PORT = process.env.PORT || 10000;
 
+// --- KEEP ALIVE WEB SERVER ---
+// Render requires a page/endpoint to ping, otherwise it might still throw an error
+app.get("/", (req, res) => {
+    res.send("Bot is alive and kicking!");
+});
+
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
 });
-
