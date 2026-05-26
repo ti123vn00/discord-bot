@@ -40,43 +40,46 @@ client.on("messageCreate", (message) => {
   };
 
   // 1. XỬ LÝ KHÁNG (RES) - Bóc tách riêng lẻ B, P, S từ chuỗi Res (Ví dụ: "0.5xB 1xP 1.5S")
-  const resStr = getVal("Res") ?? "1";
-  
-  const getResMultiplier = (typeChar) => {
-    // Regex tìm số đứng trước xB, xP, xS hoặc chỉ B, P, S (Ví dụ: 0.5xB hoặc 0.5B)
-    const regex = new RegExp(`([\\d.]+)(?:x)?${typeChar}`, "i");
-    const match = resStr.match(regex);
-    return match ? parseFloat(match[1]) : 1.0; // Mặc định là 1x nếu không điền loại đó
-  };
+const resStr = getVal("Res") ?? "1";
 
-  const resValues = {
-    B: getResMultiplier("B"),
-    P: getResMultiplier("P"),
-    S: getResMultiplier("S"),
-  };
+const getResMultiplier = (typeChar) => {
+  // Regex tìm số đứng trước xB, xP, xS hoặc chỉ B, P, S
+  const regex = new RegExp(`([\\d.]+)(?:x)?${typeChar}`, "i");
+  const match = resStr.match(regex);
+  return match ? parseFloat(match[1]) : 1.0; // Mặc định là 1x nếu không điền loại đó
+};
 
-  // 2. XỬ LÝ SÁT THƯƠNG (DMG) - Tìm toàn bộ cụm Dmg: từ input ban đầu
-  const dmgMatch = normalized.match(/Dmg:([\d\s+.]+?[BPSbps](?:\s*\+\s*[\d\s+.]+?[BPSbps])*)/i);
-  const dmgValues = [];
+const resValues = {
+  B: getResMultiplier("B"),
+  P: getResMultiplier("P"),
+  S: getResMultiplier("S"),
+};
 
-  if (dmgMatch) {
-    const dmgContent = dmgMatch[1]; // Chuỗi chứa các cụm damage, ví dụ: "100B + 100P + 100S"
-    // Regex quét qua toàn bộ chuỗi để bắt các cặp (Số)(Chữ_cái_loại_dmg)
-    const damageRegex = /([\d.]+)\s*([BPSbps])/gi;
-    let match;
-    
-    while ((match = damageRegex.exec(dmgContent)) !== null) {
-      dmgValues.push({
-        value: parseFloat(match[1]),
-        type: match[2].toUpperCase(), // Chuyển thành chữ hoa (B, P, S)
-      });
-    }
+// 2. Xử lý Dmg với hỗ trợ nhân (ví dụ: 50x2B)
+const dmgMatch = normalized.match(/Dmg:([\d\s+.x]+?[BPSbps](?:\s*\+\s*[\d\s+.x]+?[BPSbps])*)/i);
+const dmgValues = [];
+
+if (dmgMatch) {
+  const dmgContent = dmgMatch[1];
+  // Regex mới: bắt được cả dạng 50x2B
+  const damageRegex = /([\d.]+)(?:x([\d.]+))?\s*([BPSbps])/gi;
+  let match;
+
+  while ((match = damageRegex.exec(dmgContent)) !== null) {
+    const base = parseFloat(match[1]);
+    const multiplier = match[2] ? parseFloat(match[2]) : 1;
+    const dmgType = match[3].toUpperCase();
+    dmgValues.push({
+      value: base * multiplier,
+      type: dmgType,
+    });
   }
+}
 
-  // Nếu không quét được damage nào hợp lệ, gán mặc định sát thương bằng 0 loại B
-  if (dmgValues.length === 0) {
-    dmgValues.push({ value: 0, type: "B" });
-  }
+// Nếu không quét được damage nào hợp lệ, gán mặc định sát thương bằng 0 loại B
+if (dmgValues.length === 0) {
+  dmgValues.push({ value: 0, type: "B" });
+}
 
   // 3. XỬ LÝ CÁC CHỈ SỐ CÒN LẠI
   const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", ""));
