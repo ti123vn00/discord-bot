@@ -162,7 +162,7 @@ client.on("messageCreate", (message) => {
   message.reply({
     embeds: [
       {
-        title: "📊 Kết quả tính DMG (Theo Hệ Vật Lý)",
+        title: "📊 Kết quả tính DMG",
         color: 0x00ae86,
         fields,
       },
