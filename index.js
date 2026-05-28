@@ -173,6 +173,72 @@ if (dmgValues.length === 0) {
   });
 });
 
+client.on("messageCreate", (message) => {
+  if (message.author.bot) return;
+
+  // --- Command -math (giữ nguyên như bạn đã có) ---
+  if (message.content.startsWith("-math")) {
+    // ... toàn bộ code xử lý -math như bạn đã viết ...
+    return;
+  }
+
+  // --- Command -huntermath ---
+  if (message.content.startsWith("-huntermath")) {
+    const input = message.content.replace("-huntermath", "").trim();
+    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
+
+    const parts = normalized.split(/\s+/);
+    const getVal = (key) => {
+      const found = parts.find((p) =>
+        p.toLowerCase().startsWith(key.toLowerCase() + ":")
+      );
+      if (!found) return null;
+      return found.split(":")[1] ?? null;
+    };
+
+    // Lấy các giá trị từ input
+    const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
+    const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
+    const statValue = parseFloat(getVal("Stat") ?? "0"); // Intelligent/Faith/Knowledge
+    const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100;
+    const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
+    const armorBreakPct = parseFloat((getVal("ArmorBreak") ?? "0").replace("%", "")) / 100;
+    const scaleBase = parseFloat(getVal("ScaleBase") ?? "1");
+    const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
+
+    // Công thức tính toán
+    const part1 = dmgBaseWeapon * (1 + bonusPct);
+    const part2 = statValue * scaleSkillPct * (1 - dmgNegationPct);
+    const part3 = 1 + armorBreakPct;
+    const part4 = 1 * scaleBase * buffDmgBonus;
+
+    const finalDmg = part1 + (part2 * part3) + part4;
+
+    // Tạo embed hiển thị
+    const fields = [
+      { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
+      { name: "Bonus %", value: (bonusPct * 100).toFixed(1) + "%", inline: true },
+      { name: "Stat Value", value: statValue.toString(), inline: true },
+      { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
+      { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
+      { name: "ArmorBreak %", value: (armorBreakPct * 100).toFixed(1) + "%", inline: true },
+      { name: "ScaleBase", value: scaleBase.toString(), inline: true },
+      { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
+      { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
+    ];
+
+    message.reply({
+      embeds: [
+        {
+          title: "🎯 HunterMath Result",
+          color: 0xff6600,
+          fields,
+        },
+      ],
+    });
+  }
+});
+
 client.login(TOKEN);
 
 // --- KEEP ALIVE WEB SERVER ---
