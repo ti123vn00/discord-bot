@@ -233,7 +233,7 @@ client.on("messageCreate", (message) => {
     message.reply({
       embeds: [
         {
-          title: "🎯 HunterMath Result",
+          title: "📊 Kết quả tính DMG",
           color: 0xff6600,
           fields,
         },
