@@ -199,21 +199,20 @@ if (message.content.startsWith("-huntermath")) {
   // Lấy các giá trị từ input
   const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
   const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
-  const statValue = parseFloat(getVal("Stat") ?? "0"); // Intelligent/Faith/Knowledge
-  const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100; // %ScaleSkill
+  const statValue = parseFloat(getVal("Stat") ?? "0");
+  const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100; // dùng % cho cả hai
   const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
   const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
-  const scaleSkillVal = parseFloat(getVal("ScaleSkill") ?? "1"); // hệ số ScaleSkill cho buff
   const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
 
   // Công thức tính toán mới
   const partWeapon =
     (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-    + (scaleSkillVal * buffDmgBonus);
+    + (scaleSkillPct * buffDmgBonus);
 
   const partStat =
     (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-    + (scaleSkillVal * buffDmgBonus);
+    + (scaleSkillPct * buffDmgBonus);
 
   const finalDmg = partWeapon + partStat;
 
@@ -225,7 +224,6 @@ if (message.content.startsWith("-huntermath")) {
     { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
     { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
     { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
-    { name: "ScaleSkill (buff)", value: scaleSkillVal.toString(), inline: true },
     { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
     { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
   ];
