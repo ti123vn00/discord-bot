@@ -176,7 +176,7 @@ if (dmgValues.length === 0) {
 client.on("messageCreate", (message) => {
   if (message.author.bot) return;
 
-  // --- Command -math (giữ nguyên như bạn đã có) ---
+  // --- Command -math ---
   if (message.content.startsWith("-math")) {
     // ... toàn bộ code xử lý -math như bạn đã viết ...
     return;
@@ -202,17 +202,20 @@ client.on("messageCreate", (message) => {
     const statValue = parseFloat(getVal("Stat") ?? "0"); // Intelligent/Faith/Knowledge
     const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100;
     const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
-    const armorBreakPct = parseFloat((getVal("ArmorBreak") ?? "0").replace("%", "")) / 100;
+    const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
     const scaleBase = parseFloat(getVal("ScaleBase") ?? "1");
     const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
 
-    // Công thức tính toán
-    const part1 = dmgBaseWeapon * (1 + bonusPct);
-    const part2 = statValue * scaleSkillPct * (1 - dmgNegationPct);
-    const part3 = 1 + armorBreakPct;
-    const part4 = 1 * scaleBase * buffDmgBonus;
+    // Công thức tính toán mới
+    const partWeapon =
+      (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+      + (1 * scaleBase * buffDmgBonus);
 
-    const finalDmg = part1 + (part2 * part3) + part4;
+    const partStat =
+      (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+      + (1 * scaleBase * buffDmgBonus);
+
+    const finalDmg = partWeapon + partStat;
 
     // Tạo embed hiển thị
     const fields = [
@@ -221,7 +224,7 @@ client.on("messageCreate", (message) => {
       { name: "Stat Value", value: statValue.toString(), inline: true },
       { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
       { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
-      { name: "ArmorBreak %", value: (armorBreakPct * 100).toFixed(1) + "%", inline: true },
+      { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
       { name: "ScaleBase", value: scaleBase.toString(), inline: true },
       { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
       { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
@@ -237,16 +240,16 @@ client.on("messageCreate", (message) => {
       ],
     });
   }
-});
+}); // <-- đóng ngoặc callback ở đây
 
 client.login(TOKEN);
 
 // --- KEEP ALIVE WEB SERVER ---
 app.get("/", (req, res) => {
-    res.send("Bot is alive and kicking!");
+  res.send("Bot is alive and kicking!");
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server is running on port ${PORT}`);
 });
