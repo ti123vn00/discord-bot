@@ -182,53 +182,53 @@ client.on("messageCreate", (message) => {
     return;
   }
 
-  // --- Command -huntermath ---
-  if (message.content.startsWith("-huntermath")) {
-    const input = message.content.replace("-huntermath", "").trim();
-    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
+// --- Command -huntermath ---
+if (message.content.startsWith("-huntermath")) {
+  const input = message.content.replace("-huntermath", "").trim();
+  const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
 
-    const parts = normalized.split(/\s+/);
-    const getVal = (key) => {
-      const found = parts.find((p) =>
-        p.toLowerCase().startsWith(key.toLowerCase() + ":")
-      );
-      if (!found) return null;
-      return found.split(":")[1] ?? null;
-    };
+  const parts = normalized.split(/\s+/);
+  const getVal = (key) => {
+    const found = parts.find((p) =>
+      p.toLowerCase().startsWith(key.toLowerCase() + ":")
+    );
+    if (!found) return null;
+    return found.split(":")[1] ?? null;
+  };
 
-    // Lấy các giá trị từ input
-    const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
-    const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
-    const statValue = parseFloat(getVal("Stat") ?? "0"); // Intelligent/Faith/Knowledge
-    const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100;
-    const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
-    const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
-    const scaleBase = parseFloat(getVal("ScaleBase") ?? "1");
-    const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
+  // Lấy các giá trị từ input
+  const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
+  const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
+  const statValue = parseFloat(getVal("Stat") ?? "0"); // Intelligent/Faith/Knowledge
+  const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100; // %ScaleSkill
+  const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
+  const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
+  const scaleSkillVal = parseFloat(getVal("ScaleSkill") ?? "1"); // hệ số ScaleSkill cho buff
+  const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
 
-    // Công thức tính toán mới
-    const partWeapon =
-      (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-      + (1 * scaleBase * buffDmgBonus);
+  // Công thức tính toán mới
+  const partWeapon =
+    (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+    + (scaleSkillVal * buffDmgBonus);
 
-    const partStat =
-      (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-      + (1 * scaleBase * buffDmgBonus);
+  const partStat =
+    (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+    + (scaleSkillVal * buffDmgBonus);
 
-    const finalDmg = partWeapon + partStat;
+  const finalDmg = partWeapon + partStat;
 
-    // Tạo embed hiển thị
-    const fields = [
-      { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
-      { name: "Bonus %", value: (bonusPct * 100).toFixed(1) + "%", inline: true },
-      { name: "Stat Value", value: statValue.toString(), inline: true },
-      { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
-      { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
-      { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
-      { name: "ScaleBase", value: scaleBase.toString(), inline: true },
-      { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
-      { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
-    ];
+  // Tạo embed hiển thị
+  const fields = [
+    { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
+    { name: "Bonus %", value: (bonusPct * 100).toFixed(1) + "%", inline: true },
+    { name: "Stat Value", value: statValue.toString(), inline: true },
+    { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
+    { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
+    { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
+    { name: "ScaleSkill (buff)", value: scaleSkillVal.toString(), inline: true },
+    { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
+    { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
+  ];
 
     message.reply({
       embeds: [
