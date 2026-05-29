@@ -41,17 +41,19 @@ client.on("messageCreate", (message) => {
 
 // 1. XỬ LÝ KHÁNG (RES) - Cho phép nhập theo bất kỳ thứ tự và có khoảng trắng
 // Lấy toàn bộ chuỗi sau "Res:" cho đến khi gặp từ khóa khác (Bonus, CritRate, v.v.)
-const resMatch = normalized.match(/Res:([^A-Za-z]*?(?:[BPS][^A-Za-z]*)*)/i);
+const resMatch = normalized.match(/Res:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const resStr = resMatch ? resMatch[1].trim() : "";
 
 const resValues = { B: 1, P: 1, S: 1 };
 
 // Regex tìm tất cả các hệ số kháng trong chuỗi Res
+const resValues = { B: 1, P: 1, S: 1 };
 const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
 let match;
 while ((match = resRegex.exec(resStr)) !== null) {
   resValues[match[2].toUpperCase()] = parseFloat(match[1]);
 }
+
 
 // 2. Xử lý Dmg với hỗ trợ nhân (ví dụ: 50x2B)
 const dmgMatch = normalized.match(/Dmg:([\d\s+.x]+?[BPSbps](?:\s*\+\s*[\d\s+.x]+?[BPSbps])*)/i);
