@@ -40,7 +40,9 @@ client.on("messageCreate", (message) => {
   };
 
 // 1. XỬ LÝ KHÁNG (RES) - Cho phép nhập theo bất kỳ thứ tự và có khoảng trắng
-const resStr = getVal("Res") ?? "";
+// Lấy toàn bộ chuỗi sau "Res:" cho đến khi gặp từ khóa khác (Bonus, CritRate, v.v.)
+const resMatch = normalized.match(/Res:([^A-Za-z]*?(?:[BPS][^A-Za-z]*)*)/i);
+const resStr = resMatch ? resMatch[1].trim() : "";
 
 const resValues = { B: 1, P: 1, S: 1 };
 
@@ -48,9 +50,7 @@ const resValues = { B: 1, P: 1, S: 1 };
 const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
 let match;
 while ((match = resRegex.exec(resStr)) !== null) {
-  const value = parseFloat(match[1]);
-  const type = match[2].toUpperCase();
-  resValues[type] = value;
+  resValues[match[2].toUpperCase()] = parseFloat(match[1]);
 }
 
 // 2. Xử lý Dmg với hỗ trợ nhân (ví dụ: 50x2B)
