@@ -44,8 +44,6 @@ client.on("messageCreate", (message) => {
 const resMatch = normalized.match(/Res:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const resStr = resMatch ? resMatch[1].trim() : "";
 
-const resValues = { B: 1, P: 1, S: 1 };
-
 // Regex tìm tất cả các hệ số kháng trong chuỗi Res
 const resValues = { B: 1, P: 1, S: 1 };
 const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
