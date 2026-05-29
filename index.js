@@ -42,18 +42,16 @@ client.on("messageCreate", (message) => {
 // 1. XỬ LÝ KHÁNG (RES) - Cho phép nhập theo bất kỳ thứ tự và có khoảng trắng
 const resStr = getVal("Res") ?? "";
 
-const getResMultiplier = (typeChar) => {
-  // Regex tìm số đứng trước xB, xP, xS hoặc chỉ B, P, S
-  const regex = new RegExp(`([\\d.]+)(?:x)?${typeChar}`, "i");
-  const match = resStr.match(regex);
-  return match ? parseFloat(match[1]) : 1.0; // Mặc định là 1x nếu không điền loại đó
-};
+const resValues = { B: 1, P: 1, S: 1 };
 
-const resValues = {
-  B: getResMultiplier("B"),
-  P: getResMultiplier("P"),
-  S: getResMultiplier("S"),
-};
+// Regex tìm tất cả các hệ số kháng trong chuỗi Res
+const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
+let match;
+while ((match = resRegex.exec(resStr)) !== null) {
+  const value = parseFloat(match[1]);
+  const type = match[2].toUpperCase();
+  resValues[type] = value;
+}
 
 // 2. Xử lý Dmg với hỗ trợ nhân (ví dụ: 50x2B)
 const dmgMatch = normalized.match(/Dmg:([\d\s+.x]+?[BPSbps](?:\s*\+\s*[\d\s+.x]+?[BPSbps])*)/i);
