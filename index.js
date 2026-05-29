@@ -39,8 +39,8 @@ client.on("messageCreate", (message) => {
     return found.split(":")[1] ?? null;
   };
 
-  // 1. XỬ LÝ KHÁNG (RES) - Bóc tách riêng lẻ B, P, S từ chuỗi Res (Ví dụ: "0.5xB 1xP 1.5S")
-const resStr = getVal("Res") ?? "1";
+// 1. XỬ LÝ KHÁNG (RES) - Cho phép nhập theo bất kỳ thứ tự và có khoảng trắng
+const resStr = getVal("Res") ?? "";
 
 const getResMultiplier = (typeChar) => {
   // Regex tìm số đứng trước xB, xP, xS hoặc chỉ B, P, S
