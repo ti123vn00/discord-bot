@@ -90,9 +90,10 @@ dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0 });
   let enemySinking = 0;
   let enemyRupture = 0;
 
-  // --- LOOP HITS ---
+// --- LOOP HITS ---
 for (const dmgObj of dmgValues) {
-const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply } = dmgObj;  const currentRes = resValues[dmgType] ?? 1.0;
+  const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply } = dmgObj;
+  const currentRes = resValues[dmgType] ?? 1.0;
 
   const didCrit = Math.random() < currentCritRate;
   const multiplier = didCrit ? critMul : 1;
@@ -100,92 +101,60 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
-
-// --- Sanity & tiêu hao Sinking ---
-if (!isNaN(sanity) && enemySinking > 0) {
-  sanity = Math.max(sanity - 1, -45); // trừ Sanity
-  enemySinking = Math.max(enemySinking - 1, 0); // trừ stack
-}
-
-// --- Áp thêm stack mới sau khi hit kết thúc ---
-if (dmgObj.sinkingToApply > 0) {
-  enemySinking += dmgObj.sinkingToApply;
-}
-
-
-
-// --- Sinking ---
-let sinkingBonus = 0;
-if (enemySinking > 0) {
-  sanity = Math.max(sanity - 1, -45); // trừ Sanity khi có stack
-  if (sanity <= -45 || isNaN(sanity)) {
-    instanceDmg += enemySinking;
-    sinkingBonus = enemySinking;
+  // --- Sinking ---
+  let sinkingBonus = 0;
+  if (enemySinking > 0) {
+    sanity = Math.max(sanity - 1, -45); // trừ Sanity khi có stack
+    if (sanity <= -45 || isNaN(sanity)) {
+      instanceDmg += enemySinking; // cộng dmg khi đủ điều kiện
+      sinkingBonus = enemySinking;
+    }
+    enemySinking = Math.max(enemySinking - 1, 0); // trừ đúng 1 stack
   }
-  enemySinking = Math.max(enemySinking - 1, 0); // trừ đúng 1 stack
-}
 
-// --- Áp thêm stack mới sau khi hit kết thúc ---
-if (dmgObj.sinkingToApply > 0) {
-  enemySinking += dmgObj.sinkingToApply;
-}
-
-
-
-// --- Rupture ---
-let ruptureBonus = 0;
-if (enemyRupture > 0) {
-  if (currentRes < 1) {
-    instanceDmg = instanceDmg / currentRes; // xuyên Res khi Res < 1
-    ruptureBonus = enemyRupture;
-    enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
+  // --- Rupture ---
+  let ruptureBonus = 0;
+  let ruptureUsed = false;
+  if (enemyRupture > 0) {
+    if (currentRes < 1) {
+      instanceDmg = instanceDmg / currentRes; // xuyên Res khi Res < 1
+      ruptureBonus = enemyRupture;
+      ruptureUsed = true;
+      enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
+    }
+    // nếu Res >= 1 thì không xuyên và không trừ stack
   }
-  // nếu Res >= 1 thì không xuyên và không trừ stack
-}
 
-// --- Áp thêm stack mới sau khi hit kết thúc ---
-if (dmgObj.ruptureToApply > 0) {
-  enemyRupture += dmgObj.ruptureToApply;
-}
-
-
-
-
-
-
-
-
-let poiseBonusCrit = 0;
-let poiseApplied = 0;
-if (dmgObj.poiseToApply > 0) {
-  poiseApplied = dmgObj.poiseToApply;
-  poiseBonusCrit = poiseApplied * 0.05; // 5% mỗi Poise
-  currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1); // không vượt quá 100%
-}
-
-
+  // --- Poise ---
+  let poiseBonusCrit = 0;
+  let poiseApplied = 0;
+  if (poiseToApply > 0) {
+    poiseApplied = poiseToApply;
+    poiseBonusCrit = poiseApplied * 0.05; // 5% mỗi Poise
+    currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1);
+  }
 
   totalDmg += instanceDmg;
 
-  // Sau khi hit kết thúc, nếu cú pháp có +Sinking hoặc +Rupture thì áp stack mới
-if (dmgObj.sinkingToApply > 0) enemySinking += dmgObj.sinkingToApply;
-if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
+  // --- Áp thêm stack mới sau khi hit kết thúc ---
+  if (sinkingToApply > 0) enemySinking += sinkingToApply;
+  if (ruptureToApply > 0) enemyRupture += ruptureToApply;
 
+  // --- Lưu kết quả từng hit ---
+  instanceResults.push({
+    dmg,
+    dmgType,
+    didCrit,
+    critRateUsed: currentCritRate,
+    instanceDmg,
+    ruptureUsed,
+    sinkingBonus,
+    sinkingApplied: sinkingToApply || 0,
+    ruptureApplied: ruptureToApply || 0,
+    poiseApplied
+  });
 
-instanceResults.push({
-  dmg,
-  dmgType,
-  didCrit,
-  critRateUsed: currentCritRate,
-  instanceDmg,
-  ruptureUsed: currentRes < 1 && ruptureBonus > 0,
-  sinkingBonus,
-  sinkingApplied: sinkingToApply || 0,
-  ruptureApplied: ruptureToApply || 0,
-  poiseApplied
-});
-
-
+  // --- CritDiv ---
   if (didCrit && critDiv) {
     currentCritRate /= 2;
     if (currentCritRate < 0.05) currentCritRate = 0;
