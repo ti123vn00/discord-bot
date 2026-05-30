@@ -27,7 +27,6 @@ client.on("messageCreate", (message) => {
   if (!message.content.startsWith("-math")) return;
 
   const input = message.content.replace("-math", "").trim();
-  // Chuẩn hóa khoảng trống quanh dấu hai chấm
   const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
 
   const parts = normalized.split(/\s+/);
@@ -39,80 +38,88 @@ client.on("messageCreate", (message) => {
     return found.split(":")[1] ?? null;
   };
 
-// 1. XỬ LÝ KHÁNG (RES) - Cho phép nhập theo bất kỳ thứ tự và có khoảng trắng
-// Lấy toàn bộ chuỗi sau "Res:" cho đến khi gặp từ khóa khác (Bonus, CritRate, v.v.)
-const resMatch = normalized.match(/Res:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
-const resStr = resMatch ? resMatch[1].trim() : "";
-const resValues = { B: 1, P: 1, S: 1 };
-
-// Regex tìm tất cả các hệ số kháng trong chuỗi Res
-const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
-let match;
-while ((match = resRegex.exec(resStr)) !== null) {
-  resValues[match[2].toUpperCase()] = parseFloat(match[1]);
-}
-
-
-// 2. Xử lý Dmg với hỗ trợ nhân (ví dụ: 50x2B)
-const dmgMatch = normalized.match(/Dmg:([\d\s+.x]+?[BPSbps](?:\s*\+\s*[\d\s+.x]+?[BPSbps])*)/i);
-const dmgValues = [];
-
-if (dmgMatch) {
-  const dmgContent = dmgMatch[1];
-  // Regex mới: bắt được cả dạng 50x2B
-  const damageRegex = /([\d.]+)(?:x([\d.]+))?\s*([BPSbps])/gi;
+  // --- RES ---
+  const resMatch = normalized.match(/Res:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
+  const resStr = resMatch ? resMatch[1].trim() : "";
+  const resValues = { B: 1, P: 1, S: 1 };
+  const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
   let match;
-
-  while ((match = damageRegex.exec(dmgContent)) !== null) {
-    const base = parseFloat(match[1]);
-    const multiplier = match[2] ? parseFloat(match[2]) : 1;
-    const dmgType = match[3].toUpperCase();
-    dmgValues.push({
-      value: base * multiplier,
-      type: dmgType,
-    });
+  while ((match = resRegex.exec(resStr)) !== null) {
+    resValues[match[2].toUpperCase()] = parseFloat(match[1]);
   }
-}
 
-// Nếu không quét được damage nào hợp lệ, gán mặc định sát thương bằng 0 loại B
-if (dmgValues.length === 0) {
-  dmgValues.push({ value: 0, type: "B" });
-}
+  // --- DMG ---
+  const dmgMatch = normalized.match(/Dmg:([\d\s+.x]+?[BPSbps](?:\s*\+\s*[\d\s+.x]+?[BPSbps])*)/i);
+  const dmgValues = [];
+  if (dmgMatch) {
+    const dmgContent = dmgMatch[1];
+    const damageRegex = /([\d.]+)(?:x([\d.]+))?\s*([BPSbps])/gi;
+    let match;
+    while ((match = damageRegex.exec(dmgContent)) !== null) {
+      const base = parseFloat(match[1]);
+      const multiplier = match[2] ? parseFloat(match[2]) : 1;
+      const dmgType = match[3].toUpperCase();
+      dmgValues.push({ value: base * multiplier, type: dmgType });
+    }
+  }
+  if (dmgValues.length === 0) {
+    dmgValues.push({ value: 0, type: "B" });
+  }
 
-  // 3. XỬ LÝ CÁC CHỈ SỐ CÒN LẠI
+  // --- OTHER STATS ---
   const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", ""));
   const critMul = parseFloat((getVal("CritMul") ?? "1").replace("x", ""));
   const startingCritRate = parseFloat((getVal("CritRate") ?? "0").replace("%", "")) / 100;
   const critDiv = (getVal("CritDiv") ?? "No").toLowerCase() === "yes";
 
+  let ruptureCount = parseInt(getVal("Rupture") ?? "0");
+  let sinkingCount = parseInt(getVal("Sinking") ?? "0");
+
   let currentCritRate = startingCritRate;
   let totalDmg = 0;
   const instanceResults = [];
 
-  // 4. VÒNG LẶP TÍNH TOÁN CHO TỪNG ĐÒN ĐÁNH (HIT)
+  // --- LOOP HITS ---
   for (const dmgObj of dmgValues) {
     const { value: dmg, type: dmgType } = dmgObj;
-    
-    // Lấy đúng hệ số kháng tương ứng với loại damage của hit này
     const currentRes = resValues[dmgType] ?? 1.0;
 
     const didCrit = Math.random() < currentCritRate;
     const multiplier = didCrit ? critMul : 1;
-    
-    // Công thức tính toán áp dụng riêng hệ số kháng cụ thể
-    const instanceDmg = dmg * (1 + bonusPct / 100) * multiplier * currentRes;
+
+    let instanceDmg = dmg * (1 + bonusPct / 100) * multiplier * currentRes;
+    let extraDmg = 0;
+    let ruptureUsed = false;
+    let sinkingBonus = 0;
+
+    // Rupture: nếu res < 1 thì thêm 1 hit bỏ qua kháng
+    if (ruptureCount > 0 && currentRes < 1) {
+      extraDmg += dmg * (1 + bonusPct / 100) * multiplier;
+      ruptureCount -= 1;
+      ruptureUsed = true;
+    }
+
+    // Sinking: gây thêm dmg bằng số stack hiện tại
+    if (sinkingCount > 0) {
+      extraDmg += sinkingCount;
+      sinkingBonus = sinkingCount;
+      sinkingCount -= 1;
+    }
+
+    const finalInstanceDmg = instanceDmg + extraDmg;
 
     instanceResults.push({
       dmg,
       dmgType,
       didCrit,
       critRateUsed: currentCritRate,
-      instanceDmg,
+      instanceDmg: finalInstanceDmg,
+      ruptureUsed,
+      sinkingBonus,
     });
 
-    totalDmg += instanceDmg;
+    totalDmg += finalInstanceDmg;
 
-    // Cơ chế giảm nửa CritRate nếu kích hoạt CritDiv
     if (didCrit && critDiv) {
       currentCritRate /= 2;
       if (currentCritRate < 0.05) currentCritRate = 0;
@@ -122,11 +129,14 @@ if (dmgValues.length === 0) {
   const finalCritRate = currentCritRate;
   const critCount = instanceResults.filter((r) => r.didCrit).length;
 
-  // 5. TẠO CHUỖI ĐỂ HIỂN THỊ CHI TIẾT (BREAKDOWN)
+  // --- BREAKDOWN ---
   const breakdownLines = instanceResults.map((r, i) => {
     const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
     const critLabel = r.didCrit ? "✅" : "❌";
-    return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}`;
+    let extraInfo = "";
+    if (r.ruptureUsed) extraInfo += " Rupture✔";
+    if (r.sinkingBonus > 0) extraInfo += ` Sinking+${r.sinkingBonus}`;
+    return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
 
   let breakdownValue = breakdownLines.join("\n");
@@ -147,7 +157,6 @@ if (dmgValues.length === 0) {
       ? `${(startingCritRate * 100).toFixed(1)}% → ${(finalCritRate * 100).toFixed(2)}% (after ${critCount} crit${critCount > 1 ? "s" : ""})`
       : `${(startingCritRate * 100).toFixed(1)}%`;
 
-  // Hiển thị cụ thể mức kháng của từng loại trong Embed
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
 
   const fields = [
@@ -157,6 +166,8 @@ if (dmgValues.length === 0) {
     { name: "Res Multipliers", value: resDisplay, inline: true },
     { name: "CritRate", value: critRateDisplay, inline: true },
     { name: "CritDiv", value: critDiv ? "Yes" : "No", inline: true },
+    { name: "Rupture", value: getVal("Rupture") ?? "0", inline: true },
+    { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
   ];
 
@@ -170,6 +181,7 @@ if (dmgValues.length === 0) {
     ],
   });
 });
+
 
 client.on("messageCreate", (message) => {
   if (message.author.bot) return;
