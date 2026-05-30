@@ -100,10 +100,12 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
-// --- Sanity giảm sau mỗi hit ---
-if (!isNaN(sanity)) {
-  sanity = Math.max(sanity - 1, -45); // giảm 1 mỗi hit nhưng không vượt quá -45
+// --- Sanity giảm theo Sinking ---
+if (!isNaN(sanity) && enemySinking > 0) {
+  sanity = Math.max(sanity - 1, -45); // mỗi hit tiêu hao 1 Sinking → trừ 1 Sanity
+  enemySinking = Math.max(enemySinking - 1, 0); // giảm stack Sinking
 }
+
 
 
 // --- Sinking ---
