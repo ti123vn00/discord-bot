@@ -102,12 +102,12 @@ for (const dmgObj of dmgValues) {
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
   // Nếu địch đang có Sinking thì tiêu hao 1 stack và cộng dmg
-  let sinkingBonus = 0;
-  if (enemySinking > 0) {
-    instanceDmg += 1;
-    enemySinking -= 1;
-    sinkingBonus = 1;
-  }
+let sinkingBonus = 0;
+if (enemySinking > 0) {
+  instanceDmg += enemySinking;
+  sinkingBonus = enemySinking;
+  enemySinking = Math.max(enemySinking - 1, 0);
+}
 
   // Nếu địch đang có Rupture thì tiêu hao 1 stack và cộng dmg
   let ruptureBonus = 0;
