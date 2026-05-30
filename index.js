@@ -65,11 +65,21 @@ while ((match = damageRegex.exec(dmgContent)) !== null) {
 const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
 const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
 const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
+  const guaranteedCrit = /Crit100|GuaranteedCrit/i.test(effectsStr);
   const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
   const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
   const poiseToApply = poiseMatch ? parseInt(poiseMatch[1] || "0") : 0;
   for (let i = 0; i < multiplier; i++) {
-dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply });  }
+dmgValues.push({
+  value: base,
+  type: dmgType,
+  isDice,
+  extraPct,
+  sinkingToApply,
+  ruptureToApply,
+  poiseToApply,
+  guaranteedCrit
+});
 }
 }
 if (dmgValues.length === 0) {
@@ -125,20 +135,36 @@ for (const dmgObj of dmgValues) {
     // nếu Res >= 1 thì không xuyên và không trừ stack
   }
 
-  // --- Poise ---
-  let poiseBonusCrit = 0;
-  let poiseApplied = 0;
-  if (poiseToApply > 0) {
-    poiseApplied = poiseToApply;
-    poiseBonusCrit = poiseApplied * 0.05; // 5% mỗi Poise
-    currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1);
-  }
+// --- Crit ---
+let didCrit;
+if (dmgObj.guaranteedCrit) {
+  didCrit = true; // luôn crit nếu flag bật
+} else {
+  didCrit = Math.random() < currentCritRate;
+}
+
+const multiplier = didCrit ? critMul : 1;
+const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0) + (extraPct / 100);
+
+let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
+
+// --- Poise ---
+let poiseBonusCrit = 0;
+let poiseApplied = 0;
+if (!dmgObj.guaranteedCrit && poiseToApply > 0) {
+  poiseApplied = poiseToApply;
+  poiseBonusCrit = poiseApplied * 0.05;
+  currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1);
+}
+
+
 
   totalDmg += instanceDmg;
 
   // --- Áp thêm stack mới sau khi hit kết thúc ---
   if (sinkingToApply > 0) enemySinking += sinkingToApply;
   if (ruptureToApply > 0) enemyRupture += ruptureToApply;
+
 
   // --- Lưu kết quả từng hit ---
   instanceResults.push({
