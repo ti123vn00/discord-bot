@@ -134,7 +134,6 @@ if (enemyRupture > 0) {
     ruptureBonus = enemyRupture;
     enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
   }
-  // nếu Res >= 1 thì không xuyên và không trừ stack
 }
 
 // --- Áp thêm stack mới sau khi hit kết thúc ---
