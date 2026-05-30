@@ -104,10 +104,15 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 if (dmgObj.sinkingToApply > 0) enemySinking += dmgObj.sinkingToApply;
 if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
 
-// --- Sanity giảm theo Sinking ---
+// --- Sanity & tiêu hao Sinking ---
 if (!isNaN(sanity) && enemySinking > 0) {
-  sanity = Math.max(sanity - 1, -45);
-  enemySinking = Math.max(enemySinking - 1, 0);
+  sanity = Math.max(sanity - 1, -45); // trừ Sanity
+  enemySinking = Math.max(enemySinking - 1, 0); // trừ stack
+}
+
+// --- Áp thêm stack mới sau khi hit kết thúc ---
+if (dmgObj.sinkingToApply > 0) {
+  enemySinking += dmgObj.sinkingToApply;
 }
 
 
@@ -127,14 +132,17 @@ if (enemySinking > 0) {
 // --- Rupture ---
 let ruptureBonus = 0;
 if (enemyRupture > 0) {
-  // Nếu Res < 1x thì Rupture xuyên Res (tính như 1x)
   if (currentRes < 1) {
-    instanceDmg = instanceDmg / currentRes * 1; // xuyên Res < 1x
+    instanceDmg = instanceDmg / currentRes; // xuyên Res khi Res < 1
+    ruptureBonus = enemyRupture;
+    enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
   }
-
-  ruptureBonus = enemyRupture;
-  enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
+  // nếu Res >= 1 thì không xuyên và không trừ stack
 }
+
+
+
+
 
 
 let poiseBonusCrit = 0;
@@ -160,7 +168,7 @@ instanceResults.push({
   didCrit,
   critRateUsed: currentCritRate,
   instanceDmg,
-  ruptureUsed: ruptureBonus > 0,
+  ruptureUsed: currentRes < 1 && ruptureBonus > 0,
   sinkingBonus,
   sinkingApplied: sinkingToApply || 0,
   ruptureApplied: ruptureToApply || 0,
