@@ -102,7 +102,7 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 
 // --- Sanity giảm sau mỗi hit ---
 if (!isNaN(sanity)) {
-  sanity -= 1; // mỗi hit giảm đúng 1 Sanity
+  sanity = Math.max(sanity - 1, -45); // mỗi hit giảm 1 nhưng không vượt quá -45
 }
 
 
