@@ -113,10 +113,12 @@ for (const dmgObj of dmgValues) {
   // --- Crit ---
   let critChance = baseCritRate !== null ? baseCritRate : currentCritRate;
   let didCrit;
+  let poiseApplied = 0;
+  let poiseBonusCrit = 0;
+
   if (guaranteedCrit) {
-    didCrit = true; // luôn crit nếu flag bật
+    didCrit = true;
   } else {
-    // cộng thêm từ Poise nếu không phải guaranteed crit
     if (poiseToApply > 0) {
       poiseApplied = poiseToApply;
       poiseBonusCrit = poiseApplied * 0.05;
@@ -127,7 +129,6 @@ for (const dmgObj of dmgValues) {
 
   const multiplier = didCrit ? critMul : 1;
   const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0) + (extraPct / 100);
-
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
   // --- Sinking ---
@@ -170,7 +171,7 @@ for (const dmgObj of dmgValues) {
     sinkingBonus,
     sinkingApplied: sinkingToApply || 0,
     ruptureApplied: ruptureToApply || 0,
-    poiseApplied: poiseToApply || 0
+    poiseApplied
   });
 
   // --- CritDiv ---
