@@ -183,7 +183,7 @@ const fields = [
   { name: "Rupture", value: getVal("Rupture") ?? "0", inline: true },
   { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
   { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
-  { name: "Sanity", value: sanity.toString(), inline: true },
+  { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
 ];
 
   message.reply({
