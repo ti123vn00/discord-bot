@@ -53,7 +53,7 @@ const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const dmgValues = [];
 if (dmgMatch) {
   const dmgContent = dmgMatch[1];
-  const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])(?:\+(\d+)?Sinking|\+(\d+)?Rupture|\+(\d+)?Poise)?/gi;
+const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise)*)/gi;
 let match;
 while ((match = damageRegex.exec(dmgContent)) !== null) {
   const base = parseFloat(match[1]);
@@ -61,9 +61,13 @@ while ((match = damageRegex.exec(dmgContent)) !== null) {
   const multiplier = match[3] ? parseInt(match[3]) : 1;
   const isDice = !!match[4];
   const dmgType = match[5] ? match[5].toUpperCase() : "B";
-  const sinkingToApply = match[6] ? parseInt(match[6]) : (dmgContent.includes("+Sinking") ? 1 : 0);
-  const ruptureToApply = match[7] ? parseInt(match[7]) : (dmgContent.includes("+Rupture") ? 1 : 0);
-  const poiseToApply = match[8] ? parseInt(match[8]) : (dmgContent.includes("+Poise") ? 0 : 0);
+  const effectsStr = match[6] || "";
+const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
+const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
+const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
+  const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
+  const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
+  const poiseToApply = poiseMatch ? parseInt(poiseMatch[1] || "0") : 0;
   for (let i = 0; i < multiplier; i++) {
 dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply });  }
 }
@@ -112,16 +116,11 @@ let ruptureBonus = 0;
 if (enemyRupture > 0) {
   // Nếu Res < 1x thì Rupture xuyên Res (tính như 1x)
   if (currentRes < 1) {
-    // Điều chỉnh lại dmg theo Res = 1x
-    instanceDmg = instanceDmg / currentRes * 1;
+    instanceDmg = instanceDmg / currentRes * 1; // xuyên Res < 1x
   }
 
   ruptureBonus = enemyRupture;
   enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
-}
-
-  // Tiêu hao 1 stack sau hit
-  enemyRupture = Math.max(enemyRupture - 1, 0);
 }
 
 
