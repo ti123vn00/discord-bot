@@ -62,13 +62,16 @@ while ((match = damageRegex.exec(dmgContent)) !== null) {
   const isDice = !!match[4];
   const dmgType = match[5] ? match[5].toUpperCase() : "B";
   const effectsStr = match[6] || "";
-const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
-const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
-const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
+  const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
+  const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
+  const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
   const guaranteedCrit = /Crit100|GuaranteedCrit/i.test(effectsStr);
   const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
   const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
   const poiseToApply = poiseMatch ? parseInt(poiseMatch[1] || "0") : 0;
+  const critMatch = effectsStr.match(/\+Crit(\d+)/i);
+  const baseCritRate = critMatch ? parseInt(critMatch[1]) / 100 : null;
+
   for (let i = 0; i < multiplier; i++) {
 dmgValues.push({
   value: base,
@@ -78,8 +81,10 @@ dmgValues.push({
   sinkingToApply,
   ruptureToApply,
   poiseToApply,
-  guaranteedCrit
+  guaranteedCrit,
+  baseCritRate
 });
+
 }
 }
 if (dmgValues.length === 0) {
@@ -102,10 +107,24 @@ dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0 });
 
 // --- LOOP HITS ---
 for (const dmgObj of dmgValues) {
-  const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply } = dmgObj;
+  const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, guaranteedCrit, baseCritRate } = dmgObj;
   const currentRes = resValues[dmgType] ?? 1.0;
 
-  const didCrit = Math.random() < currentCritRate;
+  // --- Crit ---
+  let critChance = baseCritRate !== null ? baseCritRate : currentCritRate;
+  let didCrit;
+  if (guaranteedCrit) {
+    didCrit = true; // luôn crit nếu flag bật
+  } else {
+    // cộng thêm từ Poise nếu không phải guaranteed crit
+    if (poiseToApply > 0) {
+      poiseApplied = poiseToApply;
+      poiseBonusCrit = poiseApplied * 0.05;
+      critChance = Math.min(critChance + poiseBonusCrit, 1);
+    }
+    didCrit = Math.random() < critChance;
+  }
+
   const multiplier = didCrit ? critMul : 1;
   const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0) + (extraPct / 100);
 
@@ -114,12 +133,12 @@ for (const dmgObj of dmgValues) {
   // --- Sinking ---
   let sinkingBonus = 0;
   if (enemySinking > 0) {
-    sanity = Math.max(sanity - 1, -45); // trừ Sanity khi có stack
+    sanity = Math.max(sanity - 1, -45);
     if (sanity <= -45 || isNaN(sanity)) {
-      instanceDmg += enemySinking; // cộng dmg khi đủ điều kiện
+      instanceDmg += enemySinking;
       sinkingBonus = enemySinking;
     }
-    enemySinking = Math.max(enemySinking - 1, 0); // trừ đúng 1 stack
+    enemySinking = Math.max(enemySinking - 1, 0);
   }
 
   // --- Rupture ---
@@ -127,37 +146,12 @@ for (const dmgObj of dmgValues) {
   let ruptureUsed = false;
   if (enemyRupture > 0) {
     if (currentRes < 1) {
-      instanceDmg = instanceDmg / currentRes; // xuyên Res khi Res < 1
+      instanceDmg = instanceDmg / currentRes;
       ruptureBonus = enemyRupture;
       ruptureUsed = true;
-      enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
+      enemyRupture = Math.max(enemyRupture - 1, 0);
     }
-    // nếu Res >= 1 thì không xuyên và không trừ stack
   }
-
-// --- Crit ---
-let didCrit;
-if (dmgObj.guaranteedCrit) {
-  didCrit = true; // luôn crit nếu flag bật
-} else {
-  didCrit = Math.random() < currentCritRate;
-}
-
-const multiplier = didCrit ? critMul : 1;
-const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0) + (extraPct / 100);
-
-let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
-
-// --- Poise ---
-let poiseBonusCrit = 0;
-let poiseApplied = 0;
-if (!dmgObj.guaranteedCrit && poiseToApply > 0) {
-  poiseApplied = poiseToApply;
-  poiseBonusCrit = poiseApplied * 0.05;
-  currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1);
-}
-
-
 
   totalDmg += instanceDmg;
 
@@ -165,19 +159,18 @@ if (!dmgObj.guaranteedCrit && poiseToApply > 0) {
   if (sinkingToApply > 0) enemySinking += sinkingToApply;
   if (ruptureToApply > 0) enemyRupture += ruptureToApply;
 
-
   // --- Lưu kết quả từng hit ---
   instanceResults.push({
     dmg,
     dmgType,
     didCrit,
-    critRateUsed: currentCritRate,
+    critRateUsed: critChance,
     instanceDmg,
     ruptureUsed,
     sinkingBonus,
     sinkingApplied: sinkingToApply || 0,
     ruptureApplied: ruptureToApply || 0,
-    poiseApplied
+    poiseApplied: poiseToApply || 0
   });
 
   // --- CritDiv ---
