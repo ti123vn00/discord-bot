@@ -53,21 +53,23 @@ const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const dmgValues = [];
 if (dmgMatch) {
   const dmgContent = dmgMatch[1];
-  const damageRegex = /([\d.]+)(?:x([\d.]+))?\s*(Dice)?([BPSbps])/gi;
+  const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])(?:\+Sinking|\+Rupture)?/gi;
   let match;
   while ((match = damageRegex.exec(dmgContent)) !== null) {
     const base = parseFloat(match[1]);
-    const multiplier = match[2] ? parseFloat(match[2]) : 1;
-    const isDice = !!match[3];
-    const dmgType = match[4].toUpperCase();
+    const extraPct = match[2] ? parseFloat(match[2]) : 0;
+    const multiplier = match[3] ? parseInt(match[3]) : 1;
+    const isDice = !!match[4];
+    const dmgType = match[5] ? match[5].toUpperCase() : "B";
+    const effectType = dmgContent.includes("+Sinking") ? "Sinking" : (dmgContent.includes("+Rupture") ? "Rupture" : null);
 
     for (let i = 0; i < multiplier; i++) {
-      dmgValues.push({ value: base, type: dmgType, isDice });
+      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, effectType });
     }
   }
 }
 if (dmgValues.length === 0) {
-  dmgValues.push({ value: 0, type: "B", isDice: false });
+  dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, effectType: null });
 }
 
   // --- OTHER STATS ---
@@ -84,73 +86,74 @@ if (dmgValues.length === 0) {
   let currentCritRate = startingCritRate;
   let totalDmg = 0;
   const instanceResults = [];
+  let enemySinking = 0;
+  let enemyRupture = 0;
 
   // --- LOOP HITS ---
 for (const dmgObj of dmgValues) {
-  const { value: dmg, type: dmgType, isDice } = dmgObj;
+  const { value: dmg, type: dmgType, isDice, extraPct, effectType } = dmgObj;
   const currentRes = resValues[dmgType] ?? 1.0;
 
   const didCrit = Math.random() < currentCritRate;
   const multiplier = didCrit ? critMul : 1;
-
-  // Nếu là Dice thì cộng thêm SanityBonus
-  const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0);
+  const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0) + (extraPct / 100);
 
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
-  let extraDmg = 0;
-  let ruptureUsed = false;
+
+  // Nếu địch đang có Sinking thì tiêu hao 1 stack và cộng dmg
   let sinkingBonus = 0;
-
-  // Rupture
-  if (ruptureCount > 0 && currentRes < 1) {
-    extraDmg += dmg * (1 - currentRes) * bonusFactor * multiplier;
-    ruptureCount -= 1;
-    ruptureUsed = true;
+  if (enemySinking > 0) {
+    instanceDmg += 1;
+    enemySinking -= 1;
+    sinkingBonus = 1;
   }
 
-  // Sinking
-  if (sinkingCount > 0) {
-    sanity -= 1;
-    if (sanity < -45) sanity = -45;
-    if (sanity <= -45 || isNaN(sanity)) {
-      extraDmg += sinkingCount;
-      sinkingBonus = sinkingCount;
-    }
-    sinkingCount -= 1;
+  // Nếu địch đang có Rupture thì tiêu hao 1 stack và cộng dmg
+  let ruptureBonus = 0;
+  if (enemyRupture > 0) {
+    instanceDmg += 1;
+    enemyRupture -= 1;
+    ruptureBonus = 1;
   }
 
-    const finalInstanceDmg = instanceDmg + extraDmg;
+  totalDmg += instanceDmg;
 
-    instanceResults.push({
-      dmg,
-      dmgType,
-      didCrit,
-      critRateUsed: currentCritRate,
-      instanceDmg: finalInstanceDmg,
-      ruptureUsed,
-      sinkingBonus,
-    });
+  // Sau khi hit kết thúc, nếu cú pháp có +Sinking hoặc +Rupture thì áp stack mới
+  if (dmgObj.sinkingToApply > 0) enemySinking += dmgObj.sinkingToApply;
+  if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
 
-    totalDmg += finalInstanceDmg;
+  // 👉 Đặt đoạn push ở đây
+  instanceResults.push({
+    dmg,
+    dmgType,
+    didCrit,
+    critRateUsed: currentCritRate,
+    instanceDmg,
+    ruptureUsed: ruptureBonus > 0,
+    sinkingBonus,
+    sinkingApplied: dmgObj.sinkingToApply || 0,
+    ruptureApplied: dmgObj.ruptureToApply || 0,
+  });
 
-    if (didCrit && critDiv) {
-      currentCritRate /= 2;
-      if (currentCritRate < 0.05) currentCritRate = 0;
-    }
+  if (didCrit && critDiv) {
+    currentCritRate /= 2;
+    if (currentCritRate < 0.05) currentCritRate = 0;
   }
+}
 
   const finalCritRate = currentCritRate;
   const critCount = instanceResults.filter((r) => r.didCrit).length;
 
   // --- BREAKDOWN ---
-  const breakdownLines = instanceResults.map((r, i) => {
-    const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
-    const critLabel = r.didCrit ? "✅" : "❌";
-    let extraInfo = "";
-    if (r.ruptureUsed) extraInfo += " Rupture✔";
-    if (r.sinkingBonus > 0) extraInfo += ` Sinking+${r.sinkingBonus}`;
-    return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
-  });
+const breakdownLines = instanceResults.map((r, i) => {
+  const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
+  const critLabel = r.didCrit ? "✅" : "❌";
+  let extraInfo = "";
+  if (r.sinkingBonus > 0) extraInfo += ` +${r.sinkingBonus} dmg từ Sinking`;
+  if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} Sinking`;
+  if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} Rupture`;
+  return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
+});
 
   let breakdownValue = breakdownLines.join("\n");
   if (breakdownValue.length > 1024) {
@@ -184,6 +187,8 @@ const fields = [
   { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
   { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
   { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
+  { name: "Enemy's Sinking Counts", value: enemySinking.toString(), inline: true },
+  { name: "Enemy's Rupture Counts", value: enemyRupture.toString(), inline: true },
 ];
 
   message.reply({
