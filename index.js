@@ -117,10 +117,9 @@ if (dmgObj.sinkingToApply > 0) {
 // --- Sinking ---
 let sinkingBonus = 0;
 if (enemySinking > 0) {
-  // mỗi hit tiêu hao 1 stack Sinking
   sanity = Math.max(sanity - 1, -45); // trừ Sanity khi có stack
   if (sanity <= -45 || isNaN(sanity)) {
-    instanceDmg += enemySinking; // chỉ cộng dmg khi đủ điều kiện
+    instanceDmg += enemySinking;
     sinkingBonus = enemySinking;
   }
   enemySinking = Math.max(enemySinking - 1, 0); // trừ đúng 1 stack
@@ -128,8 +127,9 @@ if (enemySinking > 0) {
 
 // --- Áp thêm stack mới sau khi hit kết thúc ---
 if (dmgObj.sinkingToApply > 0) {
-  enemySinking += dmgObj.sinkingToApply; // stack mới có hiệu lực từ hit kế tiếp
+  enemySinking += dmgObj.sinkingToApply;
 }
+
 
 
 // --- Rupture ---
@@ -140,12 +140,14 @@ if (enemyRupture > 0) {
     ruptureBonus = enemyRupture;
     enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
   }
+  // nếu Res >= 1 thì không xuyên và không trừ stack
 }
 
 // --- Áp thêm stack mới sau khi hit kết thúc ---
 if (dmgObj.ruptureToApply > 0) {
   enemyRupture += dmgObj.ruptureToApply;
 }
+
 
 
 
