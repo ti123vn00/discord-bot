@@ -110,12 +110,14 @@ if (enemySinking > 0) {
 // --- Rupture ---
 let ruptureBonus = 0;
 if (enemyRupture > 0) {
-  // Nếu res < 1x thì Rupture xuyên res (tính như 1x)
-  const effectiveRes = currentRes < 1 ? 1 : currentRes;
+  // Nếu Res < 1x thì Rupture xuyên Res (tính như 1x)
+  if (currentRes < 1) {
+    instanceDmg = dmg * bonusFactor * multiplier * 1; // dùng 1x thay vì currentRes
+  }
 
-  // Cộng dmg theo số stack hiện có
-  instanceDmg += enemyRupture * effectiveRes;
   ruptureBonus = enemyRupture;
+  enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
+}
 
   // Tiêu hao 1 stack sau hit
   enemyRupture = Math.max(enemyRupture - 1, 0);
