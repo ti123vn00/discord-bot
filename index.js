@@ -193,6 +193,10 @@ const breakdownLines = instanceResults.map((r, i) => {
   if (r.ruptureUsed) extraInfo += " | xuyên Res từ Rupture";
   if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} Rupture`;
   if (r.poiseApplied > 0) extraInfo += ` | +${r.poiseApplied} Poise (+${(r.poiseApplied * 5).toFixed(1)}% Crit)`;
+if (effectsStr && /\+Crit(\d+)/i.test(effectsStr)) {
+  const critVal = effectsStr.match(/\+Crit(\d+)/i)[1];
+  extraInfo += ` | +Crit${critVal}%`;
+}
   return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
 });
 
