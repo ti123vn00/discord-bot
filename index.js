@@ -73,7 +73,7 @@ dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, r
 }
 }
 if (dmgValues.length === 0) {
-  dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, effectType: null });
+dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0 });
 }
 
   // --- OTHER STATS ---
