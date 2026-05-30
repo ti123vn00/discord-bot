@@ -78,6 +78,7 @@ for (let i = 0; i < multiplier; i++) {
 
   let ruptureCount = parseInt(getVal("Rupture") ?? "0");
   let sinkingCount = parseInt(getVal("Sinking") ?? "0");
+  let sanity = parseInt(getVal("Sanity") ?? "0");
 
   let currentCritRate = startingCritRate;
   let totalDmg = 0;
@@ -104,11 +105,15 @@ for (let i = 0; i < multiplier; i++) {
     }
 
     // Sinking: gây thêm dmg bằng số stack hiện tại
-    if (sinkingCount > 0) {
-      extraDmg += sinkingCount;
-      sinkingBonus = sinkingCount;
-      sinkingCount -= 1;
-    }
+// Sinking: mỗi hit trừ sanity, nếu sanity <= -45 hoặc không có sanity thì gây dmg theo count
+if (sinkingCount > 0) {
+  sanity -= 1; // mỗi hit trừ 1 sanity
+  if (sanity <= -45 || isNaN(sanity)) {
+    extraDmg += sinkingCount;
+    sinkingBonus = sinkingCount;
+  }
+  sinkingCount -= 1;
+}
 
     const finalInstanceDmg = instanceDmg + extraDmg;
 
@@ -173,6 +178,7 @@ for (let i = 0; i < multiplier; i++) {
     { name: "Rupture", value: getVal("Rupture") ?? "0", inline: true },
     { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
+    { name: "Sanity", value: sanity.toString(), inline: true },
   ];
 
   message.reply({
