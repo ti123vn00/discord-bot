@@ -49,29 +49,30 @@ client.on("messageCreate", (message) => {
   }
 
   // --- DMG ---
-  const dmgMatch = normalized.match(/Dmg:([\d\s+.x]+?[BPSbps](?:\s*\+\s*[\d\s+.x]+?[BPSbps])*)/i);
-  const dmgValues = [];
-  if (dmgMatch) {
-    const dmgContent = dmgMatch[1];
-    const damageRegex = /([\d.]+)(?:x([\d.]+))?\s*([BPSbps])/gi;
-    let match;
-    while ((match = damageRegex.exec(dmgContent)) !== null) {
-const base = parseFloat(match[1]);
-const multiplier = match[2] ? parseFloat(match[2]) : 1;
-const dmgType = match[3].toUpperCase();
+const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
+const dmgValues = [];
+if (dmgMatch) {
+  const dmgContent = dmgMatch[1];
+  const damageRegex = /([\d.]+)(?:x([\d.]+))?\s*(Dice)?([BPSbps])/gi;
+  let match;
+  while ((match = damageRegex.exec(dmgContent)) !== null) {
+    const base = parseFloat(match[1]);
+    const multiplier = match[2] ? parseFloat(match[2]) : 1;
+    const isDice = !!match[3];
+    const dmgType = match[4].toUpperCase();
 
-// Nếu multiplier > 1, coi như số hit
-for (let i = 0; i < multiplier; i++) {
-  dmgValues.push({ value: base, type: dmgType });
-}
+    for (let i = 0; i < multiplier; i++) {
+      dmgValues.push({ value: base, type: dmgType, isDice });
     }
   }
-  if (dmgValues.length === 0) {
-    dmgValues.push({ value: 0, type: "B" });
-  }
+}
+if (dmgValues.length === 0) {
+  dmgValues.push({ value: 0, type: "B", isDice: false });
+}
 
   // --- OTHER STATS ---
   const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", ""));
+  const sanityBonusPct = parseFloat((getVal("SanityBonus") ?? "0").replace("%", ""));
   const critMul = parseFloat((getVal("CritMul") ?? "1").replace("x", ""));
   const startingCritRate = parseFloat((getVal("CritRate") ?? "0").replace("%", "")) / 100;
   const critDiv = (getVal("CritDiv") ?? "No").toLowerCase() === "yes";
@@ -85,35 +86,38 @@ for (let i = 0; i < multiplier; i++) {
   const instanceResults = [];
 
   // --- LOOP HITS ---
-  for (const dmgObj of dmgValues) {
-    const { value: dmg, type: dmgType } = dmgObj;
-    const currentRes = resValues[dmgType] ?? 1.0;
+for (const dmgObj of dmgValues) {
+  const { value: dmg, type: dmgType, isDice } = dmgObj;
+  const currentRes = resValues[dmgType] ?? 1.0;
 
-    const didCrit = Math.random() < currentCritRate;
-    const multiplier = didCrit ? critMul : 1;
+  const didCrit = Math.random() < currentCritRate;
+  const multiplier = didCrit ? critMul : 1;
 
-    let instanceDmg = dmg * (1 + bonusPct / 100) * multiplier * currentRes;
-    let extraDmg = 0;
-    let ruptureUsed = false;
-    let sinkingBonus = 0;
+  // Nếu là Dice thì cộng thêm SanityBonus
+  const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0);
 
-    // Rupture: nếu res < 1 thì thêm 1 hit bỏ qua kháng
-    if (ruptureCount > 0 && currentRes < 1) {
-      extraDmg += dmg * (1 - currentRes) * (1 + bonusPct / 100) * multiplier;
-      ruptureCount -= 1;
-      ruptureUsed = true;
-    }
+  let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
+  let extraDmg = 0;
+  let ruptureUsed = false;
+  let sinkingBonus = 0;
 
-// Sinking: mỗi hit trừ sanity, nếu sanity <= -45 hoặc không có sanity thì gây dmg theo count
-if (sinkingCount > 0) {
-  sanity -= 1; // mỗi hit trừ 1 sanity
-  if (sanity < -45) sanity = -45; // 🔒 Giới hạn sanity không giảm quá -45
-  if (sanity <= -45 || isNaN(sanity)) {
-    extraDmg += sinkingCount;
-    sinkingBonus = sinkingCount;
+  // Rupture
+  if (ruptureCount > 0 && currentRes < 1) {
+    extraDmg += dmg * (1 - currentRes) * bonusFactor * multiplier;
+    ruptureCount -= 1;
+    ruptureUsed = true;
   }
-  sinkingCount -= 1;
-}
+
+  // Sinking
+  if (sinkingCount > 0) {
+    sanity -= 1;
+    if (sanity < -45) sanity = -45;
+    if (sanity <= -45 || isNaN(sanity)) {
+      extraDmg += sinkingCount;
+      sinkingBonus = sinkingCount;
+    }
+    sinkingCount -= 1;
+  }
 
     const finalInstanceDmg = instanceDmg + extraDmg;
 
