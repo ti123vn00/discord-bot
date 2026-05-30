@@ -103,13 +103,21 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
+  // --- Sanity giảm sau mỗi hit ---
+if (sanity < 0) {
+  sanity += 3; // mỗi hit hồi 3 sanity (hoặc giảm thêm tùy cơ chế bạn muốn)
+} else {
+  sanity -= 3; // mỗi hit giảm 3 sanity nếu > 0
+}
+
 // --- Sinking ---
 let sinkingBonus = 0;
-if (enemySinking > 0) {
-  instanceDmg += enemySinking; // cộng dmg theo số stack hiện có
+if (enemySinking > 0 && (sanity <= -45 || isNaN(sanity))) {
+  instanceDmg += enemySinking; // chỉ cộng dmg khi sanity <= -45 hoặc None
   sinkingBonus = enemySinking;
   enemySinking = Math.max(enemySinking - 1, 0); // tiêu hao 1 stack
 }
+
 
 // --- Rupture ---
 let ruptureBonus = 0;
