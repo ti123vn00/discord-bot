@@ -112,7 +112,8 @@ let ruptureBonus = 0;
 if (enemyRupture > 0) {
   // Nếu Res < 1x thì Rupture xuyên Res (tính như 1x)
   if (currentRes < 1) {
-    instanceDmg = dmg * bonusFactor * multiplier * 1; // dùng 1x thay vì currentRes
+    // Điều chỉnh lại dmg theo Res = 1x
+    instanceDmg = instanceDmg / currentRes * 1;
   }
 
   ruptureBonus = enemyRupture;
