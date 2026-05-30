@@ -53,20 +53,21 @@ const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const dmgValues = [];
 if (dmgMatch) {
   const dmgContent = dmgMatch[1];
-  const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])(?:\+Sinking|\+Rupture)?/gi;
-  let match;
-  while ((match = damageRegex.exec(dmgContent)) !== null) {
-    const base = parseFloat(match[1]);
-    const extraPct = match[2] ? parseFloat(match[2]) : 0;
-    const multiplier = match[3] ? parseInt(match[3]) : 1;
-    const isDice = !!match[4];
-    const dmgType = match[5] ? match[5].toUpperCase() : "B";
-    const effectType = dmgContent.includes("+Sinking") ? "Sinking" : (dmgContent.includes("+Rupture") ? "Rupture" : null);
+const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])(?:\+(\d+)?Sinking|\+(\d+)?Rupture)?/gi;
+let match;
+while ((match = damageRegex.exec(dmgContent)) !== null) {
+  const base = parseFloat(match[1]);
+  const extraPct = match[2] ? parseFloat(match[2]) : 0;
+  const multiplier = match[3] ? parseInt(match[3]) : 1;
+  const isDice = !!match[4];
+  const dmgType = match[5] ? match[5].toUpperCase() : "B";
+  const sinkingToApply = match[6] ? parseInt(match[6]) : (dmgContent.includes("+Sinking") ? 1 : 0);
+  const ruptureToApply = match[7] ? parseInt(match[7]) : (dmgContent.includes("+Rupture") ? 1 : 0);
 
-    for (let i = 0; i < multiplier; i++) {
-      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, effectType });
-    }
+  for (let i = 0; i < multiplier; i++) {
+    dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply });
   }
+}
 }
 if (dmgValues.length === 0) {
   dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, effectType: null });
@@ -91,7 +92,7 @@ if (dmgValues.length === 0) {
 
   // --- LOOP HITS ---
 for (const dmgObj of dmgValues) {
-  const { value: dmg, type: dmgType, isDice, extraPct, effectType } = dmgObj;
+  const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply } = dmgObj;
   const currentRes = resValues[dmgType] ?? 1.0;
 
   const didCrit = Math.random() < currentCritRate;
@@ -119,8 +120,9 @@ for (const dmgObj of dmgValues) {
   totalDmg += instanceDmg;
 
   // Sau khi hit kết thúc, nếu cú pháp có +Sinking hoặc +Rupture thì áp stack mới
-  if (dmgObj.sinkingToApply > 0) enemySinking += dmgObj.sinkingToApply;
-  if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
+if (dmgObj.sinkingToApply > 0) enemySinking += dmgObj.sinkingToApply;
+if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
+
 
   // 👉 Đặt đoạn push ở đây
   instanceResults.push({
