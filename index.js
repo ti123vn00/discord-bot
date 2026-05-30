@@ -116,11 +116,14 @@ if (enemySinking > 0) {
     ruptureBonus = 1;
   }
 
-  let poiseBonusCrit = 0;
+let poiseBonusCrit = 0;
+let poiseApplied = 0;
 if (dmgObj.poiseToApply > 0) {
-  poiseBonusCrit = dmgObj.poiseToApply * 0.05; // 5% mỗi Poise
+  poiseApplied = dmgObj.poiseToApply;
+  poiseBonusCrit = poiseApplied * 0.05; // 5% mỗi Poise
   currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1); // không vượt quá 100%
 }
+
 
 
   totalDmg += instanceDmg;
@@ -130,18 +133,19 @@ if (dmgObj.sinkingToApply > 0) enemySinking += dmgObj.sinkingToApply;
 if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
 
 
-  // 👉 Đặt đoạn push ở đây
-  instanceResults.push({
-    dmg,
-    dmgType,
-    didCrit,
-    critRateUsed: currentCritRate,
-    instanceDmg,
-    ruptureUsed: ruptureBonus > 0,
-    sinkingBonus,
-    sinkingApplied: dmgObj.sinkingToApply || 0,
-    ruptureApplied: dmgObj.ruptureToApply || 0,
-  });
+instanceResults.push({
+  dmg,
+  dmgType,
+  didCrit,
+  critRateUsed: currentCritRate,
+  instanceDmg,
+  ruptureUsed: ruptureBonus > 0,
+  sinkingBonus,
+  sinkingApplied: sinkingToApply || 0,
+  ruptureApplied: ruptureToApply || 0,
+  poiseApplied
+});
+
 
   if (didCrit && critDiv) {
     currentCritRate /= 2;
@@ -154,15 +158,16 @@ if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
 
   // --- BREAKDOWN ---
 const breakdownLines = instanceResults.map((r, i) => {
-const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
-const poiseInfo = r.poiseApplied > 0 ? ` | +${r.poiseApplied} Poise (+${(r.poiseApplied * 5).toFixed(1)}% Crit)` : "";
+  const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
   const critLabel = r.didCrit ? "✅" : "❌";
   let extraInfo = "";
   if (r.sinkingBonus > 0) extraInfo += ` +${r.sinkingBonus} dmg từ Sinking`;
   if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} Sinking`;
   if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} Rupture`;
-return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}${poiseInfo}`;
+  if (r.poiseApplied > 0) extraInfo += ` | +${r.poiseApplied} Poise (+${(r.poiseApplied * 5).toFixed(1)}% Crit)`;
+  return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
 });
+
 
   let breakdownValue = breakdownLines.join("\n");
   if (breakdownValue.length > 1024) {
