@@ -56,10 +56,14 @@ client.on("messageCreate", (message) => {
     const damageRegex = /([\d.]+)(?:x([\d.]+))?\s*([BPSbps])/gi;
     let match;
     while ((match = damageRegex.exec(dmgContent)) !== null) {
-      const base = parseFloat(match[1]);
-      const multiplier = match[2] ? parseFloat(match[2]) : 1;
-      const dmgType = match[3].toUpperCase();
-      dmgValues.push({ value: base * multiplier, type: dmgType });
+const base = parseFloat(match[1]);
+const multiplier = match[2] ? parseFloat(match[2]) : 1;
+const dmgType = match[3].toUpperCase();
+
+// Nếu multiplier > 1, coi như số hit
+for (let i = 0; i < multiplier; i++) {
+  dmgValues.push({ value: base, type: dmgType });
+}
     }
   }
   if (dmgValues.length === 0) {
@@ -94,7 +98,7 @@ client.on("messageCreate", (message) => {
 
     // Rupture: nếu res < 1 thì thêm 1 hit bỏ qua kháng
     if (ruptureCount > 0 && currentRes < 1) {
-      extraDmg += dmg * (1 + bonusPct / 100) * multiplier;
+      extraDmg += dmg * (1 - currentRes) * (1 + bonusPct / 100) * multiplier;
       ruptureCount -= 1;
       ruptureUsed = true;
     }
