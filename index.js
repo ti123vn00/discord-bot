@@ -104,10 +104,10 @@ for (let i = 0; i < multiplier; i++) {
       ruptureUsed = true;
     }
 
-    // Sinking: gây thêm dmg bằng số stack hiện tại
 // Sinking: mỗi hit trừ sanity, nếu sanity <= -45 hoặc không có sanity thì gây dmg theo count
 if (sinkingCount > 0) {
   sanity -= 1; // mỗi hit trừ 1 sanity
+  if (sanity < -45) sanity = -45; // 🔒 Giới hạn sanity không giảm quá -45
   if (sanity <= -45 || isNaN(sanity)) {
     extraDmg += sinkingCount;
     sinkingBonus = sinkingCount;
