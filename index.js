@@ -82,9 +82,6 @@ if (dmgValues.length === 0) {
   const critMul = parseFloat((getVal("CritMul") ?? "1").replace("x", ""));
   const startingCritRate = parseFloat((getVal("CritRate") ?? "0").replace("%", "")) / 100;
   const critDiv = (getVal("CritDiv") ?? "No").toLowerCase() === "yes";
-
-  let ruptureCount = parseInt(getVal("Rupture") ?? "0");
-  let sinkingCount = parseInt(getVal("Sinking") ?? "0");
   let sanity = parseInt(getVal("Sanity") ?? "0");
 
   let currentCritRate = startingCritRate;
@@ -103,12 +100,11 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
-  // --- Sanity giảm sau mỗi hit ---
-if (sanity < 0) {
-  sanity += 3; // mỗi hit hồi 3 sanity (hoặc giảm thêm tùy cơ chế bạn muốn)
-} else {
-  sanity -= 3; // mỗi hit giảm 3 sanity nếu > 0
+// --- Sanity giảm sau mỗi hit ---
+if (!isNaN(sanity)) {
+  sanity -= 1; // mỗi hit giảm đúng 1 Sanity
 }
+
 
 // --- Sinking ---
 let sinkingBonus = 0;
