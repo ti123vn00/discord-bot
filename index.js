@@ -91,8 +91,7 @@ if (dmgValues.length === 0) {
 
   // --- LOOP HITS ---
 for (const dmgObj of dmgValues) {
-  const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply } = dmgObj;
-  const currentRes = resValues[dmgType] ?? 1.0;
+const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply } = dmgObj;  const currentRes = resValues[dmgType] ?? 1.0;
 
   const didCrit = Math.random() < currentCritRate;
   const multiplier = didCrit ? critMul : 1;
