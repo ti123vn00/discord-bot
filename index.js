@@ -1,8 +1,8 @@
 // index.js
 const { Client, GatewayIntentBits } = require("discord.js");
-const express = require("express"); 
+const express = require("express");
 
-const app = express(); 
+const app = express();
 
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) {
@@ -24,20 +24,20 @@ client.once("ready", () => {
 
 client.on("messageCreate", (message) => {
   if (message.author.bot) return;
-  if (!message.content.startsWith("-math")) return;
 
-  const input = message.content.replace("-math", "").trim();
-  const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
+  // --- Command -math ---
+  if (message.content.startsWith("-math")) {
+    const input = message.content.replace("-math", "").trim();
+    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
 
-  const parts = normalized.split(/\s+/);
-  const getVal = (key) => {
-    const found = parts.find((p) =>
-      p.toLowerCase().startsWith(key.toLowerCase() + ":")
-    );
-    if (!found) return null;
-    return found.split(":")[1] ?? null;
-  };
-
+    const parts = normalized.split(/\s+/);
+    const getVal = (key) => {
+      const found = parts.find((p) =>
+        p.toLowerCase().startsWith(key.toLowerCase() + ":")
+      );
+      if (!found) return null;
+      return found.split(":")[1] ?? null;
+    };
   // --- RES ---
   const resMatch = normalized.match(/Res:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
   const resStr = resMatch ? resMatch[1].trim() : "";
@@ -235,60 +235,53 @@ const fields = [
 });
 
 
-client.on("messageCreate", (message) => {
-  if (message.author.bot) return;
-
-  // --- Command -math ---
-  if (message.content.startsWith("-math")) {
-    // ... toàn bộ code xử lý -math như bạn đã viết ...
-    return;
   }
 
-// --- Command -huntermath ---
-if (message.content.startsWith("-huntermath")) {
-  const input = message.content.replace("-huntermath", "").trim();
-  const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
+  // --- Command -huntermath ---
+ if (message.content.startsWith("-huntermath")) {
+    const input = message.content.replace("-huntermath", "").trim();
+    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
 
-  const parts = normalized.split(/\s+/);
-  const getVal = (key) => {
-    const found = parts.find((p) =>
-      p.toLowerCase().startsWith(key.toLowerCase() + ":")
-    );
-    if (!found) return null;
-    return found.split(":")[1] ?? null;
-  };
+    const parts = normalized.split(/\s+/);
+    const getVal = (key) => {
+      const found = parts.find((p) =>
+        p.toLowerCase().startsWith(key.toLowerCase() + ":")
+      );
+      if (!found) return null;
+      return found.split(":")[1] ?? null;
+    };
 
-  // Lấy các giá trị từ input
-  const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
-  const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
-  const statValue = parseFloat(getVal("Stat") ?? "0");
-  const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100; // dùng % cho cả hai
-  const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
-  const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
-  const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
+    // Lấy các giá trị từ input
+    const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
+    const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
+    const statValue = parseFloat(getVal("Stat") ?? "0");
+    const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100;
+    const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
+    const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
+    const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
 
-  // Công thức tính toán mới
-  const partWeapon =
-    (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-    + (scaleSkillPct * buffDmgBonus);
+    // Công thức tính toán
+    const partWeapon =
+      (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+      + (scaleSkillPct * buffDmgBonus);
 
-  const partStat =
-    (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-    + (scaleSkillPct * buffDmgBonus);
+    const partStat =
+      (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+      + (scaleSkillPct * buffDmgBonus);
 
-  const finalDmg = partWeapon + partStat;
+    const finalDmg = partWeapon + partStat;
 
-  // Tạo embed hiển thị
-  const fields = [
-    { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
-    { name: "Bonus %", value: (bonusPct * 100).toFixed(1) + "%", inline: true },
-    { name: "Stat Value", value: statValue.toString(), inline: true },
-    { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
-    { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
-    { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
-    { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
-    { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
-  ];
+    // Tạo embed hiển thị
+    const fields = [
+      { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
+      { name: "Bonus %", value: (bonusPct * 100).toFixed(1) + "%", inline: true },
+      { name: "Stat Value", value: statValue.toString(), inline: true },
+      { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
+      { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
+      { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
+      { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
+      { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
+    ];
 
     message.reply({
       embeds: [
@@ -300,7 +293,7 @@ if (message.content.startsWith("-huntermath")) {
       ],
     });
   }
-}); // <-- đóng ngoặc callback ở đây
+});
 
 client.login(TOKEN);
 
