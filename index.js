@@ -99,21 +99,28 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
-  // Nếu địch đang có Sinking thì tiêu hao 1 stack và cộng dmg
+// --- Sinking ---
 let sinkingBonus = 0;
 if (enemySinking > 0) {
-  instanceDmg += enemySinking;
+  instanceDmg += enemySinking; // cộng dmg theo số stack hiện có
   sinkingBonus = enemySinking;
-  enemySinking = Math.max(enemySinking - 1, 0);
+  enemySinking = Math.max(enemySinking - 1, 0); // tiêu hao 1 stack
 }
 
-  // Nếu địch đang có Rupture thì tiêu hao 1 stack và cộng dmg
-  let ruptureBonus = 0;
-  if (enemyRupture > 0) {
-    instanceDmg += 1;
-    enemyRupture -= 1;
-    ruptureBonus = 1;
-  }
+// --- Rupture ---
+let ruptureBonus = 0;
+if (enemyRupture > 0) {
+  // Nếu res < 1x thì Rupture xuyên res (tính như 1x)
+  const effectiveRes = currentRes < 1 ? 1 : currentRes;
+
+  // Cộng dmg theo số stack hiện có
+  instanceDmg += enemyRupture * effectiveRes;
+  ruptureBonus = enemyRupture;
+
+  // Tiêu hao 1 stack sau hit
+  enemyRupture = Math.max(enemyRupture - 1, 0);
+}
+
 
 let poiseBonusCrit = 0;
 let poiseApplied = 0;
