@@ -53,7 +53,7 @@ const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const dmgValues = [];
 if (dmgMatch) {
   const dmgContent = dmgMatch[1];
-const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])(?:\+(\d+)?Sinking|\+(\d+)?Rupture)?/gi;
+  const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])(?:\+(\d+)?Sinking|\+(\d+)?Rupture|\+(\d+)?Poise)?/gi;
 let match;
 while ((match = damageRegex.exec(dmgContent)) !== null) {
   const base = parseFloat(match[1]);
@@ -63,10 +63,9 @@ while ((match = damageRegex.exec(dmgContent)) !== null) {
   const dmgType = match[5] ? match[5].toUpperCase() : "B";
   const sinkingToApply = match[6] ? parseInt(match[6]) : (dmgContent.includes("+Sinking") ? 1 : 0);
   const ruptureToApply = match[7] ? parseInt(match[7]) : (dmgContent.includes("+Rupture") ? 1 : 0);
-
+  const poiseToApply = match[8] ? parseInt(match[8]) : (dmgContent.includes("+Poise") ? 0 : 0);
   for (let i = 0; i < multiplier; i++) {
-    dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply });
-  }
+dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply });  }
 }
 }
 if (dmgValues.length === 0) {
@@ -117,6 +116,13 @@ if (enemySinking > 0) {
     ruptureBonus = 1;
   }
 
+  let poiseBonusCrit = 0;
+if (dmgObj.poiseToApply > 0) {
+  poiseBonusCrit = dmgObj.poiseToApply * 0.05; // 5% mỗi Poise
+  currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1); // không vượt quá 100%
+}
+
+
   totalDmg += instanceDmg;
 
   // Sau khi hit kết thúc, nếu cú pháp có +Sinking hoặc +Rupture thì áp stack mới
@@ -148,13 +154,14 @@ if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
 
   // --- BREAKDOWN ---
 const breakdownLines = instanceResults.map((r, i) => {
-  const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
+const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
+const poiseInfo = r.poiseApplied > 0 ? ` | +${r.poiseApplied} Poise (+${(r.poiseApplied * 5).toFixed(1)}% Crit)` : "";
   const critLabel = r.didCrit ? "✅" : "❌";
   let extraInfo = "";
   if (r.sinkingBonus > 0) extraInfo += ` +${r.sinkingBonus} dmg từ Sinking`;
   if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} Sinking`;
   if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} Rupture`;
-  return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
+return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}${poiseInfo}`;
 });
 
   let breakdownValue = breakdownLines.join("\n");
