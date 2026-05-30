@@ -100,10 +100,14 @@ const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToAp
 
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
+// Sau khi hit kết thúc, nếu cú pháp có +Sinking hoặc +Rupture thì áp stack mới
+if (dmgObj.sinkingToApply > 0) enemySinking += dmgObj.sinkingToApply;
+if (dmgObj.ruptureToApply > 0) enemyRupture += dmgObj.ruptureToApply;
+
 // --- Sanity giảm theo Sinking ---
 if (!isNaN(sanity) && enemySinking > 0) {
-  sanity = Math.max(sanity - 1, -45); // mỗi hit tiêu hao 1 Sinking → trừ 1 Sanity
-  enemySinking = Math.max(enemySinking - 1, 0); // giảm stack Sinking
+  sanity = Math.max(sanity - 1, -45);
+  enemySinking = Math.max(enemySinking - 1, 0);
 }
 
 
