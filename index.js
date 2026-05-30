@@ -152,19 +152,19 @@ for (const dmgObj of dmgValues) {
 
   if (sinkingToApply > 0) enemySinking += sinkingToApply;
   if (ruptureToApply > 0) enemyRupture += ruptureToApply;
-
-  instanceResults.push({
-    dmg,
-    dmgType,
-    didCrit,
-    critRateUsed: critChance,
-    instanceDmg,
-    ruptureUsed,
-    sinkingBonus,
-    sinkingApplied: sinkingToApply || 0,
-    ruptureApplied: ruptureToApply || 0,
-    poiseApplied
-  });
+instanceResults.push({
+  dmg,
+  dmgType,
+  didCrit,
+  critRateUsed: critChance,
+  instanceDmg,
+  ruptureUsed,
+  sinkingBonus,
+  sinkingApplied: sinkingToApply || 0,
+  ruptureApplied: ruptureToApply || 0,
+  poiseApplied,
+  effectsStr 
+});
 
   if (didCrit && critDiv) {
     currentCritRate /= 2;
@@ -185,8 +185,8 @@ const breakdownLines = instanceResults.map((r, i) => {
   if (r.ruptureUsed) extraInfo += " | xuyên Res từ Rupture";
   if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} Rupture`;
   if (r.poiseApplied > 0) extraInfo += ` | +${r.poiseApplied} Poise (+${(r.poiseApplied * 5).toFixed(1)}% Crit)`;
-if (effectsStr && /\+Crit(\d+)/i.test(effectsStr)) {
-  const critVal = effectsStr.match(/\+Crit(\d+)/i)[1];
+if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
+  const critVal = r.effectsStr.match(/\+Crit(\d+)/i)[1];
   extraInfo += ` | +Crit${critVal}%`;
 }
   return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
