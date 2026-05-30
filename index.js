@@ -117,12 +117,18 @@ if (dmgObj.sinkingToApply > 0) {
 // --- Sinking ---
 let sinkingBonus = 0;
 if (enemySinking > 0) {
-  // luôn trừ 1 stack khi Sinking được dùng
+  // mỗi hit tiêu hao 1 stack Sinking
+  sanity = Math.max(sanity - 1, -45); // trừ Sanity khi có stack
   if (sanity <= -45 || isNaN(sanity)) {
     instanceDmg += enemySinking; // chỉ cộng dmg khi đủ điều kiện
     sinkingBonus = enemySinking;
   }
-  enemySinking = Math.max(enemySinking - 1, 0); // tiêu hao 1 stack dù có gây dmg hay không
+  enemySinking = Math.max(enemySinking - 1, 0); // trừ đúng 1 stack
+}
+
+// --- Áp thêm stack mới sau khi hit kết thúc ---
+if (dmgObj.sinkingToApply > 0) {
+  enemySinking += dmgObj.sinkingToApply; // stack mới có hiệu lực từ hit kế tiếp
 }
 
 
