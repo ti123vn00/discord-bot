@@ -140,6 +140,12 @@ if (enemyRupture > 0) {
   // nếu Res >= 1 thì không xuyên và không trừ stack
 }
 
+// --- Áp thêm stack mới sau khi hit kết thúc ---
+if (dmgObj.ruptureToApply > 0) {
+  enemyRupture += dmgObj.ruptureToApply;
+}
+
+
 
 
 
