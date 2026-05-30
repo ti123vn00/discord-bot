@@ -172,18 +172,19 @@ for (const dmgObj of dmgValues) {
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
 
-  const fields = [
-    { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
-    { name: "Bonus", value: bonusPct.toFixed(1) + "%", inline: true },
-    { name: "CritMul", value: critMul + "x", inline: true },
-    { name: "Res Multipliers", value: resDisplay, inline: true },
-    { name: "CritRate", value: critRateDisplay, inline: true },
-    { name: "CritDiv", value: critDiv ? "Yes" : "No", inline: true },
-    { name: "Rupture", value: getVal("Rupture") ?? "0", inline: true },
-    { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
-    { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
-    { name: "Sanity", value: sanity.toString(), inline: true },
-  ];
+const fields = [
+  { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
+  { name: "% Dmg Bonus", value: bonusPct.toFixed(1) + "%", inline: true },
+  { name: "Sanity % DMG Bonus", value: sanityBonusPct.toFixed(1) + "%", inline: true }, // 👈 thêm dòng này
+  { name: "CritMul", value: critMul + "x", inline: true },
+  { name: "Res Multipliers", value: resDisplay, inline: true },
+  { name: "CritRate", value: critRateDisplay, inline: true },
+  { name: "CritDiv", value: critDiv ? "Yes" : "No", inline: true },
+  { name: "Rupture", value: getVal("Rupture") ?? "0", inline: true },
+  { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
+  { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
+  { name: "Sanity", value: sanity.toString(), inline: true },
+];
 
   message.reply({
     embeds: [
