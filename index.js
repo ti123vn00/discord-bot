@@ -1,8 +1,8 @@
 // index.js
 const { Client, GatewayIntentBits } = require("discord.js");
-const express = require("express");
+const express = require("express"); 
 
-const app = express();
+const app = express(); 
 
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) {
@@ -24,20 +24,20 @@ client.once("ready", () => {
 
 client.on("messageCreate", (message) => {
   if (message.author.bot) return;
+  if (!message.content.startsWith("-math")) return;
 
-  // --- Command -math ---
-  if (message.content.startsWith("-math")) {
-    const input = message.content.replace("-math", "").trim();
-    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
+  const input = message.content.replace("-math", "").trim();
+  const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
 
-    const parts = normalized.split(/\s+/);
-    const getVal = (key) => {
-      const found = parts.find((p) =>
-        p.toLowerCase().startsWith(key.toLowerCase() + ":")
-      );
-      if (!found) return null;
-      return found.split(":")[1] ?? null;
-    };
+  const parts = normalized.split(/\s+/);
+  const getVal = (key) => {
+    const found = parts.find((p) =>
+      p.toLowerCase().startsWith(key.toLowerCase() + ":")
+    );
+    if (!found) return null;
+    return found.split(":")[1] ?? null;
+  };
+
   // --- RES ---
   const resMatch = normalized.match(/Res:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
   const resStr = resMatch ? resMatch[1].trim() : "";
@@ -62,18 +62,14 @@ while ((match = damageRegex.exec(dmgContent)) !== null) {
   const isDice = !!match[4];
   const dmgType = match[5] ? match[5].toUpperCase() : "B";
   const effectsStr = match[6] || "";
-  const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
-  const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
-  const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
-  const guaranteedCrit = /Crit100|GuaranteedCrit/i.test(effectsStr);
+const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
+const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
+const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
   const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
   const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
   const poiseToApply = poiseMatch ? parseInt(poiseMatch[1] || "0") : 0;
-  const critMatch = effectsStr.match(/\+Crit(\d+)/i);
-  const baseCritRate = critMatch ? parseInt(critMatch[1]) / 100 : null;
-
   for (let i = 0; i < multiplier; i++) {
-dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, guaranteedCrit, baseCritRate });
+dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply });  }
 }
 }
 if (dmgValues.length === 0) {
@@ -96,39 +92,24 @@ dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0 });
 
 // --- LOOP HITS ---
 for (const dmgObj of dmgValues) {
-  const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, guaranteedCrit, baseCritRate } = dmgObj;
+  const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply } = dmgObj;
   const currentRes = resValues[dmgType] ?? 1.0;
 
-  // --- Crit ---
-  let critChance = baseCritRate !== null ? baseCritRate : currentCritRate;
-  let didCrit;
-  let poiseApplied = 0;
-  let poiseBonusCrit = 0;
-
-  if (guaranteedCrit) {
-    didCrit = true;
-  } else {
-    if (poiseToApply > 0) {
-      poiseApplied = poiseToApply;
-      poiseBonusCrit = poiseApplied * 0.05;
-      critChance = Math.min(critChance + poiseBonusCrit, 1);
-    }
-    didCrit = Math.random() < critChance;
-  }
-
+  const didCrit = Math.random() < currentCritRate;
   const multiplier = didCrit ? critMul : 1;
   const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0) + (extraPct / 100);
+
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
   // --- Sinking ---
   let sinkingBonus = 0;
   if (enemySinking > 0) {
-    sanity = Math.max(sanity - 1, -45);
+    sanity = Math.max(sanity - 1, -45); // trừ Sanity khi có stack
     if (sanity <= -45 || isNaN(sanity)) {
-      instanceDmg += enemySinking;
+      instanceDmg += enemySinking; // cộng dmg khi đủ điều kiện
       sinkingBonus = enemySinking;
     }
-    enemySinking = Math.max(enemySinking - 1, 0);
+    enemySinking = Math.max(enemySinking - 1, 0); // trừ đúng 1 stack
   }
 
   // --- Rupture ---
@@ -136,11 +117,21 @@ for (const dmgObj of dmgValues) {
   let ruptureUsed = false;
   if (enemyRupture > 0) {
     if (currentRes < 1) {
-      instanceDmg = instanceDmg / currentRes;
+      instanceDmg = instanceDmg / currentRes; // xuyên Res khi Res < 1
       ruptureBonus = enemyRupture;
       ruptureUsed = true;
-      enemyRupture = Math.max(enemyRupture - 1, 0);
+      enemyRupture = Math.max(enemyRupture - 1, 0); // tiêu hao 1 stack
     }
+    // nếu Res >= 1 thì không xuyên và không trừ stack
+  }
+
+  // --- Poise ---
+  let poiseBonusCrit = 0;
+  let poiseApplied = 0;
+  if (poiseToApply > 0) {
+    poiseApplied = poiseToApply;
+    poiseBonusCrit = poiseApplied * 0.05; // 5% mỗi Poise
+    currentCritRate = Math.min(currentCritRate + poiseBonusCrit, 1);
   }
 
   totalDmg += instanceDmg;
@@ -154,7 +145,7 @@ for (const dmgObj of dmgValues) {
     dmg,
     dmgType,
     didCrit,
-    critRateUsed: critChance,
+    critRateUsed: currentCritRate,
     instanceDmg,
     ruptureUsed,
     sinkingBonus,
@@ -235,53 +226,60 @@ const fields = [
 });
 
 
+client.on("messageCreate", (message) => {
+  if (message.author.bot) return;
+
+  // --- Command -math ---
+  if (message.content.startsWith("-math")) {
+    // ... toàn bộ code xử lý -math như bạn đã viết ...
+    return;
   }
 
-  // --- Command -huntermath ---
- if (message.content.startsWith("-huntermath")) {
-    const input = message.content.replace("-huntermath", "").trim();
-    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
+// --- Command -huntermath ---
+if (message.content.startsWith("-huntermath")) {
+  const input = message.content.replace("-huntermath", "").trim();
+  const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
 
-    const parts = normalized.split(/\s+/);
-    const getVal = (key) => {
-      const found = parts.find((p) =>
-        p.toLowerCase().startsWith(key.toLowerCase() + ":")
-      );
-      if (!found) return null;
-      return found.split(":")[1] ?? null;
-    };
+  const parts = normalized.split(/\s+/);
+  const getVal = (key) => {
+    const found = parts.find((p) =>
+      p.toLowerCase().startsWith(key.toLowerCase() + ":")
+    );
+    if (!found) return null;
+    return found.split(":")[1] ?? null;
+  };
 
-    // Lấy các giá trị từ input
-    const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
-    const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
-    const statValue = parseFloat(getVal("Stat") ?? "0");
-    const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100;
-    const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
-    const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
-    const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
+  // Lấy các giá trị từ input
+  const dmgBaseWeapon = parseFloat(getVal("DmgBaseWeapon") ?? "0");
+  const bonusPct = parseFloat((getVal("Bonus") ?? "0").replace("%", "")) / 100;
+  const statValue = parseFloat(getVal("Stat") ?? "0");
+  const scaleSkillPct = parseFloat((getVal("ScaleSkill") ?? "0").replace("%", "")) / 100; // dùng % cho cả hai
+  const dmgNegationPct = parseFloat((getVal("DmgNegationBoss") ?? "0").replace("%", "")) / 100;
+  const vulnerabilityPct = parseFloat((getVal("Vulnerability") ?? "0").replace("%", "")) / 100;
+  const buffDmgBonus = parseFloat(getVal("BuffBonus") ?? "0");
 
-    // Công thức tính toán
-    const partWeapon =
-      (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-      + (scaleSkillPct * buffDmgBonus);
+  // Công thức tính toán mới
+  const partWeapon =
+    (dmgBaseWeapon * (1 + bonusPct)) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+    + (scaleSkillPct * buffDmgBonus);
 
-    const partStat =
-      (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
-      + (scaleSkillPct * buffDmgBonus);
+  const partStat =
+    (statValue * scaleSkillPct) * (1 - dmgNegationPct) * (1 + vulnerabilityPct)
+    + (scaleSkillPct * buffDmgBonus);
 
-    const finalDmg = partWeapon + partStat;
+  const finalDmg = partWeapon + partStat;
 
-    // Tạo embed hiển thị
-    const fields = [
-      { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
-      { name: "Bonus %", value: (bonusPct * 100).toFixed(1) + "%", inline: true },
-      { name: "Stat Value", value: statValue.toString(), inline: true },
-      { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
-      { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
-      { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
-      { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
-      { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
-    ];
+  // Tạo embed hiển thị
+  const fields = [
+    { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
+    { name: "Bonus %", value: (bonusPct * 100).toFixed(1) + "%", inline: true },
+    { name: "Stat Value", value: statValue.toString(), inline: true },
+    { name: "ScaleSkill %", value: (scaleSkillPct * 100).toFixed(1) + "%", inline: true },
+    { name: "Boss Negation %", value: (dmgNegationPct * 100).toFixed(1) + "%", inline: true },
+    { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
+    { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
+    { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
+  ];
 
     message.reply({
       embeds: [
@@ -293,7 +291,7 @@ const fields = [
       ],
     });
   }
-});
+}); // <-- đóng ngoặc callback ở đây
 
 client.login(TOKEN);
 
