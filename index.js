@@ -53,7 +53,7 @@ const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const dmgValues = [];
 if (dmgMatch) {
   const dmgContent = dmgMatch[1];
-const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise)*)/gi;
+const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+Crit\d+)*)/gi;
 let match;
 while ((match = damageRegex.exec(dmgContent)) !== null) {
   const base = parseFloat(match[1]);
