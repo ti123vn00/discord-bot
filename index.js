@@ -73,18 +73,7 @@ while ((match = damageRegex.exec(dmgContent)) !== null) {
   const baseCritRate = critMatch ? parseInt(critMatch[1]) / 100 : null;
 
   for (let i = 0; i < multiplier; i++) {
-dmgValues.push({
-  value: base,
-  type: dmgType,
-  isDice,
-  extraPct,
-  sinkingToApply,
-  ruptureToApply,
-  poiseToApply,
-  guaranteedCrit,
-  baseCritRate
-});
-
+dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, guaranteedCrit, baseCritRate });
 }
 }
 if (dmgValues.length === 0) {
