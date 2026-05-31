@@ -83,7 +83,7 @@ dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0 });
   const startingCritRate = parseFloat((getVal("CritRate") ?? "0").replace("%", "")) / 100;
   const critDiv = (getVal("CritDiv") ?? "No").toLowerCase() === "yes";
   let sanity = parseInt(getVal("Sanity") ?? "0");
-
+  const diceMul = parseFloat((getVal("DiceMul") ?? "1").replace("x",""));
   let currentCritRate = startingCritRate;
   let totalDmg = 0;
   const instanceResults = [];
@@ -120,10 +120,14 @@ for (const dmgObj of dmgValues) {
     didCrit = Math.random() < critChance;
   }
 
-  // 👉 Tính instanceDmg ngay sau khi xác định crit
   const multiplier = didCrit ? critMul : 1;
   const bonusFactor = 1 + (bonusPct / 100) + (isDice ? sanityBonusPct / 100 : 0) + (extraPct / 100);
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
+
+  // Áp dụng Dice multiplier nếu là Dice
+if (isDice) {
+  instanceDmg *= diceMul;
+}
 
   // --- Sinking ---
   let sinkingBonus = 0;
@@ -189,6 +193,9 @@ if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
   const critVal = r.effectsStr.match(/\+Crit(\d+)/i)[1];
   extraInfo += ` | +Crit${critVal}%`;
 }
+  if (isDice && diceMul !== 1) {
+  extraInfo += ` | DiceMul ${diceMul}x`;
+}
   return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
 });
 
@@ -219,8 +226,9 @@ const fields = [
   { name: "Sanity % DMG Bonus", value: sanityBonusPct.toFixed(1) + "%", inline: true }, // 👈 thêm dòng này
   { name: "CritMul", value: critMul + "x", inline: true },
   { name: "Res Multipliers", value: resDisplay, inline: true },
-  { name: "CritRate", value: critRateDisplay, inline: true },
-  { name: "CritDiv", value: critDiv ? "Yes" : "No", inline: true },
+  { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true },
+  { name: "Crit Rate", value: critRateDisplay, inline: true },
+  { name: "Crit Divide", value: critDiv ? "Yes" : "No", inline: true },
   { name: "Rupture", value: getVal("Rupture") ?? "0", inline: true },
   { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
   { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
