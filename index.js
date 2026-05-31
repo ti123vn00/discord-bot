@@ -146,13 +146,16 @@ if (isDice) {
   let ruptureUsed = false;
 if (enemyRupture > 0) {
   if (currentRes < 1) {
-    // Rupture xuyên Res thấp hơn 1x
-    instanceDmg = dmg * bonusFactor * multiplier; // bỏ Res khỏi công thức
-    ruptureBonus = enemyRupture;
+    // Rupture xuyên Res thấp hơn 1x → coi như Res = 1x
+    instanceDmg = dmg * bonusFactor * multiplier; 
+    if (isDice) {
+      instanceDmg *= diceMul; // vẫn giữ Dice multiplier
+    }
     ruptureUsed = true;
     enemyRupture = Math.max(enemyRupture - 1, 0);
   }
 }
+
 
   totalDmg += instanceDmg;
 
