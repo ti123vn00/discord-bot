@@ -195,7 +195,7 @@ if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
   const critVal = r.effectsStr.match(/\+Crit(\d+)/i)[1];
   extraInfo += ` | +Crit${critVal}%`;
 }
-  if (isDice && diceMul !== 1) {
+if (r.isDice && diceMul !== 1) {
   extraInfo += ` | DiceMul ${diceMul}x`;
 }
   return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
