@@ -144,14 +144,15 @@ if (isDice) {
   // --- Rupture ---
   let ruptureBonus = 0;
   let ruptureUsed = false;
-  if (enemyRupture > 0) {
-    if (currentRes < 1) {
-      instanceDmg = instanceDmg / currentRes;
-      ruptureBonus = enemyRupture;
-      ruptureUsed = true;
-      enemyRupture = Math.max(enemyRupture - 1, 0);
-    }
+if (enemyRupture > 0) {
+  if (currentRes < 1) {
+    // Rupture xuyên Res thấp hơn 1x
+    instanceDmg = dmg * bonusFactor * multiplier; // bỏ Res khỏi công thức
+    ruptureBonus = enemyRupture;
+    ruptureUsed = true;
+    enemyRupture = Math.max(enemyRupture - 1, 0);
   }
+}
 
   totalDmg += instanceDmg;
 
