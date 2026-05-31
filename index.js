@@ -87,10 +87,11 @@ dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0 });
   let currentCritRate = startingCritRate;
   let totalDmg = 0;
   const instanceResults = [];
-  let enemySinking = 0;
-  let enemyRupture = 0;
+  let enemySinking = parseInt(getVal("Sinking") ?? "0");
+  let enemyRupture = parseInt(getVal("Rupture") ?? "0");
 
 // --- LOOP HITS ---
+  
 for (const dmgObj of dmgValues) {
   const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, effectsStr } = dmgObj;
   const currentRes = resValues[dmgType] ?? 1.0;
