@@ -167,8 +167,10 @@ instanceResults.push({
   sinkingApplied: sinkingToApply || 0,
   ruptureApplied: ruptureToApply || 0,
   poiseApplied,
-  effectsStr 
+  effectsStr,
+  isDice
 });
+
 
   if (didCrit && critDiv) {
     currentCritRate /= 2;
