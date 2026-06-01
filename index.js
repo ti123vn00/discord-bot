@@ -89,6 +89,7 @@ dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0 });
   const instanceResults = [];
   let enemySinking = parseInt(getVal("Sinking") ?? "0");
   let enemyRupture = parseInt(getVal("Rupture") ?? "0");
+  let totalPoise = 0;
 
 // --- LOOP HITS ---
   
@@ -97,10 +98,8 @@ for (const dmgObj of dmgValues) {
   const currentRes = resValues[dmgType] ?? 1.0;
 
   // --- Crit ---
-  let critChance = currentCritRate;
-  let didCrit;
-  let poiseApplied = 0;
-  let poiseBonusCrit = 0;
+  let critChance = startingCritRate + totalPoise * 0.05; // ✅ cộng dồn Poise vào critChance
+  let didCrit = false;
 
   const critMatch = effectsStr ? effectsStr.match(/\+Crit(\d+)/i) : null;
   let baseCritRate = critMatch ? parseInt(critMatch[1]) / 100 : null;
@@ -111,12 +110,7 @@ for (const dmgObj of dmgValues) {
     critChance = 1;
   } else {
     if (baseCritRate !== null) {
-      critChance = baseCritRate;
-    }
-    if (poiseToApply > 0) {
-      poiseApplied = poiseToApply;
-      poiseBonusCrit = poiseApplied * 0.05;
-      critChance = Math.min(critChance + poiseBonusCrit, 1);
+      critChance = Math.min(baseCritRate + totalPoise * 0.05, 1);
     }
     didCrit = Math.random() < critChance;
   }
@@ -126,9 +120,9 @@ for (const dmgObj of dmgValues) {
   let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
 
   // Áp dụng Dice multiplier nếu là Dice
-if (isDice) {
-  instanceDmg *= diceMul;
-}
+  if (isDice) {
+    instanceDmg *= diceMul;
+  }
 
   // --- Sinking ---
   let sinkingBonus = 0;
@@ -144,38 +138,36 @@ if (isDice) {
   // --- Rupture ---
   let ruptureBonus = 0;
   let ruptureUsed = false;
-if (enemyRupture > 0) {
-  if (currentRes < 1) {
-    // Rupture xuyên Res thấp hơn 1x → coi như Res = 1x
-    instanceDmg = dmg * bonusFactor * multiplier; 
-    if (isDice) {
-      instanceDmg *= diceMul; // vẫn giữ Dice multiplier
+  if (enemyRupture > 0) {
+    if (currentRes < 1) {
+      instanceDmg = dmg * bonusFactor * multiplier;
+      if (isDice) instanceDmg *= diceMul;
+      ruptureUsed = true;
+      enemyRupture = Math.max(enemyRupture - 1, 0);
     }
-    ruptureUsed = true;
-    enemyRupture = Math.max(enemyRupture - 1, 0);
   }
-}
-
 
   totalDmg += instanceDmg;
 
+  // ✅ Cộng dồn Poise cho các hit sau
+  if (poiseToApply > 0) totalPoise += poiseToApply;
   if (sinkingToApply > 0) enemySinking += sinkingToApply;
   if (ruptureToApply > 0) enemyRupture += ruptureToApply;
-instanceResults.push({
-  dmg,
-  dmgType,
-  didCrit,
-  critRateUsed: critChance,
-  instanceDmg,
-  ruptureUsed,
-  sinkingBonus,
-  sinkingApplied: sinkingToApply || 0,
-  ruptureApplied: ruptureToApply || 0,
-  poiseApplied,
-  effectsStr,
-  isDice
-});
 
+  instanceResults.push({
+    dmg,
+    dmgType,
+    didCrit,
+    critRateUsed: critChance,
+    instanceDmg,
+    ruptureUsed,
+    sinkingBonus,
+    sinkingApplied: sinkingToApply || 0,
+    ruptureApplied: ruptureToApply || 0,
+    poiseApplied: poiseToApply || 0,
+    effectsStr,
+    isDice
+  });
 
   if (didCrit && critDiv) {
     currentCritRate /= 2;
@@ -240,6 +232,7 @@ const fields = [
   { name: "Sinking", value: getVal("Sinking") ?? "0", inline: true },
   { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
   { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
+  { name: "Poise Counts", value: totalPoise.toString(), inline: true },
   { name: "Enemy's Sinking Counts", value: enemySinking.toString(), inline: true },
   { name: "Enemy's Rupture Counts", value: enemyRupture.toString(), inline: true },
 ];
@@ -309,6 +302,7 @@ if (message.content.startsWith("-huntermath")) {
     { name: "Vulnerability %", value: (vulnerabilityPct * 100).toFixed(1) + "%", inline: true },
     { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
     { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
+    
   ];
 
     message.reply({
