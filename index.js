@@ -169,6 +169,17 @@ for (const dmgObj of dmgValues) {
     isDice
   });
 
+if (didCrit) {
+  // Giảm Poise một nửa sau khi gây crit
+  totalPoise *= 0.5;
+
+  // Nếu Poise Count < 1 thì coi như hết (dưới 5% crit rate)
+  if (totalPoise < 1) totalPoise = 0;
+
+  // Giới hạn tối đa 99 Poise
+  if (totalPoise > 99) totalPoise = 99;
+}
+
   if (didCrit && critDiv) {
     currentCritRate /= 2;
     if (currentCritRate < 0.05) currentCritRate = 0;
