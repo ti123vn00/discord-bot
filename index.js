@@ -269,7 +269,7 @@ function calcHunterMath(opts) {
 
   return {
     embeds: [{
-      title: "📊 Kết quả tính DMG (Hunter)",
+      title: "📊 Kết quả tính DMG",
       color: 0xff6600,
       fields: filterZeroFields(allFields),
     }],
