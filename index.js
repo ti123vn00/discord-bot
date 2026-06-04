@@ -121,7 +121,7 @@ function calcMath(opts) {
     const critMatch = effectsStr ? effectsStr.match(/\+Crit(\d+)/i) : null;
     const baseCritRate = critMatch ? parseInt(critMatch[1]) / 100 : null;
     if (baseCritRate !== null) {
-      critChance = Math.min(baseCritRate + totalPoise * POISE_CRIT_BONUS_PER_STACK, 1);
+      critChance = Math.min(currentCritRate + baseCritRate + totalPoise * POISE_CRIT_BONUS_PER_STACK, 1);
     }
     if (critChance >= 1) didCrit = true;
     else didCrit = Math.random() < critChance;
