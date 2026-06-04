@@ -150,7 +150,7 @@ for (const dmgObj of dmgValues) {
 
   totalDmg += instanceDmg;
 
-  // ✅ Cộng dồn Poise cho các hit sau
+  // Cộng dồn Poise cho các hit sau
   if (poiseToApply > 0) totalPoise += poiseToApply;
   if (sinkingToApply > 0) enemySinking += sinkingToApply;
   if (ruptureToApply > 0) enemyRupture += ruptureToApply;
