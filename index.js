@@ -98,20 +98,21 @@ for (const dmgObj of dmgValues) {
   const currentRes = resValues[dmgType] ?? 1.0;
 
   // --- Crit ---
-  let critChance = startingCritRate + totalPoise * 0.05; // ✅ cộng dồn Poise vào critChance
+  let critChance = currentCritRate + totalPoise * 0.05; 
   let didCrit = false;
 
   const critMatch = effectsStr ? effectsStr.match(/\+Crit(\d+)/i) : null;
   let baseCritRate = critMatch ? parseInt(critMatch[1]) / 100 : null;
-  const guaranteedCrit = baseCritRate === 1; // +Crit100
+  
+  // Kiểm tra điều kiện Crit dựa trên biến chance được cập nhật liên tục
+  if (baseCritRate !== null) {
+    critChance = Math.min(baseCritRate + totalPoise * 0.05, 1);
+  }
 
-  if (guaranteedCrit) {
+  // Nếu tỉ lệ chí mạng hiện tại là 1 (100%), chắc chắn crit
+  if (critChance >= 1) {
     didCrit = true;
-    critChance = 1;
   } else {
-    if (baseCritRate !== null) {
-      critChance = Math.min(baseCritRate + totalPoise * 0.05, 1);
-    }
     didCrit = Math.random() < critChance;
   }
 
