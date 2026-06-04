@@ -12,9 +12,9 @@ if (!TOKEN || !CLIENT_ID) {
 const commands = [
   new SlashCommandBuilder()
     .setName("math")
-    .setDescription("Tính DMG cho nhân vật")
+    .setDescription("Tính DMG")
     .addStringOption(opt =>
-      opt.setName("dmg").setDescription("VD: 100B 50x2P 30Dice+SinkingS").setRequired(true))
+      opt.setName("dmg").setDescription("VD: 100B 50x2P 30DiceS+1Sinking").setRequired(true))
     .addStringOption(opt =>
       opt.setName("res").setDescription("VD: 0.5B 0.8P 1S").setRequired(false))
     .addNumberOption(opt =>
@@ -22,7 +22,7 @@ const commands = [
     .addNumberOption(opt =>
       opt.setName("sanitybonus").setDescription("Sanity % DMG Bonus (VD: 15)").setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("critmul").setDescription("Crit Multiplier (VD: 1.5)").setRequired(false))
+      opt.setName("critmul").setDescription("Crit Multiplier (VD: 1.3)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("critrate").setDescription("Crit Rate % (VD: 50)").setRequired(false))
     .addBooleanOption(opt =>
@@ -32,9 +32,9 @@ const commands = [
     .addNumberOption(opt =>
       opt.setName("dicemul").setDescription("Dice Multiplier (VD: 1.2)").setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("sinking").setDescription("Sinking stacks ban đầu của địch").setRequired(false))
+      opt.setName("sinking").setDescription("Sinking counts ban đầu của địch").setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("rupture").setDescription("Rupture stacks ban đầu của địch").setRequired(false)),
+      opt.setName("rupture").setDescription("Rupture counts ban đầu của địch").setRequired(false)),
 
   new SlashCommandBuilder()
     .setName("huntermath")
@@ -42,7 +42,7 @@ const commands = [
     .addNumberOption(opt =>
       opt.setName("dmgbaseweapon").setDescription("Base DMG của vũ khí").setRequired(true))
     .addNumberOption(opt =>
-      opt.setName("stat").setDescription("Stat value (ATK / DEF / ...)").setRequired(true))
+      opt.setName("stat").setDescription("Stat value").setRequired(true))
     .addNumberOption(opt =>
       opt.setName("scaleskill").setDescription("Scale Skill % (VD: 150)").setRequired(true))
     .addNumberOption(opt =>
