@@ -12,7 +12,7 @@ if (!TOKEN || !CLIENT_ID) {
 const commands = [
   new SlashCommandBuilder()
     .setName("math")
-    .setDescription("Tính DMG")
+    .setDescription("Tính DMG theo công thức game Fixer")
     .addStringOption(opt =>
       opt.setName("dmg").setDescription("VD: 100B 50x2P 30DiceS+1Sinking").setRequired(true))
     .addStringOption(opt =>
@@ -38,7 +38,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("huntermath")
-    .setDescription("Tính DMG theo công thức Hunter")
+    .setDescription("Tính DMG theo công thức game Hunter")
     .addNumberOption(opt =>
       opt.setName("dmgbaseweapon").setDescription("Base DMG của vũ khí").setRequired(true))
     .addNumberOption(opt =>
