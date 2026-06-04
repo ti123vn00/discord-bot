@@ -161,7 +161,7 @@ function calcMath(opts) {
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
       if (totalPoise > POISE_MAX) totalPoise = POISE_MAX;
     }
-if (didCrit && critDiv && baseCritRate === null) {
+if (didCrit && (critDiv || baseCritRate !== 1)) {
   currentCritRate /= 2;
   if (currentCritRate < 0.05) currentCritRate = 0;
 }
