@@ -53,15 +53,15 @@ const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
 const dmgValues = [];
 if (dmgMatch) {
   const dmgContent = dmgMatch[1];
-const damageRegex = /([\d.]+)(?:\+([\d.]+)%?)?(?:x([\d.]+))?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+Crit\d+)*)/gi;
+const damageRegex = /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+Crit\d+)*)/gi;
 let match;
 while ((match = damageRegex.exec(dmgContent)) !== null) {
   const base = parseFloat(match[1]);
-  const extraPct = match[2] ? parseFloat(match[2]) : 0;
-  const multiplier = match[3] ? parseInt(match[3]) : 1;
-  const isDice = !!match[4];
-  const dmgType = match[5] ? match[5].toUpperCase() : "B";
-  const effectsStr = match[6] || "";
+  const multiplier = match[2] ? parseInt(match[2]) : 1;
+  const extraPct = match[3] ? parseFloat(match[3]) : 0;  // đổi index từ [2] sang [3]
+  const isDice = !!match[4];  // đổi index
+  const dmgType = match[5] ? match[5].toUpperCase() : "B";  // đổi index
+  const effectsStr = match[6] || "";  // đổi index
 const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
 const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
 const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
