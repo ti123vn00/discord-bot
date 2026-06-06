@@ -174,15 +174,15 @@ function calcMath(opts) {
 
     instanceResults.push({ dmg, dmgType, didCrit, critRateUsed: critChance, instanceDmg, ruptureUsed, sinkingBonus, sinkingApplied: sinkingToApply, ruptureApplied: ruptureToApply, poiseApplied: poiseToApply, effectsStr, isDice });
 
-    if (didCrit) {
+    if (didCrit && critDiv) {
       totalPoise *= POISE_CRIT_HALVE;
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
       if (totalPoise > POISE_MAX) totalPoise = POISE_MAX;
-    }
-    // Only divide crit rate if critDiv is explicitly enabled
-    if (didCrit && critDiv && (baseCritRate === null || baseCritRate < 1)) {
-      currentCritRate /= 2;
-      if (currentCritRate < 0.05) currentCritRate = 0;
+
+      if (baseCritRate === null || baseCritRate < 1) {
+        currentCritRate /= 2;
+        if (currentCritRate < 0.05) currentCritRate = 0;
+      }
     }
   }
 
