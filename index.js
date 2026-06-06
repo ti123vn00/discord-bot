@@ -320,18 +320,33 @@ client.on("messageCreate", (message) => {
     const input = message.content.replace("-math", "").trim();
     const kv = parseKeyValues(input);
 
+    const bonusPct = parseFloat((kv["bonus"] ?? "0").replace("%", ""));
+    const sanityBonusPct = parseFloat((kv["sanitybonus"] ?? "0").replace("%", ""));
+    const critMul = parseFloat((kv["critmul"] ?? "1").replace("x", ""));
+    const critRate = parseFloat((kv["critrate"] ?? "0").replace("%", ""));
+    const diceMul = parseFloat((kv["dicemul"] ?? "1").replace("x", ""));
+    const sinkingInit = parseInt(kv["sinking"] ?? "0", 10);
+    const ruptureInit = parseInt(kv["rupture"] ?? "0", 10);
+    const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
+
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate: critRate, diceMul, sinkingInit, ruptureInit, sanityInit });
+    if (errors.length > 0) {
+      message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`);
+      return;
+    }
+
     const result = calcMath({
       dmgStr: kv["dmg"] ?? "",
       resStr: kv["res"] ?? "",
-      bonusPct: parseFloat((kv["bonus"] ?? "0").replace("%", "")),
-      sanityBonusPct: parseFloat((kv["sanitybonus"] ?? "0").replace("%", "")),
-      critMul: parseFloat((kv["critmul"] ?? "1").replace("x", "")),
-      startingCritRate: parseFloat((kv["critrate"] ?? "0").replace("%", "")) / 100,
+      bonusPct,
+      sanityBonusPct,
+      critMul,
+      startingCritRate: critRate / 100,
       critDiv: (kv["critdiv"] ?? "no").toLowerCase() === "yes",
-      sanityInit: parseInt(kv["sanity"] ?? "0"),
-      diceMul: parseFloat((kv["dicemul"] ?? "1").replace("x", "")),
-      sinkingInit: parseInt(kv["sinking"] ?? "0"),
-      ruptureInit: parseInt(kv["rupture"] ?? "0"),
+      sanityInit,
+      diceMul,
+      sinkingInit,
+      ruptureInit,
     });
 
     message.reply(result);
