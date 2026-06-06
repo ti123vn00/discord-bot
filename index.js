@@ -18,6 +18,8 @@ const POISE_CRIT_BONUS_PER_STACK = 0.05;
 const POISE_RESET_THRESHOLD = 1;
 const POISE_MAX = 99;
 const POISE_CRIT_HALVE = 0.5;
+const SINKING_MAX = 99;
+const RUPTURE_MAX = 99;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function getVal(parts, key) {
@@ -26,6 +28,21 @@ function getVal(parts, key) {
   );
   if (!found) return null;
   return found.split(":")[1] ?? null;
+}
+
+/**
+ * Parse key:value pairs from a full command string, supporting multi-word values.
+ * Returns a map of key (lowercase) → value string.
+ */
+function parseKeyValues(input) {
+  const map = {};
+  // Match Key:value where value continues until next Key: pattern or end
+  const regex = /([A-Za-z]+)\s*:\s*([\s\S]*?)(?=\s+[A-Za-z]+\s*:|$)/gi;
+  let match;
+  while ((match = regex.exec(input)) !== null) {
+    map[match[1].toLowerCase()] = match[2].trim();
+  }
+  return map;
 }
 
 function filterZeroFields(fields) {
@@ -108,8 +125,8 @@ function calcMath(opts) {
   let currentCritRate = startingCritRate;
   let totalDmg = 0;
   let totalPoise = 0;
-  let enemySinking = sinkingInit;
-  let enemyRupture = ruptureInit;
+  let enemySinking = Math.min(sinkingInit, SINKING_MAX);
+  let enemyRupture = Math.min(ruptureInit, RUPTURE_MAX);
   const instanceResults = [];
 
   for (const dmgObj of dmgValues) {
@@ -151,8 +168,9 @@ function calcMath(opts) {
 
     totalDmg += instanceDmg;
     if (poiseToApply > 0) totalPoise += poiseToApply;
-    if (sinkingToApply > 0) enemySinking += sinkingToApply;
-    if (ruptureToApply > 0) enemyRupture += ruptureToApply;
+    // Cap sinking and rupture at 99
+    if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
+    if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
 
     instanceResults.push({ dmg, dmgType, didCrit, critRateUsed: critChance, instanceDmg, ruptureUsed, sinkingBonus, sinkingApplied: sinkingToApply, ruptureApplied: ruptureToApply, poiseApplied: poiseToApply, effectsStr, isDice });
 
@@ -161,10 +179,11 @@ function calcMath(opts) {
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
       if (totalPoise > POISE_MAX) totalPoise = POISE_MAX;
     }
-if (didCrit && critDiv && (baseCritRate === null || baseCritRate < 1)) {
-  currentCritRate /= 2;
-  if (currentCritRate < 0.05) currentCritRate = 0;
-}
+    // Only divide crit rate if critDiv is explicitly enabled
+    if (didCrit && critDiv && (baseCritRate === null || baseCritRate < 1)) {
+      currentCritRate /= 2;
+      if (currentCritRate < 0.05) currentCritRate = 0;
+    }
   }
 
   const finalCritRate = currentCritRate;
@@ -296,27 +315,24 @@ client.on("messageCreate", (message) => {
   // ── -math ──
   if (message.content.startsWith("-math")) {
     const input = message.content.replace("-math", "").trim();
-    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
-    const parts = normalized.split(/\s+/);
+    // Use robust key-value parser instead of naive split
+    const kv = parseKeyValues(input);
 
-    const resMatch = normalized.match(/Res:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
-    const resStr = resMatch ? resMatch[1].trim() : "";
-
-    const dmgMatch = normalized.match(/Dmg:([^]+?)(?=\s+[A-Za-z]+:|$)/i);
-    const dmgStr = dmgMatch ? dmgMatch[1].trim() : "";
+    const dmgStr = kv["dmg"] ?? "";
+    const resStr = kv["res"] ?? "";
 
     const result = calcMath({
       dmgStr,
       resStr,
-      bonusPct: parseFloat((getVal(parts, "Bonus") ?? "0").replace("%", "")),
-      sanityBonusPct: parseFloat((getVal(parts, "SanityBonus") ?? "0").replace("%", "")),
-      critMul: parseFloat((getVal(parts, "CritMul") ?? "1").replace("x", "")),
-      startingCritRate: parseFloat((getVal(parts, "CritRate") ?? "0").replace("%", "")) / 100,
-      critDiv: (getVal(parts, "CritDiv") ?? "No").toLowerCase() === "yes",
-      sanityInit: parseInt(getVal(parts, "Sanity") ?? "0"),
-      diceMul: parseFloat((getVal(parts, "DiceMul") ?? "1").replace("x", "")),
-      sinkingInit: parseInt(getVal(parts, "Sinking") ?? "0"),
-      ruptureInit: parseInt(getVal(parts, "Rupture") ?? "0"),
+      bonusPct: parseFloat((kv["bonus"] ?? "0").replace("%", "")),
+      sanityBonusPct: parseFloat((kv["sanitybonus"] ?? "0").replace("%", "")),
+      critMul: parseFloat((kv["critmul"] ?? "1").replace("x", "")),
+      startingCritRate: parseFloat((kv["critrate"] ?? "0").replace("%", "")) / 100,
+      critDiv: (kv["critdiv"] ?? "no").toLowerCase() === "yes",
+      sanityInit: parseInt(kv["sanity"] ?? "0"),
+      diceMul: parseFloat((kv["dicemul"] ?? "1").replace("x", "")),
+      sinkingInit: parseInt(kv["sinking"] ?? "0"),
+      ruptureInit: parseInt(kv["rupture"] ?? "0"),
     });
 
     message.reply(result);
@@ -326,17 +342,16 @@ client.on("messageCreate", (message) => {
   // ── -huntermath ──
   if (message.content.startsWith("-huntermath")) {
     const input = message.content.replace("-huntermath", "").trim();
-    const normalized = input.replace(/([A-Za-z]+)\s*:\s*/g, "$1:");
-    const parts = normalized.split(/\s+/);
+    const kv = parseKeyValues(input);
 
     const result = calcHunterMath({
-      dmgBaseWeapon: parseFloat(getVal(parts, "DmgBaseWeapon") ?? "0"),
-      bonusPct: parseFloat((getVal(parts, "Bonus") ?? "0").replace("%", "")),
-      statValue: parseFloat(getVal(parts, "Stat") ?? "0"),
-      scaleSkillPct: parseFloat((getVal(parts, "ScaleSkill") ?? "0").replace("%", "")),
-      dmgNegationPct: parseFloat((getVal(parts, "DmgNegationBoss") ?? "0").replace("%", "")),
-      vulnerabilityPct: parseFloat((getVal(parts, "Vulnerability") ?? "0").replace("%", "")),
-      buffDmgBonus: parseFloat(getVal(parts, "BuffBonus") ?? "0"),
+      dmgBaseWeapon: parseFloat(kv["dmgbaseweapon"] ?? "0"),
+      bonusPct: parseFloat((kv["bonus"] ?? "0").replace("%", "")),
+      statValue: parseFloat(kv["stat"] ?? "0"),
+      scaleSkillPct: parseFloat((kv["scaleskill"] ?? "0").replace("%", "")),
+      dmgNegationPct: parseFloat((kv["dmgnegationboss"] ?? "0").replace("%", "")),
+      vulnerabilityPct: parseFloat((kv["vulnerability"] ?? "0").replace("%", "")),
+      buffDmgBonus: parseFloat(kv["buffbonus"] ?? "0"),
     });
 
     message.reply(result);
