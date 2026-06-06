@@ -22,13 +22,6 @@ const SINKING_MAX = 99;
 const RUPTURE_MAX = 99;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-function getVal(parts, key) {
-  const found = parts.find((p) =>
-    p.toLowerCase().startsWith(key.toLowerCase() + ":")
-  );
-  if (!found) return null;
-  return found.split(":")[1] ?? null;
-}
 
 /**
  * Parse key:value pairs from a full command string, supporting multi-word values.
@@ -36,7 +29,6 @@ function getVal(parts, key) {
  */
 function parseKeyValues(input) {
   const map = {};
-  // Match Key:value where value continues until next Key: pattern or end
   const regex = /([A-Za-z]+)\s*:\s*([\s\S]*?)(?=\s+[A-Za-z]+\s*:|$)/gi;
   let match;
   while ((match = regex.exec(input)) !== null) {
@@ -66,12 +58,24 @@ function filterZeroFields(fields) {
   });
 }
 
+/**
+ * Validate and clamp slash command inputs, returning an error message if invalid.
+ */
+function validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate, diceMul, sinkingInit, ruptureInit, sanityInit }) {
+  const errors = [];
+  if (startingCritRate < 0 || startingCritRate > 100) errors.push("CritRate phải từ 0–100%");
+  if (critMul < 1) errors.push("CritMul phải ≥ 1");
+  if (diceMul < 0) errors.push("DiceMul phải ≥ 0");
+  if (sinkingInit < 0 || sinkingInit > SINKING_MAX) errors.push(`Sinking phải từ 0–${SINKING_MAX}`);
+  if (ruptureInit < 0 || ruptureInit > RUPTURE_MAX) errors.push(`Rupture phải từ 0–${RUPTURE_MAX}`);
+  if (sanityInit < SANITY_MIN) errors.push(`Sanity phải ≥ ${SANITY_MIN}`);
+  return errors;
+}
+
 // ─── CORE LOGIC ───────────────────────────────────────────────────────────────
 
 /**
  * Tính DMG cho -math / /math
- * @param {object} opts
- * @returns {{ embeds: object[] }}
  */
 function calcMath(opts) {
   const {
@@ -168,7 +172,6 @@ function calcMath(opts) {
 
     totalDmg += instanceDmg;
     if (poiseToApply > 0) totalPoise += poiseToApply;
-    // Cap sinking and rupture at 99
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
 
@@ -315,15 +318,11 @@ client.on("messageCreate", (message) => {
   // ── -math ──
   if (message.content.startsWith("-math")) {
     const input = message.content.replace("-math", "").trim();
-    // Use robust key-value parser instead of naive split
     const kv = parseKeyValues(input);
 
-    const dmgStr = kv["dmg"] ?? "";
-    const resStr = kv["res"] ?? "";
-
     const result = calcMath({
-      dmgStr,
-      resStr,
+      dmgStr: kv["dmg"] ?? "",
+      resStr: kv["res"] ?? "",
       bonusPct: parseFloat((kv["bonus"] ?? "0").replace("%", "")),
       sanityBonusPct: parseFloat((kv["sanitybonus"] ?? "0").replace("%", "")),
       critMul: parseFloat((kv["critmul"] ?? "1").replace("x", "")),
@@ -367,18 +366,33 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "math") {
     await interaction.deferReply();
 
+    const critRate = interaction.options.getNumber("critrate") ?? 0;
+    const critMul = interaction.options.getNumber("critmul") ?? 1;
+    const diceMul = interaction.options.getNumber("dicemul") ?? 1;
+    const sinkingInit = interaction.options.getNumber("sinking") ?? 0;
+    const ruptureInit = interaction.options.getNumber("rupture") ?? 0;
+    const sanityInit = interaction.options.getNumber("sanity") ?? 0;
+    const bonusPct = interaction.options.getNumber("bonus") ?? 0;
+    const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
+
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate: critRate, diceMul, sinkingInit, ruptureInit, sanityInit });
+    if (errors.length > 0) {
+      await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` });
+      return;
+    }
+
     const result = calcMath({
       dmgStr: interaction.options.getString("dmg") ?? "",
       resStr: interaction.options.getString("res") ?? "",
-      bonusPct: interaction.options.getNumber("bonus") ?? 0,
-      sanityBonusPct: interaction.options.getNumber("sanitybonus") ?? 0,
-      critMul: interaction.options.getNumber("critmul") ?? 1,
-      startingCritRate: (interaction.options.getNumber("critrate") ?? 0) / 100,
+      bonusPct,
+      sanityBonusPct,
+      critMul,
+      startingCritRate: critRate / 100,
       critDiv: interaction.options.getBoolean("critdiv") ?? false,
-      sanityInit: interaction.options.getNumber("sanity") ?? 0,
-      diceMul: interaction.options.getNumber("dicemul") ?? 1,
-      sinkingInit: interaction.options.getNumber("sinking") ?? 0,
-      ruptureInit: interaction.options.getNumber("rupture") ?? 0,
+      sanityInit,
+      diceMul,
+      sinkingInit,
+      ruptureInit,
     });
 
     await interaction.editReply(result);
