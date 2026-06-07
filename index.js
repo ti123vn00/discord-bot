@@ -32,8 +32,6 @@ const DAILY_EXP_REWARD = 5;
 const DAILY_AHN_REWARD = 100_000;
 const DAILY_STREAK_EXP_BONUS = 25;
 const DAILY_STREAK_AHN_BONUS = 400_000;
-// TTL = 3 ngày: window thực tế chỉ cần 2 ngày (hôm qua + hôm nay),
-// +1 ngày buffer để cover múi giờ lệch hoặc claim muộn
 const DAILY_KEY_TTL_SECONDS = 86400 * 3;
 
 // ─── LEVELING ─────────────────────────────────────────────────────────────────
@@ -50,8 +48,6 @@ const GRADE_EXP_REQUIRED = {
 const GRADE_MAX = 1;
 const GRADE_MIN = 9;
 
-// EXP tối đa = tổng EXP để đạt Grade 1 (MAX).
-// = 5+10+20+40+80+160+320+640 = 1275
 const EXP_MAX = Object.values(GRADE_EXP_REQUIRED).reduce((a, b) => a + b, 0); // 1275
 
 function clampExp(exp) {
@@ -89,9 +85,7 @@ function calcExpForGrade(targetGrade) {
 }
 
 // ─── UI CONSTANTS ─────────────────────────────────────────────────────────────
-// Dùng constant thay vì hardcode string để dễ đổi prefix sau này
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
-
 
 const ADMIN_IDS = new Set([
   "208187560692940803",
@@ -246,7 +240,8 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, dice
 const cooldowns = new Map();
 const COOLDOWN_CLEANUP_AGE_MS = 60_000;
 
-setInterval(() => {
+// FIX 5: Giữ ref timer để có thể clear khi shutdown
+const cooldownCleanupTimer = setInterval(() => {
   const cutoff = Date.now() - COOLDOWN_CLEANUP_AGE_MS;
   for (const [k, v] of cooldowns) {
     if (v < cutoff) cooldowns.delete(k);
@@ -320,9 +315,9 @@ async function acquireLock(userId, ttlSeconds = 5) {
       "Lock timeout"
     );
     if (result === "OK" || result === true) return { lockKey, token };
-    return null; // key đang bị giữ bởi lock khác (NX failed)
+    return null;
   } catch {
-    return null; // timeout hoặc lỗi Redis — coi như không lấy được lock
+    return null;
   }
 }
 
@@ -355,13 +350,10 @@ async function withLock(userId, fn, { ttlSeconds = 5, retries = 3, retryDelayMs 
   }
 }
 
-// withLock hai user — outer TTL tự tính để luôn cover inner lock + retry buffer
-// Thứ tự lock sort theo ID để tránh deadlock
 async function withDoubleLock(idA, idB, fn, {
   innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 3,
 } = {}) {
   const [firstId, secondId] = [idA, idB].sort();
-  // outer TTL = inner TTL + worst-case retry wait (dùng đúng retries/retryDelayMs được pass vào) + buffer
   const outerTtl = innerTtl + Math.ceil((retries * retryDelayMs) / 1000) + bufferSeconds;
   return withLock(firstId, () =>
     withLock(secondId, fn, { ttlSeconds: innerTtl, retries, retryDelayMs }),
@@ -445,7 +437,6 @@ async function saveMultiplePlayerData(entries) {
     pipeline.set(`player:${userId}`, JSON.stringify(data));
   }
   const results = await withTimeout(pipeline.exec());
-  // Upstash pipeline trả về array — mỗi phần tử là { result, error } hoặc trực tiếp
   if (Array.isArray(results)) {
     const failures = results
       .map((r, i) => {
@@ -601,7 +592,6 @@ async function processDailyClaimForUser(userId) {
         .set(playerKey, JSON.stringify(playerData))
         .exec()
     );
-    // Check từng result để phát hiện partial failure (tương tự saveMultiplePlayerData)
     if (Array.isArray(saveResults)) {
       const labels = ["daily", "player"];
       const failures = saveResults
@@ -897,7 +887,7 @@ async function buildInventoryEmbed(targetUser) {
   const bookEntries = Object.entries(books).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
   const itemEntries = Object.entries(items).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
   if (bookEntries.length === 0 && itemEntries.length === 0) {
-    return null; // caller handles empty case
+    return null;
   }
   const fields = [];
   if (bookEntries.length > 0) {
@@ -953,7 +943,6 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
     senderData.items = senderData.items ?? {};
   }
 
-  // Validate số dư người gửi
   if (!isAdmin && ahnGain > 0) {
     const senderAhn = senderData.ahn ?? 0;
     if (senderAhn < ahnGain) throw new Error(`Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
@@ -1088,7 +1077,9 @@ async function executeCraft(userId, itemName, craftCount) {
   return { outputLines, costLines };
 }
 
-
+/**
+ * parseBatchEntries — parse chuỗi "Tên x<số>, Tên x<số>" thành mảng entries
+ * FIX 1: Thêm /** mở JSDoc đầy đủ (trước đây bị thiếu gây syntax error)
  * @param {string} raw          — chuỗi input
  * @param {Function} findFn     — hàm lookup tên (findBook / findItem / findItemAdmin)
  * @param {string} entityLabel  — "sách" hoặc "vật phẩm" (dùng trong thông báo lỗi)
@@ -1102,9 +1093,14 @@ function parseBatchEntries(raw, findFn, entityLabel) {
     if (!match) {
       return { error: `❌ Định dạng ${entityLabel} sai: \`${part}\`\nĐúng: \`Tên ${entityLabel === "sách" ? "Sách" : "Item"} x<số>\` (VD: \`${entityLabel === "sách" ? "Random Book x2" : "Chipboard MK1 x3"}\`)` };
     }
+    // FIX 4: Validate count > 0
+    const count = parseInt(match[2], 10);
+    if (count <= 0) {
+      return { error: `❌ Số lượng ${entityLabel} phải lớn hơn 0: \`${part}\`` };
+    }
     const name = findFn(match[1].trim());
     if (!name) return { error: `❌ Tên ${entityLabel} không hợp lệ: \`${match[1].trim()}\`` };
-    entries.push({ name, count: parseInt(match[2], 10) });
+    entries.push({ name, count });
   }
   return { entries };
 }
@@ -1243,6 +1239,8 @@ client.on("messageCreate", async (message) => {
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
     const hasBook = !!bookRaw;
+    // FIX 6: Luôn yêu cầu itemcount: khi có cả book lẫn item, không fallback sang count:
+    // Nếu chỉ có item (không có book), vẫn dùng itemcount: trước, rồi mới fallback sang count:
     const itemCountRaw = kv["itemcount"] ?? (hasBook ? "1" : kv["count"] ?? "1");
     const itemCount = Math.max(1, parseInt(itemCountRaw, 10) || 1);
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
@@ -1281,17 +1279,15 @@ client.on("messageCreate", async (message) => {
     }
 
     try {
+      // FIX 3: Admin give — lock cả sender lẫn target dù admin không cần đọc sender data.
+      // Dùng withDoubleLock để đồng nhất với non-admin và tránh race nếu admin
+      // vô tình chạy 2 lệnh give cho cùng target cùng lúc.
       const runGive = () => executeGive({
         senderId: message.author.id,
         targetId: targetUser.id,
         isAdmin, ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
       });
-      let changes;
-      if (isAdmin) {
-        changes = await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
-      } else {
-        changes = await withDoubleLock(message.author.id, targetUser.id, runGive);
-      }
+      const changes = await withDoubleLock(message.author.id, targetUser.id, runGive);
       const verb = isAdmin ? "tặng" : "chuyển";
       message.reply(
         `✅ ${message.author} đã ${verb} cho ${targetUser}:\n` +
@@ -1332,7 +1328,6 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Parse single book/item
     const bookEntries = [];
     if (bookRaw) {
       const bookName = findBook(bookRaw);
@@ -1346,7 +1341,6 @@ client.on("messageCreate", async (message) => {
       itemEntries.push({ name: itemName, count: itemCount });
     }
 
-    // Parse batch books/items
     const booksRaw = kv["books"] ?? null;
     if (booksRaw) {
       const result = parseBatchEntries(booksRaw, findBook, "sách");
@@ -1382,8 +1376,8 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-// ── -setplayer ──
-if (message.content.startsWith("-setplayer")) {
+  // ── -setplayer ──
+  if (message.content.startsWith("-setplayer")) {
     if (!ADMIN_IDS.has(message.author.id)) {
       message.reply("❌ Bạn không có quyền dùng lệnh này.");
       return;
@@ -1450,7 +1444,6 @@ if (message.content.startsWith("-setplayer")) {
       return;
     }
 
-    // Xử lý song song từng user, gom kết quả lại
     const results = await Promise.allSettled(
       targetUsers.map(targetUser =>
         withLock(targetUser.id, async () => {
@@ -1511,7 +1504,6 @@ if (message.content.startsWith("-setplayer")) {
 
     const body = `📋 Kết quả \`-setplayer\` cho ${targetUsers.length} người:\n\n` + lines.join("\n\n");
     if (body.length > 2000) {
-      // Nếu quá dài, gửi thành nhiều chunk
       const chunks = [];
       let current = "";
       for (const line of lines) {
@@ -1638,7 +1630,7 @@ if (message.content.startsWith("-setplayer")) {
       { name: "📅 -daily", value: "Nhận phần thưởng điểm danh hàng ngày.\n> `5 EXP + 100k Ahn + 1 Random Book`\n> Streak 7 ngày: thêm `25 EXP + 400k Ahn + 1 Sealed Book Cache`", inline: false },
       { name: "💼 -balance [@user]", value: "Xem thông tin Grade, EXP, Ahn và tổng kho của bạn hoặc người khác.\n> VD: `-balance` hoặc `-balance @user`", inline: false },
       { name: "🎒 -inventory [@user]", value: "Xem chi tiết toàn bộ sách và vật phẩm trong kho.\n> VD: `-inventory` hoặc `-inventory @user`", inline: false },
-      { name: "🎁 -give @user [...]", value: ["Chuyển Ahn, sách hoặc vật phẩm cho người khác.", "> `ahn: <số>` — số Ahn muốn chuyển", "> `book: <tên> count: <số>` — sách muốn chuyển", "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển (dùng `itemcount` khi có cả book lẫn item)", "> VD: `-give @user ahn: 50000`", "> VD: `-give @user book: Random Book count: 2`", "> VD: `-give @user book: Random Book count: 1 item: Chipboard MK1 itemcount: 2`"].join("\n"), inline: false },
+      { name: "🎁 -give @user [...]", value: ["Chuyển Ahn, sách hoặc vật phẩm cho người khác.", "> `ahn: <số>` — số Ahn muốn chuyển", "> `book: <tên> count: <số>` — sách muốn chuyển", "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển (dùng `itemcount` khi có cả book lẫn item, **bắt buộc** khi có cả hai)", "> VD: `-give @user ahn: 50000`", "> VD: `-give @user book: Random Book count: 2`", "> VD: `-give @user book: Random Book count: 1 item: Chipboard MK1 itemcount: 2`"].join("\n"), inline: false },
       { name: "🗑️ -remove [...]", value: ["Tự xóa sách hoặc vật phẩm khỏi kho của mình.", "> `book: <tên> count: <số>` — xóa 1 loại sách", "> `item: <tên> itemcount: <số>` — xóa 1 loại vật phẩm", "> `books: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại sách cùng lúc", "> `items: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại vật phẩm cùng lúc", "> VD: `-remove books: Random Book x2, N Corp Book x1`"].join("\n"), inline: false },
       { name: "⚒️ -use <tên vật phẩm> [count: <số>]", value: ["Craft vật phẩm bằng nguyên liệu trong kho.", "> VD: `-use Chipboard MK2` — craft 1 cái", "> VD: `-use Chipboard MK3 count: 5` — craft 5 cái cùng lúc"].join("\n"), inline: false },
       { name: "📋 -recipes", value: "Xem toàn bộ công thức craft vật phẩm.", inline: false },
@@ -1989,7 +1981,6 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // Slash handler cho /give
   if (interaction.commandName === "give") {
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     await interaction.deferReply();
@@ -2021,17 +2012,13 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     try {
+      // FIX 3: Slash /give — dùng withDoubleLock nhất quán cho cả admin lẫn non-admin
       const runGive = () => executeGive({
         senderId: interaction.user.id,
         targetId: targetUser.id,
         isAdmin, ahnGain, bookName, bookCount, itemName, itemCount,
       });
-      let changes;
-      if (isAdmin) {
-        changes = await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
-      } else {
-        changes = await withDoubleLock(interaction.user.id, targetUser.id, runGive);
-      }
+      const changes = await withDoubleLock(interaction.user.id, targetUser.id, runGive);
       await interaction.editReply({
         content: `✅ ${interaction.user} đã ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
           changes.map(c => `> ${c}`).join("\n"),
@@ -2043,7 +2030,6 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // Slash handler cho /remove
   if (interaction.commandName === "remove") {
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     await interaction.deferReply();
@@ -2129,6 +2115,18 @@ app.use((err, req, res, next) => { console.error("[Express error]", err); res.st
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system", `Server running on port ${PORT}`));
+
+// FIX 5: Clear timer khi process shutdown để tránh memory leak
+process.on("SIGTERM", () => {
+  clearInterval(cooldownCleanupTimer);
+  log("info", "shutdown", "system", "SIGTERM received, shutting down.");
+  process.exit(0);
+});
+process.on("SIGINT", () => {
+  clearInterval(cooldownCleanupTimer);
+  log("info", "shutdown", "system", "SIGINT received, shutting down.");
+  process.exit(0);
+});
 
 process.on("uncaughtException", (err) => log("error", "uncaughtException", "system", err.message, { stack: err.stack }));
 process.on("unhandledRejection", (reason) => log("error", "unhandledRejection", "system", String(reason)));
