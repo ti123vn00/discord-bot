@@ -57,6 +57,12 @@ const commands = [
   new SlashCommandBuilder()
     .setName("daily")
     .setDescription("Điểm danh hàng ngày để nhận Exp, Ahn và sách (reset lúc 0h VN)"),
+  new SlashCommandBuilder()
+    .setName("randombook")
+    .setDescription("Mở 1 Random Book để nhận ngẫu nhiên 1 cuốn sách thường"),
+  new SlashCommandBuilder()
+    .setName("randomsealedbook")
+    .setDescription("Mở 1 Sealed Book Cache để nhận ngẫu nhiên 1 cuốn sách hiếm"),
 ].map(cmd => cmd.toJSON());
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
