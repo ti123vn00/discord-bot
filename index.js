@@ -144,9 +144,10 @@ const CHIPBOARD_CACHE_POOL = [
 const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice"];
 const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
 
-// Derive từ CHIPBOARD_CACHE_POOL để tránh khai báo trùng MK1–MK3
 const VALID_ITEMS = [
-  ...CHIPBOARD_CACHE_POOL,
+  "Chipboard MK1",
+  "Chipboard MK2",
+  "Chipboard MK3",
   "Chipboard MK4",
   "Chipboard MK5",
   "Uptie Module",
@@ -457,9 +458,6 @@ async function saveMultiplePlayerData(entries) {
       .filter(Boolean);
     if (failures.length > 0) {
       const detail = failures.map(f => `[${f.userId}]: ${f.err}`).join(", ");
-      for (const f of failures) {
-        log("error", "saveMultiplePlayerData", f.userId ?? "unknown", f.err);
-      }
       throw new Error(`Pipeline save thất bại một phần: ${detail}`);
     }
   }
@@ -633,7 +631,7 @@ async function processDailyClaimForUser(userId) {
 
     if (isWeekComplete) {
       replyMsg +=
-        `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **${isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0} Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
+        `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **${DAILY_STREAK_EXP_BONUS} Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
         `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
     }
 
@@ -1085,6 +1083,7 @@ async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRem
 async function executeCraft(userId, itemName, craftCount) {
   const recipe = CRAFT_RECIPES[itemName];
   const data = await getPlayerData(userId);
+  data.items = data.items ?? {};
   const totalCost = {};
   for (const [mat, qty] of Object.entries(recipe.inputs)) totalCost[mat] = qty * craftCount;
   const shortages = [];
@@ -1187,10 +1186,6 @@ client.on("messageCreate", async (message) => {
 
   // ── -daily ──
   if (message.content.startsWith("-daily")) {
-    if (isOnCooldown(message.author.id, "daily", 3000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
-      return;
-    }
     const userId = message.author.id;
     try {
       const result = await processDailyClaimForUser(userId);
@@ -1683,6 +1678,10 @@ client.on("messageCreate", async (message) => {
 
   // ── -chipboardcache ──
   if (message.content.startsWith("-chipboardcache")) {
+    if (isOnCooldown(message.author.id, "chipboardcache", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     const args = message.content.replace("-chipboardcache", "").trim().split(/\s+/);
     const { count, error } = parseOpenCount(args[0], 20);
@@ -1701,6 +1700,10 @@ client.on("messageCreate", async (message) => {
 
   // ── -randomsealedbook ── (phải đứng TRƯỚC -randombook)
   if (message.content.startsWith("-randomsealedbook")) {
+    if (isOnCooldown(message.author.id, "randomsealedbook", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     const args = message.content.replace("-randomsealedbook", "").trim().split(/\s+/);
     const { count, error } = parseOpenCount(args[0], 20);
@@ -1719,6 +1722,10 @@ client.on("messageCreate", async (message) => {
 
   // ── -randombook ──
   if (message.content.startsWith("-randombook")) {
+    if (isOnCooldown(message.author.id, "randombook", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     const args = message.content.replace("-randombook", "").trim().split(/\s+/);
     const { count, error } = parseOpenCount(args[0], 20);
@@ -1799,14 +1806,10 @@ client.on("messageCreate", async (message) => {
 // ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
 async function replyOnCooldown(interaction, ms) {
   if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
-  try {
-    await interaction.reply({
-      content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`,
-      ephemeral: true,
-    });
-  } catch {
-    // Interaction có thể đã expired hoặc đã reply rồi — bỏ qua
-  }
+  await interaction.reply({
+    content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`,
+    ephemeral: true,
+  });
   return true;
 }
 
