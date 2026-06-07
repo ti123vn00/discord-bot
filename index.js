@@ -166,6 +166,11 @@ function findItem(input) {
   return VALID_ITEMS.find(i => i.toLowerCase() === lower) ?? null;
 }
 
+// Admin version: no validation, just trim the input as-is
+function findItemAdmin(input) {
+  return input.trim() || null;
+}
+
 function parseKeyValues(input) {
   const map = {};
   const regex = /([A-Za-z]+)\s*:\s*([\s\S]*?)(?=\s+[A-Za-z]+\s*:|$)/gi;
@@ -321,7 +326,6 @@ function buildRollDescription({ user, cacheType, results, remainingCount, cacheK
     .sort(([, a], [, b]) => b - a)
     .map(([name, cnt]) => `• **${name}** × ${cnt}`);
 
-  const rollWord = results.length === 1 ? "lần" : "lần";
   return (
     `${user} đã dùng **${results.length} ${cacheType}** và nhận được:\n\n` +
     lines.join("\n") +
@@ -827,7 +831,9 @@ client.on("messageCreate", async (message) => {
     const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
-    const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);
+    // itemcount ưu tiên, nếu không có thì dùng count; nhưng count cũng dùng cho book
+    const itemCountRaw = kv["itemcount"] ?? kv["count"] ?? "1";
+    const itemCount = Math.max(1, parseInt(itemCountRaw, 10) || 1);
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
 
     if (!isAdmin && (expGain !== 0 || gradeTarget !== null)) {
@@ -851,12 +857,17 @@ client.on("messageCreate", async (message) => {
       }
     }
 
+    // ── Item validation: admin bypass, non-admin dùng whitelist ──
     let itemName = null;
     if (itemRaw) {
-      itemName = findItem(itemRaw);
-      if (!itemName) {
-        message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`\nDùng \`-items\` để xem danh sách vật phẩm hợp lệ.`);
-        return;
+      if (isAdmin) {
+        itemName = findItemAdmin(itemRaw);
+      } else {
+        itemName = findItem(itemRaw);
+        if (!itemName) {
+          message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`\nDùng \`-items\` để xem danh sách vật phẩm hợp lệ.`);
+          return;
+        }
       }
     }
 
@@ -928,7 +939,6 @@ client.on("messageCreate", async (message) => {
         }
       }
 
-      // Save cả hai cùng lúc — chỉ save sender nếu không phải admin
       await savePlayerData(targetUser.id, recipientData);
       if (!isAdmin) await savePlayerData(message.author.id, senderData);
 
@@ -988,12 +998,17 @@ client.on("messageCreate", async (message) => {
       }
     }
 
+    // ── Item validation: admin bypass ──
     let itemName = null;
     if (itemRaw) {
-      itemName = findItem(itemRaw);
-      if (!itemName) {
-        message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`\nDùng \`-items\` để xem danh sách.`);
-        return;
+      if (isAdmin) {
+        itemName = findItemAdmin(itemRaw);
+      } else {
+        itemName = findItem(itemRaw);
+        if (!itemName) {
+          message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`\nDùng \`-items\` để xem danh sách.`);
+          return;
+        }
       }
     }
 
@@ -1065,7 +1080,7 @@ client.on("messageCreate", async (message) => {
     if (!targetUser) {
       message.reply(
         "❌ Hãy mention người cần set. Ví dụ:\n" +
-        "`-setplayer @user exp: 100 ahn: 50000 books: Random Book x3, N Corp Book x1 items: Chipboard MK1 x2`"
+        "`-setplayer @user exp: 100 ahn: 50000 books: Random Book x3, N Corp Book x1 items: Tên Item x2`"
       );
       return;
     }
@@ -1077,7 +1092,7 @@ client.on("messageCreate", async (message) => {
 
     const kv = parseKeyValues(rawInput);
 
-    // Parse books
+    // Parse books (vẫn validate)
     const booksRaw = kv["books"] ?? null;
     const bookEntries = [];
     if (booksRaw) {
@@ -1097,7 +1112,7 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // Parse items
+    // ── Items: admin bypass, bất kỳ tên nào cũng được ──
     const itemsRaw = kv["items"] ?? null;
     const itemEntries = [];
     if (itemsRaw) {
@@ -1105,12 +1120,12 @@ client.on("messageCreate", async (message) => {
       for (const part of parts) {
         const match = part.match(/^(.+?)\s+x(\d+)$/i);
         if (!match) {
-          message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Chipboard MK1 x2\`)`);
+          message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Tên Item x2\`)`);
           return;
         }
-        const itemName = findItem(match[1].trim());
+        const itemName = match[1].trim(); // không validate, admin tự do
         if (!itemName) {
-          message.reply(`❌ Tên vật phẩm không hợp lệ: \`${match[1].trim()}\`\nDùng \`-items\` để xem danh sách.`);
+          message.reply(`❌ Tên vật phẩm không được để trống.`);
           return;
         }
         itemEntries.push({ name: itemName, count: parseInt(match[2], 10) });
@@ -1206,6 +1221,152 @@ client.on("messageCreate", async (message) => {
         color: 0xe67e22,
         description: lines.join("\n"),
         footer: { text: `Tổng cộng ${VALID_ITEMS.length} loại vật phẩm` },
+      }],
+    });
+    return;
+  }
+
+  // ── -dothihelp ──
+  if (message.content.startsWith("-dothihelp")) {
+    const isAdmin = ADMIN_IDS.has(message.author.id);
+
+    const generalFields = [
+      {
+        name: "📅 -daily",
+        value: "Nhận phần thưởng điểm danh hàng ngày.\n> `5 EXP + 100k Ahn + 1 Random Book`\n> Streak 7 ngày: thêm `25 EXP + 400k Ahn + 1 Sealed Book Cache`",
+        inline: false,
+      },
+      {
+        name: "💼 -balance [@user]",
+        value: "Xem thông tin Grade, EXP, Ahn và tổng kho của bạn hoặc người khác.\n> VD: `-balance` hoặc `-balance @user`",
+        inline: false,
+      },
+      {
+        name: "🎒 -inventory [@user]",
+        value: "Xem chi tiết toàn bộ sách và vật phẩm trong kho.\n> VD: `-inventory` hoặc `-inventory @user`",
+        inline: false,
+      },
+      {
+        name: "🎁 -give @user [...]",
+        value: [
+          "Chuyển Ahn, sách hoặc vật phẩm cho người khác.",
+          "> `ahn: <số>` — số Ahn muốn chuyển",
+          "> `book: <tên> count: <số>` — sách muốn chuyển",
+          "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển",
+          "> VD: `-give @user ahn: 50000`",
+          "> VD: `-give @user book: Random Book count: 2`",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🗑️ -remove [...]",
+        value: [
+          "Tự xóa sách hoặc vật phẩm khỏi kho của mình.",
+          "> `book: <tên> count: <số>`",
+          "> `item: <tên> itemcount: <số>`",
+          "> VD: `-remove book: Random Book count: 1`",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "📖 -randombook [số]",
+        value: "Mở Random Book để nhận sách ngẫu nhiên (tối đa 20 lần).\n> VD: `-randombook` hoặc `-randombook 5`",
+        inline: false,
+      },
+      {
+        name: "🔮 -randomsealedbook [số]",
+        value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`",
+        inline: false,
+      },
+      {
+        name: "⚔️ -parry [số]",
+        value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`",
+        inline: false,
+      },
+      {
+        name: "📊 -math [...]",
+        value: [
+          "Tính damage theo hệ thống.",
+          "> `dmg:` `res:` `bonus:` `critmul:` `critrate:` `critdiv:`",
+          "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`",
+          "> VD: `-math dmg: 10B critrate: 50 critmul: 1.5`",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🏹 -huntermath [...]",
+        value: [
+          "Tính damage theo hệ thống Hunter.",
+          "> `dmgbaseweapon:` `bonus:` `stat:` `scaleskill:`",
+          "> `dmgnegationboss:` `vulnerability:` `buffbonus:`",
+          "> VD: `-huntermath dmgbaseweapon: 50 bonus: 20 stat: 30 scaleskill: 100`",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "📚 -books",
+        value: "Xem danh sách toàn bộ sách hợp lệ.",
+        inline: false,
+      },
+      {
+        name: "🔩 -items",
+        value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).",
+        inline: false,
+      },
+    ];
+
+    const adminFields = [
+      {
+        name: "─────── 🔐 ADMIN ONLY ───────",
+        value: "Các lệnh dưới đây chỉ dành cho admin.",
+        inline: false,
+      },
+      {
+        name: "🎁 -give @user (admin)",
+        value: [
+          "Admin có thể tặng EXP, set Grade, và dùng **bất kỳ tên item nào** không cần trong whitelist.",
+          "> `exp: <số>` — tặng EXP",
+          "> `grade: <1–9>` — set Grade trực tiếp",
+          "> `item: <tên bất kỳ> itemcount: <số>` — không cần validate tên",
+          "> VD: `-give @user item: Sword of Dawn itemcount: 1`",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🗑️ -remove @user (admin)",
+        value: [
+          "Admin có thể xóa EXP, Ahn, sách, hoặc **item bất kỳ** của người khác.",
+          "> `exp:` `ahn:` `book:` `item: <tên bất kỳ>`",
+          "> VD: `-remove @user item: Sword of Dawn count: 1`",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "⚙️ -setplayer @user [...]",
+        value: [
+          "Set trực tiếp dữ liệu của người chơi.",
+          "> `exp: <số>` — set EXP",
+          "> `grade: <1–9>` — set Grade",
+          "> `ahn: <số>` — set Ahn",
+          "> `books: <Tên> x<số>, <Tên> x<số>` — set sách (phải hợp lệ)",
+          "> `items: <Tên bất kỳ> x<số>, ...` — set item **không cần trong whitelist**",
+          "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Sword of Dawn x2, Shield x1`",
+        ].join("\n"),
+        inline: false,
+      },
+    ];
+
+    const fields = isAdmin ? [...generalFields, ...adminFields] : generalFields;
+
+    message.reply({
+      embeds: [{
+        title: "📖 Danh sách lệnh của bot",
+        color: isAdmin ? 0xe74c3c : 0x5865f2,
+        description: isAdmin
+          ? "Hiển thị đầy đủ bao gồm lệnh admin vì bạn là **Admin** 🔐"
+          : "Dùng các lệnh dưới đây để tương tác với bot.",
+        fields,
+        footer: { text: isAdmin ? "Admin mode • Slash commands: /math /huntermath /parry /daily /randombook /randomsealedbook" : "Slash commands: /math /huntermath /parry /daily /randombook /randomsealedbook" },
       }],
     });
     return;
