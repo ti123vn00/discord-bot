@@ -14,7 +14,11 @@ const redis = new Redis({
 });
 
 if (!TOKEN) {
-  console.warn("DISCORD_TOKEN is not set — Discord bot will not start.");
+  console.error("DISCORD_TOKEN is not set — Discord bot will not start.");
+  process.exit(1);
+}
+if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+  console.error("UPSTASH_REDIS_REST_URL hoặc UPSTASH_REDIS_REST_TOKEN chưa được set — bot sẽ không thể kết nối Redis.");
   process.exit(1);
 }
 
@@ -211,9 +215,8 @@ function parseKeyValues(input) {
 }
 
 function filterZeroFields(fields) {
-  const ALWAYS_SHOW = new Set(["Final DMG", "Poise Stacks", "CritMul", "% Dmg Bonus", "Res Multipliers"]);
   return fields.filter((f) => {
-    if (ALWAYS_SHOW.has(f.name)) return true;
+    if (f.alwaysShow) return true;
     const v = String(f.value).trim();
     if (v === "0") return false;
     if (v === "0.0%") return false;
@@ -240,7 +243,7 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, dice
 const cooldowns = new Map();
 const COOLDOWN_CLEANUP_AGE_MS = 60_000;
 
-// FIX 5: Giữ ref timer để có thể clear khi shutdown
+// Giữ ref timer để có thể clear khi shutdown, tránh memory leak
 const cooldownCleanupTimer = setInterval(() => {
   const cutoff = Date.now() - COOLDOWN_CLEANUP_AGE_MS;
   for (const [k, v] of cooldowns) {
@@ -258,17 +261,25 @@ function isOnCooldown(userId, command, ms) {
 }
 
 // ─── VN TIME HELPERS ──────────────────────────────────────────────────────────
-function getVNDateString() {
+const VN_UTC_OFFSET_HOURS = 7;
+// UTC giờ tương đương với VN 00:00 (nửa đêm) = 24 - 7 = 17
+const VN_MIDNIGHT_UTC_HOUR = 24 - VN_UTC_OFFSET_HOURS;
+
+function getVNNow() {
   const now = new Date();
-  const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-  return vnTime.toISOString().slice(0, 10);
+  return new Date(now.getTime() + VN_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+}
+
+function getVNDateString() {
+  return getVNNow().toISOString().slice(0, 10);
 }
 
 function secondsUntilVNMidnight() {
   const now = new Date();
-  const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const vnNow = getVNNow();
   const vnMidnight = new Date(Date.UTC(
-    vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(), 17, 0, 0, 0
+    vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(),
+    VN_MIDNIGHT_UTC_HOUR, 0, 0, 0
   ));
   if (vnMidnight <= now) vnMidnight.setUTCDate(vnMidnight.getUTCDate() + 1);
   return Math.floor((vnMidnight - now) / 1000);
@@ -559,7 +570,7 @@ async function processDailyClaimForUser(userId) {
     }
 
     const nowUtc = new Date();
-    const vnNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+    const vnNow = getVNNow();
     const vnYesterday = new Date(vnNow);
     vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
     const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
@@ -628,7 +639,28 @@ async function processDailyClaimForUser(userId) {
   });
 }
 
-// ─── CORE LOGIC ───────────────────────────────────────────────────────────────
+// ─── SHARED LOGIC: PARRY ──────────────────────────────────────────────────────
+function runParryRolls(rolls) {
+  let successCount = 0;
+  let failCount = 0;
+  const lines = [];
+  for (let i = 0; i < rolls; i++) {
+    let atk, pry, rerolls = 0;
+    do {
+      atk = Math.floor(Math.random() * 16) + 1;
+      pry = Math.floor(Math.random() * 20) + 1;
+      if (atk === pry) rerolls++;
+    } while (atk === pry);
+    const isSuccess = atk <= pry;
+    if (isSuccess) successCount++; else failCount++;
+    const rerollNote = rerolls > 0 ? ` *(Hòa và roll lại ${rerolls} lần)*` : "";
+    const result = isSuccess ? "Parry thành công ✅" : "Parry thất bại ❌";
+    lines.push(`Lần ${i + 1}: Attacker: \`${atk}\` vs Defender: \`${pry}\`${rerollNote} → ${result}`);
+  }
+  return { successCount, failCount, lines };
+}
+
+
 function calcMath(opts) {
   const {
     dmgStr = "",
@@ -785,14 +817,14 @@ function calcMath(opts) {
 
   const allFields = [
     { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
-    { name: "% Dmg Bonus", value: bonusPct.toFixed(1) + "%", inline: true },
+    { name: "% Dmg Bonus", value: bonusPct.toFixed(1) + "%", inline: true, alwaysShow: true },
     { name: "Sanity % DMG Bonus", value: sanityBonusPct.toFixed(1) + "%", inline: true },
-    { name: "CritMul", value: critMul + "x", inline: true },
-    { name: "Res Multipliers", value: resDisplay, inline: true },
+    { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
+    { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true },
-    { name: "Poise Stacks", value: poiseDisplay, inline: true },
+    { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv ? "Yes" : "No", inline: true },
-    { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
+    { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
     { name: "Remaining Poise", value: finalPoiseStacks.toString(), inline: true },
     { name: "Enemy's Sinking Counts", value: enemySinking.toString(), inline: true },
@@ -1079,7 +1111,6 @@ async function executeCraft(userId, itemName, craftCount) {
 
 /**
  * parseBatchEntries — parse chuỗi "Tên x<số>, Tên x<số>" thành mảng entries
- * FIX 1: Thêm /** mở JSDoc đầy đủ (trước đây bị thiếu gây syntax error)
  * @param {string} raw          — chuỗi input
  * @param {Function} findFn     — hàm lookup tên (findBook / findItem / findItemAdmin)
  * @param {string} entityLabel  — "sách" hoặc "vật phẩm" (dùng trong thông báo lỗi)
@@ -1093,7 +1124,7 @@ function parseBatchEntries(raw, findFn, entityLabel) {
     if (!match) {
       return { error: `❌ Định dạng ${entityLabel} sai: \`${part}\`\nĐúng: \`Tên ${entityLabel === "sách" ? "Sách" : "Item"} x<số>\` (VD: \`${entityLabel === "sách" ? "Random Book x2" : "Chipboard MK1 x3"}\`)` };
     }
-    // FIX 4: Validate count > 0
+    // Validate count > 0 trước khi xử lý
     const count = parseInt(match[2], 10);
     if (count <= 0) {
       return { error: `❌ Số lượng ${entityLabel} phải lớn hơn 0: \`${part}\`` };
@@ -1141,23 +1172,7 @@ client.on("messageCreate", async (message) => {
       message.reply("❌ Số lần roll tối đa là 50.");
       return;
     }
-    let successCount = 0;
-    let failCount = 0;
-    const lines = [];
-    for (let i = 0; i < rolls; i++) {
-      let atk, pry, rerolls = 0;
-      do {
-        atk = Math.floor(Math.random() * 16) + 1;
-        pry = Math.floor(Math.random() * 20) + 1;
-        if (atk === pry) rerolls++;
-      } while (atk === pry);
-      const isSuccess = atk <= pry;
-      if (isSuccess) successCount++;
-      else failCount++;
-      const rerollNote = rerolls > 0 ? ` *(Hòa và roll lại ${rerolls} lần)*` : "";
-      const result = isSuccess ? "Parry thành công ✅" : "Parry thất bại ❌";
-      lines.push(`Lần ${i + 1}: Attacker: \`${atk}\` vs Defender: \`${pry}\`${rerollNote} → ${result}`);
-    }
+    const { successCount, failCount, lines } = runParryRolls(rolls);
     const summary = `**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
     const body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n${summary}`;
     if (body.length > 2000) {
@@ -1239,8 +1254,8 @@ client.on("messageCreate", async (message) => {
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
     const hasBook = !!bookRaw;
-    // FIX 6: Luôn yêu cầu itemcount: khi có cả book lẫn item, không fallback sang count:
-    // Nếu chỉ có item (không có book), vẫn dùng itemcount: trước, rồi mới fallback sang count:
+    // Nếu có cả book lẫn item, dùng itemcount: riêng để tránh nhầm lẫn với count: của book.
+    // Nếu chỉ có item, itemcount: ưu tiên trước rồi mới fallback sang count:.
     const itemCountRaw = kv["itemcount"] ?? (hasBook ? "1" : kv["count"] ?? "1");
     const itemCount = Math.max(1, parseInt(itemCountRaw, 10) || 1);
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
@@ -1279,9 +1294,8 @@ client.on("messageCreate", async (message) => {
     }
 
     try {
-      // FIX 3: Admin give — lock cả sender lẫn target dù admin không cần đọc sender data.
-      // Dùng withDoubleLock để đồng nhất với non-admin và tránh race nếu admin
-      // vô tình chạy 2 lệnh give cho cùng target cùng lúc.
+      // Dùng withDoubleLock cho cả admin lẫn non-admin để tránh race condition
+      // khi admin vô tình chạy 2 lệnh give cho cùng target cùng lúc.
       const runGive = () => executeGive({
         senderId: message.author.id,
         targetId: targetUser.id,
@@ -1837,15 +1851,7 @@ client.on("interactionCreate", async (interaction) => {
     if (isOnCooldown(interaction.user.id, "parry", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
     const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, 50);
-    let successCount = 0, failCount = 0;
-    const lines = [];
-    for (let i = 0; i < rolls; i++) {
-      let atk, pry, rerolls = 0;
-      do { atk = Math.floor(Math.random() * 16) + 1; pry = Math.floor(Math.random() * 20) + 1; if (atk === pry) rerolls++; } while (atk === pry);
-      const isSuccess = atk <= pry;
-      if (isSuccess) successCount++; else failCount++;
-      lines.push(`Lần ${i + 1}: Attacker: \`${atk}\` vs Defender: \`${pry}\`${rerolls > 0 ? ` *(Hòa và roll lại ${rerolls} lần)*` : ""} → ${isSuccess ? "Parry thành công ✅" : "Parry thất bại ❌"}`);
-    }
+    const { successCount, failCount, lines } = runParryRolls(rolls);
     let body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
     if (body.length > 2000) body = body.substring(0, 1990) + "\n…(bị cắt bớt)";
     await interaction.editReply({ content: body });
@@ -1876,8 +1882,22 @@ client.on("interactionCreate", async (interaction) => {
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
       const { success, data, results } = await handleOpenRandomBook(userId, count);
-      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng." }); return; }
-      await interaction.editReply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: buildRollDescription({ user: interaction.user, cacheType: "Random Book", results, remainingCount: data.books["Random Book"] ?? 0 }) }] });
+      if (!success) {
+        await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng." });
+        return;
+      }
+      await interaction.editReply({
+        embeds: [{
+          title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`,
+          color: 0x2ecc71,
+          description: buildRollDescription({
+            user: interaction.user,
+            cacheType: "Random Book",
+            results,
+            remainingCount: data.books["Random Book"] ?? 0,
+          }),
+        }],
+      });
     } catch (err) {
       log("error", "/randombook", userId, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
@@ -1892,8 +1912,22 @@ client.on("interactionCreate", async (interaction) => {
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
       const { success, data, results } = await handleOpenSealedBook(userId, count);
-      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng." }); return; }
-      await interaction.editReply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: buildRollDescription({ user: interaction.user, cacheType: "Sealed Book Cache", results, remainingCount: data.books["Sealed Book Cache"] ?? 0 }) }] });
+      if (!success) {
+        await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng." });
+        return;
+      }
+      await interaction.editReply({
+        embeds: [{
+          title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`,
+          color: 0x9b59b6,
+          description: buildRollDescription({
+            user: interaction.user,
+            cacheType: "Sealed Book Cache",
+            results,
+            remainingCount: data.books["Sealed Book Cache"] ?? 0,
+          }),
+        }],
+      });
     } catch (err) {
       log("error", "/randomsealedbook", userId, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
@@ -1908,8 +1942,22 @@ client.on("interactionCreate", async (interaction) => {
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
       const { success, data, results } = await handleOpenChipboardCache(userId, count);
-      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng." }); return; }
-      await interaction.editReply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: buildRollDescription({ user: interaction.user, cacheType: "Chipboard Cache", results, remainingCount: data.items["Chipboard Cache"] ?? 0 }) }] });
+      if (!success) {
+        await interaction.editReply({ content: "❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng." });
+        return;
+      }
+      await interaction.editReply({
+        embeds: [{
+          title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`,
+          color: 0xe67e22,
+          description: buildRollDescription({
+            user: interaction.user,
+            cacheType: "Chipboard Cache",
+            results,
+            remainingCount: data.items["Chipboard Cache"] ?? 0,
+          }),
+        }],
+      });
     } catch (err) {
       log("error", "/chipboardcache", userId, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
@@ -2012,7 +2060,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     try {
-      // FIX 3: Slash /give — dùng withDoubleLock nhất quán cho cả admin lẫn non-admin
+      // Dùng withDoubleLock nhất quán cho cả admin lẫn non-admin
       const runGive = () => executeGive({
         senderId: interaction.user.id,
         targetId: targetUser.id,
@@ -2116,7 +2164,7 @@ app.use((err, req, res, next) => { console.error("[Express error]", err); res.st
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system", `Server running on port ${PORT}`));
 
-// FIX 5: Clear timer khi process shutdown để tránh memory leak
+// Clear timer khi process shutdown để tránh memory leak
 process.on("SIGTERM", () => {
   clearInterval(cooldownCleanupTimer);
   log("info", "shutdown", "system", "SIGTERM received, shutting down.");
