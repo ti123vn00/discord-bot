@@ -1186,9 +1186,12 @@ client.on("messageCreate", async (message) => {
   }
 
   // ── -daily ──
-if (message.content.startsWith("-daily")) {
-  if (isOnCooldown(message.author.id, "daily", 3000)) { ... }
-  const userId = message.author.id;
+  if (message.content.startsWith("-daily")) {
+    if (isOnCooldown(message.author.id, "daily", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
+    const userId = message.author.id;
     try {
       const result = await processDailyClaimForUser(userId);
       if (result.alreadyClaimed) {
@@ -1681,7 +1684,12 @@ if (message.content.startsWith("-daily")) {
   }
 
   // ── -chipboardcache ──
+  // ── -chipboardcache ──
   if (message.content.startsWith("-chipboardcache")) {
+    if (isOnCooldown(message.author.id, "chipboardcache", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     const args = message.content.replace("-chipboardcache", "").trim().split(/\s+/);
     const { count, error } = parseOpenCount(args[0], 20);
@@ -1700,6 +1708,10 @@ if (message.content.startsWith("-daily")) {
 
   // ── -randomsealedbook ── (phải đứng TRƯỚC -randombook)
   if (message.content.startsWith("-randomsealedbook")) {
+    if (isOnCooldown(message.author.id, "randomsealedbook", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     const args = message.content.replace("-randomsealedbook", "").trim().split(/\s+/);
     const { count, error } = parseOpenCount(args[0], 20);
@@ -1718,6 +1730,10 @@ if (message.content.startsWith("-daily")) {
 
   // ── -randombook ──
   if (message.content.startsWith("-randombook")) {
+    if (isOnCooldown(message.author.id, "randombook", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     const args = message.content.replace("-randombook", "").trim().split(/\s+/);
     const { count, error } = parseOpenCount(args[0], 20);
