@@ -2084,15 +2084,43 @@ client.on("interactionCreate", async (interaction) => {
       if (!bookName) { await interaction.editReply({ content: `❌ Tên sách không hợp lệ: \`${bookRaw}\`` }); return; }
       bookEntries.push({ name: bookName, count: bookCount });
     }
+    const booksRaw = interaction.options.getString("books") ?? null;
+    if (booksRaw) {
+      const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const match = part.match(/^(.+?)\s+x(\d+)$/i);
+        if (!match) {
+          await interaction.editReply({ content: `❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x2\`)` });
+          return;
+        }
+        const name = findBook(match[1].trim());
+        if (!name) { await interaction.editReply({ content: `❌ Tên sách không hợp lệ: \`${match[1].trim()}\`` }); return; }
+        bookEntries.push({ name, count: parseInt(match[2], 10) });
+      }
+    }
     const itemEntries = [];
     if (itemRaw) {
       const itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
       if (!itemName) { await interaction.editReply({ content: `❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`` }); return; }
       itemEntries.push({ name: itemName, count: itemCount });
     }
+    const itemsRaw = interaction.options.getString("items") ?? null;
+    if (itemsRaw) {
+      const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const match = part.match(/^(.+?)\s+x(\d+)$/i);
+        if (!match) {
+          await interaction.editReply({ content: `❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Chipboard MK1 x3\`)` });
+          return;
+        }
+        const name = isAdmin ? findItemAdmin(match[1].trim()) : findItem(match[1].trim());
+        if (!name) { await interaction.editReply({ content: `❌ Tên vật phẩm không hợp lệ: \`${match[1].trim()}\`` }); return; }
+        itemEntries.push({ name, count: parseInt(match[2], 10) });
+      }
+    }
 
     if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
-      await interaction.editReply({ content: "❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`." });
+      await interaction.editReply({ content: "❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`, `books`, `items`." });
       return;
     }
 
