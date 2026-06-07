@@ -176,7 +176,6 @@ function findItem(input) {
   return ITEM_LOOKUP_MAP.get(input.toLowerCase().trim()) ?? null;
 }
 
-// FIX #5: Thêm giới hạn độ dài để tránh Redis key bị inject string dài
 const ADMIN_ITEM_NAME_MAX_LENGTH = 100;
 function findItemAdmin(input) {
   const trimmed = input.trim();
@@ -244,7 +243,6 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, dice
 }
 
 // ─── RATE LIMITING ────────────────────────────────────────────────────────────
-// FIX #6: Dùng setInterval để cleanup định kỳ thay vì chỉ cleanup khi size vượt ngưỡng
 const cooldowns = new Map();
 const COOLDOWN_CLEANUP_AGE_MS = 60_000;
 
@@ -441,7 +439,6 @@ async function savePlayerData(userId, data) {
   throw lastErr;
 }
 
-// FIX #7: Check từng result trong pipeline để phát hiện partial failure
 async function saveMultiplePlayerData(entries) {
   const pipeline = redis.pipeline();
   for (const { userId, data } of entries) {
@@ -863,7 +860,6 @@ function calcHunterMath(opts) {
 }
 
 // ─── SHARED: buildBalanceEmbed / buildInventoryEmbed ──────────────────────────
-// FIX #3: Tách logic embed ra hàm dùng chung cho cả prefix lẫn slash
 async function buildBalanceEmbed(targetUser) {
   const data = await getPlayerData(targetUser.id);
   const { grade, expInCurrentGrade, expNeeded } = calcGrade(data.exp ?? 0);
@@ -1751,8 +1747,6 @@ if (message.content.startsWith("-setplayer")) {
     const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
-
-    // FIX #9: Accept "yes", "true", "1" cho critdiv
     const critDivRaw = (kv["critdiv"] ?? "no").toLowerCase().trim();
     const critDiv = critDivRaw === "yes" || critDivRaw === "true" || critDivRaw === "1";
 
@@ -1931,7 +1925,6 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // FIX #3: Slash handler cho /balance
   if (interaction.commandName === "balance") {
     if (isOnCooldown(interaction.user.id, "balance", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
@@ -1945,7 +1938,6 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // FIX #3: Slash handler cho /inventory
   if (interaction.commandName === "inventory") {
     if (isOnCooldown(interaction.user.id, "inventory", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
@@ -1964,7 +1956,6 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // FIX #3: Slash handler cho /use
   if (interaction.commandName === "use") {
     const userId = interaction.user.id;
     await interaction.deferReply();
