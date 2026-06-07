@@ -144,10 +144,9 @@ const CHIPBOARD_CACHE_POOL = [
 const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice"];
 const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
 
+// Derive từ CHIPBOARD_CACHE_POOL để tránh khai báo trùng MK1–MK3
 const VALID_ITEMS = [
-  "Chipboard MK1",
-  "Chipboard MK2",
-  "Chipboard MK3",
+  ...CHIPBOARD_CACHE_POOL,
   "Chipboard MK4",
   "Chipboard MK5",
   "Uptie Module",
@@ -458,6 +457,9 @@ async function saveMultiplePlayerData(entries) {
       .filter(Boolean);
     if (failures.length > 0) {
       const detail = failures.map(f => `[${f.userId}]: ${f.err}`).join(", ");
+      for (const f of failures) {
+        log("error", "saveMultiplePlayerData", f.userId ?? "unknown", f.err);
+      }
       throw new Error(`Pipeline save thất bại một phần: ${detail}`);
     }
   }
@@ -1185,6 +1187,10 @@ client.on("messageCreate", async (message) => {
 
   // ── -daily ──
   if (message.content.startsWith("-daily")) {
+    if (isOnCooldown(message.author.id, "daily", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     try {
       const result = await processDailyClaimForUser(userId);
@@ -1793,10 +1799,14 @@ client.on("messageCreate", async (message) => {
 // ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
 async function replyOnCooldown(interaction, ms) {
   if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
-  await interaction.reply({
-    content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`,
-    ephemeral: true,
-  });
+  try {
+    await interaction.reply({
+      content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`,
+      ephemeral: true,
+    });
+  } catch {
+    // Interaction có thể đã expired hoặc đã reply rồi — bỏ qua
+  }
   return true;
 }
 
