@@ -1167,9 +1167,27 @@ client.on("messageCreate", async (message) => {
     const kv = parseKeyValues(rawInput);
     const expRemove = parseInt(kv["exp"] ?? "0", 10) || 0;
     const ahnRemove = parseFloat(kv["ahn"] ?? "0") || 0;
-    const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
-    const itemRaw = kv["item"] ?? null;
-    const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);    
+    const bookRaw = kv["book"] ?? null;
+let bookName = null;
+if (bookRaw) {
+  bookName = findBook(bookRaw);
+  if (!bookName) {
+    message.reply(`❌ Tên sách không hợp lệ: \`${bookRaw}\``);
+    return;
+  }
+}
+let itemName = null;
+if (itemRaw) {
+  itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
+  if (!itemName) {
+    message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\``);
+    return;
+  }
+}    
+    if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
+  message.reply("❌ Bạn chỉ có thể tự xóa sách hoặc vật phẩm của mình.");
+  return;
+}
     const booksRaw = kv["books"] ?? null;
     const bookEntries = [];
 if (booksRaw) {
