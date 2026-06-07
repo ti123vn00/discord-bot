@@ -71,10 +71,22 @@ function calcGrade(totalExp) {
   return { grade, expInCurrentGrade: remaining, expNeeded };
 }
 
+/**
+ * Tính tổng EXP tối thiểu cần để ĐẠT đúng targetGrade (không dư exp).
+ * VD: calcExpForGrade(3) = 5+10+20+40+80+160 = 315
+ */
+function calcExpForGrade(targetGrade) {
+  let total = 0;
+  for (let g = GRADE_MIN; g > targetGrade; g--) {
+    total += GRADE_EXP_REQUIRED[g] ?? 0;
+  }
+  return total;
+}
+
 // ─── ADMIN USER IDs ───────────────────────────────────────────────────────────
 // Thêm Discord User ID của admin vào đây
 const ADMIN_IDS = new Set([
-  "208187560692940803", // ← thay bằng ID thật
+  "123456789012345678", // ← thay bằng ID thật
   // thêm ID khác nếu cần
 ]);
 
@@ -678,6 +690,15 @@ client.on("messageCreate", async (message) => {
     const ahnGain = parseFloat(kv["ahn"] ?? "0") || 0;
     const bookRaw = kv["book"] ?? null;
     const bookCount = parseInt(kv["count"] ?? "1", 10) || 1;
+    const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
+
+    // Validate grade
+    if (gradeTarget !== null) {
+      if (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN) {
+        message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
+        return;
+      }
+    }
 
     // Validate tên sách
     let bookName = null;
@@ -691,8 +712,8 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    if (expGain === 0 && ahnGain === 0 && !bookName) {
-      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`.");
+    if (expGain === 0 && ahnGain === 0 && !bookName && gradeTarget === null) {
+      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `grade`.");
       return;
     }
 
@@ -700,7 +721,12 @@ client.on("messageCreate", async (message) => {
       const data = await getPlayerData(targetUser.id);
       const changes = [];
 
-      if (expGain !== 0) {
+      // grade: set EXP đúng bằng mốc grade đó
+      if (gradeTarget !== null) {
+        const expNeeded = calcExpForGrade(gradeTarget);
+        data.exp = expNeeded;
+        changes.push(`Grade set → **Grade ${gradeTarget}** (EXP set thành **${expNeeded}**)`);
+      } else if (expGain !== 0) {
         data.exp = (data.exp ?? 0) + expGain;
         changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP`);
       }
@@ -722,6 +748,101 @@ client.on("messageCreate", async (message) => {
       );
     } catch (err) {
       console.error("[give] error:", err);
+      message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
+    }
+    return;
+  }
+
+  // ── -setplayer ──
+  // Cú pháp: -setplayer @user exp: 582 ahn: 28700000 books: Random Book x55, N Corp Book x4
+  // Hoặc dùng grade thay exp: -setplayer @user grade: 3 ahn: 5000000 books: Red Mist Book x4
+  if (message.content.startsWith("-setplayer")) {
+    if (!ADMIN_IDS.has(message.author.id)) {
+      message.reply("❌ Bạn không có quyền dùng lệnh này.");
+      return;
+    }
+
+    const targetUser = message.mentions.users.first();
+    if (!targetUser) {
+      message.reply("❌ Hãy mention người cần set. Ví dụ: `-setplayer @user exp: 100 ahn: 50000 books: Random Book x3, N Corp Book x1`");
+      return;
+    }
+
+    const rawInput = message.content
+      .replace("-setplayer", "")
+      .replace(/<@!?\d+>/, "")
+      .trim();
+
+    const kv = parseKeyValues(rawInput);
+
+    // Parse books: "Random Book x55, N Corp Book x4, Zwei Association Book x3"
+    const booksRaw = kv["books"] ?? null;
+    const bookEntries = []; // [{ name, count }]
+    if (booksRaw) {
+      const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const match = part.match(/^(.+?)\s+x(\d+)$/i);
+        if (!match) {
+          message.reply(`❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x5\`)`);
+          return;
+        }
+        const bookName = findBook(match[1].trim());
+        if (!bookName) {
+          message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\`\nDùng \`-books\` để xem danh sách.`);
+          return;
+        }
+        bookEntries.push({ name: bookName, count: parseInt(match[2], 10) });
+      }
+    }
+
+    const expGain = parseInt(kv["exp"] ?? "0", 10) || 0;
+    const ahnSet = kv["ahn"] ? parseFloat(kv["ahn"]) : null;
+    const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
+
+    if (gradeTarget !== null && (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN)) {
+      message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
+      return;
+    }
+
+    if (expGain === 0 && ahnSet === null && gradeTarget === null && bookEntries.length === 0) {
+      message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`.");
+      return;
+    }
+
+    try {
+      const data = await getPlayerData(targetUser.id);
+      data.inventory = data.inventory ?? {};
+      const changes = [];
+
+      if (gradeTarget !== null) {
+        const expNeeded = calcExpForGrade(gradeTarget);
+        data.exp = expNeeded;
+        changes.push(`Grade → **Grade ${gradeTarget}** (EXP = **${expNeeded}**)`);
+      } else if (expGain !== 0) {
+        data.exp = expGain; // set trực tiếp, không cộng dồn
+        changes.push(`EXP set → **${expGain}**`);
+      }
+
+      if (ahnSet !== null) {
+        data.ahn = ahnSet;
+        changes.push(`Ahn set → **${formatNumber(ahnSet)}**`);
+      }
+
+      if (bookEntries.length > 0) {
+        for (const { name, count } of bookEntries) {
+          data.inventory[name] = count; // set trực tiếp
+        }
+        changes.push(`Sách set:\n` + bookEntries.map(e => `> • **${e.name}** × ${e.count}`).join("\n"));
+      }
+
+      await savePlayerData(targetUser.id, data);
+
+      message.reply(
+        `✅ Đã set data cho ${targetUser}:\n` +
+        changes.map(c => `> ${c}`).join("\n")
+      );
+    } catch (err) {
+      console.error("[setplayer] error:", err);
       message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
     }
     return;
