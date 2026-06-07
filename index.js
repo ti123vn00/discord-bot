@@ -75,10 +75,6 @@ function calcGrade(totalExp) {
   return { grade, expInCurrentGrade: remaining, expNeeded };
 }
 
-/**
- * FIX #7: Validate targetGrade trước khi tính — tránh kết quả sai với input ngoài range.
- * targetGrade hợp lệ: GRADE_MAX (1) đến GRADE_MIN (9).
- */
 function calcExpForGrade(targetGrade) {
   if (targetGrade < GRADE_MAX || targetGrade > GRADE_MIN) {
     throw new RangeError(`targetGrade phải từ ${GRADE_MAX}–${GRADE_MIN}, nhận được: ${targetGrade}`);
@@ -140,7 +136,6 @@ const CHIPBOARD_CACHE_POOL = [
 ];
 
 // ─── VALID BOOKS & ITEMS ──────────────────────────────────────────────────────
-// Tự động build từ pools — chỉ cần thêm sách vào pool là đủ.
 const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice"];
 const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
 
@@ -164,7 +159,6 @@ const CRAFT_RECIPES = {
 
 const VALID_ITEMS_SET = new Set(VALID_ITEMS.map(i => i.toLowerCase()));
 
-// Map lookup O(1).
 const BOOK_LOOKUP_MAP = new Map(VALID_BOOKS.map(b => [b.toLowerCase(), b]));
 const ITEM_LOOKUP_MAP = new Map(VALID_ITEMS.map(i => [i.toLowerCase(), i]));
 
@@ -183,18 +177,18 @@ function findItemAdmin(input) {
 // ─── parseKeyValues ───────────────────────────────────────────────────────────
 const KNOWN_KEYS = new Set([
   "book", "count", "item", "itemcount", "ahn", "exp", "grade",
-  "dmg", "res", "bonus", "critmul", "critrate", "critdiv",
+  "dmg", "res", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
+  "poise",   // thay "critrate" — starting Poise stacks, 1 stack = 5% crit
   "books", "items", "stat", "scaleskill",
   "dmgnegationboss", "vulnerability", "buffbonus", "dmgbaseweapon",
 ]);
 
-// Compile regex một lần khi khởi động — cache instance ngoài function.
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
 const _KV_KEY_RE = new RegExp(_KV_KEY_RE_SRC, "gi");
 
 function parseKeyValues(input) {
-  _KV_KEY_RE.lastIndex = 0; // reset trước mỗi lần dùng (flag g giữ state)
+  _KV_KEY_RE.lastIndex = 0;
   const anchors = [];
   let m;
   while ((m = _KV_KEY_RE.exec(input)) !== null) {
@@ -214,7 +208,7 @@ function parseKeyValues(input) {
 }
 
 function filterZeroFields(fields) {
-  const ALWAYS_SHOW = new Set(["Final DMG", "Crit Rate", "CritMul", "% Dmg Bonus", "Res Multipliers"]);
+  const ALWAYS_SHOW = new Set(["Final DMG", "Poise Stacks", "CritMul", "% Dmg Bonus", "Res Multipliers"]);
   return fields.filter((f) => {
     if (ALWAYS_SHOW.has(f.name)) return true;
     const v = String(f.value).trim();
@@ -228,9 +222,9 @@ function filterZeroFields(fields) {
   });
 }
 
-function validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate, diceMul, sinkingInit, ruptureInit, sanityInit }) {
+function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit }) {
   const errors = [];
-  if (startingCritRate < 0 || startingCritRate > 100) errors.push("CritRate phải từ 0–100%");
+  if (poiseInit < 0 || poiseInit > POISE_MAX) errors.push(`Poise phải từ 0–${POISE_MAX}`);
   if (critMul < 1) errors.push("CritMul phải ≥ 1");
   if (diceMul < 0) errors.push("DiceMul phải ≥ 0");
   if (sinkingInit < 0 || sinkingInit > SINKING_MAX) errors.push(`Sinking phải từ 0–${SINKING_MAX}`);
@@ -244,8 +238,6 @@ const cooldowns = new Map();
 const COOLDOWN_CLEANUP_SIZE = 5000;
 const COOLDOWN_CLEANUP_AGE_MS = 60_000;
 
-// Cooldown key dùng chung cho prefix lẫn slash — intentional để tránh bypass
-// bằng cách đổi qua lại giữa 2 loại lệnh.
 function isOnCooldown(userId, command, ms) {
   const key = `${userId}:${command}`;
   const last = cooldowns.get(key) ?? 0;
@@ -279,7 +271,6 @@ function secondsUntilVNMidnight() {
 }
 
 // ─── STRUCTURED LOGGING ───────────────────────────────────────────────────────
-// FIX #4: Log có cấu trúc — luôn kèm userId, command, timestamp để dễ debug khi nhiều user.
 function log(level, command, userId, msg, extra = {}) {
   const entry = {
     ts: new Date().toISOString(),
@@ -297,7 +288,6 @@ function log(level, command, userId, msg, extra = {}) {
 }
 
 // ─── REDIS TIMEOUT ────────────────────────────────────────────────────────────
-// Wrap Redis operation với timeout để tránh treo vô thời hạn khi Upstash chậm.
 const REDIS_TIMEOUT_MS = 8000;
 
 function withTimeout(promise, ms = REDIS_TIMEOUT_MS, msg = "Thao tác Redis quá thời gian, thử lại sau.") {
@@ -379,8 +369,6 @@ function migratePlayerData(data) {
 const REDIS_MAX_RETRIES = 2;
 const REDIS_RETRY_BASE_MS = 150;
 
-// FIX #2: Phân biệt timeout error (không retry) vs transient error (retry).
-// Nếu Redis thực sự chết, không cần chờ 8s × 3 lần = 24s.
 function isTimeoutError(err) {
   return err && (err.message === "Thao tác Redis quá thời gian, thử lại sau." || err.message === "Lock timeout");
 }
@@ -396,7 +384,6 @@ async function getPlayerData(userId) {
       return migratePlayerData(data);
     } catch (err) {
       lastErr = err;
-      // Timeout = Redis không phản hồi — retry sẽ chỉ tốn thêm thời gian vô ích.
       if (isTimeoutError(err)) break;
       if (attempt < REDIS_MAX_RETRIES) {
         await new Promise(r => setTimeout(r, REDIS_RETRY_BASE_MS * (attempt + 1)));
@@ -418,11 +405,8 @@ async function saveMultiplePlayerData(entries) {
   await withTimeout(pipeline.exec());
 }
 
-// FIX #3: Unwrap Upstash pipeline response đúng cách.
-// Upstash trả về [{result, error}, {result, error}] không phải [value, value].
 function unwrapPipelineResults(results) {
   return results.map(r => {
-    // Upstash v2+: mỗi phần tử là { result, error } hoặc trực tiếp là value
     if (r !== null && typeof r === "object" && "result" in r) return r.result;
     return r;
   });
@@ -433,7 +417,6 @@ function formatNumber(n) {
 }
 
 // ─── SHARED LOGIC: OPEN CACHE ─────────────────────────────────────────────────
-// FIX #6: Validate count — báo lỗi rõ khi nhập 0 hoặc số âm thay vì âm thầm dùng 1.
 function parseOpenCount(raw, max = 20) {
   const parsed = parseInt(raw);
   if (!isNaN(parsed) && parsed <= 0) return { error: `❌ Số lần mở phải lớn hơn 0.` };
@@ -474,8 +457,6 @@ function handleOpenChipboardCache(userId, count = 1) {
   return handleOpenCache(userId, { cacheKey: "Chipboard Cache", pool: CHIPBOARD_CACHE_POOL, dataField: "items", count });
 }
 
-// FIX #5: Truncate an toàn — không cắt giữa codepoint Unicode/emoji.
-// Dùng Array.from() để đếm theo character thay vì byte index.
 function safeTruncate(str, maxChars) {
   const chars = Array.from(str);
   if (chars.length <= maxChars) return str;
@@ -511,11 +492,9 @@ async function processDailyClaimForUser(userId) {
     const dailyKey = `daily:${userId}`;
     const playerKey = `player:${userId}`;
 
-    // Đọc cả 2 keys trong 1 pipeline round-trip.
     const rawResults = await withTimeout(
       redis.pipeline().get(dailyKey).get(playerKey).exec()
     );
-    // FIX #3: Unwrap đúng cách — Upstash có thể trả về [{result, error}] thay vì [value].
     const [dailyRaw, playerRaw] = unwrapPipelineResults(rawResults);
 
     const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
@@ -548,11 +527,10 @@ async function processDailyClaimForUser(userId) {
     playerData.books = playerData.books ?? {};
     playerData.items = playerData.items ?? {};
 
-    // Cộng EXP và clamp vào EXP_MAX.
     const expBefore = playerData.exp ?? 0;
     const expGain = DAILY_EXP_REWARD + (isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0);
     playerData.exp = clampExp(expBefore + expGain);
-    const actualExpGained = playerData.exp - expBefore; // có thể < expGain nếu đã gần max
+    const actualExpGained = playerData.exp - expBefore;
 
     playerData.ahn = (playerData.ahn ?? 0) + DAILY_AHN_REWARD;
     playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
@@ -562,7 +540,6 @@ async function processDailyClaimForUser(userId) {
       playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
     }
 
-    // Write cả 2 keys trong 1 pipeline round-trip.
     await withTimeout(
       redis.pipeline()
         .set(dailyKey, JSON.stringify(newDailyData), { ex: DAILY_KEY_TTL_SECONDS })
@@ -601,7 +578,7 @@ function calcMath(opts) {
     bonusPct = 0,
     sanityBonusPct = 0,
     critMul = 1,
-    startingCritRate = 0,
+    poiseInit = 0,    // starting Poise stacks — 1 stack = 5% crit
     critDiv = false,
     sanityInit = 0,
     diceMul = 1,
@@ -641,9 +618,8 @@ function calcMath(opts) {
   }
 
   let sanity = sanityInit;
-  let currentCritRate = startingCritRate;
   let totalDmg = 0;
-  let totalPoise = 0;
+  let totalPoise = poiseInit;                              // khởi từ starting stacks
   let enemySinking = Math.min(sinkingInit, SINKING_MAX);
   let enemyRupture = Math.min(ruptureInit, RUPTURE_MAX);
   const instanceResults = [];
@@ -652,15 +628,15 @@ function calcMath(opts) {
     const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, effectsStr } = dmgObj;
     const currentRes = resValues[dmgType] ?? 1.0;
 
-    let critChance = currentCritRate + totalPoise * POISE_CRIT_BONUS_PER_STACK;
-    let didCrit = false;
+    // Tính critChance từ totalPoise + bonus từ +CritN, cap tại 1.0
+    const critFromPoise = totalPoise * POISE_CRIT_BONUS_PER_STACK;
     const critMatch = effectsStr ? effectsStr.match(/\+Crit(\d+)/i) : null;
-    const baseCritRate = critMatch ? parseInt(critMatch[1]) / 100 : null;
-    if (baseCritRate !== null) {
-      critChance = Math.min(currentCritRate + baseCritRate + totalPoise * POISE_CRIT_BONUS_PER_STACK, 1);
-    }
-    if (critChance >= 1) didCrit = true;
-    else didCrit = Math.random() < critChance;
+    const bonusCritRate = critMatch ? parseInt(critMatch[1]) / 100 : 0;
+    const rawCritChance = critFromPoise + bonusCritRate;
+    const critChance = Math.min(rawCritChance, 1);         // luôn ≤ 100%
+    const poiseOverflow = Math.max(0, rawCritChance - 1);  // % bị lãng phí do tràn cap
+
+    const didCrit = critChance >= 1 ? true : Math.random() < critChance;
 
     const multiplier = didCrit ? critMul : 1;
     const bonusFactor = 1 + bonusPct / 100 + (isDice ? sanityBonusPct / 100 : 0) + extraPct / 100;
@@ -686,35 +662,43 @@ function calcMath(opts) {
     }
 
     totalDmg += instanceDmg;
-    if (poiseToApply > 0) totalPoise += poiseToApply;
+    if (poiseToApply > 0) totalPoise = Math.min(totalPoise + poiseToApply, POISE_MAX);
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
 
-    instanceResults.push({ dmg, dmgType, didCrit, critRateUsed: critChance, instanceDmg, ruptureUsed, sinkingBonus, sinkingApplied: sinkingToApply, ruptureApplied: ruptureToApply, poiseApplied: poiseToApply, effectsStr, isDice });
+    instanceResults.push({
+      dmg, dmgType, didCrit, critChance, poiseOverflow,
+      poiseStacksAfter: totalPoise,
+      instanceDmg, ruptureUsed, sinkingBonus,
+      sinkingApplied: sinkingToApply,
+      ruptureApplied: ruptureToApply,
+      poiseApplied: poiseToApply,
+      effectsStr, isDice,
+    });
 
+    // critDiv: halve Poise stacks — crit rate tự cập nhật vì tính từ stacks
     if (didCrit && critDiv) {
-      totalPoise *= POISE_CRIT_HALVE;
+      totalPoise = Math.floor(totalPoise * POISE_CRIT_HALVE);
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
-      if (totalPoise > POISE_MAX) totalPoise = POISE_MAX;
-      if (baseCritRate === null || baseCritRate < 1) {
-        currentCritRate /= 2;
-        if (currentCritRate < 0.05) currentCritRate = 0;
-      }
     }
   }
 
-  const finalCritRate = currentCritRate;
+  const finalPoiseStacks = totalPoise;
   const critCount = instanceResults.filter((r) => r.didCrit).length;
 
   const breakdownLines = instanceResults.map((r, i) => {
-    const rateStr = `${(r.critRateUsed * 100).toFixed(1)}%`;
+    const rateStr = `${(r.critChance * 100).toFixed(1)}%`;  // luôn ≤ 100%
     const critLabel = r.didCrit ? "✅" : "❌";
     let extraInfo = "";
-    if (r.sinkingBonus > 0) extraInfo += ` +${r.sinkingBonus} dmg từ Sinking`;
+    if (r.poiseOverflow > 0) {
+      const wastedStacks = Math.round(r.poiseOverflow / POISE_CRIT_BONUS_PER_STACK);
+      extraInfo += ` | ⚠️ ${wastedStacks} Poise dư`;
+    }
+    if (r.sinkingBonus > 0) extraInfo += ` | +${r.sinkingBonus} dmg từ Sinking`;
     if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} Sinking`;
     if (r.ruptureUsed) extraInfo += " | xuyên Res từ Rupture";
     if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} Rupture`;
-    if (r.poiseApplied > 0) extraInfo += ` | +${r.poiseApplied} Poise (+${(r.poiseApplied * 5).toFixed(1)}% Crit)`;
+    if (r.poiseApplied > 0) extraInfo += ` | +${r.poiseApplied} Poise → ${r.poiseStacksAfter} stacks`;
     if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
       const critVal = r.effectsStr.match(/\+Crit(\d+)/i)[1];
       extraInfo += ` | +Crit${critVal}%`;
@@ -736,10 +720,10 @@ function calcMath(opts) {
     breakdownValue = shown.join("\n");
   }
 
-  const critRateDisplay =
-    critDiv && critCount > 0
-      ? `${(startingCritRate * 100).toFixed(1)}% → ${(finalCritRate * 100).toFixed(2)}% (after ${critCount} crit${critCount > 1 ? "s" : ""})`
-      : `${(startingCritRate * 100).toFixed(1)}%`;
+  const startingCritRate = poiseInit * POISE_CRIT_BONUS_PER_STACK;
+  const poiseDisplay = critDiv && critCount > 0
+    ? `${poiseInit} → ${finalPoiseStacks} stacks (after ${critCount} crit${critCount > 1 ? "s" : ""})`
+    : `${poiseInit} stacks (${(startingCritRate * 100).toFixed(0)}% crit)`;
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
 
@@ -750,11 +734,11 @@ function calcMath(opts) {
     { name: "CritMul", value: critMul + "x", inline: true },
     { name: "Res Multipliers", value: resDisplay, inline: true },
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true },
-    { name: "Crit Rate", value: critRateDisplay, inline: true },
+    { name: "Poise Stacks", value: poiseDisplay, inline: true },
     { name: "Crit Divide", value: critDiv ? "Yes" : "No", inline: true },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
-    { name: "Poise Counts", value: totalPoise.toString(), inline: true },
+    { name: "Remaining Poise", value: finalPoiseStacks.toString(), inline: true },
     { name: "Enemy's Sinking Counts", value: enemySinking.toString(), inline: true },
     { name: "Enemy's Rupture Counts", value: enemyRupture.toString(), inline: true },
   ];
@@ -836,7 +820,6 @@ client.on("messageCreate", async (message) => {
     }
     const args = message.content.replace("-parry", "").trim().split(/\s+/);
     const parsedRolls = parseInt(args[0]);
-    // FIX #6: Báo lỗi rõ khi nhập 0 hoặc số âm.
     if (!isNaN(parsedRolls) && parsedRolls <= 0) {
       message.reply("❌ Số lần roll phải lớn hơn 0.");
       return;
@@ -1075,7 +1058,6 @@ client.on("messageCreate", async (message) => {
           recipientData.exp = expNeeded;
           changes.push(`Grade set → **Grade ${gradeTarget}** (EXP set thành **${expNeeded}**)`);
         } else if (expGain !== 0) {
-          // Clamp EXP khi admin give — không vượt EXP_MAX.
           recipientData.exp = clampExp((recipientData.exp ?? 0) + expGain);
           changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP → tổng **${recipientData.exp}**/${EXP_MAX}`);
         }
@@ -1112,8 +1094,6 @@ client.on("messageCreate", async (message) => {
         );
       };
 
-      // FIX #1: Guard rõ ràng cho trường hợp same-ID (dù hiện tại không thể xảy ra do check trên).
-      // Lồng withLock theo sort ID — tránh deadlock khi 2 user cùng give nhau.
       if (isAdmin || message.author.id === targetUser.id) {
         await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
       } else {
@@ -1475,7 +1455,7 @@ client.on("messageCreate", async (message) => {
       { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critrate:` `critdiv:`", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> VD: `-math dmg: 10B critrate: 50 critmul: 1.3`"].join("\n"), inline: false },
+      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv:`", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
     ];
@@ -1561,7 +1541,7 @@ client.on("messageCreate", async (message) => {
     if (!dmgStr.trim()) {
       message.reply(
         "⚠️ Bạn chưa nhập `dmg:`. Vui lòng nhập công thức damage.\n" +
-        "> VD: `-math dmg: 10B critrate: 50 critmul: 1.3`\n" +
+        "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`\n" +
         "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+Sinking][+Rupture][+Poise][+Crit<n>]`"
       );
       return;
@@ -1569,14 +1549,26 @@ client.on("messageCreate", async (message) => {
     const bonusPct = parseFloat((kv["bonus"] ?? "0").replace("%", ""));
     const sanityBonusPct = parseFloat((kv["sanitybonus"] ?? "0").replace("%", ""));
     const critMul = parseFloat((kv["critmul"] ?? "1").replace("x", ""));
-    const critRate = parseFloat((kv["critrate"] ?? "0").replace("%", ""));
+    const poiseInit = parseInt(kv["poise"] ?? "0", 10) || 0;   // thay critrate
     const diceMul = parseFloat((kv["dicemul"] ?? "1").replace("x", ""));
     const sinkingInit = parseInt(kv["sinking"] ?? "0", 10);
     const ruptureInit = parseInt(kv["rupture"] ?? "0", 10);
     const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate: critRate, diceMul, sinkingInit, ruptureInit, sanityInit });
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
-    message.reply(calcMath({ dmgStr, resStr: kv["res"] ?? "", bonusPct, sanityBonusPct, critMul, startingCritRate: critRate / 100, critDiv: (kv["critdiv"] ?? "no").toLowerCase() === "yes", sanityInit, diceMul, sinkingInit, ruptureInit }));
+    message.reply(calcMath({
+      dmgStr,
+      resStr: kv["res"] ?? "",
+      bonusPct,
+      sanityBonusPct,
+      critMul,
+      poiseInit,
+      critDiv: (kv["critdiv"] ?? "no").toLowerCase() === "yes",
+      sanityInit,
+      diceMul,
+      sinkingInit,
+      ruptureInit,
+    }));
     return;
   }
 
@@ -1585,7 +1577,15 @@ client.on("messageCreate", async (message) => {
     if (isOnCooldown(message.author.id, "huntermath", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
     const input = message.content.replace("-huntermath", "").trim();
     const kv = parseKeyValues(input);
-    message.reply(calcHunterMath({ dmgBaseWeapon: parseFloat(kv["dmgbaseweapon"] ?? "0"), bonusPct: parseFloat((kv["bonus"] ?? "0").replace("%", "")), statValue: parseFloat(kv["stat"] ?? "0"), scaleSkillPct: parseFloat((kv["scaleskill"] ?? "0").replace("%", "")), dmgNegationPct: parseFloat((kv["dmgnegationboss"] ?? "0").replace("%", "")), vulnerabilityPct: parseFloat((kv["vulnerability"] ?? "0").replace("%", "")), buffDmgBonus: parseFloat(kv["buffbonus"] ?? "0") }));
+    message.reply(calcHunterMath({
+      dmgBaseWeapon: parseFloat(kv["dmgbaseweapon"] ?? "0"),
+      bonusPct: parseFloat((kv["bonus"] ?? "0").replace("%", "")),
+      statValue: parseFloat(kv["stat"] ?? "0"),
+      scaleSkillPct: parseFloat((kv["scaleskill"] ?? "0").replace("%", "")),
+      dmgNegationPct: parseFloat((kv["dmgnegationboss"] ?? "0").replace("%", "")),
+      vulnerabilityPct: parseFloat((kv["vulnerability"] ?? "0").replace("%", "")),
+      buffDmgBonus: parseFloat(kv["buffbonus"] ?? "0"),
+    }));
     return;
   }
 });
@@ -1606,7 +1606,7 @@ client.on("interactionCreate", async (interaction) => {
       });
       return;
     }
-    const critRate = interaction.options.getNumber("critrate") ?? 0;
+    const poiseInit = interaction.options.getInteger("poise") ?? 0;   // thay critrate
     const critMul = interaction.options.getNumber("critmul") ?? 1;
     const diceMul = interaction.options.getNumber("dicemul") ?? 1;
     const sinkingInit = interaction.options.getNumber("sinking") ?? 0;
@@ -1614,16 +1614,36 @@ client.on("interactionCreate", async (interaction) => {
     const sanityInit = interaction.options.getNumber("sanity") ?? 0;
     const bonusPct = interaction.options.getNumber("bonus") ?? 0;
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate: critRate, diceMul, sinkingInit, ruptureInit, sanityInit });
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
-    await interaction.editReply(calcMath({ dmgStr, resStr: interaction.options.getString("res") ?? "", bonusPct, sanityBonusPct, critMul, startingCritRate: critRate / 100, critDiv: interaction.options.getBoolean("critdiv") ?? false, sanityInit, diceMul, sinkingInit, ruptureInit }));
+    await interaction.editReply(calcMath({
+      dmgStr,
+      resStr: interaction.options.getString("res") ?? "",
+      bonusPct,
+      sanityBonusPct,
+      critMul,
+      poiseInit,
+      critDiv: interaction.options.getBoolean("critdiv") ?? false,
+      sanityInit,
+      diceMul,
+      sinkingInit,
+      ruptureInit,
+    }));
     return;
   }
 
   if (interaction.commandName === "huntermath") {
     if (isOnCooldown(interaction.user.id, "huntermath", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
-    await interaction.editReply(calcHunterMath({ dmgBaseWeapon: interaction.options.getNumber("dmgbaseweapon") ?? 0, bonusPct: interaction.options.getNumber("bonus") ?? 0, statValue: interaction.options.getNumber("stat") ?? 0, scaleSkillPct: interaction.options.getNumber("scaleskill") ?? 0, dmgNegationPct: interaction.options.getNumber("dmgnegationboss") ?? 0, vulnerabilityPct: interaction.options.getNumber("vulnerability") ?? 0, buffDmgBonus: interaction.options.getNumber("buffbonus") ?? 0 }));
+    await interaction.editReply(calcHunterMath({
+      dmgBaseWeapon: interaction.options.getNumber("dmgbaseweapon") ?? 0,
+      bonusPct: interaction.options.getNumber("bonus") ?? 0,
+      statValue: interaction.options.getNumber("stat") ?? 0,
+      scaleSkillPct: interaction.options.getNumber("scaleskill") ?? 0,
+      dmgNegationPct: interaction.options.getNumber("dmgnegationboss") ?? 0,
+      vulnerabilityPct: interaction.options.getNumber("vulnerability") ?? 0,
+      buffDmgBonus: interaction.options.getNumber("buffbonus") ?? 0,
+    }));
     return;
   }
 
