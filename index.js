@@ -2172,7 +2172,7 @@ if (interaction.commandName === "use") {
       return;
     }
 
-    try {
+try {
       const changes = await withLock(targetUser.id, () => executeRemove({
         actorId: interaction.user.id, targetId: targetUser.id,
         isAdmin, expRemove, ahnRemove, bookEntries, itemEntries,
@@ -2181,7 +2181,13 @@ if (interaction.commandName === "use") {
       await interaction.editReply({
         content: (isSelf ? `🗑️ ${interaction.user} đã xóa khỏi kho của mình:` : `🗑️ ${interaction.user} (admin) đã xóa khỏi kho của ${targetUser}:`) +
           "\n" + changes.map(c => `> ${c}`).join("\n"),
-  });
+      });
+    } catch (err) {
+      log("error", "/remove", targetUser.id, err.message, { actor: interaction.user.id });
+      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}` });
+    }
+    return;
+  }
   } catch (err) {
     log("error", "interactionCreate", interaction.user?.id ?? "unknown", err.message, { cmd: interaction.commandName });
     if (!interaction.replied && !interaction.deferred) {
