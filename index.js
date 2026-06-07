@@ -1193,10 +1193,6 @@ if (itemRaw) {
     return;
   }
 }
-    if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
-  message.reply("❌ Bạn chỉ có thể tự xóa sách hoặc vật phẩm của mình.");
-  return;
-}
     const booksRaw = kv["books"] ?? null;
     const bookEntries = [];
 if (booksRaw) {
