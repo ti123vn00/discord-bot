@@ -1264,7 +1264,7 @@ client.on("messageCreate", async (message) => {
     if (booksRaw) {
       const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
       for (const part of parts) {
-        const match = part.match(/^(.+?)\s+x(\d+)$/i);
+        const match = part.match(/^(.+?)\s+(\+?)x(\d+)$/i);
         if (!match) {
           message.reply(`❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x5\`)`);
           return;
@@ -1274,7 +1274,7 @@ client.on("messageCreate", async (message) => {
           message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\`\nDùng \`-books\` để xem danh sách.`);
           return;
         }
-        bookEntries.push({ name: bookName, count: parseInt(match[2], 10) });
+          bookEntries.push({ name: bookName, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
       }
     }
     const itemsRaw = kv["items"] ?? null;
@@ -1282,7 +1282,7 @@ client.on("messageCreate", async (message) => {
     if (itemsRaw) {
       const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
       for (const part of parts) {
-        const match = part.match(/^(.+?)\s+x(\d+)$/i);
+        const match = part.match(/^(.+?)\s+(\+?)x(\d+)$/i);
         if (!match) {
           message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Tên Item x2\`)`);
           return;
@@ -1292,7 +1292,7 @@ client.on("messageCreate", async (message) => {
           message.reply(`❌ Tên vật phẩm không hợp lệ hoặc quá dài: \`${match[1].trim()}\``);
           return;
         }
-        itemEntries.push({ name: itemName, count: parseInt(match[2], 10) });
+        itemEntries.push({ name: itemName, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
       }
     }
     const expAddRaw = kv["exp"] ?? null;
@@ -1339,13 +1339,17 @@ client.on("messageCreate", async (message) => {
           }
         }
         if (bookEntries.length > 0) {
-          for (const { name, count } of bookEntries) data.books[name] = count;
-          changes.push(`Sách set:\n` + bookEntries.map(e => `> • 📚 **${e.name}** × ${e.count}`).join("\n"));
-        }
-        if (itemEntries.length > 0) {
-          for (const { name, count } of itemEntries) data.items[name] = count;
-          changes.push(`Vật phẩm set:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** × ${e.count}`).join("\n"));
-        }
+  for (const { name, count, isAdd } of bookEntries) {
+    data.books[name] = isAdd ? (data.books[name] ?? 0) + count : count;
+  }
+  changes.push(`Sách:\n` + bookEntries.map(e => `> • 📚 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
+}
+if (itemEntries.length > 0) {
+  for (const { name, count, isAdd } of itemEntries) {
+    data.items[name] = isAdd ? (data.items[name] ?? 0) + count : count;
+  }
+  changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
+}
         await savePlayerData(targetUser.id, data);
         message.reply(
           `✅ Đã cập nhật data cho ${targetUser}:\n` +
