@@ -151,7 +151,11 @@ const commands = [
     .addIntegerOption(opt =>
       opt.setName("exp").setDescription("Số EXP muốn xóa (admin only)").setMinValue(1).setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("ahn").setDescription("Số Ahn muốn xóa (admin only)").setRequired(false)),
+      opt.setName("ahn").setDescription("Số Ahn muốn xóa (admin only)").setRequired(false))
+    .addStringOption(opt =>
+      opt.setName("books").setDescription("Xóa nhiều sách (VD: Random Book x2, N Corp Book x1)").setRequired(false))
+    .addStringOption(opt =>
+      opt.setName("items").setDescription("Xóa nhiều vật phẩm (VD: Chipboard MK1 x3, Chipboard MK2 x1)").setRequired(false)),
 
 ].map(cmd => cmd.toJSON());
 
