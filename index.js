@@ -32,9 +32,9 @@ const DAILY_EXP_REWARD = 5;
 const DAILY_AHN_REWARD = 100_000;
 const DAILY_STREAK_EXP_BONUS = 25;
 const DAILY_STREAK_AHN_BONUS = 400_000;
-// TTL = 8 ngày: đủ để giữ streak nếu bỏ lỡ 1 ngày (window thực tế chỉ cần 2 ngày,
-// nhưng giữ 8 ngày để tránh mất streak do múi giờ lệch hoặc claim muộn)
-const DAILY_KEY_TTL_SECONDS = 86400 * 8;
+// TTL = 3 ngày: window thực tế chỉ cần 2 ngày (hôm qua + hôm nay),
+// +1 ngày buffer để cover múi giờ lệch hoặc claim muộn
+const DAILY_KEY_TTL_SECONDS = 86400 * 3;
 
 // ─── LEVELING ─────────────────────────────────────────────────────────────────
 const GRADE_EXP_REQUIRED = {
@@ -88,7 +88,11 @@ function calcExpForGrade(targetGrade) {
   return total;
 }
 
-// ─── ADMIN USER IDs ───────────────────────────────────────────────────────────
+// ─── UI CONSTANTS ─────────────────────────────────────────────────────────────
+// Dùng constant thay vì hardcode string để dễ đổi prefix sau này
+const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
+
+
 const ADMIN_IDS = new Set([
   "208187560692940803",
   "1072123095739019346",
@@ -311,13 +315,17 @@ function withTimeout(promise, ms = REDIS_TIMEOUT_MS, msg = "Thao tác Redis quá
 async function acquireLock(userId, ttlSeconds = 5) {
   const lockKey = `lock:${userId}`;
   const token = `${Date.now()}-${Math.random()}`;
-  const result = await withTimeout(
-    redis.set(lockKey, token, { nx: true, ex: ttlSeconds }),
-    3000,
-    "Lock timeout"
-  );
-  if (result === "OK" || result === true) return { lockKey, token };
-  return null;
+  try {
+    const result = await withTimeout(
+      redis.set(lockKey, token, { nx: true, ex: ttlSeconds }),
+      3000,
+      "Lock timeout"
+    );
+    if (result === "OK" || result === true) return { lockKey, token };
+    return null; // key đang bị giữ bởi lock khác (NX failed)
+  } catch {
+    return null; // timeout hoặc lỗi Redis — coi như không lấy được lock
+  }
 }
 
 async function releaseLock({ lockKey, token }) {
@@ -355,7 +363,7 @@ async function withDoubleLock(idA, idB, fn, {
   innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 3,
 } = {}) {
   const [firstId, secondId] = [idA, idB].sort();
-  // outer TTL = inner TTL + worst-case retry wait + buffer
+  // outer TTL = inner TTL + worst-case retry wait (dùng đúng retries/retryDelayMs được pass vào) + buffer
   const outerTtl = innerTtl + Math.ceil((retries * retryDelayMs) / 1000) + bufferSeconds;
   return withLock(firstId, () =>
     withLock(secondId, fn, { ttlSeconds: innerTtl, retries, retryDelayMs }),
@@ -881,7 +889,7 @@ async function buildBalanceEmbed(targetUser) {
         { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
         { name: "🔩 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
       ],
-      footer: { text: "Dùng -inventory để xem chi tiết sách và vật phẩm" },
+      footer: { text: INVENTORY_HINT_TEXT },
     }],
   };
 }
@@ -1050,7 +1058,62 @@ async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRem
   return changes;
 }
 
-// ─── CLIENT ───────────────────────────────────────────────────────────────────
+/**
+ * executeCraft — logic craft dùng chung cho prefix -use và slash /use
+ * Phải được gọi bên trong withLock của userId.
+ * @returns {Promise<{ outputLines: string[], costLines: string[] }>}
+ */
+async function executeCraft(userId, itemName, craftCount) {
+  const recipe = CRAFT_RECIPES[itemName];
+  const data = await getPlayerData(userId);
+  const totalCost = {};
+  for (const [mat, qty] of Object.entries(recipe.inputs)) totalCost[mat] = qty * craftCount;
+  const shortages = [];
+  for (const [mat, needed] of Object.entries(totalCost)) {
+    const owned = data.items[mat] ?? 0;
+    if (owned < needed) shortages.push(`• **${mat}**: cần **${needed}**, có **${owned}** (thiếu **${needed - owned}**)`);
+  }
+  if (shortages.length > 0) {
+    throw new Error(`Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` + shortages.join("\n"));
+  }
+  for (const [mat, needed] of Object.entries(totalCost)) {
+    data.items[mat] = (data.items[mat] ?? 0) - needed;
+    if (data.items[mat] <= 0) delete data.items[mat];
+  }
+  const outputLines = [];
+  for (const [out, qty] of Object.entries(recipe.output)) {
+    const gained = qty * craftCount;
+    data.items[out] = (data.items[out] ?? 0) + gained;
+    outputLines.push(`**${gained}× ${out}**`);
+  }
+  await savePlayerData(userId, data);
+  const costLines = Object.entries(totalCost)
+    .map(([mat, qty]) => `• -${qty} **${mat}** (còn lại: ${data.items[mat] ?? 0})`);
+  return { outputLines, costLines };
+}
+
+
+ * @param {string} raw          — chuỗi input
+ * @param {Function} findFn     — hàm lookup tên (findBook / findItem / findItemAdmin)
+ * @param {string} entityLabel  — "sách" hoặc "vật phẩm" (dùng trong thông báo lỗi)
+ * @returns {{ entries: Array<{name:string,count:number}> } | { error: string }}
+ */
+function parseBatchEntries(raw, findFn, entityLabel) {
+  const entries = [];
+  const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
+  for (const part of parts) {
+    const match = part.match(/^(.+?)\s+x(\d+)$/i);
+    if (!match) {
+      return { error: `❌ Định dạng ${entityLabel} sai: \`${part}\`\nĐúng: \`Tên ${entityLabel === "sách" ? "Sách" : "Item"} x<số>\` (VD: \`${entityLabel === "sách" ? "Random Book x2" : "Chipboard MK1 x3"}\`)` };
+    }
+    const name = findFn(match[1].trim());
+    if (!name) return { error: `❌ Tên ${entityLabel} không hợp lệ: \`${match[1].trim()}\`` };
+    entries.push({ name, count: parseInt(match[2], 10) });
+  }
+  return { entries };
+}
+
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -1290,31 +1353,16 @@ client.on("messageCreate", async (message) => {
     // Parse batch books/items
     const booksRaw = kv["books"] ?? null;
     if (booksRaw) {
-      const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        const match = part.match(/^(.+?)\s+x(\d+)$/i);
-        if (!match) {
-          message.reply(`❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x2\`)`);
-          return;
-        }
-        const name = findBook(match[1].trim());
-        if (!name) { message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\``); return; }
-        bookEntries.push({ name, count: parseInt(match[2], 10) });
-      }
+      const result = parseBatchEntries(booksRaw, findBook, "sách");
+      if (result.error) { message.reply(result.error); return; }
+      bookEntries.push(...result.entries);
     }
     const itemsRaw = kv["items"] ?? null;
     if (itemsRaw) {
-      const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        const match = part.match(/^(.+?)\s+x(\d+)$/i);
-        if (!match) {
-          message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Chipboard MK1 x3\`)`);
-          return;
-        }
-        const name = isAdmin ? findItemAdmin(match[1].trim()) : findItem(match[1].trim());
-        if (!name) { message.reply(`❌ Tên vật phẩm không hợp lệ: \`${match[1].trim()}\``); return; }
-        itemEntries.push({ name, count: parseInt(match[2], 10) });
-      }
+      const findFn = isAdmin ? findItemAdmin : findItem;
+      const result = parseBatchEntries(itemsRaw, findFn, "vật phẩm");
+      if (result.error) { message.reply(result.error); return; }
+      itemEntries.push(...result.entries);
     }
 
     if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
@@ -1520,30 +1568,7 @@ if (message.content.startsWith("-setplayer")) {
     }
     try {
       await withLock(userId, async () => {
-        const data = await getPlayerData(userId);
-        const totalCost = {};
-        for (const [mat, qty] of Object.entries(recipe.inputs)) totalCost[mat] = qty * craftCount;
-        const shortages = [];
-        for (const [mat, needed] of Object.entries(totalCost)) {
-          const owned = data.items[mat] ?? 0;
-          if (owned < needed) shortages.push(`• **${mat}**: cần **${needed}**, có **${owned}** (thiếu **${needed - owned}**)`);
-        }
-        if (shortages.length > 0) {
-          throw new Error(`Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` + shortages.join("\n"));
-        }
-        for (const [mat, needed] of Object.entries(totalCost)) {
-          data.items[mat] = (data.items[mat] ?? 0) - needed;
-          if (data.items[mat] <= 0) delete data.items[mat];
-        }
-        const outputLines = [];
-        for (const [out, qty] of Object.entries(recipe.output)) {
-          const gained = qty * craftCount;
-          data.items[out] = (data.items[out] ?? 0) + gained;
-          outputLines.push(`**${gained}× ${out}**`);
-        }
-        await savePlayerData(userId, data);
-        const costLines = Object.entries(totalCost)
-          .map(([mat, qty]) => `• -${qty} **${mat}** (còn lại: ${data.items[mat] ?? 0})`);
+        const { outputLines, costLines } = await executeCraft(userId, itemName, craftCount);
         message.reply(
           `⚒️ ${message.author} đã craft thành công!\n` +
           `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
@@ -1957,30 +1982,7 @@ client.on("interactionCreate", async (interaction) => {
     }
     try {
       await withLock(userId, async () => {
-        const data = await getPlayerData(userId);
-        const totalCost = {};
-        for (const [mat, qty] of Object.entries(recipe.inputs)) totalCost[mat] = qty * craftCount;
-        const shortages = [];
-        for (const [mat, needed] of Object.entries(totalCost)) {
-          const owned = data.items[mat] ?? 0;
-          if (owned < needed) shortages.push(`• **${mat}**: cần **${needed}**, có **${owned}** (thiếu **${needed - owned}**)`);
-        }
-        if (shortages.length > 0) {
-          throw new Error(`Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` + shortages.join("\n"));
-        }
-        for (const [mat, needed] of Object.entries(totalCost)) {
-          data.items[mat] = (data.items[mat] ?? 0) - needed;
-          if (data.items[mat] <= 0) delete data.items[mat];
-        }
-        const outputLines = [];
-        for (const [out, qty] of Object.entries(recipe.output)) {
-          const gained = qty * craftCount;
-          data.items[out] = (data.items[out] ?? 0) + gained;
-          outputLines.push(`**${gained}× ${out}**`);
-        }
-        await savePlayerData(userId, data);
-        const costLines = Object.entries(totalCost)
-          .map(([mat, qty]) => `• -${qty} **${mat}** (còn lại: ${data.items[mat] ?? 0})`);
+        const { outputLines, costLines } = await executeCraft(userId, itemName, craftCount);
         await interaction.editReply({
           content:
             `⚒️ ${interaction.user} đã craft thành công!\n` +
@@ -2086,17 +2088,9 @@ client.on("interactionCreate", async (interaction) => {
     }
     const booksRaw = interaction.options.getString("books") ?? null;
     if (booksRaw) {
-      const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        const match = part.match(/^(.+?)\s+x(\d+)$/i);
-        if (!match) {
-          await interaction.editReply({ content: `❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x2\`)` });
-          return;
-        }
-        const name = findBook(match[1].trim());
-        if (!name) { await interaction.editReply({ content: `❌ Tên sách không hợp lệ: \`${match[1].trim()}\`` }); return; }
-        bookEntries.push({ name, count: parseInt(match[2], 10) });
-      }
+      const result = parseBatchEntries(booksRaw, findBook, "sách");
+      if (result.error) { await interaction.editReply({ content: result.error }); return; }
+      bookEntries.push(...result.entries);
     }
     const itemEntries = [];
     if (itemRaw) {
@@ -2106,17 +2100,10 @@ client.on("interactionCreate", async (interaction) => {
     }
     const itemsRaw = interaction.options.getString("items") ?? null;
     if (itemsRaw) {
-      const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        const match = part.match(/^(.+?)\s+x(\d+)$/i);
-        if (!match) {
-          await interaction.editReply({ content: `❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Chipboard MK1 x3\`)` });
-          return;
-        }
-        const name = isAdmin ? findItemAdmin(match[1].trim()) : findItem(match[1].trim());
-        if (!name) { await interaction.editReply({ content: `❌ Tên vật phẩm không hợp lệ: \`${match[1].trim()}\`` }); return; }
-        itemEntries.push({ name, count: parseInt(match[2], 10) });
-      }
+      const findFn = isAdmin ? findItemAdmin : findItem;
+      const result = parseBatchEntries(itemsRaw, findFn, "vật phẩm");
+      if (result.error) { await interaction.editReply({ content: result.error }); return; }
+      itemEntries.push(...result.entries);
     }
 
     if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
