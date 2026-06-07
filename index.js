@@ -80,6 +80,49 @@ const ADMIN_IDS = new Set([
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
+// ─── VALID BOOKS ──────────────────────────────────────────────────────────────
+const VALID_BOOKS = [
+  "Random Book",
+  "Book of Choice",
+  "Hana Association Book",
+  "Zwei Association Book",
+  "Shi Association Book",
+  "Cinq Association Book",
+  "Liu Association Book",
+  "Seven Association Book",
+  "Dieci Association Book",
+  "Thumb Syndicate Book",
+  "Index Syndicate Book",
+  "Middle Syndicate Book",
+  "Ring Syndicate Book",
+  "Blade Lineage Syndicate Book",
+  "Kurokumo Syndicate Book",
+  "Smiling Faces Syndicate Book",
+  "N Corp Book",
+  "Sweeping Book",
+  "Warp Corp Book",
+  "Fragment Book",
+  "Udjat Book",
+  "Red Gaze Book",
+  "Red Mist Book",
+  "Black Silence Book",
+  "Library Book",
+  "Book of The Birds",
+  "Arbiter Book",
+  "Reverbation Ensemble Book",
+  "Chipboard MK1",
+  "Ticket Night In The Backstreet",
+  "Book of M.A.D.",
+  "W Corp Book",
+];
+
+// Tìm tên sách khớp (case-insensitive)
+function findBook(input) {
+  const lower = input.toLowerCase().trim();
+  return VALID_BOOKS.find(b => b.toLowerCase() === lower) ?? null;
+}
+
+
 function parseKeyValues(input) {
   const map = {};
   const regex = /([A-Za-z]+)\s*:\s*([\s\S]*?)(?=\s+[A-Za-z]+\s*:|$)/gi;
@@ -632,8 +675,20 @@ client.on("messageCreate", async (message) => {
 
     const expGain = parseInt(kv["exp"] ?? "0", 10) || 0;
     const ahnGain = parseFloat(kv["ahn"] ?? "0") || 0;
-    const bookName = kv["book"] ?? null;
+    const bookRaw = kv["book"] ?? null;
     const bookCount = parseInt(kv["count"] ?? "1", 10) || 1;
+
+    // Validate tên sách
+    let bookName = null;
+    if (bookRaw) {
+      bookName = findBook(bookRaw);
+      if (!bookName) {
+        message.reply(
+          `❌ Tên sách không hợp lệ: \`${bookRaw}\`\nDùng \`-books\` để xem danh sách sách hợp lệ.`
+        );
+        return;
+      }
+    }
 
     if (expGain === 0 && ahnGain === 0 && !bookName) {
       message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`.");
@@ -668,6 +723,27 @@ client.on("messageCreate", async (message) => {
       console.error("[give] error:", err);
       message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
     }
+    return;
+  }
+
+  // ── -books ──
+  if (message.content.startsWith("-books")) {
+    const cols = 2;
+    const half = Math.ceil(VALID_BOOKS.length / cols);
+    const col1 = VALID_BOOKS.slice(0, half).map((b, i) => `\`${i + 1}.\` ${b}`);
+    const col2 = VALID_BOOKS.slice(half).map((b, i) => `\`${half + i + 1}.\` ${b}`);
+
+    message.reply({
+      embeds: [{
+        title: "📚 Danh sách sách hợp lệ",
+        color: 0x2ecc71,
+        fields: [
+          { name: "​", value: col1.join("\n"), inline: true },
+          { name: "​", value: col2.join("\n"), inline: true },
+        ],
+        footer: { text: `Tổng cộng ${VALID_BOOKS.length} loại sách` },
+      }],
+    });
     return;
   }
 
