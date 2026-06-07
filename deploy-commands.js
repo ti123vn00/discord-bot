@@ -1,14 +1,11 @@
 // deploy-commands.js
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
-
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-
 if (!TOKEN || !CLIENT_ID) {
   console.error("Thiếu DISCORD_TOKEN hoặc CLIENT_ID trong environment variables!");
   process.exit(1);
 }
-
 const commands = [
   new SlashCommandBuilder()
     .setName("math")
@@ -35,7 +32,6 @@ const commands = [
       opt.setName("sinking").setDescription("Sinking counts ban đầu của địch").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("rupture").setDescription("Rupture counts ban đầu của địch").setRequired(false)),
-
   new SlashCommandBuilder()
     .setName("huntermath")
     .setDescription("Tính DMG theo công thức game Hunter")
@@ -53,11 +49,16 @@ const commands = [
       opt.setName("vulnerability").setDescription("Vulnerability % (VD: 10)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("buffbonus").setDescription("Buff Bonus value").setRequired(false)),
-
+  new SlashCommandBuilder()
+    .setName("parry")
+    .setDescription("Roll xác suất parry (Attacker d16 vs Defender d20)")
+    .addIntegerOption(opt =>
+      opt.setName("rolls").setDescription("Số lần roll (tối đa 50, mặc định 1)").setMinValue(1).setMaxValue(50).setRequired(false)),
+  new SlashCommandBuilder()
+    .setName("daily")
+    .setDescription("Điểm danh hàng ngày để nhận Exp, Ahn và sách (reset lúc 0h VN)"),
 ].map(cmd => cmd.toJSON());
-
 const rest = new REST({ version: "10" }).setToken(TOKEN);
-
 (async () => {
   try {
     console.log("🔄 Đang đăng ký slash commands...");
