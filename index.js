@@ -823,6 +823,100 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  // ── /daily ──
+  if (interaction.commandName === "daily") {
+    await interaction.deferReply();
+
+    const userId = interaction.user.id;
+    const dailyKey = `daily:${userId}`;
+
+    function getVNDateString() {
+      const now = new Date();
+      const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      return vnTime.toISOString().slice(0, 10);
+    }
+
+    function secondsUntilVNMidnight() {
+      const now = new Date();
+      const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const vnMidnight = new Date(Date.UTC(
+        vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(), 17, 0, 0, 0
+      ));
+      if (vnMidnight <= now) vnMidnight.setUTCDate(vnMidnight.getUTCDate() + 1);
+      return Math.floor((vnMidnight - now) / 1000);
+    }
+
+    try {
+      const raw = await redis.get(dailyKey);
+      const dailyData = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+      const today = getVNDateString();
+
+      if (dailyData && dailyData.lastClaim === today) {
+        const remaining = secondsUntilVNMidnight();
+        const hours = Math.floor(remaining / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        const seconds = remaining % 60;
+        await interaction.editReply({
+          content:
+            `${interaction.user}, bạn đã nhận daily hôm nay rồi.\n` +
+            `Thời gian còn lại đến reset: **${hours}h ${minutes}m ${seconds}s**.`,
+        });
+      } else {
+        const nowUtc = new Date();
+        const vnNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+        const vnYesterday = new Date(vnNow);
+        vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
+        const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
+
+        let streak = dailyData && dailyData.lastClaim === yesterdayStr
+          ? (dailyData.streak || 1) + 1
+          : 1;
+
+        const isWeekComplete = streak >= 7;
+
+        const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
+        await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: 86400 * 2 });
+
+        const EXP_REWARD = 5;
+        const AHN_REWARD = 100000;
+        const playerData = await getPlayerData(userId);
+        playerData.exp = (playerData.exp ?? 0) + EXP_REWARD;
+        playerData.ahn = (playerData.ahn ?? 0) + AHN_REWARD;
+        playerData.inventory = playerData.inventory ?? {};
+        playerData.inventory["Random Book"] = (playerData.inventory["Random Book"] ?? 0) + 1;
+
+        if (isWeekComplete) {
+          playerData.exp += 25;
+          playerData.ahn += 400000;
+          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
+        }
+
+        await savePlayerData(userId, playerData);
+
+        const displayStreak = isWeekComplete ? 7 : streak;
+        const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
+
+        let replyMsg =
+          `🎉 ${interaction.user} đã điểm danh thành công!\n` +
+          `> 📦 **5 Exp** | **100k Ahn** | **1 Random Book**\n` +
+          `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
+
+        if (isWeekComplete) {
+          replyMsg +=
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
+            `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
+        }
+
+        await interaction.editReply({ content: replyMsg });
+      }
+    } catch (err) {
+      console.error("[/daily] Redis error:", err);
+      await interaction.editReply({ content: "❌ Có lỗi xảy ra, thử lại sau nhé." });
+    }
+    return;
+  }
+});
+
 
 client.login(TOKEN);
 
