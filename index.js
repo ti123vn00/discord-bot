@@ -349,13 +349,17 @@ async function withLock(userId, fn, { ttlSeconds = 5, retries = 3, retryDelayMs 
   }
 }
 
-// FIX #4: withLock hai user — outer TTL đủ dài để cover cả inner lock
-// Thứ tự lock sort theo ID để tránh deadlock, TTL outer > inner
-async function withDoubleLock(idA, idB, fn) {
+// withLock hai user — outer TTL tự tính để luôn cover inner lock + retry buffer
+// Thứ tự lock sort theo ID để tránh deadlock
+async function withDoubleLock(idA, idB, fn, {
+  innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 3,
+} = {}) {
   const [firstId, secondId] = [idA, idB].sort();
+  // outer TTL = inner TTL + worst-case retry wait + buffer
+  const outerTtl = innerTtl + Math.ceil((retries * retryDelayMs) / 1000) + bufferSeconds;
   return withLock(firstId, () =>
-    withLock(secondId, fn, { ttlSeconds: 6, retries: 3, retryDelayMs: 200 }),
-  { ttlSeconds: 14, retries: 3, retryDelayMs: 200 });
+    withLock(secondId, fn, { ttlSeconds: innerTtl, retries, retryDelayMs }),
+  { ttlSeconds: outerTtl, retries, retryDelayMs });
 }
 
 // ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
@@ -410,7 +414,23 @@ async function getPlayerData(userId) {
 }
 
 async function savePlayerData(userId, data) {
-  await withTimeout(redis.set(`player:${userId}`, JSON.stringify(data)));
+  const key = `player:${userId}`;
+  const payload = JSON.stringify(data);
+  let lastErr;
+  for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
+    try {
+      await withTimeout(redis.set(key, payload));
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (isTimeoutError(err)) break;
+      if (attempt < REDIS_MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, REDIS_RETRY_BASE_MS * (attempt + 1)));
+      }
+    }
+  }
+  log("error", "savePlayerData", userId, lastErr?.message ?? "Unknown save error");
+  throw lastErr;
 }
 
 // FIX #7: Check từng result trong pipeline để phát hiện partial failure
@@ -570,12 +590,25 @@ async function processDailyClaimForUser(userId) {
       playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
     }
 
-    await withTimeout(
+    const saveResults = await withTimeout(
       redis.pipeline()
         .set(dailyKey, JSON.stringify(newDailyData), { ex: DAILY_KEY_TTL_SECONDS })
         .set(playerKey, JSON.stringify(playerData))
         .exec()
     );
+    // Check từng result để phát hiện partial failure (tương tự saveMultiplePlayerData)
+    if (Array.isArray(saveResults)) {
+      const labels = ["daily", "player"];
+      const failures = saveResults
+        .map((r, i) => {
+          const err = r && typeof r === "object" && "error" in r ? r.error : null;
+          return err ? `[${labels[i]}]: ${err}` : null;
+        })
+        .filter(Boolean);
+      if (failures.length > 0) {
+        throw new Error(`Daily save thất bại một phần: ${failures.join(", ")}`);
+      }
+    }
 
     const displayStreak = isWeekComplete ? 7 : streak;
     const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
@@ -890,6 +923,133 @@ async function buildInventoryEmbed(targetUser) {
   };
 }
 
+// ─── SHARED BUSINESS LOGIC: GIVE / REMOVE ────────────────────────────────────
+/**
+ * executeGive — logic chung cho cả prefix -give và slash /give
+ * @param {object} opts
+ * @param {string}  opts.senderId   — userId người gửi (null nếu admin bypass)
+ * @param {string}  opts.targetId   — userId người nhận
+ * @param {boolean} opts.isAdmin
+ * @param {number}  opts.ahnGain    — 0 nếu không chuyển Ahn
+ * @param {string|null} opts.bookName
+ * @param {number}  opts.bookCount
+ * @param {string|null} opts.itemName
+ * @param {number}  opts.itemCount
+ * @param {number|null} opts.expGain   — admin only
+ * @param {number|null} opts.gradeTarget — admin only
+ * @returns {Promise<string[]>} mảng change strings
+ */
+async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName = null, bookCount = 1, itemName = null, itemCount = 1, expGain = 0, gradeTarget = null }) {
+  const senderData = isAdmin ? null : await getPlayerData(senderId);
+  const recipientData = await getPlayerData(targetId);
+  recipientData.books = recipientData.books ?? {};
+  recipientData.items = recipientData.items ?? {};
+  if (senderData) {
+    senderData.books = senderData.books ?? {};
+    senderData.items = senderData.items ?? {};
+  }
+
+  // Validate số dư người gửi
+  if (!isAdmin && ahnGain > 0) {
+    const senderAhn = senderData.ahn ?? 0;
+    if (senderAhn < ahnGain) throw new Error(`Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
+  }
+  if (!isAdmin && bookName) {
+    const owned = senderData.books?.[bookName] ?? 0;
+    if (owned < bookCount) throw new Error(`Bạn không đủ sách. Bạn có **${owned}** **${bookName}**, cần **${bookCount}**.`);
+  }
+  if (!isAdmin && itemName) {
+    const owned = senderData.items?.[itemName] ?? 0;
+    if (owned < itemCount) throw new Error(`Bạn không đủ vật phẩm. Bạn có **${owned}** **${itemName}**, cần **${itemCount}**.`);
+  }
+
+  const changes = [];
+
+  if (gradeTarget !== null) {
+    const expNeeded = calcExpForGrade(gradeTarget);
+    recipientData.exp = expNeeded;
+    changes.push(`Grade set → **Grade ${gradeTarget}** (EXP set thành **${expNeeded}**)`);
+  } else if (expGain !== 0) {
+    recipientData.exp = clampExp((recipientData.exp ?? 0) + expGain);
+    changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP → tổng **${recipientData.exp}**/${EXP_MAX}`);
+  }
+  if (ahnGain !== 0) {
+    recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
+    changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
+    if (!isAdmin && ahnGain > 0) senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
+  }
+  if (bookName) {
+    recipientData.books[bookName] = Math.max(0, (recipientData.books[bookName] ?? 0) + bookCount);
+    changes.push(`+${bookCount} 📚 **${bookName}**`);
+    if (!isAdmin) {
+      senderData.books[bookName] -= bookCount;
+      if (senderData.books[bookName] <= 0) delete senderData.books[bookName];
+    }
+  }
+  if (itemName) {
+    recipientData.items[itemName] = Math.max(0, (recipientData.items[itemName] ?? 0) + itemCount);
+    changes.push(`+${itemCount} 🔩 **${itemName}**`);
+    if (!isAdmin) {
+      senderData.items[itemName] -= itemCount;
+      if (senderData.items[itemName] <= 0) delete senderData.items[itemName];
+    }
+  }
+
+  const saveEntries = [{ userId: targetId, data: recipientData }];
+  if (!isAdmin) saveEntries.push({ userId: senderId, data: senderData });
+  await saveMultiplePlayerData(saveEntries);
+  return changes;
+}
+
+/**
+ * executeRemove — logic chung cho cả prefix -remove và slash /remove
+ * @param {object} opts
+ * @param {string}  opts.actorId    — userId người thực hiện lệnh
+ * @param {string}  opts.targetId   — userId bị xóa
+ * @param {boolean} opts.isAdmin
+ * @param {number}  opts.expRemove
+ * @param {number}  opts.ahnRemove
+ * @param {Array<{name:string,count:number}>} opts.bookEntries  — có thể rỗng
+ * @param {Array<{name:string,count:number}>} opts.itemEntries  — có thể rỗng
+ * @returns {Promise<string[]>} mảng change strings
+ */
+async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRemove = 0, bookEntries = [], itemEntries = [] }) {
+  const data = await getPlayerData(targetId);
+  data.books = data.books ?? {};
+  data.items = data.items ?? {};
+  const changes = [];
+
+  if (expRemove !== 0) {
+    const before = data.exp ?? 0;
+    data.exp = Math.max(0, before - expRemove);
+    changes.push(`-${expRemove} EXP (${before} → ${data.exp})`);
+  }
+  if (ahnRemove !== 0) {
+    const before = data.ahn ?? 0;
+    data.ahn = Math.max(0, before - ahnRemove);
+    changes.push(`-${formatNumber(ahnRemove)} Ahn (${formatNumber(before)} → ${formatNumber(data.ahn)})`);
+  }
+  for (const { name, count } of bookEntries) {
+    const owned = data.books[name] ?? 0;
+    if (owned < count && !isAdmin) throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
+    const removed = Math.min(owned, count);
+    data.books[name] = owned - removed;
+    if (data.books[name] <= 0) delete data.books[name];
+    changes.push(`-${removed} 📚 **${name}** (còn lại: ${data.books[name] ?? 0})`);
+  }
+  for (const { name, count } of itemEntries) {
+    const owned = data.items[name] ?? 0;
+    if (owned < count && !isAdmin) throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
+    const removed = Math.min(owned, count);
+    data.items[name] = owned - removed;
+    if (data.items[name] <= 0) delete data.items[name];
+    changes.push(`-${removed} 🔩 **${name}** (còn lại: ${data.items[name] ?? 0})`);
+  }
+
+  await savePlayerData(targetId, data);
+  return changes;
+}
+
 // ─── CLIENT ───────────────────────────────────────────────────────────────────
 const client = new Client({
   intents: [
@@ -1036,11 +1196,9 @@ client.on("messageCreate", async (message) => {
       message.reply("❌ Không thể chuyển số Ahn âm.");
       return;
     }
-    if (gradeTarget !== null) {
-      if (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN) {
-        message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
-        return;
-      }
+    if (gradeTarget !== null && (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN)) {
+      message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
+      return;
     }
     let bookName = null;
     if (bookRaw) {
@@ -1064,84 +1222,22 @@ client.on("messageCreate", async (message) => {
     }
 
     try {
-      const runGive = async () => {
-        const senderData = isAdmin ? null : await getPlayerData(message.author.id);
-        const recipientData = await getPlayerData(targetUser.id);
-
-        recipientData.books = recipientData.books ?? {};
-        recipientData.items = recipientData.items ?? {};
-        if (senderData) {
-          senderData.books = senderData.books ?? {};
-          senderData.items = senderData.items ?? {};
-        }
-
-        if (!isAdmin && ahnGain > 0) {
-          const senderAhn = senderData.ahn ?? 0;
-          if (senderAhn < ahnGain) {
-            throw new Error(`Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
-          }
-        }
-        if (!isAdmin && bookName) {
-          const owned = senderData.books?.[bookName] ?? 0;
-          if (owned < bookCount) {
-            throw new Error(`Bạn không đủ sách để tặng. Bạn có **${owned}** **${bookName}**, cần **${bookCount}**.`);
-          }
-        }
-        if (!isAdmin && itemName) {
-          const owned = senderData.items?.[itemName] ?? 0;
-          if (owned < itemCount) {
-            throw new Error(`Bạn không đủ vật phẩm để tặng. Bạn có **${owned}** **${itemName}**, cần **${itemCount}**.`);
-          }
-        }
-
-        const changes = [];
-        if (gradeTarget !== null) {
-          const expNeeded = calcExpForGrade(gradeTarget);
-          recipientData.exp = expNeeded;
-          changes.push(`Grade set → **Grade ${gradeTarget}** (EXP set thành **${expNeeded}**)`);
-        } else if (expGain !== 0) {
-          recipientData.exp = clampExp((recipientData.exp ?? 0) + expGain);
-          changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP → tổng **${recipientData.exp}**/${EXP_MAX}`);
-        }
-        if (ahnGain !== 0) {
-          recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
-          changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
-          if (!isAdmin && ahnGain > 0) senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
-        }
-        if (bookName) {
-          recipientData.books[bookName] = Math.max(0, (recipientData.books[bookName] ?? 0) + bookCount);
-          changes.push(`+${bookCount} 📚 **${bookName}**`);
-          if (!isAdmin) {
-            senderData.books[bookName] -= bookCount;
-            if (senderData.books[bookName] <= 0) delete senderData.books[bookName];
-          }
-        }
-        if (itemName) {
-          recipientData.items[itemName] = Math.max(0, (recipientData.items[itemName] ?? 0) + itemCount);
-          changes.push(`+${itemCount} 🔩 **${itemName}**`);
-          if (!isAdmin) {
-            senderData.items[itemName] -= itemCount;
-            if (senderData.items[itemName] <= 0) delete senderData.items[itemName];
-          }
-        }
-
-        const saveEntries = [{ userId: targetUser.id, data: recipientData }];
-        if (!isAdmin) saveEntries.push({ userId: message.author.id, data: senderData });
-        await saveMultiplePlayerData(saveEntries);
-
-        const verb = isAdmin ? "tặng" : "chuyển";
-        message.reply(
-          `✅ ${message.author} đã ${verb} cho ${targetUser}:\n` +
-          changes.map(c => `> ${c}`).join("\n")
-        );
-      };
-
-      // FIX #4: Dùng withDoubleLock thay vì lồng tay
+      const runGive = () => executeGive({
+        senderId: message.author.id,
+        targetId: targetUser.id,
+        isAdmin, ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
+      });
+      let changes;
       if (isAdmin) {
-        await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
+        changes = await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
       } else {
-        await withDoubleLock(message.author.id, targetUser.id, runGive);
+        changes = await withDoubleLock(message.author.id, targetUser.id, runGive);
       }
+      const verb = isAdmin ? "tặng" : "chuyển";
+      message.reply(
+        `✅ ${message.author} đã ${verb} cho ${targetUser}:\n` +
+        changes.map(c => `> ${c}`).join("\n")
+      );
     } catch (err) {
       log("error", "give", message.author.id, err.message, { target: targetUser.id });
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
@@ -1168,132 +1264,73 @@ client.on("messageCreate", async (message) => {
     const expRemove = parseInt(kv["exp"] ?? "0", 10) || 0;
     const ahnRemove = parseFloat(kv["ahn"] ?? "0") || 0;
     const bookRaw = kv["book"] ?? null;
-const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
-const itemRaw = kv["item"] ?? null;
-const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);
+    const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
+    const itemRaw = kv["item"] ?? null;
+    const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);
 
-if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
-  message.reply("❌ Bạn chỉ có thể tự xóa sách hoặc vật phẩm của mình.");
-  return;
-}
+    if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
+      message.reply("❌ Bạn chỉ có thể tự xóa sách hoặc vật phẩm của mình.");
+      return;
+    }
 
-let bookName = null;
-if (bookRaw) {
-  bookName = findBook(bookRaw);
-  if (!bookName) {
-    message.reply(`❌ Tên sách không hợp lệ: \`${bookRaw}\``);
-    return;
-  }
-}
-let itemName = null;
-if (itemRaw) {
-  itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
-  if (!itemName) {
-    message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\``);
-    return;
-  }
-}
-    const booksRaw = kv["books"] ?? null;
+    // Parse single book/item
     const bookEntries = [];
-if (booksRaw) {
-  const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
-  for (const part of parts) {
-    const match = part.match(/^(.+?)\s+x(\d+)$/i);
-    if (!match) {
-      message.reply(`❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x2\`)`);
-      return;
+    if (bookRaw) {
+      const bookName = findBook(bookRaw);
+      if (!bookName) { message.reply(`❌ Tên sách không hợp lệ: \`${bookRaw}\``); return; }
+      bookEntries.push({ name: bookName, count: bookCount });
     }
-    const name = findBook(match[1].trim());
-    if (!name) {
-      message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\``);
-      return;
+    const itemEntries = [];
+    if (itemRaw) {
+      const itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
+      if (!itemName) { message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\``); return; }
+      itemEntries.push({ name: itemName, count: itemCount });
     }
-    bookEntries.push({ name, count: parseInt(match[2], 10) });
-  }
-}
-const itemsRaw = kv["items"] ?? null;
-const itemEntries = [];
-if (itemsRaw) {
-  const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
-  for (const part of parts) {
-    const match = part.match(/^(.+?)\s+x(\d+)$/i);
-    if (!match) {
-      message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Chipboard MK1 x3\`)`);
-      return;
+
+    // Parse batch books/items
+    const booksRaw = kv["books"] ?? null;
+    if (booksRaw) {
+      const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const match = part.match(/^(.+?)\s+x(\d+)$/i);
+        if (!match) {
+          message.reply(`❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x2\`)`);
+          return;
+        }
+        const name = findBook(match[1].trim());
+        if (!name) { message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\``); return; }
+        bookEntries.push({ name, count: parseInt(match[2], 10) });
+      }
     }
-    const name = isAdmin ? findItemAdmin(match[1].trim()) : findItem(match[1].trim());
-    if (!name) {
-      message.reply(`❌ Tên vật phẩm không hợp lệ: \`${match[1].trim()}\``);
-      return;
+    const itemsRaw = kv["items"] ?? null;
+    if (itemsRaw) {
+      const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const match = part.match(/^(.+?)\s+x(\d+)$/i);
+        if (!match) {
+          message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Chipboard MK1 x3\`)`);
+          return;
+        }
+        const name = isAdmin ? findItemAdmin(match[1].trim()) : findItem(match[1].trim());
+        if (!name) { message.reply(`❌ Tên vật phẩm không hợp lệ: \`${match[1].trim()}\``); return; }
+        itemEntries.push({ name, count: parseInt(match[2], 10) });
+      }
     }
-    itemEntries.push({ name, count: parseInt(match[2], 10) });
-  }
-}
-    if (expRemove === 0 && ahnRemove === 0 && !bookName && !itemName && bookEntries.length === 0 && itemEntries.length === 0) {
+
+    if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
       message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`.");
       return;
     }
     try {
-      await withLock(targetUser.id, async () => {
-        const data = await getPlayerData(targetUser.id);
-        const changes = [];
-        if (expRemove !== 0) {
-          const before = data.exp ?? 0;
-          data.exp = Math.max(0, before - expRemove);
-          changes.push(`-${expRemove} EXP (${before} → ${data.exp})`);
-        }
-        if (ahnRemove !== 0) {
-          const before = data.ahn ?? 0;
-          data.ahn = Math.max(0, before - ahnRemove);
-          changes.push(`-${formatNumber(ahnRemove)} Ahn (${formatNumber(before)} → ${formatNumber(data.ahn)})`);
-        }
-        if (bookName) {
-          const owned = data.books[bookName] ?? 0;
-          if (owned < bookCount && !isAdmin) {
-            throw new Error(`Bạn chỉ có **${owned}** **${bookName}**, không đủ để xóa **${bookCount}**.`);
-          }
-          const removed = Math.min(owned, bookCount);
-          data.books[bookName] = owned - removed;
-          if (data.books[bookName] <= 0) delete data.books[bookName];
-          changes.push(`-${removed} 📚 **${bookName}** (còn lại: ${data.books[bookName] ?? 0})`);
-        }
-        if (itemName) {
-          const owned = data.items[itemName] ?? 0;
-          if (owned < itemCount && !isAdmin) {
-            throw new Error(`Bạn chỉ có **${owned}** **${itemName}**, không đủ để xóa **${itemCount}**.`);
-          }
-          const removed = Math.min(owned, itemCount);
-          data.items[itemName] = owned - removed;
-          if (data.items[itemName] <= 0) delete data.items[itemName];
-          changes.push(`-${removed} 🔩 **${itemName}** (còn lại: ${data.items[itemName] ?? 0})`);
-        }
-        for (const { name, count } of bookEntries) {
-  const owned = data.books[name] ?? 0;
-  if (owned < count && !isAdmin) {
-    throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
-  }
-  const removed = Math.min(owned, count);
-  data.books[name] = owned - removed;
-  if (data.books[name] <= 0) delete data.books[name];
-  changes.push(`-${removed} 📚 **${name}** (còn lại: ${data.books[name] ?? 0})`);
-}
-for (const { name, count } of itemEntries) {
-  const owned = data.items[name] ?? 0;
-  if (owned < count && !isAdmin) {
-    throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
-  }
-  const removed = Math.min(owned, count);
-  data.items[name] = owned - removed;
-  if (data.items[name] <= 0) delete data.items[name];
-  changes.push(`-${removed} 🔩 **${name}** (còn lại: ${data.items[name] ?? 0})`);
-}
-        await savePlayerData(targetUser.id, data);
-        const isSelf = targetUser.id === message.author.id;
-        const header = isSelf
-          ? `🗑️ ${message.author} đã xóa khỏi kho của mình:`
-          : `🗑️ ${message.author} (admin) đã xóa khỏi kho của ${targetUser}:`;
-        message.reply(header + "\n" + changes.map(c => `> ${c}`).join("\n"));
-      });
+      const changes = await withLock(targetUser.id, () => executeRemove({
+        actorId: message.author.id, targetId: targetUser.id,
+        isAdmin, expRemove, ahnRemove, bookEntries, itemEntries,
+      }));
+      const isSelf = targetUser.id === message.author.id;
+      const header = isSelf
+        ? `🗑️ ${message.author} đã xóa khỏi kho của mình:`
+        : `🗑️ ${message.author} (admin) đã xóa khỏi kho của ${targetUser}:`;
+      message.reply(header + "\n" + changes.map(c => `> ${c}`).join("\n"));
     } catch (err) {
       log("error", "remove", targetUser.id, err.message, { actor: message.author.id });
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
@@ -1959,7 +1996,7 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // FIX #3: Slash handler cho /give
+  // Slash handler cho /give
   if (interaction.commandName === "give") {
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     await interaction.deferReply();
@@ -1991,58 +2028,21 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     try {
-      const runGive = async () => {
-        const senderData = isAdmin ? null : await getPlayerData(interaction.user.id);
-        const recipientData = await getPlayerData(targetUser.id);
-        recipientData.books = recipientData.books ?? {};
-        recipientData.items = recipientData.items ?? {};
-        if (senderData) { senderData.books = senderData.books ?? {}; senderData.items = senderData.items ?? {}; }
-
-        if (!isAdmin && ahnGain > 0) {
-          const senderAhn = senderData.ahn ?? 0;
-          if (senderAhn < ahnGain) throw new Error(`Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
-        }
-        if (!isAdmin && bookName) {
-          const owned = senderData.books?.[bookName] ?? 0;
-          if (owned < bookCount) throw new Error(`Bạn không đủ sách. Bạn có **${owned}** **${bookName}**, cần **${bookCount}**.`);
-        }
-        if (!isAdmin && itemName) {
-          const owned = senderData.items?.[itemName] ?? 0;
-          if (owned < itemCount) throw new Error(`Bạn không đủ vật phẩm. Bạn có **${owned}** **${itemName}**, cần **${itemCount}**.`);
-        }
-
-        const changes = [];
-        if (ahnGain !== 0) {
-          recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
-          changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
-          if (!isAdmin && ahnGain > 0) senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
-        }
-        if (bookName) {
-          recipientData.books[bookName] = Math.max(0, (recipientData.books[bookName] ?? 0) + bookCount);
-          changes.push(`+${bookCount} 📚 **${bookName}**`);
-          if (!isAdmin) { senderData.books[bookName] -= bookCount; if (senderData.books[bookName] <= 0) delete senderData.books[bookName]; }
-        }
-        if (itemName) {
-          recipientData.items[itemName] = Math.max(0, (recipientData.items[itemName] ?? 0) + itemCount);
-          changes.push(`+${itemCount} 🔩 **${itemName}**`);
-          if (!isAdmin) { senderData.items[itemName] -= itemCount; if (senderData.items[itemName] <= 0) delete senderData.items[itemName]; }
-        }
-
-        const saveEntries = [{ userId: targetUser.id, data: recipientData }];
-        if (!isAdmin) saveEntries.push({ userId: interaction.user.id, data: senderData });
-        await saveMultiplePlayerData(saveEntries);
-
-        await interaction.editReply({
-          content: `✅ ${interaction.user} đã ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
-            changes.map(c => `> ${c}`).join("\n"),
-        });
-      };
-
+      const runGive = () => executeGive({
+        senderId: interaction.user.id,
+        targetId: targetUser.id,
+        isAdmin, ahnGain, bookName, bookCount, itemName, itemCount,
+      });
+      let changes;
       if (isAdmin) {
-        await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
+        changes = await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
       } else {
-        await withDoubleLock(interaction.user.id, targetUser.id, runGive);
+        changes = await withDoubleLock(interaction.user.id, targetUser.id, runGive);
       }
+      await interaction.editReply({
+        content: `✅ ${interaction.user} đã ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
+          changes.map(c => `> ${c}`).join("\n"),
+      });
     } catch (err) {
       log("error", "/give", interaction.user.id, err.message, { target: targetUser.id });
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}` });
@@ -2050,7 +2050,7 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // FIX #3: Slash handler cho /remove
+  // Slash handler cho /remove
   if (interaction.commandName === "remove") {
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     await interaction.deferReply();
@@ -2078,57 +2078,33 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    let bookName = null;
+    const bookEntries = [];
     if (bookRaw) {
-      bookName = findBook(bookRaw);
+      const bookName = findBook(bookRaw);
       if (!bookName) { await interaction.editReply({ content: `❌ Tên sách không hợp lệ: \`${bookRaw}\`` }); return; }
+      bookEntries.push({ name: bookName, count: bookCount });
     }
-    let itemName = null;
+    const itemEntries = [];
     if (itemRaw) {
-      itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
+      const itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
       if (!itemName) { await interaction.editReply({ content: `❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`` }); return; }
+      itemEntries.push({ name: itemName, count: itemCount });
     }
-    if (expRemove === 0 && ahnRemove === 0 && !bookName && !itemName) {
+
+    if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
       await interaction.editReply({ content: "❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`." });
       return;
     }
 
     try {
-      await withLock(targetUser.id, async () => {
-        const data = await getPlayerData(targetUser.id);
-        const changes = [];
-        if (expRemove !== 0) {
-          const before = data.exp ?? 0;
-          data.exp = Math.max(0, before - expRemove);
-          changes.push(`-${expRemove} EXP (${before} → ${data.exp})`);
-        }
-        if (ahnRemove !== 0) {
-          const before = data.ahn ?? 0;
-          data.ahn = Math.max(0, before - ahnRemove);
-          changes.push(`-${formatNumber(ahnRemove)} Ahn (${formatNumber(before)} → ${formatNumber(data.ahn)})`);
-        }
-        if (bookName) {
-          const owned = data.books[bookName] ?? 0;
-          if (owned < bookCount && !isAdmin) throw new Error(`Bạn chỉ có **${owned}** **${bookName}**, không đủ để xóa **${bookCount}**.`);
-          const removed = Math.min(owned, bookCount);
-          data.books[bookName] = owned - removed;
-          if (data.books[bookName] <= 0) delete data.books[bookName];
-          changes.push(`-${removed} 📚 **${bookName}** (còn lại: ${data.books[bookName] ?? 0})`);
-        }
-        if (itemName) {
-          const owned = data.items[itemName] ?? 0;
-          if (owned < itemCount && !isAdmin) throw new Error(`Bạn chỉ có **${owned}** **${itemName}**, không đủ để xóa **${itemCount}**.`);
-          const removed = Math.min(owned, itemCount);
-          data.items[itemName] = owned - removed;
-          if (data.items[itemName] <= 0) delete data.items[itemName];
-          changes.push(`-${removed} 🔩 **${itemName}** (còn lại: ${data.items[itemName] ?? 0})`);
-        }
-        await savePlayerData(targetUser.id, data);
-        const isSelf = targetUser.id === interaction.user.id;
-        await interaction.editReply({
-          content: (isSelf ? `🗑️ ${interaction.user} đã xóa khỏi kho của mình:` : `🗑️ ${interaction.user} (admin) đã xóa khỏi kho của ${targetUser}:`) +
-            "\n" + changes.map(c => `> ${c}`).join("\n"),
-        });
+      const changes = await withLock(targetUser.id, () => executeRemove({
+        actorId: interaction.user.id, targetId: targetUser.id,
+        isAdmin, expRemove, ahnRemove, bookEntries, itemEntries,
+      }));
+      const isSelf = targetUser.id === interaction.user.id;
+      await interaction.editReply({
+        content: (isSelf ? `🗑️ ${interaction.user} đã xóa khỏi kho của mình:` : `🗑️ ${interaction.user} (admin) đã xóa khỏi kho của ${targetUser}:`) +
+          "\n" + changes.map(c => `> ${c}`).join("\n"),
       });
     } catch (err) {
       log("error", "/remove", targetUser.id, err.message, { actor: interaction.user.id });
