@@ -1475,7 +1475,7 @@ client.on("messageCreate", async (message) => {
       { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critrate:` `critdiv:`", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> VD: `-math dmg: 10B critrate: 50 critmul: 1.5`"].join("\n"), inline: false },
+      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critrate:` `critdiv:`", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> VD: `-math dmg: 10B critrate: 50 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
     ];
@@ -1561,7 +1561,7 @@ client.on("messageCreate", async (message) => {
     if (!dmgStr.trim()) {
       message.reply(
         "⚠️ Bạn chưa nhập `dmg:`. Vui lòng nhập công thức damage.\n" +
-        "> VD: `-math dmg: 10B critrate: 50 critmul: 1.5`\n" +
+        "> VD: `-math dmg: 10B critrate: 50 critmul: 1.3`\n" +
         "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+Sinking][+Rupture][+Poise][+Crit<n>]`"
       );
       return;
