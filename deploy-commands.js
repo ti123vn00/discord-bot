@@ -77,6 +77,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
       { body: commands }
     );
     console.log("✅ Đã đăng ký slash commands thành công!");
+    process.exit(0);
   } catch (err) {
     console.error("❌ Lỗi khi đăng ký commands:", err);
     process.exit(1);
