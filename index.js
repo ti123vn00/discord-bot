@@ -95,6 +95,7 @@ const ADMIN_IDS = new Set([
 // ─── VALID BOOKS ──────────────────────────────────────────────────────────────
 const VALID_BOOKS = [
   "Random Book",
+  "Sealed Book Cache",
   "Book of Choice",
   "Hana Association Book",
   "Zwei Association Book",
@@ -546,7 +547,7 @@ client.on("messageCreate", async (message) => {
         if (isWeekComplete) {
           playerData.exp += 25;
           playerData.ahn += 400000;
-          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
+          playerData.inventory["Sealed Book Cache"] = (playerData.inventory["Sealed Book Cache"] ?? 0) + 1;
         }
 
         await savePlayerData(userId, playerData);
@@ -561,7 +562,7 @@ client.on("messageCreate", async (message) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
@@ -776,6 +777,104 @@ client.on("messageCreate", async (message) => {
       );
     } catch (err) {
       console.error("[give] error:", err);
+      message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
+    }
+    return;
+  }
+
+  // ── -remove ──
+  // Admin:  -remove @user exp: 50 ahn: 100000 book: Random Book count: 3
+  // Player: -remove book: Random Book count: 1  (tự xóa của bản thân, không mention)
+  if (message.content.startsWith("-remove")) {
+    const isAdmin = ADMIN_IDS.has(message.author.id);
+
+    // Xác định target: admin có thể mention người khác, player chỉ tự remove
+    const mentionedUser = message.mentions.users.first();
+    let targetUser;
+    if (mentionedUser) {
+      if (!isAdmin && mentionedUser.id !== message.author.id) {
+        message.reply("❌ Bạn chỉ có thể xóa đồ của chính mình.");
+        return;
+      }
+      targetUser = mentionedUser;
+    } else {
+      targetUser = message.author;
+    }
+
+    const rawInput = message.content
+      .replace("-remove", "")
+      .replace(/<@!?\d+>/, "")
+      .trim();
+
+    const kv = parseKeyValues(rawInput);
+
+    const expRemove = parseInt(kv["exp"] ?? "0", 10) || 0;
+    const ahnRemove = parseFloat(kv["ahn"] ?? "0") || 0;
+    const bookRaw = kv["book"] ?? null;
+    const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
+
+    // Player thường chỉ được remove sách
+    if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
+      message.reply("❌ Bạn chỉ có thể tự xóa sách của mình.");
+      return;
+    }
+
+    // Validate tên sách
+    let bookName = null;
+    if (bookRaw) {
+      bookName = findBook(bookRaw);
+      if (!bookName) {
+        message.reply(
+          `❌ Tên sách không hợp lệ: \`${bookRaw}\`\nDùng \`-books\` để xem danh sách.`
+        );
+        return;
+      }
+    }
+
+    if (expRemove === 0 && ahnRemove === 0 && !bookName) {
+      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`.");
+      return;
+    }
+
+    try {
+      const data = await getPlayerData(targetUser.id);
+      data.inventory = data.inventory ?? {};
+      const changes = [];
+
+      if (expRemove !== 0) {
+        const before = data.exp ?? 0;
+        data.exp = Math.max(0, before - expRemove);
+        changes.push(`-${expRemove} EXP (${before} → ${data.exp})`);
+      }
+      if (ahnRemove !== 0) {
+        const before = data.ahn ?? 0;
+        data.ahn = Math.max(0, before - ahnRemove);
+        changes.push(`-${formatNumber(ahnRemove)} Ahn (${formatNumber(before)} → ${formatNumber(data.ahn)})`);
+      }
+      if (bookName) {
+        const owned = data.inventory[bookName] ?? 0;
+        if (owned < bookCount && !isAdmin) {
+          message.reply(
+            `❌ Bạn chỉ có **${owned}** **${bookName}**, không đủ để xóa **${bookCount}**.`
+          );
+          return;
+        }
+        const removed = Math.min(owned, bookCount);
+        data.inventory[bookName] = owned - removed;
+        if (data.inventory[bookName] <= 0) delete data.inventory[bookName];
+        changes.push(`-${removed} **${bookName}** (còn lại: ${data.inventory[bookName] ?? 0})`);
+      }
+
+      await savePlayerData(targetUser.id, data);
+
+      const isSelf = targetUser.id === message.author.id;
+      const header = isSelf
+        ? `🗑️ ${message.author} đã xóa khỏi kho của mình:`
+        : `🗑️ ${message.author} (admin) đã xóa khỏi kho của ${targetUser}:`;
+
+      message.reply(header + "\n" + changes.map(c => `> ${c}`).join("\n"));
+    } catch (err) {
+      console.error("[remove] error:", err);
       message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
     }
     return;
@@ -1114,7 +1213,7 @@ client.on("interactionCreate", async (interaction) => {
         if (isWeekComplete) {
           playerData.exp += 25;
           playerData.ahn += 400000;
-          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
+          playerData.inventory["Sealed Book Cache"] = (playerData.inventory["Sealed Book Cache"] ?? 0) + 1;
         }
 
         await savePlayerData(userId, playerData);
@@ -1129,7 +1228,7 @@ client.on("interactionCreate", async (interaction) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
