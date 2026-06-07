@@ -1301,21 +1301,21 @@ for (const { name, count } of itemEntries) {
     return;
   }
 
-  // ── -setplayer ──
-  if (message.content.startsWith("-setplayer")) {
+// ── -setplayer ──
+if (message.content.startsWith("-setplayer")) {
     if (!ADMIN_IDS.has(message.author.id)) {
       message.reply("❌ Bạn không có quyền dùng lệnh này.");
       return;
     }
-    const targetUser = message.mentions.users.first();
-    if (!targetUser) {
+    const targetUsers = [...message.mentions.users.values()];
+    if (targetUsers.length === 0) {
       message.reply(
-        "❌ Hãy mention người cần set. Ví dụ:\n" +
-        "`-setplayer @user exp: 100 ahn: 50000 books: Random Book x3, N Corp Book x1 items: Tên Item x2`"
+        "❌ Hãy mention ít nhất một người cần set. Ví dụ:\n" +
+        "`-setplayer @user1 @user2 exp: 100 ahn: 50000 books: Random Book x3, N Corp Book x1 items: Tên Item x2`"
       );
       return;
     }
-    const rawInput = message.content.replace("-setplayer", "").replace(/<@!?\d+>/, "").trim();
+    const rawInput = message.content.replace("-setplayer", "").replace(/<@!?\d+>/g, "").trim();
     const kv = parseKeyValues(rawInput);
     const booksRaw = kv["books"] ?? null;
     const bookEntries = [];
@@ -1332,7 +1332,7 @@ for (const { name, count } of itemEntries) {
           message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\`\nDùng \`-books\` để xem danh sách.`);
           return;
         }
-          bookEntries.push({ name: bookName, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
+        bookEntries.push({ name: bookName, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
       }
     }
     const itemsRaw = kv["items"] ?? null;
@@ -1368,55 +1368,86 @@ for (const { name, count } of itemEntries) {
       message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`, `items`.\n> Thêm `+` trước số để cộng thêm, VD: `exp: +50`");
       return;
     }
-    try {
-      await withLock(targetUser.id, async () => {
-        const data = await getPlayerData(targetUser.id);
-        const changes = [];
-        if (gradeTarget !== null) {
-          const expNeeded = calcExpForGrade(gradeTarget);
-          data.exp = expNeeded;
-          changes.push(`Grade → **Grade ${gradeTarget}** (EXP = **${expNeeded}**)`);
-        } else if (expValue !== null) {
-          if (expIsAdd) {
-            const before = data.exp ?? 0;
-            data.exp = clampExp(before + expValue);
-            changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]`);
-          } else {
-            data.exp = clampExp(expValue);
-            changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]`);
+
+    // Xử lý song song từng user, gom kết quả lại
+    const results = await Promise.allSettled(
+      targetUsers.map(targetUser =>
+        withLock(targetUser.id, async () => {
+          const data = await getPlayerData(targetUser.id);
+          const changes = [];
+          if (gradeTarget !== null) {
+            const expNeeded = calcExpForGrade(gradeTarget);
+            data.exp = expNeeded;
+            changes.push(`Grade → **Grade ${gradeTarget}** (EXP = **${expNeeded}**)`);
+          } else if (expValue !== null) {
+            if (expIsAdd) {
+              const before = data.exp ?? 0;
+              data.exp = clampExp(before + expValue);
+              changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]`);
+            } else {
+              data.exp = clampExp(expValue);
+              changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]`);
+            }
           }
-        }
-        if (ahnValue !== null) {
-          if (ahnIsAdd) {
-            const before = data.ahn ?? 0;
-            data.ahn = Math.max(0, before + ahnValue);
-            changes.push(`Ahn +${formatNumber(ahnValue)} (${formatNumber(before)} → **${formatNumber(data.ahn)}**)`);
-          } else {
-            data.ahn = Math.max(0, ahnValue);
-            changes.push(`Ahn set → **${formatNumber(data.ahn)}**`);
+          if (ahnValue !== null) {
+            if (ahnIsAdd) {
+              const before = data.ahn ?? 0;
+              data.ahn = Math.max(0, before + ahnValue);
+              changes.push(`Ahn +${formatNumber(ahnValue)} (${formatNumber(before)} → **${formatNumber(data.ahn)}**)`);
+            } else {
+              data.ahn = Math.max(0, ahnValue);
+              changes.push(`Ahn set → **${formatNumber(data.ahn)}**`);
+            }
           }
+          if (bookEntries.length > 0) {
+            for (const { name, count, isAdd } of bookEntries) {
+              data.books[name] = isAdd ? (data.books[name] ?? 0) + count : count;
+            }
+            changes.push(`Sách:\n` + bookEntries.map(e => `> • 📚 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
+          }
+          if (itemEntries.length > 0) {
+            for (const { name, count, isAdd } of itemEntries) {
+              data.items[name] = isAdd ? (data.items[name] ?? 0) + count : count;
+            }
+            changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
+          }
+          await savePlayerData(targetUser.id, data);
+          return { targetUser, changes };
+        })
+      )
+    );
+
+    const lines = results.map((r, i) => {
+      const user = targetUsers[i];
+      if (r.status === "fulfilled") {
+        const { changes } = r.value;
+        return `✅ **${user.username}**:\n` + changes.map(c => `> ${c}`).join("\n");
+      } else {
+        log("error", "setplayer", user.id, r.reason?.message, { actor: message.author.id });
+        return `❌ **${user.username}**: ${r.reason?.message ?? "Lỗi không xác định"}`;
+      }
+    });
+
+    const body = `📋 Kết quả \`-setplayer\` cho ${targetUsers.length} người:\n\n` + lines.join("\n\n");
+    if (body.length > 2000) {
+      // Nếu quá dài, gửi thành nhiều chunk
+      const chunks = [];
+      let current = "";
+      for (const line of lines) {
+        if ((current + "\n\n" + line).length > 1900) {
+          chunks.push(current);
+          current = line;
+        } else {
+          current = current ? current + "\n\n" + line : line;
         }
-        if (bookEntries.length > 0) {
-  for (const { name, count, isAdd } of bookEntries) {
-    data.books[name] = isAdd ? (data.books[name] ?? 0) + count : count;
-  }
-  changes.push(`Sách:\n` + bookEntries.map(e => `> • 📚 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
-}
-if (itemEntries.length > 0) {
-  for (const { name, count, isAdd } of itemEntries) {
-    data.items[name] = isAdd ? (data.items[name] ?? 0) + count : count;
-  }
-  changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
-}
-        await savePlayerData(targetUser.id, data);
-        message.reply(
-          `✅ Đã cập nhật data cho ${targetUser}:\n` +
-          changes.map(c => `> ${c}`).join("\n")
-        );
-      });
-    } catch (err) {
-      log("error", "setplayer", targetUser.id, err.message, { actor: message.author.id });
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
+      }
+      if (current) chunks.push(current);
+      await message.reply(chunks[0]);
+      for (let i = 1; i < chunks.length; i++) {
+        await message.channel.send(chunks[i]);
+      }
+    } else {
+      message.reply(body);
     }
     return;
   }
