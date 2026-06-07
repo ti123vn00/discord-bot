@@ -1286,20 +1286,10 @@ client.on("messageCreate", async (message) => {
       {
         name: "📊 -math [...]",
         value: [
-          "Tính damage theo hệ thống.",
+          "Tính damage theo hệ thống game.",
           "> `dmg:` `res:` `bonus:` `critmul:` `critrate:` `critdiv:`",
           "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`",
           "> VD: `-math dmg: 10B critrate: 50 critmul: 1.5`",
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "🏹 -huntermath [...]",
-        value: [
-          "Tính damage theo hệ thống Hunter.",
-          "> `dmgbaseweapon:` `bonus:` `stat:` `scaleskill:`",
-          "> `dmgnegationboss:` `vulnerability:` `buffbonus:`",
-          "> VD: `-huntermath dmgbaseweapon: 50 bonus: 20 stat: 30 scaleskill: 100`",
         ].join("\n"),
         inline: false,
       },
