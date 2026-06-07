@@ -2181,12 +2181,11 @@ if (interaction.commandName === "use") {
       await interaction.editReply({
         content: (isSelf ? `🗑️ ${interaction.user} đã xóa khỏi kho của mình:` : `🗑️ ${interaction.user} (admin) đã xóa khỏi kho của ${targetUser}:`) +
           "\n" + changes.map(c => `> ${c}`).join("\n"),
-      });
-            } catch (err) {
-        log("error", "interactionCreate", interaction.user?.id ?? "unknown", err.message, { cmd: interaction.commandName });
-        // Cố reply nếu chưa reply
-        if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", ephemeral: true }).catch(() => {});
+  });
+  } catch (err) {
+    log("error", "interactionCreate", interaction.user?.id ?? "unknown", err.message, { cmd: interaction.commandName });
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", ephemeral: true }).catch(() => {});
     }
   }
 });
