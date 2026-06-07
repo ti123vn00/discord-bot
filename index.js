@@ -1,11 +1,17 @@
 // index.js
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
 const express = require("express");
+const { Redis } = require("@upstash/redis");
 
 const app = express();
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 if (!TOKEN) {
   console.warn("DISCORD_TOKEN is not set — Discord bot will not start.");
@@ -23,10 +29,6 @@ const RUPTURE_MAX = 99;
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
-/**
- * Parse key:value pairs from a full command string, supporting multi-word values.
- * Returns a map of key (lowercase) → value string.
- */
 function parseKeyValues(input) {
   const map = {};
   const regex = /([A-Za-z]+)\s*:\s*([\s\S]*?)(?=\s+[A-Za-z]+\s*:|$)/gi;
@@ -58,9 +60,6 @@ function filterZeroFields(fields) {
   });
 }
 
-/**
- * Validate and clamp slash command inputs, returning an error message if invalid.
- */
 function validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate, diceMul, sinkingInit, ruptureInit, sanityInit }) {
   const errors = [];
   if (startingCritRate < 0 || startingCritRate > 100) errors.push("CritRate phải từ 0–100%");
@@ -74,9 +73,6 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRat
 
 // ─── CORE LOGIC ───────────────────────────────────────────────────────────────
 
-/**
- * Tính DMG cho -math / /math
- */
 function calcMath(opts) {
   const {
     dmgStr = "",
@@ -92,7 +88,6 @@ function calcMath(opts) {
     ruptureInit = 0,
   } = opts;
 
-  // --- RES ---
   const resValues = { B: 1, P: 1, S: 1 };
   const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
   let match;
@@ -100,7 +95,6 @@ function calcMath(opts) {
     resValues[match[2].toUpperCase()] = parseFloat(match[1]);
   }
 
-  // --- DMG ---
   const dmgValues = [];
   const damageRegex =
     /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+Crit\d+)*)/gi;
@@ -181,7 +175,6 @@ function calcMath(opts) {
       totalPoise *= POISE_CRIT_HALVE;
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
       if (totalPoise > POISE_MAX) totalPoise = POISE_MAX;
-
       if (baseCritRate === null || baseCritRate < 1) {
         currentCritRate /= 2;
         if (currentCritRate < 0.05) currentCritRate = 0;
@@ -254,9 +247,6 @@ function calcMath(opts) {
   };
 }
 
-/**
- * Tính DMG cho -huntermath / /huntermath
- */
 function calcHunterMath(opts) {
   const {
     dmgBaseWeapon = 0,
@@ -311,9 +301,83 @@ client.once("ready", () => {
   console.log(`Bot đã online với tên ${client.user.tag}`);
 });
 
-// ─── PREFIX COMMANDS (-math, -huntermath) ────────────────────────────────────
-client.on("messageCreate", (message) => {
+// ─── PREFIX COMMANDS ──────────────────────────────────────────────────────────
+client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+
+  // ── -parry ──
+  if (message.content.startsWith("-parry")) {
+    const args = message.content.replace("-parry", "").trim().split(/\s+/);
+    let rolls = 1;
+    const parsed = parseInt(args[0]);
+    if (!isNaN(parsed) && parsed > 0) rolls = parsed;
+    if (rolls > 50) {
+      message.reply("❌ Số lần roll tối đa là 50.");
+      return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+    const lines = [];
+
+    for (let i = 0; i < rolls; i++) {
+      let atk, pry, rerolls = 0;
+      // Roll lại nếu hòa (giống YAGPDB while loop)
+      do {
+        atk = Math.floor(Math.random() * 16) + 1; // d16: 1–16
+        pry = Math.floor(Math.random() * 20) + 1; // d20: 1–20
+        if (atk === pry) rerolls++;
+      } while (atk === pry);
+
+      const isSuccess = atk <= pry;
+      if (isSuccess) successCount++;
+      else failCount++;
+
+      const rerollNote = rerolls > 0 ? ` *(Hòa và roll lại ${rerolls} lần)*` : "";
+      const result = isSuccess ? "Parry thành công ✅" : "Parry thất bại ❌";
+      lines.push(`Lần ${i + 1}: Attacker: \`${atk}\` vs Defender: \`${pry}\`${rerollNote} → ${result}`);
+    }
+
+    const summary = `**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
+    const body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n${summary}`;
+
+    if (body.length > 2000) {
+      message.reply(body.substring(0, 1990) + "\n…(bị cắt bớt)");
+    } else {
+      message.reply(body);
+    }
+    return;
+  }
+
+  // ── -daily ──
+  if (message.content.startsWith("-daily")) {
+    const userId = message.author.id;
+    const key = `daily:${userId}`;
+
+    try {
+      const existing = await redis.get(key);
+
+      if (existing) {
+        const remainingMs = await redis.pttl(key);
+        const hours = Math.floor(remainingMs / 3600000);
+        const minutes = Math.floor((remainingMs % 3600000) / 60000);
+        const seconds = Math.floor((remainingMs % 60000) / 1000);
+        message.reply(
+          `${message.author}, bạn đã nhận daily hôm nay rồi.\n` +
+          `Thời gian còn lại: **${hours}h ${minutes}m ${seconds}s**.`
+        );
+      } else {
+        await redis.set(key, "claimed", { ex: 86400 }); // tự hết hạn sau 24h
+        message.reply(
+          `${message.author} Bạn đã điểm danh thành công và nhận được **5 Exp**, **100k Ahn** và **1 Random Book**! 🎉`
+        );
+      }
+    } catch (err) {
+      console.error("[daily] Redis error:", err);
+      message.reply("❌ Có lỗi xảy ra, thử lại sau nhé.");
+    }
+    return;
+  }
 
   // ── -math ──
   if (message.content.startsWith("-math")) {
