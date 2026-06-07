@@ -83,6 +83,7 @@ const ADMIN_IDS = new Set([
 // ─── VALID BOOKS ──────────────────────────────────────────────────────────────
 const VALID_BOOKS = [
   "Random Book",
+  "Sealed Book Cache",
   "Book of Choice",
   "Hana Association Book",
   "Zwei Association Book",
@@ -534,7 +535,7 @@ client.on("messageCreate", async (message) => {
         if (isWeekComplete) {
           playerData.exp += 25;
           playerData.ahn += 400000;
-          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
+          playerData.inventory["Sealed Book Cache"] = (playerData.inventory["Sealed Book Cache"] ?? 0) + 1;
         }
 
         await savePlayerData(userId, playerData);
@@ -549,7 +550,7 @@ client.on("messageCreate", async (message) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
@@ -964,7 +965,7 @@ client.on("interactionCreate", async (interaction) => {
         if (isWeekComplete) {
           playerData.exp += 25;
           playerData.ahn += 400000;
-          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
+          playerData.inventory["Sealed Book Cache"] = (playerData.inventory["Sealed Book Cache"] ?? 0) + 1;
         }
 
         await savePlayerData(userId, playerData);
@@ -979,7 +980,7 @@ client.on("interactionCreate", async (interaction) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
