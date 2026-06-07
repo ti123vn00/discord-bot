@@ -23,10 +23,11 @@ const commands = [
       opt.setName("sanitybonus").setDescription("Sanity % DMG Bonus (VD: 15)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("critmul").setDescription("Crit Multiplier (VD: 1.3)").setRequired(false))
-    .addNumberOption(opt =>
-      opt.setName("critrate").setDescription("Crit Rate % (VD: 50)").setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("poise").setDescription("Starting Poise stacks (1 stack = 5% crit, tối đa 99)")
+        .setMinValue(0).setMaxValue(99).setRequired(false))
     .addBooleanOption(opt =>
-      opt.setName("critdiv").setDescription("Crit Divide? (mỗi lần crit, crit rate giảm đôi)").setRequired(false))
+      opt.setName("critdiv").setDescription("Crit Divide? (mỗi lần crit, Poise stacks giảm đôi)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("sanity").setDescription("Sanity ban đầu của địch (VD: 45)").setRequired(false))
     .addNumberOption(opt =>
