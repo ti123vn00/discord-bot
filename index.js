@@ -5,13 +5,9 @@ const { Redis } = require("@upstash/redis");
 
 const app = express();
 
+// ─── ENV VALIDATION ───────────────────────────────────────────────────────────
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
 
 if (!TOKEN) {
   console.error("DISCORD_TOKEN is not set — Discord bot will not start.");
@@ -21,6 +17,11 @@ if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN
   console.error("UPSTASH_REDIS_REST_URL hoặc UPSTASH_REDIS_REST_TOKEN chưa được set — bot sẽ không thể kết nối Redis.");
   process.exit(1);
 }
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const SANITY_MIN = -45;
@@ -569,7 +570,6 @@ async function processDailyClaimForUser(userId) {
       return { alreadyClaimed: true, hours, minutes, seconds };
     }
 
-    const nowUtc = new Date();
     const vnNow = getVNNow();
     const vnYesterday = new Date(vnNow);
     vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
@@ -1791,11 +1791,20 @@ client.on("messageCreate", async (message) => {
 });
 
 // ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
+async function replyOnCooldown(interaction, ms) {
+  if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
+  await interaction.reply({
+    content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`,
+    ephemeral: true,
+  });
+  return true;
+}
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "math") {
-    if (isOnCooldown(interaction.user.id, "math", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 2000)) return;
     await interaction.deferReply();
     const dmgStr = interaction.options.getString("dmg") ?? "";
     if (!dmgStr.trim()) {
@@ -1833,7 +1842,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "huntermath") {
-    if (isOnCooldown(interaction.user.id, "huntermath", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 2000)) return;
     await interaction.deferReply();
     await interaction.editReply(calcHunterMath({
       dmgBaseWeapon: interaction.options.getNumber("dmgbaseweapon") ?? 0,
@@ -1848,7 +1857,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "parry") {
-    if (isOnCooldown(interaction.user.id, "parry", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, 50);
     const { successCount, failCount, lines } = runParryRolls(rolls);
@@ -1859,7 +1868,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "daily") {
-    if (isOnCooldown(interaction.user.id, "daily", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     try {
       const result = await processDailyClaimForUser(interaction.user.id);
@@ -1876,7 +1885,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "randombook") {
-    if (isOnCooldown(interaction.user.id, "randombook", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     const userId = interaction.user.id;
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
@@ -1906,7 +1915,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "randomsealedbook") {
-    if (isOnCooldown(interaction.user.id, "randomsealedbook", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     const userId = interaction.user.id;
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
@@ -1936,7 +1945,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "chipboardcache") {
-    if (isOnCooldown(interaction.user.id, "chipboardcache", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     const userId = interaction.user.id;
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
@@ -1966,7 +1975,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "balance") {
-    if (isOnCooldown(interaction.user.id, "balance", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 2000)) return;
     await interaction.deferReply();
     const targetUser = interaction.options.getUser("user") ?? interaction.user;
     try {
@@ -1979,7 +1988,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "inventory") {
-    if (isOnCooldown(interaction.user.id, "inventory", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
+    if (await replyOnCooldown(interaction, 2000)) return;
     await interaction.deferReply();
     const targetUser = interaction.options.getUser("user") ?? interaction.user;
     try {
