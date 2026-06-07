@@ -830,8 +830,8 @@ client.on("messageCreate", async (message) => {
     const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
 
-    if (!isAdmin && (expGain !== 0 || ahnGain !== 0 || gradeTarget !== null)) {
-      message.reply("❌ Bạn chỉ có thể tặng sách hoặc vật phẩm cho người khác.");
+    if (!isAdmin && (expGain !== 0 || gradeTarget !== null)) {
+      message.reply("❌ Bạn không thể tặng EXP cho người khác.");
       return;
     }
 
@@ -861,12 +861,20 @@ client.on("messageCreate", async (message) => {
     }
 
     if (expGain === 0 && ahnGain === 0 && !bookName && !itemName && gradeTarget === null) {
-      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`, `grade`.");
+      message.reply("❌ Cần chỉ định ít nhất một trong: `ahn`, `book`, `item`" + (isAdmin ? ", `exp`, `grade`." : "."));
       return;
     }
 
     try {
       const senderData = isAdmin ? null : await getPlayerData(message.author.id);
+
+      if (!isAdmin && ahnGain > 0) {
+        const senderAhn = senderData.ahn ?? 0;
+        if (senderAhn < ahnGain) {
+          message.reply(`❌ Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
+          return;
+        }
+      }
 
       if (!isAdmin && bookName) {
         const owned = senderData.books?.[bookName] ?? 0;
@@ -898,29 +906,31 @@ client.on("messageCreate", async (message) => {
       if (ahnGain !== 0) {
         recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
         changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
+
+        if (!isAdmin && ahnGain > 0) {
+          senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
+        }
       }
       if (bookName) {
         recipientData.books[bookName] = Math.max(0, (recipientData.books[bookName] ?? 0) + bookCount);
         changes.push(`+${bookCount} 📚 **${bookName}**`);
-
         if (!isAdmin) {
           senderData.books[bookName] -= bookCount;
           if (senderData.books[bookName] <= 0) delete senderData.books[bookName];
-          await savePlayerData(message.author.id, senderData);
         }
       }
       if (itemName) {
         recipientData.items[itemName] = Math.max(0, (recipientData.items[itemName] ?? 0) + itemCount);
         changes.push(`+${itemCount} 🔩 **${itemName}**`);
-
         if (!isAdmin) {
           senderData.items[itemName] -= itemCount;
           if (senderData.items[itemName] <= 0) delete senderData.items[itemName];
-          await savePlayerData(message.author.id, senderData);
         }
       }
 
+      // Save cả hai cùng lúc — chỉ save sender nếu không phải admin
       await savePlayerData(targetUser.id, recipientData);
+      if (!isAdmin) await savePlayerData(message.author.id, senderData);
 
       const verb = isAdmin ? "tặng" : "chuyển";
       message.reply(
