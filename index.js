@@ -1167,31 +1167,46 @@ client.on("messageCreate", async (message) => {
     const kv = parseKeyValues(rawInput);
     const expRemove = parseInt(kv["exp"] ?? "0", 10) || 0;
     const ahnRemove = parseFloat(kv["ahn"] ?? "0") || 0;
-    const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
-    const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);
-    if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
-      message.reply("❌ Bạn chỉ có thể tự xóa sách hoặc vật phẩm của mình.");
+    const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);    
+    const booksRaw = kv["books"] ?? null;
+    const bookEntries = [];
+if (booksRaw) {
+  const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
+  for (const part of parts) {
+    const match = part.match(/^(.+?)\s+x(\d+)$/i);
+    if (!match) {
+      message.reply(`❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` (VD: \`Random Book x2\`)`);
       return;
     }
-    let bookName = null;
-    if (bookRaw) {
-      bookName = findBook(bookRaw);
-      if (!bookName) {
-        message.reply(`❌ Tên sách không hợp lệ: \`${bookRaw}\`\nDùng \`-books\` để xem danh sách.`);
-        return;
-      }
+    const name = findBook(match[1].trim());
+    if (!name) {
+      message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\``);
+      return;
     }
-    let itemName = null;
-    if (itemRaw) {
-      itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
-      if (!itemName) {
-        message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`\nDùng \`-items\` để xem danh sách.`);
-        return;
-      }
+    bookEntries.push({ name, count: parseInt(match[2], 10) });
+  }
+}
+const itemsRaw = kv["items"] ?? null;
+const itemEntries = [];
+if (itemsRaw) {
+  const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
+  for (const part of parts) {
+    const match = part.match(/^(.+?)\s+x(\d+)$/i);
+    if (!match) {
+      message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Chipboard MK1 x3\`)`);
+      return;
     }
-    if (expRemove === 0 && ahnRemove === 0 && !bookName && !itemName) {
+    const name = isAdmin ? findItemAdmin(match[1].trim()) : findItem(match[1].trim());
+    if (!name) {
+      message.reply(`❌ Tên vật phẩm không hợp lệ: \`${match[1].trim()}\``);
+      return;
+    }
+    itemEntries.push({ name, count: parseInt(match[2], 10) });
+  }
+}
+    if (expRemove === 0 && ahnRemove === 0 && !bookName && !itemName && bookEntries.length === 0 && itemEntries.length === 0) {
       message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`.");
       return;
     }
@@ -1229,6 +1244,26 @@ client.on("messageCreate", async (message) => {
           if (data.items[itemName] <= 0) delete data.items[itemName];
           changes.push(`-${removed} 🔩 **${itemName}** (còn lại: ${data.items[itemName] ?? 0})`);
         }
+        for (const { name, count } of bookEntries) {
+  const owned = data.books[name] ?? 0;
+  if (owned < count && !isAdmin) {
+    throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
+  }
+  const removed = Math.min(owned, count);
+  data.books[name] = owned - removed;
+  if (data.books[name] <= 0) delete data.books[name];
+  changes.push(`-${removed} 📚 **${name}** (còn lại: ${data.books[name] ?? 0})`);
+}
+for (const { name, count } of itemEntries) {
+  const owned = data.items[name] ?? 0;
+  if (owned < count && !isAdmin) {
+    throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
+  }
+  const removed = Math.min(owned, count);
+  data.items[name] = owned - removed;
+  if (data.items[name] <= 0) delete data.items[name];
+  changes.push(`-${removed} 🔩 **${name}** (còn lại: ${data.items[name] ?? 0})`);
+}
         await savePlayerData(targetUser.id, data);
         const isSelf = targetUser.id === message.author.id;
         const header = isSelf
