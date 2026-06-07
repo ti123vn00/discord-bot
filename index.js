@@ -354,23 +354,73 @@ client.on("messageCreate", async (message) => {
     const userId = message.author.id;
     const key = `daily:${userId}`;
 
-    try {
-      const existing = await redis.get(key);
+    // Ngày hiện tại theo giờ Việt Nam (UTC+7), dạng "YYYY-MM-DD"
+    function getVNDateString() {
+      const now = new Date();
+      const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      return vnTime.toISOString().slice(0, 10);
+    }
 
-      if (existing) {
-        const remainingMs = await redis.pttl(key);
-        const hours = Math.floor(remainingMs / 3600000);
-        const minutes = Math.floor((remainingMs % 3600000) / 60000);
-        const seconds = Math.floor((remainingMs % 60000) / 1000);
+    // Số giây còn lại đến 0h VN ngày hôm sau (17h UTC)
+    function secondsUntilVNMidnight() {
+      const now = new Date();
+      const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const vnMidnight = new Date(Date.UTC(
+        vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(), 17, 0, 0, 0
+      ));
+      if (vnMidnight <= now) vnMidnight.setUTCDate(vnMidnight.getUTCDate() + 1);
+      return Math.floor((vnMidnight - now) / 1000);
+    }
+
+    try {
+      const raw = await redis.get(key);
+      const data = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+      const today = getVNDateString();
+
+      if (data && data.lastClaim === today) {
+        // Đã claim hôm nay
+        const remaining = secondsUntilVNMidnight();
+        const hours = Math.floor(remaining / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        const seconds = remaining % 60;
         message.reply(
           `${message.author}, bạn đã nhận daily hôm nay rồi.\n` +
-          `Thời gian còn lại: **${hours}h ${minutes}m ${seconds}s**.`
+          `Thời gian còn lại đến reset: **${hours}h ${minutes}m ${seconds}s**.`
         );
       } else {
-        await redis.set(key, "claimed", { ex: 86400 }); // tự hết hạn sau 24h
-        message.reply(
-          `${message.author} Bạn đã điểm danh thành công và nhận được **5 Exp**, **100k Ahn** và **1 Random Book**! 🎉`
-        );
+        // Tính streak: hôm qua theo giờ VN
+        const nowUtc = new Date();
+        const vnNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+        const vnYesterday = new Date(vnNow);
+        vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
+        const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
+
+        let streak = data && data.lastClaim === yesterdayStr
+          ? (data.streak || 1) + 1  // Claim hôm qua → cộng streak
+          : 1;                       // Bỏ lỡ hoặc lần đầu → reset về 1
+
+        const isWeekComplete = streak >= 7;
+
+        // Lưu Redis, tự xóa sau 2 ngày (đủ để check hôm qua)
+        const newData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
+        await redis.set(key, JSON.stringify(newData), { ex: 86400 * 2 });
+
+        // Progress bar
+        const displayStreak = isWeekComplete ? 7 : streak;
+        const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
+
+        let replyMsg =
+          `🎉 ${message.author} đã điểm danh thành công!\n` +
+          `> 📦 **5 Exp** | **100k Ahn** | **1 Random Book**\n` +
+          `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
+
+        if (isWeekComplete) {
+          replyMsg +=
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **500k Ahn** và **1 Rare Book**!\n` +
+            `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
+        }
+
+        message.reply(replyMsg);
       }
     } catch (err) {
       console.error("[daily] Redis error:", err);
