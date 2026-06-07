@@ -48,6 +48,14 @@ const GRADE_EXP_REQUIRED = {
 const GRADE_MAX = 1;
 const GRADE_MIN = 9;
 
+// EXP tối đa = tổng EXP để đạt Grade 1 (MAX).
+// = 5+10+20+40+80+160+320+640 = 1275
+const EXP_MAX = Object.values(GRADE_EXP_REQUIRED).reduce((a, b) => a + b, 0); // 1275
+
+function clampExp(exp) {
+  return Math.min(Math.max(0, exp), EXP_MAX);
+}
+
 function calcGrade(totalExp) {
   let grade = GRADE_MIN;
   let remaining = totalExp;
@@ -67,7 +75,14 @@ function calcGrade(totalExp) {
   return { grade, expInCurrentGrade: remaining, expNeeded };
 }
 
+/**
+ * FIX #7: Validate targetGrade trước khi tính — tránh kết quả sai với input ngoài range.
+ * targetGrade hợp lệ: GRADE_MAX (1) đến GRADE_MIN (9).
+ */
 function calcExpForGrade(targetGrade) {
+  if (targetGrade < GRADE_MAX || targetGrade > GRADE_MIN) {
+    throw new RangeError(`targetGrade phải từ ${GRADE_MAX}–${GRADE_MIN}, nhận được: ${targetGrade}`);
+  }
   let total = 0;
   for (let g = GRADE_MIN; g > targetGrade; g--) {
     total += GRADE_EXP_REQUIRED[g] ?? 0;
@@ -123,7 +138,7 @@ const CHIPBOARD_CACHE_POOL = [
 ];
 
 // ─── VALID BOOKS & ITEMS ──────────────────────────────────────────────────────
-// Tự động build từ pools — chỉ cần thêm sách vào pool là đủ, không cần sửa thêm chỗ nào.
+// Tự động build từ pools — chỉ cần thêm sách vào pool là đủ.
 const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice"];
 const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
 
@@ -147,7 +162,7 @@ const CRAFT_RECIPES = {
 
 const VALID_ITEMS_SET = new Set(VALID_ITEMS.map(i => i.toLowerCase()));
 
-// Map lookup O(1) thay vì Array.find() O(n) — cũng tự update khi pool thay đổi.
+// Map lookup O(1).
 const BOOK_LOOKUP_MAP = new Map(VALID_BOOKS.map(b => [b.toLowerCase(), b]));
 const ITEM_LOOKUP_MAP = new Map(VALID_ITEMS.map(i => [i.toLowerCase(), i]));
 
@@ -164,20 +179,6 @@ function findItemAdmin(input) {
 }
 
 // ─── parseKeyValues ───────────────────────────────────────────────────────────
-/**
- * Parses a string of "key: value" pairs robustly.
- *
- * Only words in KNOWN_KEYS are treated as key anchors, so mid-value colons
- * (e.g. "item: Sword: of Dawn count: 2") are never misread as new keys.
- *
- * Examples:
- *   "item: Sword: of Dawn count: 2"
- *     → { item: "Sword: of Dawn", count: "2" }
- *   "book: N Corp Book count: 3 item: Chipboard MK1 itemcount: 2"
- *     → { book: "N Corp Book", count: "3", item: "Chipboard MK1", itemcount: "2" }
- *   "exp: +50 ahn: +100000"
- *     → { exp: "+50", ahn: "+100000" }
- */
 const KNOWN_KEYS = new Set([
   "book", "count", "item", "itemcount", "ahn", "exp", "grade",
   "dmg", "res", "bonus", "critmul", "critrate", "critdiv",
@@ -186,42 +187,32 @@ const KNOWN_KEYS = new Set([
   "dmgnegationboss", "vulnerability", "buffbonus", "dmgbaseweapon",
 ]);
 
-// Compile regex một lần khi khởi động — tránh rebuild mỗi lần gọi parseKeyValues.
+// Compile regex một lần khi khởi động — cache instance ngoài function.
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
+const _KV_KEY_RE = new RegExp(_KV_KEY_RE_SRC, "gi");
 
 function parseKeyValues(input) {
-  // Tạo instance mới mỗi lần (cần reset lastIndex cho exec loop), nhưng source đã được cache.
-  const KEY_RE = new RegExp(_KV_KEY_RE_SRC, "gi");
-
+  _KV_KEY_RE.lastIndex = 0; // reset trước mỗi lần dùng (flag g giữ state)
   const anchors = [];
   let m;
-  while ((m = KEY_RE.exec(input)) !== null) {
+  while ((m = _KV_KEY_RE.exec(input)) !== null) {
     anchors.push({
       key: m[1].toLowerCase(),
-      matchStart: m.index,               // start of the " key:" token
-      valueStart: m.index + m[0].length, // start of the value text
+      matchStart: m.index,
+      valueStart: m.index + m[0].length,
     });
   }
-
   const result = {};
   for (let i = 0; i < anchors.length; i++) {
     const { key, valueStart } = anchors[i];
-    const valueEnd = i + 1 < anchors.length
-      ? anchors[i + 1].matchStart  // cut at the start of the next " key:" token
-      : input.length;
+    const valueEnd = i + 1 < anchors.length ? anchors[i + 1].matchStart : input.length;
     result[key] = input.slice(valueStart, valueEnd).trim();
   }
   return result;
 }
 
 function filterZeroFields(fields) {
-  const ALWAYS_SHOW = new Set([
-    "Final DMG",
-    "Crit Rate",
-    "CritMul",
-    "% Dmg Bonus",
-    "Res Multipliers",
-  ]);
+  const ALWAYS_SHOW = new Set(["Final DMG", "Crit Rate", "CritMul", "% Dmg Bonus", "Res Multipliers"]);
   return fields.filter((f) => {
     if (ALWAYS_SHOW.has(f.name)) return true;
     const v = String(f.value).trim();
@@ -251,6 +242,8 @@ const cooldowns = new Map();
 const COOLDOWN_CLEANUP_SIZE = 5000;
 const COOLDOWN_CLEANUP_AGE_MS = 60_000;
 
+// Cooldown key dùng chung cho prefix lẫn slash — intentional để tránh bypass
+// bằng cách đổi qua lại giữa 2 loại lệnh.
 function isOnCooldown(userId, command, ms) {
   const key = `${userId}:${command}`;
   const last = cooldowns.get(key) ?? 0;
@@ -283,45 +276,63 @@ function secondsUntilVNMidnight() {
   return Math.floor((vnMidnight - now) / 1000);
 }
 
+// ─── STRUCTURED LOGGING ───────────────────────────────────────────────────────
+// FIX #4: Log có cấu trúc — luôn kèm userId, command, timestamp để dễ debug khi nhiều user.
+function log(level, command, userId, msg, extra = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    cmd: command,
+    uid: userId,
+    msg,
+    ...extra,
+  };
+  if (level === "error") {
+    console.error(JSON.stringify(entry));
+  } else {
+    console.log(JSON.stringify(entry));
+  }
+}
+
+// ─── REDIS TIMEOUT ────────────────────────────────────────────────────────────
+// Wrap Redis operation với timeout để tránh treo vô thời hạn khi Upstash chậm.
+const REDIS_TIMEOUT_MS = 8000;
+
+function withTimeout(promise, ms = REDIS_TIMEOUT_MS, msg = "Thao tác Redis quá thời gian, thử lại sau.") {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => {
+      timer = setTimeout(() => rej(new Error(msg)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 // ─── REDIS LOCK ───────────────────────────────────────────────────────────────
-/**
- * Acquire a per-user advisory lock in Redis (SET NX EX).
- * Returns the lock token if acquired, null if the lock is already held.
- *
- * @param {string} userId
- * @param {number} ttlSeconds  How long the lock is valid (safety net for crashes)
- */
 async function acquireLock(userId, ttlSeconds = 5) {
   const lockKey = `lock:${userId}`;
   const token = `${Date.now()}-${Math.random()}`;
-  // SET lockKey token NX EX ttlSeconds
-  const result = await redis.set(lockKey, token, { nx: true, ex: ttlSeconds });
-  // Upstash returns "OK" on success, null if key already exists
+  const result = await withTimeout(
+    redis.set(lockKey, token, { nx: true, ex: ttlSeconds }),
+    3000,
+    "Lock timeout"
+  );
   if (result === "OK" || result === true) return { lockKey, token };
   return null;
 }
 
 async function releaseLock({ lockKey, token }) {
-  // Atomic compare-and-delete via Lua script — prevents deleting another owner's lock
-  // if our TTL expired just before we called del.
-  await redis.eval(
-    `if redis.call("get",KEYS[1])==ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end`,
-    [lockKey],
-    [token]
-  );
+  await withTimeout(
+    redis.eval(
+      `if redis.call("get",KEYS[1])==ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end`,
+      [lockKey],
+      [token]
+    ),
+    3000,
+    "Release lock timeout"
+  ).catch(() => {});
 }
 
-/**
- * Run `fn` while holding an exclusive lock for `userId`.
- * If the lock cannot be acquired within `retries` attempts, throws.
- *
- * @param {string}   userId
- * @param {Function} fn          async () => result
- * @param {object}   [options]
- * @param {number}   [options.ttlSeconds=5]
- * @param {number}   [options.retries=3]
- * @param {number}   [options.retryDelayMs=200]
- */
 async function withLock(userId, fn, { ttlSeconds = 5, retries = 3, retryDelayMs = 200 } = {}) {
   let lock = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -335,7 +346,7 @@ async function withLock(userId, fn, { ttlSeconds = 5, retries = 3, retryDelayMs 
   try {
     return await fn();
   } finally {
-    await releaseLock(lock).catch(() => {}); // best-effort release
+    await releaseLock(lock).catch(() => {});
   }
 }
 
@@ -366,17 +377,25 @@ function migratePlayerData(data) {
 const REDIS_MAX_RETRIES = 2;
 const REDIS_RETRY_BASE_MS = 150;
 
+// FIX #2: Phân biệt timeout error (không retry) vs transient error (retry).
+// Nếu Redis thực sự chết, không cần chờ 8s × 3 lần = 24s.
+function isTimeoutError(err) {
+  return err && (err.message === "Thao tác Redis quá thời gian, thử lại sau." || err.message === "Lock timeout");
+}
+
 async function getPlayerData(userId) {
   const key = `player:${userId}`;
   let lastErr;
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
-      const raw = await redis.get(key);
+      const raw = await withTimeout(redis.get(key));
       if (!raw) return { exp: 0, ahn: 0, books: {}, items: {} };
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       return migratePlayerData(data);
     } catch (err) {
       lastErr = err;
+      // Timeout = Redis không phản hồi — retry sẽ chỉ tốn thêm thời gian vô ích.
+      if (isTimeoutError(err)) break;
       if (attempt < REDIS_MAX_RETRIES) {
         await new Promise(r => setTimeout(r, REDIS_RETRY_BASE_MS * (attempt + 1)));
       }
@@ -386,23 +405,25 @@ async function getPlayerData(userId) {
 }
 
 async function savePlayerData(userId, data) {
-  const key = `player:${userId}`;
-  await redis.set(key, JSON.stringify(data));
+  await withTimeout(redis.set(`player:${userId}`, JSON.stringify(data)));
 }
 
-/**
- * Save multiple players' data atomically using a Redis pipeline.
- * Either ALL writes succeed or NONE are committed (best-effort atomic).
- *
- * @param {Array<{ userId: string, data: object }>} entries
- */
 async function saveMultiplePlayerData(entries) {
-  // Upstash Redis supports pipelining via .pipeline()
   const pipeline = redis.pipeline();
   for (const { userId, data } of entries) {
     pipeline.set(`player:${userId}`, JSON.stringify(data));
   }
-  await pipeline.exec();
+  await withTimeout(pipeline.exec());
+}
+
+// FIX #3: Unwrap Upstash pipeline response đúng cách.
+// Upstash trả về [{result, error}, {result, error}] không phải [value, value].
+function unwrapPipelineResults(results) {
+  return results.map(r => {
+    // Upstash v2+: mỗi phần tử là { result, error } hoặc trực tiếp là value
+    if (r !== null && typeof r === "object" && "result" in r) return r.result;
+    return r;
+  });
 }
 
 function formatNumber(n) {
@@ -410,15 +431,15 @@ function formatNumber(n) {
 }
 
 // ─── SHARED LOGIC: OPEN CACHE ─────────────────────────────────────────────────
-/**
- * Generic cache-opener used by Random Book, Sealed Book Cache, and Chipboard Cache.
- * @param {string} userId
- * @param {object} opts
- * @param {string}   opts.cacheKey   - Key inside data (e.g. "Random Book")
- * @param {string[]} opts.pool       - Array of possible results
- * @param {"books"|"items"} opts.dataField - Which sub-object holds the cache & results
- * @param {number}   [opts.count=1]
- */
+// FIX #6: Validate count — báo lỗi rõ khi nhập 0 hoặc số âm thay vì âm thầm dùng 1.
+function parseOpenCount(raw, max = 20) {
+  const parsed = parseInt(raw);
+  if (!isNaN(parsed) && parsed <= 0) return { error: `❌ Số lần mở phải lớn hơn 0.` };
+  const count = (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) ? parsed : 1;
+  if (count > max) return { error: `❌ Số lần mở tối đa là ${max}.` };
+  return { count };
+}
+
 async function handleOpenCache(userId, { cacheKey, pool, dataField, count = 1 }) {
   return withLock(userId, async () => {
     const data = await getPlayerData(userId);
@@ -451,6 +472,14 @@ function handleOpenChipboardCache(userId, count = 1) {
   return handleOpenCache(userId, { cacheKey: "Chipboard Cache", pool: CHIPBOARD_CACHE_POOL, dataField: "items", count });
 }
 
+// FIX #5: Truncate an toàn — không cắt giữa codepoint Unicode/emoji.
+// Dùng Array.from() để đếm theo character thay vì byte index.
+function safeTruncate(str, maxChars) {
+  const chars = Array.from(str);
+  if (chars.length <= maxChars) return str;
+  return chars.slice(0, maxChars).join("") + "…";
+}
+
 function buildRollDescription({ user, cacheType, results, remainingCount }) {
   const lines = results.map((r, i) => `**${i + 1}.** ✨ ${r}`);
   const tally = {};
@@ -463,13 +492,12 @@ function buildRollDescription({ user, cacheType, results, remainingCount }) {
   const summary = `\n\n**📊 Tổng kết:**\n` + summaryLines.join("\n");
   const header = `${user} đã dùng **${results.length} ${cacheType}** và nhận được:\n\n`;
 
-  // Truncate danh sách hits nếu vượt giới hạn embed Discord (4096 ký tự)
   const LIMIT = 4096;
   const fixedLen = header.length + summary.length + footer.length;
   let body = lines.join("\n");
   if (fixedLen + body.length > LIMIT) {
     const budget = LIMIT - fixedLen - 20;
-    body = body.slice(0, budget) + `\n…(bị cắt bớt)`;
+    body = safeTruncate(body, budget) + `\n…(bị cắt bớt)`;
   }
 
   return header + body + summary + footer;
@@ -477,13 +505,24 @@ function buildRollDescription({ user, cacheType, results, remainingCount }) {
 
 // ─── SHARED LOGIC: DAILY ──────────────────────────────────────────────────────
 async function processDailyClaimForUser(userId) {
-  // Use lock so concurrent /daily calls don't double-grant rewards
   return withLock(userId, async () => {
     const dailyKey = `daily:${userId}`;
-    const raw = await redis.get(dailyKey);
-    const dailyData = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-    const today = getVNDateString();
+    const playerKey = `player:${userId}`;
 
+    // Đọc cả 2 keys trong 1 pipeline round-trip.
+    const rawResults = await withTimeout(
+      redis.pipeline().get(dailyKey).get(playerKey).exec()
+    );
+    // FIX #3: Unwrap đúng cách — Upstash có thể trả về [{result, error}] thay vì [value].
+    const [dailyRaw, playerRaw] = unwrapPipelineResults(rawResults);
+
+    const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
+    let playerData = playerRaw
+      ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
+      : { exp: 0, ahn: 0, books: {}, items: {} };
+    playerData = migratePlayerData(playerData);
+
+    const today = getVNDateString();
     if (dailyData && dailyData.lastClaim === today) {
       const remaining = secondsUntilVNMidnight();
       const hours = Math.floor(remaining / 3600);
@@ -503,34 +542,48 @@ async function processDailyClaimForUser(userId) {
 
     const isWeekComplete = streak >= 7;
     const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
-    await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: DAILY_KEY_TTL_SECONDS });
 
-    const playerData = await getPlayerData(userId);
     playerData.books = playerData.books ?? {};
     playerData.items = playerData.items ?? {};
-    playerData.exp = (playerData.exp ?? 0) + DAILY_EXP_REWARD;
+
+    // Cộng EXP và clamp vào EXP_MAX.
+    const expBefore = playerData.exp ?? 0;
+    const expGain = DAILY_EXP_REWARD + (isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0);
+    playerData.exp = clampExp(expBefore + expGain);
+    const actualExpGained = playerData.exp - expBefore; // có thể < expGain nếu đã gần max
+
     playerData.ahn = (playerData.ahn ?? 0) + DAILY_AHN_REWARD;
     playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
 
     if (isWeekComplete) {
-      playerData.exp += DAILY_STREAK_EXP_BONUS;
       playerData.ahn += DAILY_STREAK_AHN_BONUS;
       playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
     }
 
-    await savePlayerData(userId, playerData);
+    // Write cả 2 keys trong 1 pipeline round-trip.
+    await withTimeout(
+      redis.pipeline()
+        .set(dailyKey, JSON.stringify(newDailyData), { ex: DAILY_KEY_TTL_SECONDS })
+        .set(playerKey, JSON.stringify(playerData))
+        .exec()
+    );
 
     const displayStreak = isWeekComplete ? 7 : streak;
     const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
 
+    const atMax = playerData.exp >= EXP_MAX;
+    const expLine = atMax
+      ? `📦 **${actualExpGained} Exp** (đã đạt MAX ${EXP_MAX}) | **100k Ahn** | **1 Random Book**`
+      : `📦 **${actualExpGained} Exp** | **100k Ahn** | **1 Random Book**`;
+
     let replyMsg =
       `🎉 {USER} đã điểm danh thành công!\n` +
-      `> 📦 **5 Exp** | **100k Ahn** | **1 Random Book**\n` +
+      `> ${expLine}\n` +
       `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
 
     if (isWeekComplete) {
       replyMsg +=
-        `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
+        `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **${isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0} Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
         `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
     }
 
@@ -766,7 +819,7 @@ const client = new Client({
 let botReady = false;
 client.once("ready", () => {
   botReady = true;
-  console.log(`Bot đã online với tên ${client.user.tag}`);
+  log("info", "startup", "system", `Bot online: ${client.user.tag}`);
 });
 
 // ─── PREFIX COMMANDS ──────────────────────────────────────────────────────────
@@ -780,9 +833,13 @@ client.on("messageCreate", async (message) => {
       return;
     }
     const args = message.content.replace("-parry", "").trim().split(/\s+/);
-    let rolls = 1;
-    const parsed = parseInt(args[0]);
-    if (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) rolls = parsed;
+    const parsedRolls = parseInt(args[0]);
+    // FIX #6: Báo lỗi rõ khi nhập 0 hoặc số âm.
+    if (!isNaN(parsedRolls) && parsedRolls <= 0) {
+      message.reply("❌ Số lần roll phải lớn hơn 0.");
+      return;
+    }
+    let rolls = (!isNaN(parsedRolls) && Number.isFinite(parsedRolls) && parsedRolls > 0) ? parsedRolls : 1;
     if (rolls > 50) {
       message.reply("❌ Số lần roll tối đa là 50.");
       return;
@@ -828,7 +885,7 @@ client.on("messageCreate", async (message) => {
         message.reply(result.replyMsg.replace("{USER}", message.author.toString()));
       }
     } catch (err) {
-      console.error("[daily] error:", err);
+      log("error", "daily", userId, err.message, { stack: err.stack });
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
     }
     return;
@@ -858,7 +915,7 @@ client.on("messageCreate", async (message) => {
           thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
           fields: [
             { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
-            { name: "✨ Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** EXP`, inline: true },
+            { name: "✨ Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
             { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
             { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
             { name: "🔩 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
@@ -867,7 +924,7 @@ client.on("messageCreate", async (message) => {
         }],
       });
     } catch (err) {
-      console.error("[balance] error:", err);
+      log("error", "balance", targetUser.id, err.message);
       message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
     }
     return;
@@ -914,7 +971,7 @@ client.on("messageCreate", async (message) => {
         }],
       });
     } catch (err) {
-      console.error("[inventory] error:", err);
+      log("error", "inventory", targetUser.id, err.message);
       message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
     }
     return;
@@ -980,27 +1037,10 @@ client.on("messageCreate", async (message) => {
     }
 
     try {
-      // ── Atomic give: lock BOTH users before reading/writing ──────────────────
-      // We sort IDs so lock acquisition order is always deterministic,
-      // preventing deadlock when two users gift each other simultaneously.
-      const lockIds = isAdmin
-        ? [targetUser.id]
-        : [message.author.id, targetUser.id].sort();
-
-      // Acquire locks one by one in sorted order
-      const locks = [];
-      try {
-        for (const id of lockIds) {
-          const lock = await acquireLock(id, 8);
-          if (!lock) throw new Error("Đang xử lý lệnh khác, vui lòng thử lại sau giây lát.");
-          locks.push(lock);
-        }
-
-        // ── Read both players inside the lock ──
+      const runGive = async () => {
         const senderData = isAdmin ? null : await getPlayerData(message.author.id);
         const recipientData = await getPlayerData(targetUser.id);
 
-        // Defensive init — đảm bảo books/items luôn tồn tại dù data mới
         recipientData.books = recipientData.books ?? {};
         recipientData.items = recipientData.items ?? {};
         if (senderData) {
@@ -1008,7 +1048,6 @@ client.on("messageCreate", async (message) => {
           senderData.items = senderData.items ?? {};
         }
 
-        // ── Validate sender inventory ──
         if (!isAdmin && ahnGain > 0) {
           const senderAhn = senderData.ahn ?? 0;
           if (senderAhn < ahnGain) {
@@ -1028,15 +1067,15 @@ client.on("messageCreate", async (message) => {
           }
         }
 
-        // ── Apply changes ──
         const changes = [];
         if (gradeTarget !== null) {
           const expNeeded = calcExpForGrade(gradeTarget);
           recipientData.exp = expNeeded;
           changes.push(`Grade set → **Grade ${gradeTarget}** (EXP set thành **${expNeeded}**)`);
         } else if (expGain !== 0) {
-          recipientData.exp = (recipientData.exp ?? 0) + expGain;
-          changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP`);
+          // Clamp EXP khi admin give — không vượt EXP_MAX.
+          recipientData.exp = clampExp((recipientData.exp ?? 0) + expGain);
+          changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP → tổng **${recipientData.exp}**/${EXP_MAX}`);
         }
         if (ahnGain !== 0) {
           recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
@@ -1060,7 +1099,6 @@ client.on("messageCreate", async (message) => {
           }
         }
 
-        // ── Atomic write: pipeline both saves in one round-trip ──
         const saveEntries = [{ userId: targetUser.id, data: recipientData }];
         if (!isAdmin) saveEntries.push({ userId: message.author.id, data: senderData });
         await saveMultiplePlayerData(saveEntries);
@@ -1070,14 +1108,20 @@ client.on("messageCreate", async (message) => {
           `✅ ${message.author} đã ${verb} cho ${targetUser}:\n` +
           changes.map(c => `> ${c}`).join("\n")
         );
-      } finally {
-        // Always release all acquired locks
-        for (const lock of locks) {
-          await releaseLock(lock).catch(() => {});
-        }
+      };
+
+      // FIX #1: Guard rõ ràng cho trường hợp same-ID (dù hiện tại không thể xảy ra do check trên).
+      // Lồng withLock theo sort ID — tránh deadlock khi 2 user cùng give nhau.
+      if (isAdmin || message.author.id === targetUser.id) {
+        await withLock(targetUser.id, runGive, { ttlSeconds: 8 });
+      } else {
+        const [firstId, secondId] = [message.author.id, targetUser.id].sort();
+        await withLock(firstId, () =>
+          withLock(secondId, runGive, { ttlSeconds: 8 }),
+        { ttlSeconds: 8 });
       }
     } catch (err) {
-      console.error("[give] error:", err);
+      log("error", "give", message.author.id, err.message, { target: targetUser.id });
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
     }
     return;
@@ -1171,7 +1215,7 @@ client.on("messageCreate", async (message) => {
         message.reply(header + "\n" + changes.map(c => `> ${c}`).join("\n"));
       });
     } catch (err) {
-      console.error("[remove] error:", err);
+      log("error", "remove", targetUser.id, err.message, { actor: message.author.id });
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
     }
     return;
@@ -1255,11 +1299,11 @@ client.on("messageCreate", async (message) => {
         } else if (expValue !== null) {
           if (expIsAdd) {
             const before = data.exp ?? 0;
-            data.exp = Math.max(0, before + expValue);
-            changes.push(`EXP +${expValue} (${before} → **${data.exp}**)`);
+            data.exp = clampExp(before + expValue);
+            changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]`);
           } else {
-            data.exp = Math.max(0, expValue);
-            changes.push(`EXP set → **${data.exp}**`);
+            data.exp = clampExp(expValue);
+            changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]`);
           }
         }
         if (ahnValue !== null) {
@@ -1287,7 +1331,7 @@ client.on("messageCreate", async (message) => {
         );
       });
     } catch (err) {
-      console.error("[setplayer] error:", err);
+      log("error", "setplayer", targetUser.id, err.message, { actor: message.author.id });
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
     }
     return;
@@ -1356,7 +1400,7 @@ client.on("messageCreate", async (message) => {
         );
       });
     } catch (err) {
-      console.error("[use] error:", err);
+      log("error", "use", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
     }
     return;
@@ -1435,9 +1479,9 @@ client.on("messageCreate", async (message) => {
     ];
     const adminFields = [
       { name: "─────── 🔐 ADMIN ONLY ───────", value: "Các lệnh dưới đây chỉ dành cho admin.", inline: false },
-      { name: "🎁 -give @user (admin)", value: ["Admin có thể tặng EXP, set Grade, và dùng **bất kỳ tên item nào** không cần trong whitelist.", "> `exp: <số>` — tặng EXP", "> `grade: <1–9>` — set Grade trực tiếp", "> `item: <tên bất kỳ> itemcount: <số>` — không cần validate tên", "> VD: `-give @user item: Sword of Dawn itemcount: 1`"].join("\n"), inline: false },
+      { name: "🎁 -give @user (admin)", value: ["Admin có thể tặng EXP, set Grade, và dùng **bất kỳ tên item nào** không cần trong whitelist.", "> `exp: <số>` — tặng EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade trực tiếp", "> `item: <tên bất kỳ> itemcount: <số>` — không cần validate tên", "> VD: `-give @user item: Sword of Dawn itemcount: 1`"].join("\n"), inline: false },
       { name: "🗑️ -remove @user (admin)", value: ["Admin có thể xóa EXP, Ahn, sách, hoặc **item bất kỳ** của người khác.", "> `exp:` `ahn:` `book:` `item: <tên bất kỳ>`", "> VD: `-remove @user item: Sword of Dawn count: 1`"].join("\n"), inline: false },
-      { name: "⚙️ -setplayer @user [...]", value: ["Set hoặc cộng thêm dữ liệu của người chơi.", "> `exp: <số>` — set EXP | `exp: +<số>` — cộng thêm EXP", "> `grade: <1–9>` — set Grade", "> `ahn: <số>` — set Ahn | `ahn: +<số>` — cộng thêm Ahn", "> `books: <Tên> x<số>, <Tên> x<số>` — set sách (phải hợp lệ)", "> `items: <Tên bất kỳ> x<số>, ...` — set item **không cần trong whitelist**", "> VD: `-setplayer @user exp: +50 ahn: +100000`", "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Sword of Dawn x2`"].join("\n"), inline: false },
+      { name: "⚙️ -setplayer @user [...]", value: ["Set hoặc cộng thêm dữ liệu của người chơi.", "> `exp: <số>` — set EXP | `exp: +<số>` — cộng thêm EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade", "> `ahn: <số>` — set Ahn | `ahn: +<số>` — cộng thêm Ahn", "> `books: <Tên> x<số>, <Tên> x<số>` — set sách (phải hợp lệ)", "> `items: <Tên bất kỳ> x<số>, ...` — set item **không cần trong whitelist**", "> VD: `-setplayer @user exp: +50 ahn: +100000`", "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Sword of Dawn x2`"].join("\n"), inline: false },
     ];
     const fields = isAdmin ? [...generalFields, ...adminFields] : generalFields;
     message.reply({
@@ -1446,7 +1490,7 @@ client.on("messageCreate", async (message) => {
         color: isAdmin ? 0xe74c3c : 0x5865f2,
         description: isAdmin ? "Hiển thị đầy đủ bao gồm lệnh admin vì bạn là **Admin** 🔐" : "Dùng các lệnh dưới đây để tương tác với bot.",
         fields,
-        footer: { text: isAdmin ? "Admin mode • Slash commands: /math /huntermath /parry /daily /randombook /randomsealedbook" : "Slash commands: /math /huntermath /parry /daily /randombook /randomsealedbook" },
+        footer: { text: `EXP tối đa: ${EXP_MAX} (Grade 1 MAX)${isAdmin ? " • Admin mode" : ""}` },
       }],
     });
     return;
@@ -1456,17 +1500,15 @@ client.on("messageCreate", async (message) => {
   if (message.content.startsWith("-chipboardcache")) {
     const userId = message.author.id;
     const args = message.content.replace("-chipboardcache", "").trim().split(/\s+/);
-    let count = 1;
-    const parsed = parseInt(args[0]);
-    if (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) count = parsed;
-    if (count > 20) { message.reply("❌ Số lần mở tối đa là 20."); return; }
+    const { count, error } = parseOpenCount(args[0], 20);
+    if (error) { message.reply(error); return; }
     try {
       const { success, data, results } = await handleOpenChipboardCache(userId, count);
       if (!success) { message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Chipboard Cache", results, remainingCount: data.items["Chipboard Cache"] ?? 0 });
       message.reply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: desc }] });
     } catch (err) {
-      console.error("[chipboardcache] error:", err);
+      log("error", "chipboardcache", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
     }
     return;
@@ -1476,17 +1518,15 @@ client.on("messageCreate", async (message) => {
   if (message.content.startsWith("-randomsealedbook")) {
     const userId = message.author.id;
     const args = message.content.replace("-randomsealedbook", "").trim().split(/\s+/);
-    let count = 1;
-    const parsed = parseInt(args[0]);
-    if (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) count = parsed;
-    if (count > 20) { message.reply("❌ Số lần mở tối đa là 20."); return; }
+    const { count, error } = parseOpenCount(args[0], 20);
+    if (error) { message.reply(error); return; }
     try {
       const { success, data, results } = await handleOpenSealedBook(userId, count);
       if (!success) { message.reply("❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Sealed Book Cache", results, remainingCount: data.books["Sealed Book Cache"] ?? 0 });
       message.reply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: desc }] });
     } catch (err) {
-      console.error("[randomsealedbook] error:", err);
+      log("error", "randomsealedbook", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
     }
     return;
@@ -1496,17 +1536,15 @@ client.on("messageCreate", async (message) => {
   if (message.content.startsWith("-randombook")) {
     const userId = message.author.id;
     const args = message.content.replace("-randombook", "").trim().split(/\s+/);
-    let count = 1;
-    const parsed = parseInt(args[0]);
-    if (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) count = parsed;
-    if (count > 20) { message.reply("❌ Số lần mở tối đa là 20."); return; }
+    const { count, error } = parseOpenCount(args[0], 20);
+    if (error) { message.reply(error); return; }
     try {
       const { success, data, results } = await handleOpenRandomBook(userId, count);
       if (!success) { message.reply("❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Random Book", results, remainingCount: data.books["Random Book"] ?? 0 });
       message.reply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: desc }] });
     } catch (err) {
-      console.error("[randombook] error:", err);
+      log("error", "randombook", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
     }
     return;
@@ -1517,6 +1555,15 @@ client.on("messageCreate", async (message) => {
     if (isOnCooldown(message.author.id, "math", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
     const input = message.content.replace("-math", "").trim();
     const kv = parseKeyValues(input);
+    const dmgStr = kv["dmg"] ?? "";
+    if (!dmgStr.trim()) {
+      message.reply(
+        "⚠️ Bạn chưa nhập `dmg:`. Vui lòng nhập công thức damage.\n" +
+        "> VD: `-math dmg: 10B critrate: 50 critmul: 1.5`\n" +
+        "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+Sinking][+Rupture][+Poise][+Crit<n>]`"
+      );
+      return;
+    }
     const bonusPct = parseFloat((kv["bonus"] ?? "0").replace("%", ""));
     const sanityBonusPct = parseFloat((kv["sanitybonus"] ?? "0").replace("%", ""));
     const critMul = parseFloat((kv["critmul"] ?? "1").replace("x", ""));
@@ -1527,7 +1574,7 @@ client.on("messageCreate", async (message) => {
     const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate: critRate, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
-    message.reply(calcMath({ dmgStr: kv["dmg"] ?? "", resStr: kv["res"] ?? "", bonusPct, sanityBonusPct, critMul, startingCritRate: critRate / 100, critDiv: (kv["critdiv"] ?? "no").toLowerCase() === "yes", sanityInit, diceMul, sinkingInit, ruptureInit }));
+    message.reply(calcMath({ dmgStr, resStr: kv["res"] ?? "", bonusPct, sanityBonusPct, critMul, startingCritRate: critRate / 100, critDiv: (kv["critdiv"] ?? "no").toLowerCase() === "yes", sanityInit, diceMul, sinkingInit, ruptureInit }));
     return;
   }
 
@@ -1548,6 +1595,15 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "math") {
     if (isOnCooldown(interaction.user.id, "math", 2000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
+    const dmgStr = interaction.options.getString("dmg") ?? "";
+    if (!dmgStr.trim()) {
+      await interaction.editReply({
+        content:
+          "⚠️ Bạn chưa nhập `dmg`. Vui lòng nhập công thức damage.\n" +
+          "> VD: `10B`, `5x3B`, `8S+Crit50`, `DiceB`"
+      });
+      return;
+    }
     const critRate = interaction.options.getNumber("critrate") ?? 0;
     const critMul = interaction.options.getNumber("critmul") ?? 1;
     const diceMul = interaction.options.getNumber("dicemul") ?? 1;
@@ -1558,7 +1614,7 @@ client.on("interactionCreate", async (interaction) => {
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRate: critRate, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
-    await interaction.editReply(calcMath({ dmgStr: interaction.options.getString("dmg") ?? "", resStr: interaction.options.getString("res") ?? "", bonusPct, sanityBonusPct, critMul, startingCritRate: critRate / 100, critDiv: interaction.options.getBoolean("critdiv") ?? false, sanityInit, diceMul, sinkingInit, ruptureInit }));
+    await interaction.editReply(calcMath({ dmgStr, resStr: interaction.options.getString("res") ?? "", bonusPct, sanityBonusPct, critMul, startingCritRate: critRate / 100, critDiv: interaction.options.getBoolean("critdiv") ?? false, sanityInit, diceMul, sinkingInit, ruptureInit }));
     return;
   }
 
@@ -1599,7 +1655,7 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.editReply({ content: result.replyMsg.replace("{USER}", interaction.user.toString()) });
       }
     } catch (err) {
-      console.error("[/daily] error:", err);
+      log("error", "/daily", interaction.user.id, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
     }
     return;
@@ -1609,13 +1665,13 @@ client.on("interactionCreate", async (interaction) => {
     if (isOnCooldown(interaction.user.id, "randombook", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
     const userId = interaction.user.id;
-    const count = Math.min(interaction.options.getInteger("count") ?? 1, 20);
+    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
       const { success, data, results } = await handleOpenRandomBook(userId, count);
       if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng." }); return; }
       await interaction.editReply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: buildRollDescription({ user: interaction.user, cacheType: "Random Book", results, remainingCount: data.books["Random Book"] ?? 0 }) }] });
     } catch (err) {
-      console.error("[/randombook] error:", err);
+      log("error", "/randombook", userId, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
     }
     return;
@@ -1625,13 +1681,13 @@ client.on("interactionCreate", async (interaction) => {
     if (isOnCooldown(interaction.user.id, "randomsealedbook", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
     const userId = interaction.user.id;
-    const count = Math.min(interaction.options.getInteger("count") ?? 1, 20);
+    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
       const { success, data, results } = await handleOpenSealedBook(userId, count);
       if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng." }); return; }
       await interaction.editReply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: buildRollDescription({ user: interaction.user, cacheType: "Sealed Book Cache", results, remainingCount: data.books["Sealed Book Cache"] ?? 0 }) }] });
     } catch (err) {
-      console.error("[/randomsealedbook] error:", err);
+      log("error", "/randomsealedbook", userId, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
     }
     return;
@@ -1641,18 +1697,17 @@ client.on("interactionCreate", async (interaction) => {
     if (isOnCooldown(interaction.user.id, "chipboardcache", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
     const userId = interaction.user.id;
-    const count = Math.min(interaction.options.getInteger("count") ?? 1, 20);
+    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
       const { success, data, results } = await handleOpenChipboardCache(userId, count);
       if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng." }); return; }
       await interaction.editReply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: buildRollDescription({ user: interaction.user, cacheType: "Chipboard Cache", results, remainingCount: data.items["Chipboard Cache"] ?? 0 }) }] });
     } catch (err) {
-      console.error("[/chipboardcache] error:", err);
+      log("error", "/chipboardcache", userId, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
     }
     return;
   }
-
 });
 
 client.login(TOKEN);
@@ -1663,7 +1718,7 @@ app.use((req, res) => res.status(404).send("Not found."));
 app.use((err, req, res, next) => { console.error("[Express error]", err); res.status(500).send("Internal server error."); });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, "0.0.0.0", () => console.log(`Server is running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system", `Server running on port ${PORT}`));
 
-process.on("uncaughtException", (err) => console.error("[uncaughtException] Bot sẽ không crash:", err));
-process.on("unhandledRejection", (reason) => console.error("[unhandledRejection] Promise bị rejected:", reason));
+process.on("uncaughtException", (err) => log("error", "uncaughtException", "system", err.message, { stack: err.stack }));
+process.on("unhandledRejection", (reason) => log("error", "unhandledRejection", "system", String(reason)));
