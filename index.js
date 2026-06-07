@@ -97,6 +97,7 @@ const VALID_BOOKS = [
   "Random Book",
   "Sealed Book Cache",
   "Book of Choice",
+  "Book Thường",
   "Hana Association Book",
   "Zwei Association Book",
   "Shi Association Book",
