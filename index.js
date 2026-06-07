@@ -109,6 +109,12 @@ const SEALED_BOOK_POOL = [
   "The Middle Big Brother Book",
 ];
 
+const CHIPBOARD_CACHE_POOL = [
+  "Chipboard MK1",
+  "Chipboard MK2",
+  "Chipboard MK3",
+];
+
 // ─── VALID BOOKS & ITEMS ──────────────────────────────────────────────────────
 const VALID_BOOKS = [
   "Random Book",
@@ -151,7 +157,18 @@ const VALID_ITEMS = [
   "Chipboard MK3",
   "Chipboard MK4",
   "Chipboard MK5",
+  "Uptie Module",
+  "Chipboard Cache",
 ];
+
+// ─── CRAFT RECIPES ────────────────────────────────────────────────────────────
+// Each recipe: { inputs: { itemName: count }, output: { itemName: count } }
+const CRAFT_RECIPES = {
+  "Chipboard MK2": { inputs: { "Chipboard MK1": 4 }, output: { "Chipboard MK2": 1 } },
+  "Chipboard MK3": { inputs: { "Chipboard MK2": 4 }, output: { "Chipboard MK3": 1 } },
+  "Chipboard MK4": { inputs: { "Chipboard MK3": 4, "Uptie Module": 1 }, output: { "Chipboard MK4": 1 } },
+  "Chipboard MK5": { inputs: { "Chipboard MK4": 4, "Uptie Module": 1 }, output: { "Chipboard MK5": 1 } },
+};
 
 // Set for O(1) migration lookup
 const VALID_ITEMS_SET = new Set(VALID_ITEMS.map(i => i.toLowerCase()));
@@ -372,7 +389,28 @@ async function handleOpenSealedBook(userId, count = 1) {
   return { success: true, data, results };
 }
 
-/** Build embed description for multi-roll results */
+// ─── SHARED LOGIC: OPEN CHIPBOARD CACHE (multi-roll) ─────────────────────────
+async function handleOpenChipboardCache(userId, count = 1) {
+  const data = await getPlayerData(userId);
+  data.items = data.items ?? {};
+
+  const owned = data.items["Chipboard Cache"] ?? 0;
+  const rolls = Math.min(count, owned);
+  if (rolls < 1) return { success: false, data, results: [] };
+
+  data.items["Chipboard Cache"] = owned - rolls;
+  if (data.items["Chipboard Cache"] <= 0) delete data.items["Chipboard Cache"];
+
+  const results = [];
+  for (let i = 0; i < rolls; i++) {
+    const result = CHIPBOARD_CACHE_POOL[Math.floor(Math.random() * CHIPBOARD_CACHE_POOL.length)];
+    data.items[result] = (data.items[result] ?? 0) + 1;
+    results.push(result);
+  }
+
+  await savePlayerData(userId, data);
+  return { success: true, data, results };
+}
 function buildRollDescription({ user, cacheType, results, remainingCount }) {
   const lines = results.map((r, i) => `**${i + 1}.** ✨ ${r}`);
 
@@ -1281,46 +1319,114 @@ client.on("messageCreate", async (message) => {
     if (!rawInput) {
       message.reply(
         "❌ Cú pháp: `-use <tên vật phẩm> [count: <số>]`\n" +
-        "> VD: `-use Chipboard MK1` hoặc `-use Chipboard MK1 count: 3`"
+        "> VD: `-use Chipboard MK2` — craft 1 cái\n" +
+        "> VD: `-use Chipboard MK3 count: 5` — craft 5 cái\n" +
+        "> Dùng `-recipes` để xem công thức craft."
       );
       return;
     }
 
     // Parse optional count: suffix
     const countMatch = rawInput.match(/\s+count:\s*(\d+)$/i);
-    const useCount = countMatch ? Math.max(1, parseInt(countMatch[1], 10) || 1) : 1;
+    const craftCount = countMatch ? Math.max(1, parseInt(countMatch[1], 10) || 1) : 1;
     const itemInput = countMatch ? rawInput.slice(0, countMatch.index).trim() : rawInput;
 
     const itemName = findItem(itemInput);
     if (!itemName) {
       message.reply(
         `❌ Vật phẩm không hợp lệ: \`${itemInput}\`\n` +
-        `Dùng \`-items\` để xem danh sách vật phẩm có thể sử dụng.`
+        `Dùng \`-items\` để xem danh sách, \`-recipes\` để xem công thức craft.`
+      );
+      return;
+    }
+
+    // Check if this item has a recipe
+    const recipe = CRAFT_RECIPES[itemName];
+    if (!recipe) {
+      message.reply(
+        `❌ **${itemName}** không có công thức craft.\n` +
+        `Dùng \`-recipes\` để xem các vật phẩm có thể craft.`
       );
       return;
     }
 
     try {
       const data = await getPlayerData(userId);
-      const owned = data.items[itemName] ?? 0;
 
-      if (owned < useCount) {
-        message.reply(`❌ Bạn chỉ có **${owned}** **${itemName}**, không đủ để dùng **${useCount}** cái.`);
+      // Calculate total cost for craftCount runs
+      const totalCost = {};
+      for (const [mat, qty] of Object.entries(recipe.inputs)) {
+        totalCost[mat] = qty * craftCount;
+      }
+
+      // Check if player has enough materials, collect shortages
+      const shortages = [];
+      for (const [mat, needed] of Object.entries(totalCost)) {
+        const owned = data.items[mat] ?? 0;
+        if (owned < needed) {
+          shortages.push(`• **${mat}**: cần **${needed}**, có **${owned}** (thiếu **${needed - owned}**)`);
+        }
+      }
+
+      if (shortages.length > 0) {
+        message.reply(
+          `❌ Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` +
+          shortages.join("\n")
+        );
         return;
       }
 
-      data.items[itemName] = owned - useCount;
-      if (data.items[itemName] <= 0) delete data.items[itemName];
+      // Deduct inputs
+      for (const [mat, needed] of Object.entries(totalCost)) {
+        data.items[mat] = (data.items[mat] ?? 0) - needed;
+        if (data.items[mat] <= 0) delete data.items[mat];
+      }
+
+      // Add outputs
+      const outputLines = [];
+      for (const [out, qty] of Object.entries(recipe.output)) {
+        const gained = qty * craftCount;
+        data.items[out] = (data.items[out] ?? 0) + gained;
+        outputLines.push(`**${gained}× ${out}**`);
+      }
+
       await savePlayerData(userId, data);
 
+      // Build material summary for the reply
+      const costLines = Object.entries(totalCost)
+        .map(([mat, qty]) => `• -${qty} **${mat}** (còn lại: ${data.items[mat] ?? 0})`);
+
       message.reply(
-        `✅ ${message.author} đã sử dụng **${useCount}× ${itemName}**!\n` +
-        `> Còn lại: **${data.items[itemName] ?? 0}** cái.`
+        `⚒️ ${message.author} đã craft thành công!\n` +
+        `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
+        `> 📦 Nguyên liệu đã dùng:\n` +
+        costLines.map(l => `> ${l}`).join("\n")
       );
     } catch (err) {
       console.error("[use] error:", err);
       message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
     }
+    return;
+  }
+
+  // ── -recipes ──
+  if (message.content.startsWith("-recipes")) {
+    const recipeLines = Object.entries(CRAFT_RECIPES).map(([output, recipe]) => {
+      const inputStr = Object.entries(recipe.inputs)
+        .map(([mat, qty]) => `${qty}× ${mat}`)
+        .join(" + ");
+      const outputQty = recipe.output[output];
+      return `\`${inputStr}\` → **${outputQty}× ${output}**`;
+    });
+
+    message.reply({
+      embeds: [{
+        title: "⚒️ Công thức Craft",
+        color: 0xe74c3c,
+        description: recipeLines.join("\n"),
+        footer: { text: "Dùng -use <tên vật phẩm> [count: <số>] để craft" },
+      }],
+    });
     return;
   }
 
@@ -1403,12 +1509,17 @@ client.on("messageCreate", async (message) => {
         inline: false,
       },
       {
-        name: "🧪 -use <tên vật phẩm> [count: <số>]",
+        name: "⚒️ -use <tên vật phẩm> [count: <số>]",
         value: [
-          "Sử dụng vật phẩm trong kho của bạn (chỉ dùng cho chính mình).",
-          "> VD: `-use Chipboard MK1`",
-          "> VD: `-use Chipboard MK2 count: 3`",
+          "Craft vật phẩm bằng nguyên liệu trong kho (chỉ dùng cho chính mình).",
+          "> VD: `-use Chipboard MK2` — craft 1 cái",
+          "> VD: `-use Chipboard MK3 count: 5` — craft 5 cái cùng lúc",
         ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "📋 -recipes",
+        value: "Xem toàn bộ công thức craft vật phẩm.",
         inline: false,
       },
       {
@@ -1419,6 +1530,11 @@ client.on("messageCreate", async (message) => {
       {
         name: "🔮 -randomsealedbook [số]",
         value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`",
+        inline: false,
+      },
+      {
+        name: "🔩 -chipboardcache [số]",
+        value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`",
         inline: false,
       },
       {
@@ -1503,6 +1619,56 @@ client.on("messageCreate", async (message) => {
         footer: { text: isAdmin ? "Admin mode • Slash commands: /math /huntermath /parry /daily /randombook /randomsealedbook" : "Slash commands: /math /huntermath /parry /daily /randombook /randomsealedbook" },
       }],
     });
+    return;
+  }
+
+  // ── -chipboardcache ──
+  if (message.content.startsWith("-chipboardcache")) {
+    const userId = message.author.id;
+    const args = message.content.replace("-chipboardcache", "").trim().split(/\s+/);
+    let count = 1;
+    const parsed = parseInt(args[0]);
+    if (!isNaN(parsed) && parsed > 0) count = parsed;
+    if (count > 20) {
+      message.reply("❌ Số lần mở tối đa là 20.");
+      return;
+    }
+
+    try {
+      const owned = (await getPlayerData(userId)).items?.["Chipboard Cache"] ?? 0;
+      if (owned < 1) {
+        message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho.");
+        return;
+      }
+      if (count > owned) {
+        message.reply(`❌ Bạn chỉ có **${owned}** Chipboard Cache, không đủ để mở **${count}** lần.`);
+        return;
+      }
+
+      const { success, data, results } = await handleOpenChipboardCache(userId, count);
+      if (!success) {
+        message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho.");
+        return;
+      }
+
+      const desc = buildRollDescription({
+        user: message.author,
+        cacheType: "Chipboard Cache",
+        results,
+        remainingCount: data.items["Chipboard Cache"] ?? 0,
+      });
+
+      message.reply({
+        embeds: [{
+          title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`,
+          color: 0xe67e22,
+          description: desc,
+        }],
+      });
+    } catch (err) {
+      console.error("[chipboardcache] error:", err);
+      message.reply("❌ Có lỗi xảy ra, thử lại sau nhé.");
+    }
     return;
   }
 
