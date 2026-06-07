@@ -1827,6 +1827,7 @@ async function replyOnCooldown(interaction, ms) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+  try {
 
   if (interaction.commandName === "math") {
     if (await replyOnCooldown(interaction, 2000)) return;
@@ -2030,7 +2031,8 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  if (interaction.commandName === "use") {
+if (interaction.commandName === "use") {
+    if (await replyOnCooldown(interaction, 2000)) return; 
     const userId = interaction.user.id;
     await interaction.deferReply();
     const itemInput = interaction.options.getString("item") ?? "";
@@ -2180,11 +2182,12 @@ client.on("interactionCreate", async (interaction) => {
         content: (isSelf ? `🗑️ ${interaction.user} đã xóa khỏi kho của mình:` : `🗑️ ${interaction.user} (admin) đã xóa khỏi kho của ${targetUser}:`) +
           "\n" + changes.map(c => `> ${c}`).join("\n"),
       });
-    } catch (err) {
-      log("error", "/remove", targetUser.id, err.message, { actor: interaction.user.id });
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}` });
+            } catch (err) {
+        log("error", "interactionCreate", interaction.user?.id ?? "unknown", err.message, { cmd: interaction.commandName });
+        // Cố reply nếu chưa reply
+        if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", ephemeral: true }).catch(() => {});
     }
-    return;
   }
 });
 
