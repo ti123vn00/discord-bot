@@ -74,7 +74,7 @@ function calcGrade(totalExp) {
 // ─── ADMIN USER IDs ───────────────────────────────────────────────────────────
 // Thêm Discord User ID của admin vào đây
 const ADMIN_IDS = new Set([
-  "123456789012345678", // ← thay bằng ID thật
+  "208187560692940803", // ← thay bằng ID thật
   // thêm ID khác nếu cần
 ]);
 
