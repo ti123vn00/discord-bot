@@ -28,14 +28,8 @@ const SINKING_MAX = 99;
 const RUPTURE_MAX = 99;
 
 // ─── LEVELING ─────────────────────────────────────────────────────────────────
-// Grade 9 (thấp nhất) → Grade 1 (cao nhất). Có 9 grade.
-// EXP để lên từ grade X xuống grade X-1:
-//   grade 9→8: 5 exp
-//   grade 8→7: 10 exp
-//   grade 7→6: 20 exp
-//   ...nhân đôi mỗi lần
 const GRADE_EXP_REQUIRED = {
-  9: 5,    // cần 5 exp để lên grade 8
+  9: 5,
   8: 10,
   7: 20,
   6: 40,
@@ -43,22 +37,17 @@ const GRADE_EXP_REQUIRED = {
   4: 160,
   3: 320,
   2: 640,
-  // grade 1 là max, không lên thêm
 };
 const GRADE_MAX = 1;
 const GRADE_MIN = 9;
 
-/**
- * Tính grade và exp dư dựa trên tổng exp tích lũy.
- * Trả về { grade, expInCurrentGrade, expNeeded }
- */
 function calcGrade(totalExp) {
-  let grade = GRADE_MIN; // bắt đầu từ grade 9
+  let grade = GRADE_MIN;
   let remaining = totalExp;
 
   while (grade > GRADE_MAX) {
     const needed = GRADE_EXP_REQUIRED[grade];
-    if (needed === undefined) break; // grade 1, không lên nữa
+    if (needed === undefined) break;
     if (remaining >= needed) {
       remaining -= needed;
       grade--;
@@ -71,10 +60,6 @@ function calcGrade(totalExp) {
   return { grade, expInCurrentGrade: remaining, expNeeded };
 }
 
-/**
- * Tính tổng EXP tối thiểu cần để ĐẠT đúng targetGrade (không dư exp).
- * VD: calcExpForGrade(3) = 5+10+20+40+80+160 = 315
- */
 function calcExpForGrade(targetGrade) {
   let total = 0;
   for (let g = GRADE_MIN; g > targetGrade; g--) {
@@ -84,13 +69,45 @@ function calcExpForGrade(targetGrade) {
 }
 
 // ─── ADMIN USER IDs ───────────────────────────────────────────────────────────
-// Thêm Discord User ID của admin vào đây
 const ADMIN_IDS = new Set([
-  "208187560692940803", // ← thay bằng ID thật
-  // thêm ID khác nếu cần
+  "208187560692940803",
 ]);
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
+// ─── BOOK POOLS ───────────────────────────────────────────────────────────────
+const RANDOM_BOOK_POOL = [
+  "Book Thường",
+  "Hana Association Book",
+  "Zwei Association Book",
+  "Shi Association Book",
+  "Cinq Association Book",
+  "Liu Association Book",
+  "Seven Association Book",
+  "Dieci Association Book",
+  "Thumb Syndicate Book",
+  "Index Syndicate Book",
+  "Middle Syndicate Book",
+  "Ring Syndicate Book",
+  "Blade Lineage Syndicate Book",
+  "Kurokumo Syndicate Book",
+  "Smiling Faces Syndicate Book",
+  "N Corp Book",
+  "Sweeping Book",
+];
+
+const SEALED_BOOK_POOL = [
+  "Warp Corp Book",
+  "Fragment Book",
+  "Udjat Book",
+  "Red Gaze Book",
+  "Red Mist Book",
+  "Black Silence Book",
+  "Library Book",
+  "Book of The Birds",
+  "Arbiter Book",
+  "Book of M.A.D.",
+  "Reverbation Ensemble Book",
+  "The Middle Big Brother Book",
+];
 
 // ─── VALID BOOKS ──────────────────────────────────────────────────────────────
 const VALID_BOOKS = [
@@ -133,12 +150,10 @@ const VALID_BOOKS = [
   "Chipboard MK5",
 ];
 
-// Tìm tên sách khớp (case-insensitive)
 function findBook(input) {
   const lower = input.toLowerCase().trim();
   return VALID_BOOKS.find(b => b.toLowerCase() === lower) ?? null;
 }
-
 
 function parseKeyValues(input) {
   const map = {};
@@ -183,11 +198,6 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRat
 }
 
 // ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
-
-/**
- * Lấy dữ liệu player từ Redis.
- * Schema: { exp, ahn, inventory: { [bookName]: count } }
- */
 async function getPlayerData(userId) {
   const key = `player:${userId}`;
   try {
@@ -206,13 +216,47 @@ async function savePlayerData(userId, data) {
   await redis.set(key, JSON.stringify(data));
 }
 
-/** Format số lớn: 1000000 → "1,000,000" */
 function formatNumber(n) {
   return Math.floor(n).toLocaleString("en-US");
 }
 
-// ─── CORE LOGIC ───────────────────────────────────────────────────────────────
+// ─── SHARED LOGIC: OPEN RANDOM BOOK ──────────────────────────────────────────
+async function handleOpenRandomBook(userId) {
+  const data = await getPlayerData(userId);
+  data.inventory = data.inventory ?? {};
 
+  const owned = data.inventory["Random Book"] ?? 0;
+  if (owned < 1) return { success: false, data, result: null };
+
+  data.inventory["Random Book"] = owned - 1;
+  if (data.inventory["Random Book"] <= 0) delete data.inventory["Random Book"];
+
+  const result = RANDOM_BOOK_POOL[Math.floor(Math.random() * RANDOM_BOOK_POOL.length)];
+  data.inventory[result] = (data.inventory[result] ?? 0) + 1;
+
+  await savePlayerData(userId, data);
+  return { success: true, data, result };
+}
+
+// ─── SHARED LOGIC: OPEN SEALED BOOK ──────────────────────────────────────────
+async function handleOpenSealedBook(userId) {
+  const data = await getPlayerData(userId);
+  data.inventory = data.inventory ?? {};
+
+  const owned = data.inventory["Sealed Book Cache"] ?? 0;
+  if (owned < 1) return { success: false, data, result: null };
+
+  data.inventory["Sealed Book Cache"] = owned - 1;
+  if (data.inventory["Sealed Book Cache"] <= 0) delete data.inventory["Sealed Book Cache"];
+
+  const result = SEALED_BOOK_POOL[Math.floor(Math.random() * SEALED_BOOK_POOL.length)];
+  data.inventory[result] = (data.inventory[result] ?? 0) + 1;
+
+  await savePlayerData(userId, data);
+  return { success: true, data, result };
+}
+
+// ─── CORE LOGIC ───────────────────────────────────────────────────────────────
 function calcMath(opts) {
   const {
     dmgStr = "",
@@ -539,7 +583,6 @@ client.on("messageCreate", async (message) => {
         const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
         await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: 86400 * 2 });
 
-        // Cộng phần thưởng vào player data
         const EXP_REWARD = 5;
         const AHN_REWARD = 100000;
         const playerData = await getPlayerData(userId);
@@ -581,7 +624,6 @@ client.on("messageCreate", async (message) => {
 
   // ── -balance ──
   if (message.content.startsWith("-balance")) {
-    // Cho phép xem balance của người khác nếu mention, hoặc của chính mình
     let targetUser = message.mentions.users.first() ?? message.author;
     try {
       const data = await getPlayerData(targetUser.id);
@@ -593,7 +635,6 @@ client.on("messageCreate", async (message) => {
         ? `**Grade ${grade}** (MAX)`
         : `**Grade ${grade}** (${expInCurrentGrade}/${expNeeded} EXP → Grade ${grade - 1})`;
 
-      // Progress bar grade (0–max EXP trong grade hiện tại)
       let progressBar = "";
       if (grade > GRADE_MAX && expNeeded) {
         const filled = Math.round((expInCurrentGrade / expNeeded) * 10);
@@ -634,19 +675,16 @@ client.on("messageCreate", async (message) => {
         return;
       }
 
-      // Sắp xếp theo tên
       entries.sort(([a], [b]) => a.localeCompare(b));
 
-      // Nhóm thành dòng, mỗi dòng một cuốn
       const lines = entries.map(([name, count]) => `• **${name}** × ${count}`);
       const total = entries.reduce((s, [, c]) => s + c, 0);
 
-      // Chia thành nhiều fields nếu quá dài
       const CHUNK = 20;
       const fields = [];
       for (let i = 0; i < lines.length; i += CHUNK) {
         fields.push({
-          name: i === 0 ? "📚 Danh sách sách" : "​", // zero-width space cho field tiếp theo
+          name: i === 0 ? "📚 Danh sách sách" : "​",
           value: lines.slice(i, i + CHUNK).join("\n"),
           inline: false,
         });
@@ -668,8 +706,6 @@ client.on("messageCreate", async (message) => {
   }
 
   // ── -give ──
-  // Admin: -give @user exp: 50 ahn: 200000 book: Random Book count: 3 grade: 3
-  // Player: -give @user book: Random Book count: 2  (trừ từ kho của mình)
   if (message.content.startsWith("-give")) {
     const isAdmin = ADMIN_IDS.has(message.author.id);
 
@@ -684,7 +720,6 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Parse input sau tên lệnh và mention
     const rawInput = message.content
       .replace("-give", "")
       .replace(/<@!?\d+>/, "")
@@ -698,13 +733,11 @@ client.on("messageCreate", async (message) => {
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
 
-    // Player thường chỉ được tặng sách, không được tặng exp/ahn/grade
     if (!isAdmin && (expGain !== 0 || ahnGain !== 0 || gradeTarget !== null)) {
       message.reply("❌ Bạn chỉ có thể tặng sách cho người khác.");
       return;
     }
 
-    // Validate grade (admin only)
     if (gradeTarget !== null) {
       if (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN) {
         message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
@@ -712,7 +745,6 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // Validate tên sách
     let bookName = null;
     if (bookRaw) {
       bookName = findBook(bookRaw);
@@ -732,7 +764,6 @@ client.on("messageCreate", async (message) => {
     try {
       const senderData = isAdmin ? null : await getPlayerData(message.author.id);
 
-      // Kiểm tra kho người gửi (nếu là player)
       if (!isAdmin && bookName) {
         const owned = senderData.inventory?.[bookName] ?? 0;
         if (owned < bookCount) {
@@ -746,7 +777,6 @@ client.on("messageCreate", async (message) => {
       const recipientData = await getPlayerData(targetUser.id);
       const changes = [];
 
-      // grade: set EXP đúng bằng mốc grade đó (admin only)
       if (gradeTarget !== null) {
         const expNeeded = calcExpForGrade(gradeTarget);
         recipientData.exp = expNeeded;
@@ -764,7 +794,6 @@ client.on("messageCreate", async (message) => {
         recipientData.inventory[bookName] = Math.max(0, (recipientData.inventory[bookName] ?? 0) + bookCount);
         changes.push(`+${bookCount} **${bookName}**`);
 
-        // Trừ sách từ kho người gửi (nếu là player)
         if (!isAdmin) {
           senderData.inventory[bookName] -= bookCount;
           if (senderData.inventory[bookName] <= 0) delete senderData.inventory[bookName];
@@ -787,12 +816,9 @@ client.on("messageCreate", async (message) => {
   }
 
   // ── -remove ──
-  // Admin:  -remove @user exp: 50 ahn: 100000 book: Random Book count: 3
-  // Player: -remove book: Random Book count: 1  (tự xóa của bản thân, không mention)
   if (message.content.startsWith("-remove")) {
     const isAdmin = ADMIN_IDS.has(message.author.id);
 
-    // Xác định target: admin có thể mention người khác, player chỉ tự remove
     const mentionedUser = message.mentions.users.first();
     let targetUser;
     if (mentionedUser) {
@@ -817,13 +843,11 @@ client.on("messageCreate", async (message) => {
     const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
 
-    // Player thường chỉ được remove sách
     if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
       message.reply("❌ Bạn chỉ có thể tự xóa sách của mình.");
       return;
     }
 
-    // Validate tên sách
     let bookName = null;
     if (bookRaw) {
       bookName = findBook(bookRaw);
@@ -885,8 +909,6 @@ client.on("messageCreate", async (message) => {
   }
 
   // ── -setplayer ──
-  // Cú pháp: -setplayer @user exp: 582 ahn: 28700000 books: Random Book x55, N Corp Book x4
-  // Hoặc dùng grade thay exp: -setplayer @user grade: 3 ahn: 5000000 books: Red Mist Book x4
   if (message.content.startsWith("-setplayer")) {
     if (!ADMIN_IDS.has(message.author.id)) {
       message.reply("❌ Bạn không có quyền dùng lệnh này.");
@@ -906,9 +928,8 @@ client.on("messageCreate", async (message) => {
 
     const kv = parseKeyValues(rawInput);
 
-    // Parse books: "Random Book x55, N Corp Book x4, Zwei Association Book x3"
     const booksRaw = kv["books"] ?? null;
-    const bookEntries = []; // [{ name, count }]
+    const bookEntries = [];
     if (booksRaw) {
       const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
       for (const part of parts) {
@@ -950,7 +971,7 @@ client.on("messageCreate", async (message) => {
         data.exp = expNeeded;
         changes.push(`Grade → **Grade ${gradeTarget}** (EXP = **${expNeeded}**)`);
       } else if (expGain !== 0) {
-        data.exp = expGain; // set trực tiếp, không cộng dồn
+        data.exp = expGain;
         changes.push(`EXP set → **${expGain}**`);
       }
 
@@ -961,7 +982,7 @@ client.on("messageCreate", async (message) => {
 
       if (bookEntries.length > 0) {
         for (const { name, count } of bookEntries) {
-          data.inventory[name] = count; // set trực tiếp
+          data.inventory[name] = count;
         }
         changes.push(`Sách set:\n` + bookEntries.map(e => `> • **${e.name}** × ${e.count}`).join("\n"));
       }
@@ -997,6 +1018,62 @@ client.on("messageCreate", async (message) => {
         footer: { text: `Tổng cộng ${VALID_BOOKS.length} loại sách` },
       }],
     });
+    return;
+  }
+
+  // ── -randomsealedbook ── (phải đứng TRƯỚC -randombook để tránh bị match nhầm)
+  if (message.content.startsWith("-randomsealedbook")) {
+    const userId = message.author.id;
+    try {
+      const { success, data, result } = await handleOpenSealedBook(userId);
+
+      if (!success) {
+        message.reply("❌ Bạn không có **Sealed Book Cache** nào trong kho.");
+        return;
+      }
+
+      message.reply({
+        embeds: [{
+          title: "🔮 Mở Sealed Book Cache",
+          color: 0x9b59b6,
+          description:
+            `${message.author} đã dùng **1 Sealed Book Cache** và nhận được:\n\n` +
+            `✨ **${result}**\n\n` +
+            `> Còn lại: **${data.inventory["Sealed Book Cache"] ?? 0}** Sealed Book Cache`,
+        }],
+      });
+    } catch (err) {
+      console.error("[randomsealedbook] error:", err);
+      message.reply("❌ Có lỗi xảy ra, thử lại sau nhé.");
+    }
+    return;
+  }
+
+  // ── -randombook ──
+  if (message.content.startsWith("-randombook")) {
+    const userId = message.author.id;
+    try {
+      const { success, data, result } = await handleOpenRandomBook(userId);
+
+      if (!success) {
+        message.reply("❌ Bạn không có **Random Book** nào trong kho.");
+        return;
+      }
+
+      message.reply({
+        embeds: [{
+          title: "📖 Mở Random Book",
+          color: 0x2ecc71,
+          description:
+            `${message.author} đã dùng **1 Random Book** và nhận được:\n\n` +
+            `✨ **${result}**\n\n` +
+            `> Còn lại: **${data.inventory["Random Book"] ?? 0}** Random Book`,
+        }],
+      });
+    } catch (err) {
+      console.error("[randombook] error:", err);
+      message.reply("❌ Có lỗi xảy ra, thử lại sau nhé.");
+    }
     return;
   }
 
@@ -1240,6 +1317,66 @@ client.on("interactionCreate", async (interaction) => {
       }
     } catch (err) {
       console.error("[/daily] Redis error:", err);
+      await interaction.editReply({ content: "❌ Có lỗi xảy ra, thử lại sau nhé." });
+    }
+    return;
+  }
+
+  // ── /randombook ──
+  if (interaction.commandName === "randombook") {
+    await interaction.deferReply();
+
+    const userId = interaction.user.id;
+    try {
+      const { success, data, result } = await handleOpenRandomBook(userId);
+
+      if (!success) {
+        await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho." });
+        return;
+      }
+
+      await interaction.editReply({
+        embeds: [{
+          title: "📖 Mở Random Book",
+          color: 0x2ecc71,
+          description:
+            `${interaction.user} đã dùng **1 Random Book** và nhận được:\n\n` +
+            `✨ **${result}**\n\n` +
+            `> Còn lại: **${data.inventory["Random Book"] ?? 0}** Random Book`,
+        }],
+      });
+    } catch (err) {
+      console.error("[/randombook] error:", err);
+      await interaction.editReply({ content: "❌ Có lỗi xảy ra, thử lại sau nhé." });
+    }
+    return;
+  }
+
+  // ── /randomsealedbook ──
+  if (interaction.commandName === "randomsealedbook") {
+    await interaction.deferReply();
+
+    const userId = interaction.user.id;
+    try {
+      const { success, data, result } = await handleOpenSealedBook(userId);
+
+      if (!success) {
+        await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho." });
+        return;
+      }
+
+      await interaction.editReply({
+        embeds: [{
+          title: "🔮 Mở Sealed Book Cache",
+          color: 0x9b59b6,
+          description:
+            `${interaction.user} đã dùng **1 Sealed Book Cache** và nhận được:\n\n` +
+            `✨ **${result}**\n\n` +
+            `> Còn lại: **${data.inventory["Sealed Book Cache"] ?? 0}** Sealed Book Cache`,
+        }],
+      });
+    } catch (err) {
+      console.error("[/randomsealedbook] error:", err);
       await interaction.editReply({ content: "❌ Có lỗi xảy ra, thử lại sau nhé." });
     }
     return;
