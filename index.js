@@ -86,7 +86,7 @@ function calcExpForGrade(targetGrade) {
 // ─── ADMIN USER IDs ───────────────────────────────────────────────────────────
 // Thêm Discord User ID của admin vào đây
 const ADMIN_IDS = new Set([
-  "123456789012345678", // ← thay bằng ID thật
+  "208187560692940803", // ← thay bằng ID thật
   // thêm ID khác nếu cần
 ]);
 
@@ -123,11 +123,14 @@ const VALID_BOOKS = [
   "Library Book",
   "Book of The Birds",
   "Arbiter Book",
-  "Reverbation Ensemble Book",
-  "Chipboard MK1",
-  "Ticket Night In The Backstreet",
   "Book of M.A.D.",
-  "W Corp Book",
+  "Reverbation Ensemble Book",
+  "The Middle Big Brother Book",
+  "Chipboard MK1",
+  "Chipboard MK2",
+  "Chipboard MK3",
+  "Chipboard MK4",
+  "Chipboard MK5",
 ];
 
 // Tìm tên sách khớp (case-insensitive)
