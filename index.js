@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
+const { Client, GatewayIntentBits } = require("discord.js");
 const express = require("express");
 const { Redis } = require("@upstash/redis");
 
@@ -26,6 +26,13 @@ const POISE_MAX = 99;
 const POISE_CRIT_HALVE = 0.5;
 const SINKING_MAX = 99;
 const RUPTURE_MAX = 99;
+
+// ─── DAILY REWARDS ────────────────────────────────────────────────────────────
+const DAILY_EXP_REWARD = 5;
+const DAILY_AHN_REWARD = 100_000;
+const DAILY_STREAK_EXP_BONUS = 25;
+const DAILY_STREAK_AHN_BONUS = 400_000;
+const DAILY_KEY_TTL_SECONDS = 86400 * 8; // 8 ngày — đủ để giữ streak qua 1 lần bỏ lỡ
 
 // ─── LEVELING ─────────────────────────────────────────────────────────────────
 const GRADE_EXP_REQUIRED = {
@@ -116,40 +123,9 @@ const CHIPBOARD_CACHE_POOL = [
 ];
 
 // ─── VALID BOOKS & ITEMS ──────────────────────────────────────────────────────
-const VALID_BOOKS = [
-  "Random Book",
-  "Sealed Book Cache",
-  "Book of Choice",
-  "Book Thường",
-  "Hana Association Book",
-  "Zwei Association Book",
-  "Shi Association Book",
-  "Cinq Association Book",
-  "Liu Association Book",
-  "Seven Association Book",
-  "Dieci Association Book",
-  "Thumb Syndicate Book",
-  "Index Syndicate Book",
-  "Middle Syndicate Book",
-  "Ring Syndicate Book",
-  "Blade Lineage Syndicate Book",
-  "Kurokumo Syndicate Book",
-  "Smiling Faces Syndicate Book",
-  "N Corp Book",
-  "Sweeping Book",
-  "Warp Corp Book",
-  "Fragment Book",
-  "Udjat Book",
-  "Red Gaze Book",
-  "Red Mist Book",
-  "Black Silence Book",
-  "Library Book",
-  "Book of The Birds",
-  "Arbiter Book",
-  "Book of M.A.D.",
-  "Reverbation Ensemble Book",
-  "The Middle Big Brother Book",
-];
+// Tự động build từ pools — chỉ cần thêm sách vào pool là đủ, không cần sửa thêm chỗ nào.
+const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice"];
+const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
 
 const VALID_ITEMS = [
   "Chipboard MK1",
@@ -171,14 +147,16 @@ const CRAFT_RECIPES = {
 
 const VALID_ITEMS_SET = new Set(VALID_ITEMS.map(i => i.toLowerCase()));
 
+// Map lookup O(1) thay vì Array.find() O(n) — cũng tự update khi pool thay đổi.
+const BOOK_LOOKUP_MAP = new Map(VALID_BOOKS.map(b => [b.toLowerCase(), b]));
+const ITEM_LOOKUP_MAP = new Map(VALID_ITEMS.map(i => [i.toLowerCase(), i]));
+
 function findBook(input) {
-  const lower = input.toLowerCase().trim();
-  return VALID_BOOKS.find(b => b.toLowerCase() === lower) ?? null;
+  return BOOK_LOOKUP_MAP.get(input.toLowerCase().trim()) ?? null;
 }
 
 function findItem(input) {
-  const lower = input.toLowerCase().trim();
-  return VALID_ITEMS.find(i => i.toLowerCase() === lower) ?? null;
+  return ITEM_LOOKUP_MAP.get(input.toLowerCase().trim()) ?? null;
 }
 
 function findItemAdmin(input) {
@@ -208,9 +186,12 @@ const KNOWN_KEYS = new Set([
   "dmgnegationboss", "vulnerability", "buffbonus", "dmgbaseweapon",
 ]);
 
+// Compile regex một lần khi khởi động — tránh rebuild mỗi lần gọi parseKeyValues.
+const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
+
 function parseKeyValues(input) {
-  const keyPattern = Array.from(KNOWN_KEYS).join("|");
-  const KEY_RE = new RegExp(`(?:^|\\s)(${keyPattern})\\s*:`, "gi");
+  // Tạo instance mới mỗi lần (cần reset lastIndex cho exec loop), nhưng source đã được cache.
+  const KEY_RE = new RegExp(_KV_KEY_RE_SRC, "gi");
 
   const anchors = [];
   let m;
@@ -321,9 +302,13 @@ async function acquireLock(userId, ttlSeconds = 5) {
 }
 
 async function releaseLock({ lockKey, token }) {
-  // Only release if we still own it (compare token)
-  const current = await redis.get(lockKey);
-  if (current === token) await redis.del(lockKey);
+  // Atomic compare-and-delete via Lua script — prevents deleting another owner's lock
+  // if our TTL expired just before we called del.
+  await redis.eval(
+    `if redis.call("get",KEYS[1])==ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end`,
+    [lockKey],
+    [token]
+  );
 }
 
 /**
@@ -381,7 +366,7 @@ function migratePlayerData(data) {
 const REDIS_MAX_RETRIES = 2;
 const REDIS_RETRY_BASE_MS = 150;
 
-async function getPlayerDataRaw(userId) {
+async function getPlayerData(userId) {
   const key = `player:${userId}`;
   let lastErr;
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
@@ -398,10 +383,6 @@ async function getPlayerDataRaw(userId) {
     }
   }
   throw lastErr;
-}
-
-async function getPlayerData(userId) {
-  return getPlayerDataRaw(userId);
 }
 
 async function savePlayerData(userId, data) {
@@ -428,67 +409,46 @@ function formatNumber(n) {
   return Math.floor(n).toLocaleString("en-US");
 }
 
-// ─── SHARED LOGIC: OPEN RANDOM BOOK ──────────────────────────────────────────
-async function handleOpenRandomBook(userId, count = 1) {
+// ─── SHARED LOGIC: OPEN CACHE ─────────────────────────────────────────────────
+/**
+ * Generic cache-opener used by Random Book, Sealed Book Cache, and Chipboard Cache.
+ * @param {string} userId
+ * @param {object} opts
+ * @param {string}   opts.cacheKey   - Key inside data (e.g. "Random Book")
+ * @param {string[]} opts.pool       - Array of possible results
+ * @param {"books"|"items"} opts.dataField - Which sub-object holds the cache & results
+ * @param {number}   [opts.count=1]
+ */
+async function handleOpenCache(userId, { cacheKey, pool, dataField, count = 1 }) {
   return withLock(userId, async () => {
     const data = await getPlayerData(userId);
     data.books = data.books ?? {};
-    const owned = data.books["Random Book"] ?? 0;
-    const rolls = Math.min(count, owned);
-    if (rolls < 1) return { success: false, data, results: [] };
-    data.books["Random Book"] = owned - rolls;
-    if (data.books["Random Book"] <= 0) delete data.books["Random Book"];
-    const results = [];
-    for (let i = 0; i < rolls; i++) {
-      const result = RANDOM_BOOK_POOL[Math.floor(Math.random() * RANDOM_BOOK_POOL.length)];
-      data.books[result] = (data.books[result] ?? 0) + 1;
-      results.push(result);
-    }
-    await savePlayerData(userId, data);
-    return { success: true, data, results };
-  });
-}
-
-// ─── SHARED LOGIC: OPEN SEALED BOOK ──────────────────────────────────────────
-async function handleOpenSealedBook(userId, count = 1) {
-  return withLock(userId, async () => {
-    const data = await getPlayerData(userId);
-    data.books = data.books ?? {};
-    const owned = data.books["Sealed Book Cache"] ?? 0;
-    const rolls = Math.min(count, owned);
-    if (rolls < 1) return { success: false, data, results: [] };
-    data.books["Sealed Book Cache"] = owned - rolls;
-    if (data.books["Sealed Book Cache"] <= 0) delete data.books["Sealed Book Cache"];
-    const results = [];
-    for (let i = 0; i < rolls; i++) {
-      const result = SEALED_BOOK_POOL[Math.floor(Math.random() * SEALED_BOOK_POOL.length)];
-      data.books[result] = (data.books[result] ?? 0) + 1;
-      results.push(result);
-    }
-    await savePlayerData(userId, data);
-    return { success: true, data, results };
-  });
-}
-
-// ─── SHARED LOGIC: OPEN CHIPBOARD CACHE ──────────────────────────────────────
-async function handleOpenChipboardCache(userId, count = 1) {
-  return withLock(userId, async () => {
-    const data = await getPlayerData(userId);
     data.items = data.items ?? {};
-    const owned = data.items["Chipboard Cache"] ?? 0;
+    const store = data[dataField];
+    const owned = store[cacheKey] ?? 0;
     const rolls = Math.min(count, owned);
     if (rolls < 1) return { success: false, data, results: [] };
-    data.items["Chipboard Cache"] = owned - rolls;
-    if (data.items["Chipboard Cache"] <= 0) delete data.items["Chipboard Cache"];
+    store[cacheKey] = owned - rolls;
+    if (store[cacheKey] <= 0) delete store[cacheKey];
     const results = [];
     for (let i = 0; i < rolls; i++) {
-      const result = CHIPBOARD_CACHE_POOL[Math.floor(Math.random() * CHIPBOARD_CACHE_POOL.length)];
-      data.items[result] = (data.items[result] ?? 0) + 1;
+      const result = pool[Math.floor(Math.random() * pool.length)];
+      store[result] = (store[result] ?? 0) + 1;
       results.push(result);
     }
     await savePlayerData(userId, data);
     return { success: true, data, results };
   });
+}
+
+function handleOpenRandomBook(userId, count = 1) {
+  return handleOpenCache(userId, { cacheKey: "Random Book", pool: RANDOM_BOOK_POOL, dataField: "books", count });
+}
+function handleOpenSealedBook(userId, count = 1) {
+  return handleOpenCache(userId, { cacheKey: "Sealed Book Cache", pool: SEALED_BOOK_POOL, dataField: "books", count });
+}
+function handleOpenChipboardCache(userId, count = 1) {
+  return handleOpenCache(userId, { cacheKey: "Chipboard Cache", pool: CHIPBOARD_CACHE_POOL, dataField: "items", count });
 }
 
 function buildRollDescription({ user, cacheType, results, remainingCount }) {
@@ -498,13 +458,21 @@ function buildRollDescription({ user, cacheType, results, remainingCount }) {
   const summaryLines = Object.entries(tally)
     .sort(([, a], [, b]) => b - a)
     .map(([name, cnt]) => `• **${name}** × ${cnt}`);
-  return (
-    `${user} đã dùng **${results.length} ${cacheType}** và nhận được:\n\n` +
-    lines.join("\n") +
-    `\n\n**📊 Tổng kết:**\n` +
-    summaryLines.join("\n") +
-    `\n\n> Còn lại: **${remainingCount}** ${cacheType}`
-  );
+
+  const footer = `\n\n> Còn lại: **${remainingCount}** ${cacheType}`;
+  const summary = `\n\n**📊 Tổng kết:**\n` + summaryLines.join("\n");
+  const header = `${user} đã dùng **${results.length} ${cacheType}** và nhận được:\n\n`;
+
+  // Truncate danh sách hits nếu vượt giới hạn embed Discord (4096 ký tự)
+  const LIMIT = 4096;
+  const fixedLen = header.length + summary.length + footer.length;
+  let body = lines.join("\n");
+  if (fixedLen + body.length > LIMIT) {
+    const budget = LIMIT - fixedLen - 20;
+    body = body.slice(0, budget) + `\n…(bị cắt bớt)`;
+  }
+
+  return header + body + summary + footer;
 }
 
 // ─── SHARED LOGIC: DAILY ──────────────────────────────────────────────────────
@@ -535,18 +503,18 @@ async function processDailyClaimForUser(userId) {
 
     const isWeekComplete = streak >= 7;
     const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
-    await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: 86400 * 2 });
+    await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: DAILY_KEY_TTL_SECONDS });
 
-    const EXP_REWARD = 5;
-    const AHN_REWARD = 100000;
     const playerData = await getPlayerData(userId);
-    playerData.exp = (playerData.exp ?? 0) + EXP_REWARD;
-    playerData.ahn = (playerData.ahn ?? 0) + AHN_REWARD;
+    playerData.books = playerData.books ?? {};
+    playerData.items = playerData.items ?? {};
+    playerData.exp = (playerData.exp ?? 0) + DAILY_EXP_REWARD;
+    playerData.ahn = (playerData.ahn ?? 0) + DAILY_AHN_REWARD;
     playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
 
     if (isWeekComplete) {
-      playerData.exp += 25;
-      playerData.ahn += 400000;
+      playerData.exp += DAILY_STREAK_EXP_BONUS;
+      playerData.ahn += DAILY_STREAK_AHN_BONUS;
       playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
     }
 
@@ -795,7 +763,9 @@ const client = new Client({
   ],
 });
 
+let botReady = false;
 client.once("ready", () => {
+  botReady = true;
   console.log(`Bot đã online với tên ${client.user.tag}`);
 });
 
@@ -866,6 +836,7 @@ client.on("messageCreate", async (message) => {
 
   // ── -balance ──
   if (message.content.startsWith("-balance")) {
+    if (isOnCooldown(message.author.id, "balance", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
     let targetUser = message.mentions.users.first() ?? message.author;
     try {
       const data = await getPlayerData(targetUser.id);
@@ -904,6 +875,7 @@ client.on("messageCreate", async (message) => {
 
   // ── -inventory ──
   if (message.content.startsWith("-inventory")) {
+    if (isOnCooldown(message.author.id, "inventory", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
     let targetUser = message.mentions.users.first() ?? message.author;
     try {
       const data = await getPlayerData(targetUser.id);
@@ -976,6 +948,10 @@ client.on("messageCreate", async (message) => {
       message.reply("❌ Bạn không thể tặng EXP cho người khác.");
       return;
     }
+    if (!isAdmin && ahnGain < 0) {
+      message.reply("❌ Không thể chuyển số Ahn âm.");
+      return;
+    }
     if (gradeTarget !== null) {
       if (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN) {
         message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
@@ -1024,26 +1000,31 @@ client.on("messageCreate", async (message) => {
         const senderData = isAdmin ? null : await getPlayerData(message.author.id);
         const recipientData = await getPlayerData(targetUser.id);
 
+        // Defensive init — đảm bảo books/items luôn tồn tại dù data mới
+        recipientData.books = recipientData.books ?? {};
+        recipientData.items = recipientData.items ?? {};
+        if (senderData) {
+          senderData.books = senderData.books ?? {};
+          senderData.items = senderData.items ?? {};
+        }
+
         // ── Validate sender inventory ──
         if (!isAdmin && ahnGain > 0) {
           const senderAhn = senderData.ahn ?? 0;
           if (senderAhn < ahnGain) {
-            message.reply(`❌ Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
-            return;
+            throw new Error(`Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
           }
         }
         if (!isAdmin && bookName) {
           const owned = senderData.books?.[bookName] ?? 0;
           if (owned < bookCount) {
-            message.reply(`❌ Bạn không đủ sách để tặng. Bạn có **${owned}** **${bookName}**, cần **${bookCount}**.`);
-            return;
+            throw new Error(`Bạn không đủ sách để tặng. Bạn có **${owned}** **${bookName}**, cần **${bookCount}**.`);
           }
         }
         if (!isAdmin && itemName) {
           const owned = senderData.items?.[itemName] ?? 0;
           if (owned < itemCount) {
-            message.reply(`❌ Bạn không đủ vật phẩm để tặng. Bạn có **${owned}** **${itemName}**, cần **${itemCount}**.`);
-            return;
+            throw new Error(`Bạn không đủ vật phẩm để tặng. Bạn có **${owned}** **${itemName}**, cần **${itemCount}**.`);
           }
         }
 
@@ -1165,8 +1146,7 @@ client.on("messageCreate", async (message) => {
         if (bookName) {
           const owned = data.books[bookName] ?? 0;
           if (owned < bookCount && !isAdmin) {
-            message.reply(`❌ Bạn chỉ có **${owned}** **${bookName}**, không đủ để xóa **${bookCount}**.`);
-            return;
+            throw new Error(`Bạn chỉ có **${owned}** **${bookName}**, không đủ để xóa **${bookCount}**.`);
           }
           const removed = Math.min(owned, bookCount);
           data.books[bookName] = owned - removed;
@@ -1176,8 +1156,7 @@ client.on("messageCreate", async (message) => {
         if (itemName) {
           const owned = data.items[itemName] ?? 0;
           if (owned < itemCount && !isAdmin) {
-            message.reply(`❌ Bạn chỉ có **${owned}** **${itemName}**, không đủ để xóa **${itemCount}**.`);
-            return;
+            throw new Error(`Bạn chỉ có **${owned}** **${itemName}**, không đủ để xóa **${itemCount}**.`);
           }
           const removed = Math.min(owned, itemCount);
           data.items[itemName] = owned - removed;
@@ -1276,21 +1255,21 @@ client.on("messageCreate", async (message) => {
         } else if (expValue !== null) {
           if (expIsAdd) {
             const before = data.exp ?? 0;
-            data.exp = before + expValue;
+            data.exp = Math.max(0, before + expValue);
             changes.push(`EXP +${expValue} (${before} → **${data.exp}**)`);
           } else {
-            data.exp = expValue;
-            changes.push(`EXP set → **${expValue}**`);
+            data.exp = Math.max(0, expValue);
+            changes.push(`EXP set → **${data.exp}**`);
           }
         }
         if (ahnValue !== null) {
           if (ahnIsAdd) {
             const before = data.ahn ?? 0;
-            data.ahn = before + ahnValue;
+            data.ahn = Math.max(0, before + ahnValue);
             changes.push(`Ahn +${formatNumber(ahnValue)} (${formatNumber(before)} → **${formatNumber(data.ahn)}**)`);
           } else {
-            data.ahn = ahnValue;
-            changes.push(`Ahn set → **${formatNumber(ahnValue)}**`);
+            data.ahn = Math.max(0, ahnValue);
+            changes.push(`Ahn set → **${formatNumber(data.ahn)}**`);
           }
         }
         if (bookEntries.length > 0) {
@@ -1354,8 +1333,7 @@ client.on("messageCreate", async (message) => {
           if (owned < needed) shortages.push(`• **${mat}**: cần **${needed}**, có **${owned}** (thiếu **${needed - owned}**)`);
         }
         if (shortages.length > 0) {
-          message.reply(`❌ Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` + shortages.join("\n"));
-          return;
+          throw new Error(`Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` + shortages.join("\n"));
         }
         for (const [mat, needed] of Object.entries(totalCost)) {
           data.items[mat] = (data.items[mat] ?? 0) - needed;
@@ -1483,11 +1461,8 @@ client.on("messageCreate", async (message) => {
     if (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) count = parsed;
     if (count > 20) { message.reply("❌ Số lần mở tối đa là 20."); return; }
     try {
-      const owned = (await getPlayerData(userId)).items?.["Chipboard Cache"] ?? 0;
-      if (owned < 1) { message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho."); return; }
-      if (count > owned) { message.reply(`❌ Bạn chỉ có **${owned}** Chipboard Cache, không đủ để mở **${count}** lần.`); return; }
       const { success, data, results } = await handleOpenChipboardCache(userId, count);
-      if (!success) { message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho."); return; }
+      if (!success) { message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Chipboard Cache", results, remainingCount: data.items["Chipboard Cache"] ?? 0 });
       message.reply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: desc }] });
     } catch (err) {
@@ -1506,11 +1481,8 @@ client.on("messageCreate", async (message) => {
     if (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) count = parsed;
     if (count > 20) { message.reply("❌ Số lần mở tối đa là 20."); return; }
     try {
-      const owned = (await getPlayerData(userId)).books?.["Sealed Book Cache"] ?? 0;
-      if (owned < 1) { message.reply("❌ Bạn không có **Sealed Book Cache** nào trong kho."); return; }
-      if (count > owned) { message.reply(`❌ Bạn chỉ có **${owned}** Sealed Book Cache, không đủ để mở **${count}** lần.`); return; }
       const { success, data, results } = await handleOpenSealedBook(userId, count);
-      if (!success) { message.reply("❌ Bạn không có **Sealed Book Cache** nào trong kho."); return; }
+      if (!success) { message.reply("❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Sealed Book Cache", results, remainingCount: data.books["Sealed Book Cache"] ?? 0 });
       message.reply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: desc }] });
     } catch (err) {
@@ -1529,11 +1501,8 @@ client.on("messageCreate", async (message) => {
     if (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) count = parsed;
     if (count > 20) { message.reply("❌ Số lần mở tối đa là 20."); return; }
     try {
-      const owned = (await getPlayerData(userId)).books?.["Random Book"] ?? 0;
-      if (owned < 1) { message.reply("❌ Bạn không có **Random Book** nào trong kho."); return; }
-      if (count > owned) { message.reply(`❌ Bạn chỉ có **${owned}** Random Book, không đủ để mở **${count}** lần.`); return; }
       const { success, data, results } = await handleOpenRandomBook(userId, count);
-      if (!success) { message.reply("❌ Bạn không có **Random Book** nào trong kho."); return; }
+      if (!success) { message.reply("❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Random Book", results, remainingCount: data.books["Random Book"] ?? 0 });
       message.reply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: desc }] });
     } catch (err) {
@@ -1620,6 +1589,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "daily") {
+    if (isOnCooldown(interaction.user.id, "daily", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
     try {
       const result = await processDailyClaimForUser(interaction.user.id);
@@ -1636,15 +1606,13 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "randombook") {
+    if (isOnCooldown(interaction.user.id, "randombook", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
     const userId = interaction.user.id;
     const count = Math.min(interaction.options.getInteger("count") ?? 1, 20);
     try {
-      const owned = (await getPlayerData(userId)).books?.["Random Book"] ?? 0;
-      if (owned < 1) { await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho." }); return; }
-      if (count > owned) { await interaction.editReply({ content: `❌ Bạn chỉ có **${owned}** Random Book, không đủ để mở **${count}** lần.` }); return; }
       const { success, data, results } = await handleOpenRandomBook(userId, count);
-      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho." }); return; }
+      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng." }); return; }
       await interaction.editReply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: buildRollDescription({ user: interaction.user, cacheType: "Random Book", results, remainingCount: data.books["Random Book"] ?? 0 }) }] });
     } catch (err) {
       console.error("[/randombook] error:", err);
@@ -1654,15 +1622,13 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.commandName === "randomsealedbook") {
+    if (isOnCooldown(interaction.user.id, "randomsealedbook", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
     await interaction.deferReply();
     const userId = interaction.user.id;
     const count = Math.min(interaction.options.getInteger("count") ?? 1, 20);
     try {
-      const owned = (await getPlayerData(userId)).books?.["Sealed Book Cache"] ?? 0;
-      if (owned < 1) { await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho." }); return; }
-      if (count > owned) { await interaction.editReply({ content: `❌ Bạn chỉ có **${owned}** Sealed Book Cache, không đủ để mở **${count}** lần.` }); return; }
       const { success, data, results } = await handleOpenSealedBook(userId, count);
-      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho." }); return; }
+      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng." }); return; }
       await interaction.editReply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: buildRollDescription({ user: interaction.user, cacheType: "Sealed Book Cache", results, remainingCount: data.books["Sealed Book Cache"] ?? 0 }) }] });
     } catch (err) {
       console.error("[/randomsealedbook] error:", err);
@@ -1670,12 +1636,29 @@ client.on("interactionCreate", async (interaction) => {
     }
     return;
   }
+
+  if (interaction.commandName === "chipboardcache") {
+    if (isOnCooldown(interaction.user.id, "chipboardcache", 3000)) { await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true }); return; }
+    await interaction.deferReply();
+    const userId = interaction.user.id;
+    const count = Math.min(interaction.options.getInteger("count") ?? 1, 20);
+    try {
+      const { success, data, results } = await handleOpenChipboardCache(userId, count);
+      if (!success) { await interaction.editReply({ content: "❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng." }); return; }
+      await interaction.editReply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: buildRollDescription({ user: interaction.user, cacheType: "Chipboard Cache", results, remainingCount: data.items["Chipboard Cache"] ?? 0 }) }] });
+    } catch (err) {
+      console.error("[/chipboardcache] error:", err);
+      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
+    }
+    return;
+  }
+
 });
 
 client.login(TOKEN);
 
 // ─── EXPRESS SERVER ────────────────────────────────────────────────────────────
-app.get("/", (req, res) => res.send("Bot is alive and kicking!"));
+app.get("/", (req, res) => botReady ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
 app.use((req, res) => res.status(404).send("Not found."));
 app.use((err, req, res, next) => { console.error("[Express error]", err); res.status(500).send("Internal server error."); });
 
