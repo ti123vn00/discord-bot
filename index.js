@@ -95,7 +95,6 @@ const ADMIN_IDS = new Set([
 // ─── VALID BOOKS ──────────────────────────────────────────────────────────────
 const VALID_BOOKS = [
   "Random Book",
-  "Sealed Book Cache",
   "Book of Choice",
   "Hana Association Book",
   "Zwei Association Book",
@@ -547,7 +546,7 @@ client.on("messageCreate", async (message) => {
         if (isWeekComplete) {
           playerData.exp += 25;
           playerData.ahn += 400000;
-          playerData.inventory["Sealed Book Cache"] = (playerData.inventory["Sealed Book Cache"] ?? 0) + 1;
+          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
         }
 
         await savePlayerData(userId, playerData);
@@ -562,7 +561,7 @@ client.on("messageCreate", async (message) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
@@ -664,17 +663,19 @@ client.on("messageCreate", async (message) => {
   }
 
   // ── -give ──
-  // Cú pháp: -give @user exp:<số> | ahn:<số> | book:<tên sách> count:<số>
-  // Ví dụ: -give @Minh exp: 50 ahn: 200000 book: Random Book count: 3
+  // Admin: -give @user exp: 50 ahn: 200000 book: Random Book count: 3 grade: 3
+  // Player: -give @user book: Random Book count: 2  (trừ từ kho của mình)
   if (message.content.startsWith("-give")) {
-    if (!ADMIN_IDS.has(message.author.id)) {
-      message.reply("❌ Bạn không có quyền dùng lệnh này.");
-      return;
-    }
+    const isAdmin = ADMIN_IDS.has(message.author.id);
 
     const targetUser = message.mentions.users.first();
     if (!targetUser) {
-      message.reply("❌ Hãy mention người nhận. Ví dụ: `-give @user exp: 50 ahn: 100000`");
+      message.reply("❌ Hãy mention người nhận. Ví dụ: `-give @user book: Random Book count: 1`");
+      return;
+    }
+
+    if (targetUser.id === message.author.id) {
+      message.reply("❌ Không thể tặng cho chính mình.");
       return;
     }
 
@@ -689,10 +690,16 @@ client.on("messageCreate", async (message) => {
     const expGain = parseInt(kv["exp"] ?? "0", 10) || 0;
     const ahnGain = parseFloat(kv["ahn"] ?? "0") || 0;
     const bookRaw = kv["book"] ?? null;
-    const bookCount = parseInt(kv["count"] ?? "1", 10) || 1;
+    const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
 
-    // Validate grade
+    // Player thường chỉ được tặng sách, không được tặng exp/ahn/grade
+    if (!isAdmin && (expGain !== 0 || ahnGain !== 0 || gradeTarget !== null)) {
+      message.reply("❌ Bạn chỉ có thể tặng sách cho người khác.");
+      return;
+    }
+
+    // Validate grade (admin only)
     if (gradeTarget !== null) {
       if (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN) {
         message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
@@ -718,32 +725,53 @@ client.on("messageCreate", async (message) => {
     }
 
     try {
-      const data = await getPlayerData(targetUser.id);
+      const senderData = isAdmin ? null : await getPlayerData(message.author.id);
+
+      // Kiểm tra kho người gửi (nếu là player)
+      if (!isAdmin && bookName) {
+        const owned = senderData.inventory?.[bookName] ?? 0;
+        if (owned < bookCount) {
+          message.reply(
+            `❌ Bạn không đủ sách để tặng. Bạn có **${owned}** **${bookName}**, cần **${bookCount}**.`
+          );
+          return;
+        }
+      }
+
+      const recipientData = await getPlayerData(targetUser.id);
       const changes = [];
 
-      // grade: set EXP đúng bằng mốc grade đó
+      // grade: set EXP đúng bằng mốc grade đó (admin only)
       if (gradeTarget !== null) {
         const expNeeded = calcExpForGrade(gradeTarget);
-        data.exp = expNeeded;
+        recipientData.exp = expNeeded;
         changes.push(`Grade set → **Grade ${gradeTarget}** (EXP set thành **${expNeeded}**)`);
       } else if (expGain !== 0) {
-        data.exp = (data.exp ?? 0) + expGain;
+        recipientData.exp = (recipientData.exp ?? 0) + expGain;
         changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP`);
       }
       if (ahnGain !== 0) {
-        data.ahn = (data.ahn ?? 0) + ahnGain;
+        recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
         changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
       }
       if (bookName) {
-        data.inventory = data.inventory ?? {};
-        data.inventory[bookName] = Math.max(0, (data.inventory[bookName] ?? 0) + bookCount);
-        changes.push(`${bookCount > 0 ? "+" : ""}${bookCount} **${bookName}**`);
+        recipientData.inventory = recipientData.inventory ?? {};
+        recipientData.inventory[bookName] = Math.max(0, (recipientData.inventory[bookName] ?? 0) + bookCount);
+        changes.push(`+${bookCount} **${bookName}**`);
+
+        // Trừ sách từ kho người gửi (nếu là player)
+        if (!isAdmin) {
+          senderData.inventory[bookName] -= bookCount;
+          if (senderData.inventory[bookName] <= 0) delete senderData.inventory[bookName];
+          await savePlayerData(message.author.id, senderData);
+        }
       }
 
-      await savePlayerData(targetUser.id, data);
+      await savePlayerData(targetUser.id, recipientData);
 
+      const verb = isAdmin ? "tặng" : "chuyển";
       message.reply(
-        `✅ Đã tặng cho ${targetUser}:\n` +
+        `✅ ${message.author} đã ${verb} cho ${targetUser}:\n` +
         changes.map(c => `> ${c}`).join("\n")
       );
     } catch (err) {
@@ -1086,7 +1114,7 @@ client.on("interactionCreate", async (interaction) => {
         if (isWeekComplete) {
           playerData.exp += 25;
           playerData.ahn += 400000;
-          playerData.inventory["Sealed Book Cache"] = (playerData.inventory["Sealed Book Cache"] ?? 0) + 1;
+          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
         }
 
         await savePlayerData(userId, playerData);
@@ -1101,7 +1129,7 @@ client.on("interactionCreate", async (interaction) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
