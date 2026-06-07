@@ -692,7 +692,7 @@ function calcMath(opts) {
     let extraInfo = "";
     if (r.poiseOverflow > 0) {
       const wastedStacks = Math.round(r.poiseOverflow / POISE_CRIT_BONUS_PER_STACK);
-      extraInfo += ` | ⚠️ ${wastedStacks} Poise dư`;
+      extraInfo += ` | ${wastedStacks} Poise dư`;
     }
     if (r.sinkingBonus > 0) extraInfo += ` | +${r.sinkingBonus} dmg từ Sinking`;
     if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} Sinking`;
