@@ -416,7 +416,7 @@ client.on("messageCreate", async (message) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **500k Ahn** và **1 Rare Book**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **30 Exp**, **500k Ahn** và **1 Book of Choice**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
