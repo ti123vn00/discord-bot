@@ -213,6 +213,49 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRat
   return errors;
 }
 
+// ─── RATE LIMITING ────────────────────────────────────────────────────────────
+// In-memory cooldown map: key = `${userId}:${command}`, value = timestamp (ms)
+const cooldowns = new Map();
+
+/**
+ * Returns true if the user is on cooldown, false if allowed.
+ * @param {string} userId
+ * @param {string} command
+ * @param {number} ms   cooldown duration in milliseconds
+ */
+function isOnCooldown(userId, command, ms) {
+  const key = `${userId}:${command}`;
+  const last = cooldowns.get(key) ?? 0;
+  const now = Date.now();
+  if (now - last < ms) return true;
+  cooldowns.set(key, now);
+  // Periodically clean up stale entries to prevent unbounded memory growth
+  if (cooldowns.size > 5000) {
+    const cutoff = now - 60_000;
+    for (const [k, v] of cooldowns) {
+      if (v < cutoff) cooldowns.delete(k);
+    }
+  }
+  return false;
+}
+
+// ─── VN TIME HELPERS (top-level, shared by prefix & slash) ───────────────────
+function getVNDateString() {
+  const now = new Date();
+  const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  return vnTime.toISOString().slice(0, 10);
+}
+
+function secondsUntilVNMidnight() {
+  const now = new Date();
+  const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  const vnMidnight = new Date(Date.UTC(
+    vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(), 17, 0, 0, 0
+  ));
+  if (vnMidnight <= now) vnMidnight.setUTCDate(vnMidnight.getUTCDate() + 1);
+  return Math.floor((vnMidnight - now) / 1000);
+}
+
 // ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
 
 /**
@@ -247,16 +290,31 @@ function migratePlayerData(data) {
   return data;
 }
 
-async function getPlayerData(userId) {
+/**
+ * Fetch player data from Redis with retry on transient failure.
+ * Returns null (instead of a blank object) if the fetch itself failed,
+ * so callers can distinguish "new player" from "Redis error".
+ */
+async function getPlayerDataRaw(userId) {
   const key = `player:${userId}`;
-  try {
-    const raw = await redis.get(key);
-    if (!raw) return { exp: 0, ahn: 0, books: {}, items: {} };
-    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-    return migratePlayerData(data);
-  } catch {
-    return { exp: 0, ahn: 0, books: {}, items: {} };
+  const MAX_RETRIES = 2;
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const raw = await redis.get(key);
+      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {} };
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return migratePlayerData(data);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 150 * (attempt + 1)));
+    }
   }
+  throw lastErr; // propagate so callers can show a real error
+}
+
+async function getPlayerData(userId) {
+  return getPlayerDataRaw(userId);
 }
 
 async function savePlayerData(userId, data) {
@@ -315,11 +373,9 @@ async function handleOpenSealedBook(userId, count = 1) {
 }
 
 /** Build embed description for multi-roll results */
-function buildRollDescription({ user, cacheType, results, remainingCount, cacheKey }) {
-  // Per-roll lines
+function buildRollDescription({ user, cacheType, results, remainingCount }) {
   const lines = results.map((r, i) => `**${i + 1}.** ✨ ${r}`);
 
-  // Summary: group by name, sorted by count desc
   const tally = {};
   for (const r of results) tally[r] = (tally[r] ?? 0) + 1;
   const summaryLines = Object.entries(tally)
@@ -333,6 +389,77 @@ function buildRollDescription({ user, cacheType, results, remainingCount, cacheK
     summaryLines.join("\n") +
     `\n\n> Còn lại: **${remainingCount}** ${cacheType}`
   );
+}
+
+// ─── SHARED LOGIC: DAILY ──────────────────────────────────────────────────────
+/**
+ * Processes a daily claim for userId.
+ * Returns { alreadyClaimed, hours, minutes, seconds } if already claimed today,
+ * or { alreadyClaimed: false, replyMsg } on success.
+ */
+async function processDailyClaimForUser(userId) {
+  const dailyKey = `daily:${userId}`;
+  const raw = await redis.get(dailyKey);
+  const dailyData = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+  const today = getVNDateString();
+
+  if (dailyData && dailyData.lastClaim === today) {
+    const remaining = secondsUntilVNMidnight();
+    const hours = Math.floor(remaining / 3600);
+    const minutes = Math.floor((remaining % 3600) / 60);
+    const seconds = remaining % 60;
+    return { alreadyClaimed: true, hours, minutes, seconds };
+  }
+
+  // Determine streak
+  const nowUtc = new Date();
+  const vnNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+  const vnYesterday = new Date(vnNow);
+  vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
+  const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
+
+  // FIX: treat saved streak=0 as 0, not 1.
+  // Old streak value of 0 means "week just completed", so next day starts at 1.
+  const prevStreak = dailyData ? (dailyData.streak ?? 0) : 0;
+  let streak = (dailyData && dailyData.lastClaim === yesterdayStr)
+    ? prevStreak + 1
+    : 1;
+
+  const isWeekComplete = streak >= 7;
+  // FIX: store streak as 0 after completion so the next day correctly starts at 1
+  const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
+  await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: 86400 * 2 });
+
+  const EXP_REWARD = 5;
+  const AHN_REWARD = 100000;
+  const playerData = await getPlayerData(userId);
+  playerData.exp = (playerData.exp ?? 0) + EXP_REWARD;
+  playerData.ahn = (playerData.ahn ?? 0) + AHN_REWARD;
+  playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
+
+  if (isWeekComplete) {
+    playerData.exp += 25;
+    playerData.ahn += 400000;
+    playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
+  }
+
+  await savePlayerData(userId, playerData);
+
+  const displayStreak = isWeekComplete ? 7 : streak;
+  const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
+
+  let replyMsg =
+    `🎉 {USER} đã điểm danh thành công!\n` +
+    `> 📦 **5 Exp** | **100k Ahn** | **1 Random Book**\n` +
+    `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
+
+  if (isWeekComplete) {
+    replyMsg +=
+      `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
+      `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
+  }
+
+  return { alreadyClaimed: false, replyMsg };
 }
 
 // ─── CORE LOGIC ───────────────────────────────────────────────────────────────
@@ -570,6 +697,11 @@ client.on("messageCreate", async (message) => {
 
   // ── -parry ──
   if (message.content.startsWith("-parry")) {
+    if (isOnCooldown(message.author.id, "parry", 3000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
+      return;
+    }
+
     const args = message.content.replace("-parry", "").trim().split(/\s+/);
     let rolls = 1;
     const parsed = parseInt(args[0]);
@@ -614,84 +746,16 @@ client.on("messageCreate", async (message) => {
   // ── -daily ──
   if (message.content.startsWith("-daily")) {
     const userId = message.author.id;
-    const dailyKey = `daily:${userId}`;
-
-    function getVNDateString() {
-      const now = new Date();
-      const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      return vnTime.toISOString().slice(0, 10);
-    }
-
-    function secondsUntilVNMidnight() {
-      const now = new Date();
-      const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      const vnMidnight = new Date(Date.UTC(
-        vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(), 17, 0, 0, 0
-      ));
-      if (vnMidnight <= now) vnMidnight.setUTCDate(vnMidnight.getUTCDate() + 1);
-      return Math.floor((vnMidnight - now) / 1000);
-    }
 
     try {
-      const raw = await redis.get(dailyKey);
-      const dailyData = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-      const today = getVNDateString();
-
-      if (dailyData && dailyData.lastClaim === today) {
-        const remaining = secondsUntilVNMidnight();
-        const hours = Math.floor(remaining / 3600);
-        const minutes = Math.floor((remaining % 3600) / 60);
-        const seconds = remaining % 60;
+      const result = await processDailyClaimForUser(userId);
+      if (result.alreadyClaimed) {
         message.reply(
           `${message.author}, bạn đã nhận daily hôm nay rồi.\n` +
-          `Thời gian còn lại đến reset: **${hours}h ${minutes}m ${seconds}s**.`
+          `Thời gian còn lại đến reset: **${result.hours}h ${result.minutes}m ${result.seconds}s**.`
         );
       } else {
-        const nowUtc = new Date();
-        const vnNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
-        const vnYesterday = new Date(vnNow);
-        vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
-        const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
-
-        let streak = dailyData && dailyData.lastClaim === yesterdayStr
-          ? (dailyData.streak || 1) + 1
-          : 1;
-
-        const isWeekComplete = streak >= 7;
-
-        const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
-        await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: 86400 * 2 });
-
-        const EXP_REWARD = 5;
-        const AHN_REWARD = 100000;
-        const playerData = await getPlayerData(userId);
-        playerData.exp = (playerData.exp ?? 0) + EXP_REWARD;
-        playerData.ahn = (playerData.ahn ?? 0) + AHN_REWARD;
-        playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
-
-        if (isWeekComplete) {
-          playerData.exp += 25;
-          playerData.ahn += 400000;
-          playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
-        }
-
-        await savePlayerData(userId, playerData);
-
-        const displayStreak = isWeekComplete ? 7 : streak;
-        const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
-
-        let replyMsg =
-          `🎉 ${message.author} đã điểm danh thành công!\n` +
-          `> 📦 **5 Exp** | **100k Ahn** | **1 Random Book**\n` +
-          `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
-
-        if (isWeekComplete) {
-          replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
-            `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
-        }
-
-        message.reply(replyMsg);
+        message.reply(result.replyMsg.replace("{USER}", message.author.toString()));
       }
     } catch (err) {
       console.error("[daily] Redis error:", err);
@@ -760,7 +824,6 @@ client.on("messageCreate", async (message) => {
 
       const fields = [];
 
-      // Books section
       if (bookEntries.length > 0) {
         const lines = bookEntries.map(([name, count]) => `• **${name}** × ${count}`);
         const totalBooks = bookEntries.reduce((s, [, c]) => s + c, 0);
@@ -775,7 +838,6 @@ client.on("messageCreate", async (message) => {
         fields.push({ name: "📊 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true });
       }
 
-      // Items section
       if (itemEntries.length > 0) {
         const lines = itemEntries.map(([name, count]) => `• **${name}** × ${count}`);
         const totalItems = itemEntries.reduce((s, [, c]) => s + c, 0);
@@ -831,9 +893,13 @@ client.on("messageCreate", async (message) => {
     const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
-    // itemcount ưu tiên, nếu không có thì dùng count; nhưng count cũng dùng cho book
-    const itemCountRaw = kv["itemcount"] ?? kv["count"] ?? "1";
+
+    // FIX: require explicit `itemcount` when both book and item are present;
+    // fall back to `count` only when no book is specified.
+    const hasBook = !!bookRaw;
+    const itemCountRaw = kv["itemcount"] ?? (hasBook ? "1" : kv["count"] ?? "1");
     const itemCount = Math.max(1, parseInt(itemCountRaw, 10) || 1);
+
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
 
     if (!isAdmin && (expGain !== 0 || gradeTarget !== null)) {
@@ -857,7 +923,6 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // ── Item validation: admin bypass, non-admin dùng whitelist ──
     let itemName = null;
     if (itemRaw) {
       if (isAdmin) {
@@ -917,7 +982,6 @@ client.on("messageCreate", async (message) => {
       if (ahnGain !== 0) {
         recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
         changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
-
         if (!isAdmin && ahnGain > 0) {
           senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
         }
@@ -998,7 +1062,6 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // ── Item validation: admin bypass ──
     let itemName = null;
     if (itemRaw) {
       if (isAdmin) {
@@ -1092,7 +1155,6 @@ client.on("messageCreate", async (message) => {
 
     const kv = parseKeyValues(rawInput);
 
-    // Parse books (vẫn validate)
     const booksRaw = kv["books"] ?? null;
     const bookEntries = [];
     if (booksRaw) {
@@ -1112,7 +1174,6 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // ── Items: admin bypass, bất kỳ tên nào cũng được ──
     const itemsRaw = kv["items"] ?? null;
     const itemEntries = [];
     if (itemsRaw) {
@@ -1123,7 +1184,7 @@ client.on("messageCreate", async (message) => {
           message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` (VD: \`Tên Item x2\`)`);
           return;
         }
-        const itemName = match[1].trim(); // không validate, admin tự do
+        const itemName = match[1].trim();
         if (!itemName) {
           message.reply(`❌ Tên vật phẩm không được để trống.`);
           return;
@@ -1132,17 +1193,26 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    const expGain = parseInt(kv["exp"] ?? "0", 10) || 0;
+    const expSet = kv["exp"] ? parseInt(kv["exp"], 10) || 0 : null;
     const ahnSet = kv["ahn"] ? parseFloat(kv["ahn"]) : null;
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
+
+    // ADD mode: prefix value with + to add instead of overwrite
+    // e.g. exp: +50 or ahn: +100000
+    const expAddRaw = kv["exp"] ?? null;
+    const ahnAddRaw = kv["ahn"] ?? null;
+    const expIsAdd = expAddRaw && expAddRaw.startsWith("+");
+    const ahnIsAdd = ahnAddRaw && ahnAddRaw.startsWith("+");
+    const expValue = expAddRaw ? parseInt(expAddRaw.replace("+", ""), 10) || 0 : null;
+    const ahnValue = ahnAddRaw ? parseFloat(ahnAddRaw.replace("+", "")) || 0 : null;
 
     if (gradeTarget !== null && (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN)) {
       message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
       return;
     }
 
-    if (expGain === 0 && ahnSet === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0) {
-      message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`, `items`.");
+    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0) {
+      message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`, `items`.\n> Thêm `+` trước số để cộng thêm, VD: `exp: +50`");
       return;
     }
 
@@ -1154,14 +1224,26 @@ client.on("messageCreate", async (message) => {
         const expNeeded = calcExpForGrade(gradeTarget);
         data.exp = expNeeded;
         changes.push(`Grade → **Grade ${gradeTarget}** (EXP = **${expNeeded}**)`);
-      } else if (expGain !== 0) {
-        data.exp = expGain;
-        changes.push(`EXP set → **${expGain}**`);
+      } else if (expValue !== null) {
+        if (expIsAdd) {
+          const before = data.exp ?? 0;
+          data.exp = before + expValue;
+          changes.push(`EXP +${expValue} (${before} → **${data.exp}**)`);
+        } else {
+          data.exp = expValue;
+          changes.push(`EXP set → **${expValue}**`);
+        }
       }
 
-      if (ahnSet !== null) {
-        data.ahn = ahnSet;
-        changes.push(`Ahn set → **${formatNumber(ahnSet)}**`);
+      if (ahnValue !== null) {
+        if (ahnIsAdd) {
+          const before = data.ahn ?? 0;
+          data.ahn = before + ahnValue;
+          changes.push(`Ahn +${formatNumber(ahnValue)} (${formatNumber(before)} → **${formatNumber(data.ahn)}**)`);
+        } else {
+          data.ahn = ahnValue;
+          changes.push(`Ahn set → **${formatNumber(ahnValue)}**`);
+        }
       }
 
       if (bookEntries.length > 0) {
@@ -1181,11 +1263,62 @@ client.on("messageCreate", async (message) => {
       await savePlayerData(targetUser.id, data);
 
       message.reply(
-        `✅ Đã set data cho ${targetUser}:\n` +
+        `✅ Đã cập nhật data cho ${targetUser}:\n` +
         changes.map(c => `> ${c}`).join("\n")
       );
     } catch (err) {
       console.error("[setplayer] error:", err);
+      message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
+    }
+    return;
+  }
+
+  // ── -use ──
+  if (message.content.startsWith("-use")) {
+    const userId = message.author.id;
+
+    const rawInput = message.content.replace("-use", "").trim();
+    if (!rawInput) {
+      message.reply(
+        "❌ Cú pháp: `-use <tên vật phẩm> [count: <số>]`\n" +
+        "> VD: `-use Chipboard MK1` hoặc `-use Chipboard MK1 count: 3`"
+      );
+      return;
+    }
+
+    // Parse optional count: suffix
+    const countMatch = rawInput.match(/\s+count:\s*(\d+)$/i);
+    const useCount = countMatch ? Math.max(1, parseInt(countMatch[1], 10) || 1) : 1;
+    const itemInput = countMatch ? rawInput.slice(0, countMatch.index).trim() : rawInput;
+
+    const itemName = findItem(itemInput);
+    if (!itemName) {
+      message.reply(
+        `❌ Vật phẩm không hợp lệ: \`${itemInput}\`\n` +
+        `Dùng \`-items\` để xem danh sách vật phẩm có thể sử dụng.`
+      );
+      return;
+    }
+
+    try {
+      const data = await getPlayerData(userId);
+      const owned = data.items[itemName] ?? 0;
+
+      if (owned < useCount) {
+        message.reply(`❌ Bạn chỉ có **${owned}** **${itemName}**, không đủ để dùng **${useCount}** cái.`);
+        return;
+      }
+
+      data.items[itemName] = owned - useCount;
+      if (data.items[itemName] <= 0) delete data.items[itemName];
+      await savePlayerData(userId, data);
+
+      message.reply(
+        `✅ ${message.author} đã sử dụng **${useCount}× ${itemName}**!\n` +
+        `> Còn lại: **${data.items[itemName] ?? 0}** cái.`
+      );
+    } catch (err) {
+      console.error("[use] error:", err);
       message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
     }
     return;
@@ -1252,9 +1385,10 @@ client.on("messageCreate", async (message) => {
           "Chuyển Ahn, sách hoặc vật phẩm cho người khác.",
           "> `ahn: <số>` — số Ahn muốn chuyển",
           "> `book: <tên> count: <số>` — sách muốn chuyển",
-          "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển",
+          "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển (dùng `itemcount` khi có cả book lẫn item)",
           "> VD: `-give @user ahn: 50000`",
           "> VD: `-give @user book: Random Book count: 2`",
+          "> VD: `-give @user book: Random Book count: 1 item: Chipboard MK1 itemcount: 2`",
         ].join("\n"),
         inline: false,
       },
@@ -1265,6 +1399,15 @@ client.on("messageCreate", async (message) => {
           "> `book: <tên> count: <số>`",
           "> `item: <tên> itemcount: <số>`",
           "> VD: `-remove book: Random Book count: 1`",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🧪 -use <tên vật phẩm> [count: <số>]",
+        value: [
+          "Sử dụng vật phẩm trong kho của bạn (chỉ dùng cho chính mình).",
+          "> VD: `-use Chipboard MK1`",
+          "> VD: `-use Chipboard MK2 count: 3`",
         ].join("\n"),
         inline: false,
       },
@@ -1334,13 +1477,14 @@ client.on("messageCreate", async (message) => {
       {
         name: "⚙️ -setplayer @user [...]",
         value: [
-          "Set trực tiếp dữ liệu của người chơi.",
-          "> `exp: <số>` — set EXP",
+          "Set hoặc cộng thêm dữ liệu của người chơi.",
+          "> `exp: <số>` — set EXP | `exp: +<số>` — cộng thêm EXP",
           "> `grade: <1–9>` — set Grade",
-          "> `ahn: <số>` — set Ahn",
+          "> `ahn: <số>` — set Ahn | `ahn: +<số>` — cộng thêm Ahn",
           "> `books: <Tên> x<số>, <Tên> x<số>` — set sách (phải hợp lệ)",
           "> `items: <Tên bất kỳ> x<số>, ...` — set item **không cần trong whitelist**",
-          "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Sword of Dawn x2, Shield x1`",
+          "> VD: `-setplayer @user exp: +50 ahn: +100000`",
+          "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Sword of Dawn x2`",
         ].join("\n"),
         inline: false,
       },
@@ -1396,7 +1540,6 @@ client.on("messageCreate", async (message) => {
         cacheType: "Sealed Book Cache",
         results,
         remainingCount: data.books["Sealed Book Cache"] ?? 0,
-        cacheKey: "Sealed Book Cache",
       });
 
       message.reply({
@@ -1447,7 +1590,6 @@ client.on("messageCreate", async (message) => {
         cacheType: "Random Book",
         results,
         remainingCount: data.books["Random Book"] ?? 0,
-        cacheKey: "Random Book",
       });
 
       message.reply({
@@ -1466,6 +1608,11 @@ client.on("messageCreate", async (message) => {
 
   // ── -math ──
   if (message.content.startsWith("-math")) {
+    if (isOnCooldown(message.author.id, "math", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
+
     const input = message.content.replace("-math", "").trim();
     const kv = parseKeyValues(input);
 
@@ -1504,6 +1651,11 @@ client.on("messageCreate", async (message) => {
 
   // ── -huntermath ──
   if (message.content.startsWith("-huntermath")) {
+    if (isOnCooldown(message.author.id, "huntermath", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
+
     const input = message.content.replace("-huntermath", "").trim();
     const kv = parseKeyValues(input);
 
@@ -1528,6 +1680,10 @@ client.on("interactionCreate", async (interaction) => {
 
   // ── /math ──
   if (interaction.commandName === "math") {
+    if (isOnCooldown(interaction.user.id, "math", 2000)) {
+      await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true });
+      return;
+    }
     await interaction.deferReply();
 
     const critRate = interaction.options.getNumber("critrate") ?? 0;
@@ -1565,6 +1721,10 @@ client.on("interactionCreate", async (interaction) => {
 
   // ── /huntermath ──
   if (interaction.commandName === "huntermath") {
+    if (isOnCooldown(interaction.user.id, "huntermath", 2000)) {
+      await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.", ephemeral: true });
+      return;
+    }
     await interaction.deferReply();
 
     const result = calcHunterMath({
@@ -1583,6 +1743,10 @@ client.on("interactionCreate", async (interaction) => {
 
   // ── /parry ──
   if (interaction.commandName === "parry") {
+    if (isOnCooldown(interaction.user.id, "parry", 3000)) {
+      await interaction.reply({ content: "⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.", ephemeral: true });
+      return;
+    }
     await interaction.deferReply();
 
     const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, 50);
@@ -1619,87 +1783,20 @@ client.on("interactionCreate", async (interaction) => {
   // ── /daily ──
   if (interaction.commandName === "daily") {
     await interaction.deferReply();
-
     const userId = interaction.user.id;
-    const dailyKey = `daily:${userId}`;
-
-    function getVNDateString() {
-      const now = new Date();
-      const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      return vnTime.toISOString().slice(0, 10);
-    }
-
-    function secondsUntilVNMidnight() {
-      const now = new Date();
-      const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-      const vnMidnight = new Date(Date.UTC(
-        vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(), 17, 0, 0, 0
-      ));
-      if (vnMidnight <= now) vnMidnight.setUTCDate(vnMidnight.getUTCDate() + 1);
-      return Math.floor((vnMidnight - now) / 1000);
-    }
 
     try {
-      const raw = await redis.get(dailyKey);
-      const dailyData = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-      const today = getVNDateString();
-
-      if (dailyData && dailyData.lastClaim === today) {
-        const remaining = secondsUntilVNMidnight();
-        const hours = Math.floor(remaining / 3600);
-        const minutes = Math.floor((remaining % 3600) / 60);
-        const seconds = remaining % 60;
+      const result = await processDailyClaimForUser(userId);
+      if (result.alreadyClaimed) {
         await interaction.editReply({
           content:
             `${interaction.user}, bạn đã nhận daily hôm nay rồi.\n` +
-            `Thời gian còn lại đến reset: **${hours}h ${minutes}m ${seconds}s**.`,
+            `Thời gian còn lại đến reset: **${result.hours}h ${result.minutes}m ${result.seconds}s**.`,
         });
       } else {
-        const nowUtc = new Date();
-        const vnNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
-        const vnYesterday = new Date(vnNow);
-        vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
-        const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
-
-        let streak = dailyData && dailyData.lastClaim === yesterdayStr
-          ? (dailyData.streak || 1) + 1
-          : 1;
-
-        const isWeekComplete = streak >= 7;
-
-        const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
-        await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: 86400 * 2 });
-
-        const EXP_REWARD = 5;
-        const AHN_REWARD = 100000;
-        const playerData = await getPlayerData(userId);
-        playerData.exp = (playerData.exp ?? 0) + EXP_REWARD;
-        playerData.ahn = (playerData.ahn ?? 0) + AHN_REWARD;
-        playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
-
-        if (isWeekComplete) {
-          playerData.exp += 25;
-          playerData.ahn += 400000;
-          playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
-        }
-
-        await savePlayerData(userId, playerData);
-
-        const displayStreak = isWeekComplete ? 7 : streak;
-        const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
-
-        let replyMsg =
-          `🎉 ${interaction.user} đã điểm danh thành công!\n` +
-          `> 📦 **5 Exp** | **100k Ahn** | **1 Random Book**\n` +
-          `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
-
-        if (isWeekComplete) {
-          replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
-            `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
-        }
-
-        await interaction.editReply({ content: replyMsg });
+        await interaction.editReply({
+          content: result.replyMsg.replace("{USER}", interaction.user.toString()),
+        });
       }
     } catch (err) {
       console.error("[/daily] Redis error:", err);
@@ -1798,7 +1895,6 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 });
-
 
 client.login(TOKEN);
 
