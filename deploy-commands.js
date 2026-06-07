@@ -59,10 +59,14 @@ const commands = [
     .setDescription("Điểm danh hàng ngày để nhận Exp, Ahn và sách (reset lúc 0h VN)"),
   new SlashCommandBuilder()
     .setName("randombook")
-    .setDescription("Mở 1 Random Book để nhận ngẫu nhiên 1 cuốn sách thường"),
+    .setDescription("Mở Random Book để nhận ngẫu nhiên sách thường")
+    .addIntegerOption(opt =>
+      opt.setName("count").setDescription("Số lần mở (tối đa 20, mặc định 1)").setMinValue(1).setMaxValue(20).setRequired(false)),
   new SlashCommandBuilder()
     .setName("randomsealedbook")
-    .setDescription("Mở 1 Sealed Book Cache để nhận ngẫu nhiên 1 cuốn sách hiếm"),
+    .setDescription("Mở Sealed Book Cache để nhận ngẫu nhiên sách hiếm")
+    .addIntegerOption(opt =>
+      opt.setName("count").setDescription("Số lần mở (tối đa 20, mặc định 1)").setMinValue(1).setMaxValue(20).setRequired(false)),
 ].map(cmd => cmd.toJSON());
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
