@@ -27,6 +27,57 @@ const POISE_CRIT_HALVE = 0.5;
 const SINKING_MAX = 99;
 const RUPTURE_MAX = 99;
 
+// ─── LEVELING ─────────────────────────────────────────────────────────────────
+// Grade 9 (thấp nhất) → Grade 1 (cao nhất). Có 9 grade.
+// EXP để lên từ grade X xuống grade X-1:
+//   grade 9→8: 5 exp
+//   grade 8→7: 10 exp
+//   grade 7→6: 20 exp
+//   ...nhân đôi mỗi lần
+const GRADE_EXP_REQUIRED = {
+  9: 5,    // cần 5 exp để lên grade 8
+  8: 10,
+  7: 20,
+  6: 40,
+  5: 80,
+  4: 160,
+  3: 320,
+  2: 640,
+  // grade 1 là max, không lên thêm
+};
+const GRADE_MAX = 1;
+const GRADE_MIN = 9;
+
+/**
+ * Tính grade và exp dư dựa trên tổng exp tích lũy.
+ * Trả về { grade, expInCurrentGrade, expNeeded }
+ */
+function calcGrade(totalExp) {
+  let grade = GRADE_MIN; // bắt đầu từ grade 9
+  let remaining = totalExp;
+
+  while (grade > GRADE_MAX) {
+    const needed = GRADE_EXP_REQUIRED[grade];
+    if (needed === undefined) break; // grade 1, không lên nữa
+    if (remaining >= needed) {
+      remaining -= needed;
+      grade--;
+    } else {
+      break;
+    }
+  }
+
+  const expNeeded = grade > GRADE_MAX ? (GRADE_EXP_REQUIRED[grade] ?? null) : null;
+  return { grade, expInCurrentGrade: remaining, expNeeded };
+}
+
+// ─── ADMIN USER IDs ───────────────────────────────────────────────────────────
+// Thêm Discord User ID của admin vào đây
+const ADMIN_IDS = new Set([
+  "123456789012345678", // ← thay bằng ID thật
+  // thêm ID khác nếu cần
+]);
+
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 function parseKeyValues(input) {
@@ -69,6 +120,35 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, startingCritRat
   if (ruptureInit < 0 || ruptureInit > RUPTURE_MAX) errors.push(`Rupture phải từ 0–${RUPTURE_MAX}`);
   if (sanityInit < SANITY_MIN) errors.push(`Sanity phải ≥ ${SANITY_MIN}`);
   return errors;
+}
+
+// ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
+
+/**
+ * Lấy dữ liệu player từ Redis.
+ * Schema: { exp, ahn, inventory: { [bookName]: count } }
+ */
+async function getPlayerData(userId) {
+  const key = `player:${userId}`;
+  try {
+    const raw = await redis.get(key);
+    if (!raw) return { exp: 0, ahn: 0, inventory: {} };
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!data.inventory) data.inventory = {};
+    return data;
+  } catch {
+    return { exp: 0, ahn: 0, inventory: {} };
+  }
+}
+
+async function savePlayerData(userId, data) {
+  const key = `player:${userId}`;
+  await redis.set(key, JSON.stringify(data));
+}
+
+/** Format số lớn: 1000000 → "1,000,000" */
+function formatNumber(n) {
+  return Math.floor(n).toLocaleString("en-US");
 }
 
 // ─── CORE LOGIC ───────────────────────────────────────────────────────────────
@@ -322,10 +402,9 @@ client.on("messageCreate", async (message) => {
 
     for (let i = 0; i < rolls; i++) {
       let atk, pry, rerolls = 0;
-      // Roll lại nếu hòa (giống YAGPDB while loop)
       do {
-        atk = Math.floor(Math.random() * 16) + 1; // d16: 1–16
-        pry = Math.floor(Math.random() * 20) + 1; // d20: 1–20
+        atk = Math.floor(Math.random() * 16) + 1;
+        pry = Math.floor(Math.random() * 20) + 1;
         if (atk === pry) rerolls++;
       } while (atk === pry);
 
@@ -352,16 +431,14 @@ client.on("messageCreate", async (message) => {
   // ── -daily ──
   if (message.content.startsWith("-daily")) {
     const userId = message.author.id;
-    const key = `daily:${userId}`;
+    const dailyKey = `daily:${userId}`;
 
-    // Ngày hiện tại theo giờ Việt Nam (UTC+7), dạng "YYYY-MM-DD"
     function getVNDateString() {
       const now = new Date();
       const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
       return vnTime.toISOString().slice(0, 10);
     }
 
-    // Số giây còn lại đến 0h VN ngày hôm sau (17h UTC)
     function secondsUntilVNMidnight() {
       const now = new Date();
       const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
@@ -373,12 +450,11 @@ client.on("messageCreate", async (message) => {
     }
 
     try {
-      const raw = await redis.get(key);
-      const data = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+      const raw = await redis.get(dailyKey);
+      const dailyData = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
       const today = getVNDateString();
 
-      if (data && data.lastClaim === today) {
-        // Đã claim hôm nay
+      if (dailyData && dailyData.lastClaim === today) {
         const remaining = secondsUntilVNMidnight();
         const hours = Math.floor(remaining / 3600);
         const minutes = Math.floor((remaining % 3600) / 60);
@@ -388,24 +464,38 @@ client.on("messageCreate", async (message) => {
           `Thời gian còn lại đến reset: **${hours}h ${minutes}m ${seconds}s**.`
         );
       } else {
-        // Tính streak: hôm qua theo giờ VN
         const nowUtc = new Date();
         const vnNow = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
         const vnYesterday = new Date(vnNow);
         vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
         const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
 
-        let streak = data && data.lastClaim === yesterdayStr
-          ? (data.streak || 1) + 1  // Claim hôm qua → cộng streak
-          : 1;                       // Bỏ lỡ hoặc lần đầu → reset về 1
+        let streak = dailyData && dailyData.lastClaim === yesterdayStr
+          ? (dailyData.streak || 1) + 1
+          : 1;
 
         const isWeekComplete = streak >= 7;
 
-        // Lưu Redis, tự xóa sau 2 ngày (đủ để check hôm qua)
-        const newData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
-        await redis.set(key, JSON.stringify(newData), { ex: 86400 * 2 });
+        const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
+        await redis.set(dailyKey, JSON.stringify(newDailyData), { ex: 86400 * 2 });
 
-        // Progress bar
+        // Cộng phần thưởng vào player data
+        const EXP_REWARD = 5;
+        const AHN_REWARD = 100000;
+        const playerData = await getPlayerData(userId);
+        playerData.exp = (playerData.exp ?? 0) + EXP_REWARD;
+        playerData.ahn = (playerData.ahn ?? 0) + AHN_REWARD;
+        playerData.inventory = playerData.inventory ?? {};
+        playerData.inventory["Random Book"] = (playerData.inventory["Random Book"] ?? 0) + 1;
+
+        if (isWeekComplete) {
+          playerData.exp += 25;
+          playerData.ahn += 400000;
+          playerData.inventory["Book of Choice"] = (playerData.inventory["Book of Choice"] ?? 0) + 1;
+        }
+
+        await savePlayerData(userId, playerData);
+
         const displayStreak = isWeekComplete ? 7 : streak;
         const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
 
@@ -416,7 +506,7 @@ client.on("messageCreate", async (message) => {
 
         if (isWeekComplete) {
           replyMsg +=
-            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
+            `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **25 Exp**, **400k Ahn** và **1 Book of Choice**!\n` +
             `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
         }
 
@@ -425,6 +515,158 @@ client.on("messageCreate", async (message) => {
     } catch (err) {
       console.error("[daily] Redis error:", err);
       message.reply("❌ Có lỗi xảy ra, thử lại sau nhé.");
+    }
+    return;
+  }
+
+  // ── -balance ──
+  if (message.content.startsWith("-balance")) {
+    // Cho phép xem balance của người khác nếu mention, hoặc của chính mình
+    let targetUser = message.mentions.users.first() ?? message.author;
+    try {
+      const data = await getPlayerData(targetUser.id);
+      const { grade, expInCurrentGrade, expNeeded } = calcGrade(data.exp ?? 0);
+
+      const totalBooks = Object.values(data.inventory ?? {}).reduce((a, b) => a + b, 0);
+
+      const gradeDisplay = grade === GRADE_MAX
+        ? `**Grade ${grade}** (MAX)`
+        : `**Grade ${grade}** (${expInCurrentGrade}/${expNeeded} EXP → Grade ${grade - 1})`;
+
+      // Progress bar grade (0–max EXP trong grade hiện tại)
+      let progressBar = "";
+      if (grade > GRADE_MAX && expNeeded) {
+        const filled = Math.round((expInCurrentGrade / expNeeded) * 10);
+        progressBar = "\n> " + "🟦".repeat(filled) + "⬛".repeat(10 - filled) + ` ${expInCurrentGrade}/${expNeeded}`;
+      }
+
+      message.reply({
+        embeds: [{
+          title: `💼 Thông tin của ${targetUser.displayName ?? targetUser.username}`,
+          color: 0x5865f2,
+          thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
+          fields: [
+            { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
+            { name: "✨ Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** EXP`, inline: true },
+            { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
+            { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
+          ],
+          footer: { text: "Dùng -inventory để xem chi tiết sách" },
+        }],
+      });
+    } catch (err) {
+      console.error("[balance] error:", err);
+      message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
+    }
+    return;
+  }
+
+  // ── -inventory ──
+  if (message.content.startsWith("-inventory")) {
+    let targetUser = message.mentions.users.first() ?? message.author;
+    try {
+      const data = await getPlayerData(targetUser.id);
+      const inv = data.inventory ?? {};
+      const entries = Object.entries(inv).filter(([, count]) => count > 0);
+
+      if (entries.length === 0) {
+        message.reply(`📦 ${targetUser} không có sách nào trong kho.`);
+        return;
+      }
+
+      // Sắp xếp theo tên
+      entries.sort(([a], [b]) => a.localeCompare(b));
+
+      // Nhóm thành dòng, mỗi dòng một cuốn
+      const lines = entries.map(([name, count]) => `• **${name}** × ${count}`);
+      const total = entries.reduce((s, [, c]) => s + c, 0);
+
+      // Chia thành nhiều fields nếu quá dài
+      const CHUNK = 20;
+      const fields = [];
+      for (let i = 0; i < lines.length; i += CHUNK) {
+        fields.push({
+          name: i === 0 ? "📚 Danh sách sách" : "​", // zero-width space cho field tiếp theo
+          value: lines.slice(i, i + CHUNK).join("\n"),
+          inline: false,
+        });
+      }
+      fields.push({ name: "📊 Tổng cộng", value: `**${total}** cuốn`, inline: false });
+
+      message.reply({
+        embeds: [{
+          title: `🎒 Inventory của ${targetUser.displayName ?? targetUser.username}`,
+          color: 0xf0a500,
+          fields,
+        }],
+      });
+    } catch (err) {
+      console.error("[inventory] error:", err);
+      message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
+    }
+    return;
+  }
+
+  // ── -give ──
+  // Cú pháp: -give @user exp:<số> | ahn:<số> | book:<tên sách> count:<số>
+  // Ví dụ: -give @Minh exp: 50 ahn: 200000 book: Random Book count: 3
+  if (message.content.startsWith("-give")) {
+    if (!ADMIN_IDS.has(message.author.id)) {
+      message.reply("❌ Bạn không có quyền dùng lệnh này.");
+      return;
+    }
+
+    const targetUser = message.mentions.users.first();
+    if (!targetUser) {
+      message.reply("❌ Hãy mention người nhận. Ví dụ: `-give @user exp: 50 ahn: 100000`");
+      return;
+    }
+
+    // Parse input sau tên lệnh và mention
+    const rawInput = message.content
+      .replace("-give", "")
+      .replace(/<@!?\d+>/, "")
+      .trim();
+
+    const kv = parseKeyValues(rawInput);
+
+    const expGain = parseInt(kv["exp"] ?? "0", 10) || 0;
+    const ahnGain = parseFloat(kv["ahn"] ?? "0") || 0;
+    const bookName = kv["book"] ?? null;
+    const bookCount = parseInt(kv["count"] ?? "1", 10) || 1;
+
+    if (expGain === 0 && ahnGain === 0 && !bookName) {
+      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`.");
+      return;
+    }
+
+    try {
+      const data = await getPlayerData(targetUser.id);
+      const changes = [];
+
+      if (expGain !== 0) {
+        data.exp = (data.exp ?? 0) + expGain;
+        changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP`);
+      }
+      if (ahnGain !== 0) {
+        data.ahn = (data.ahn ?? 0) + ahnGain;
+        changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
+      }
+      if (bookName) {
+        data.inventory = data.inventory ?? {};
+        data.inventory[bookName] = Math.max(0, (data.inventory[bookName] ?? 0) + bookCount);
+        changes.push(`${bookCount > 0 ? "+" : ""}${bookCount} **${bookName}**`);
+      }
+
+      await savePlayerData(targetUser.id, data);
+
+      message.reply(
+        `✅ Đã tặng cho ${targetUser}:\n` +
+        changes.map(c => `> ${c}`).join("\n")
+      );
+    } catch (err) {
+      console.error("[give] error:", err);
+      message.reply("❌ Có lỗi xảy ra khi lưu dữ liệu.");
     }
     return;
   }
@@ -545,7 +787,42 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply(result);
     return;
   }
-});
+
+  // ── /parry ──
+  if (interaction.commandName === "parry") {
+    await interaction.deferReply();
+
+    const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, 50);
+
+    let successCount = 0;
+    let failCount = 0;
+    const lines = [];
+
+    for (let i = 0; i < rolls; i++) {
+      let atk, pry, rerolls = 0;
+      do {
+        atk = Math.floor(Math.random() * 16) + 1;
+        pry = Math.floor(Math.random() * 20) + 1;
+        if (atk === pry) rerolls++;
+      } while (atk === pry);
+
+      const isSuccess = atk <= pry;
+      if (isSuccess) successCount++;
+      else failCount++;
+
+      const rerollNote = rerolls > 0 ? ` *(Hòa và roll lại ${rerolls} lần)*` : "";
+      const result = isSuccess ? "Parry thành công ✅" : "Parry thất bại ❌";
+      lines.push(`Lần ${i + 1}: Attacker: \`${atk}\` vs Defender: \`${pry}\`${rerollNote} → ${result}`);
+    }
+
+    const summary = `**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
+    let body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n${summary}`;
+    if (body.length > 2000) body = body.substring(0, 1990) + "\n…(bị cắt bớt)";
+
+    await interaction.editReply({ content: body });
+    return;
+  }
+
 
 client.login(TOKEN);
 
