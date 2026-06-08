@@ -734,6 +734,8 @@ function calcMath(opts) {
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
 
+    // Sinking & Rupture: dùng stack hiện tại để tính dmg bonus trước,
+    // sau đó mới trừ 1 stack — đòn hiện tại không hưởng lợi từ stack nó vừa tự áp.
     let sinkingBonus = 0;
     if (enemySinking > 0) {
       sanity = Math.max(sanity - 1, SANITY_MIN);
@@ -752,6 +754,8 @@ function calcMath(opts) {
     }
 
     totalDmg += instanceDmg;
+
+    // Apply stack mới từ đòn này sau khi đã tính dmg xong
     if (poiseToApply > 0) totalPoise = Math.min(totalPoise + poiseToApply, POISE_MAX);
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
@@ -1682,7 +1686,6 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ── -chipboardcache ──
   // ── -chipboardcache ──
   if (message.content.startsWith("-chipboardcache")) {
     if (isOnCooldown(message.author.id, "chipboardcache", 3000)) {
