@@ -744,11 +744,10 @@ function calcMath(opts) {
       enemySinking = Math.max(enemySinking - 1, 0);
     }
 
-    let ruptureUsed = false;
-    if (enemyRupture > 0 && currentRes < 1) {
-      instanceDmg = dmg * bonusFactor * multiplier;
-      if (isDice) instanceDmg *= diceMul;
-      ruptureUsed = true;
+    let ruptureBonus = 0;
+    if (enemyRupture > 0) {
+      ruptureBonus = enemyRupture;
+      instanceDmg += ruptureBonus;
       enemyRupture = Math.max(enemyRupture - 1, 0);
     }
 
@@ -760,7 +759,7 @@ function calcMath(opts) {
     instanceResults.push({
       dmg, dmgType, didCrit, critChance, poiseOverflow,
       poiseStacksAfter: totalPoise,
-      instanceDmg, ruptureUsed, sinkingBonus,
+      instanceDmg, ruptureBonus, sinkingBonus,
       sinkingApplied: sinkingToApply,
       ruptureApplied: ruptureToApply,
       poiseApplied: poiseToApply,
@@ -786,7 +785,7 @@ function calcMath(opts) {
     }
     if (r.sinkingBonus > 0) extraInfo += ` | +${r.sinkingBonus} dmg từ Sinking`;
     if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} Sinking`;
-    if (r.ruptureUsed) extraInfo += " | xuyên Res từ Rupture";
+    if (r.ruptureBonus > 0) extraInfo += ` | +${r.ruptureBonus} dmg từ Rupture`;
     if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} Rupture`;
     if (r.poiseApplied > 0) extraInfo += ` | +${r.poiseApplied} Poise → ${r.poiseStacksAfter} stacks`;
     if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
