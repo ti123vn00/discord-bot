@@ -1161,6 +1161,8 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   // ── -rolldice ──
+  // Cú pháp: -rolldice <min>-<max> [x<lần>], <min>-<max> [x<lần>], ...
+  // VD: -rolldice 3-7 | -rolldice 3-7 x5 | -rolldice 3-17 x14, 2-4, 2-7 x3
   if (message.content.startsWith("-rolldice")) {
     if (isOnCooldown(message.author.id, "rolldice", 3000)) {
       message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
@@ -1171,90 +1173,70 @@ client.on("messageCreate", async (message) => {
       message.reply(
         "❌ Cú pháp:\n" +
         "> `-rolldice <min>-<max>` — roll 1 lần\n" +
-        "> `-rolldice <min>-<max> <số lần>` — roll nhiều lần (tối đa 20)\n" +
-        "> `-rolldice <min>-<max>, <min>-<max>, ...` — roll nhiều dice cùng lúc (tối đa 10 dice)\n" +
-        "> VD: `-rolldice 3-7` | `-rolldice 3-7 5` | `-rolldice 3-17, 2-13, 3-14`"
+        "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)\n" +
+        "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng\n" +
+        "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"
       );
       return;
     }
 
-    // Tách phần dice list và số lần roll (số lần chỉ áp dụng khi chỉ có 1 dice)
-    // Định dạng: "3-7 5" hoặc "3-17, 2-13, 3-14"
     const DICE_MAX_COUNT = 10;
     const ROLL_MAX_TIMES = 20;
 
-    // Kiểm tra có nhiều dice không (có dấu phẩy)
-    const isMultiDice = input.includes(",");
-
-    if (isMultiDice) {
-      // Multi-dice mode: "-rolldice 3-17, 2-13, 3-14"
-      const diceParts = input.split(",").map(s => s.trim()).filter(Boolean);
-      if (diceParts.length > DICE_MAX_COUNT) {
-        message.reply(`❌ Tối đa ${DICE_MAX_COUNT} dice cùng lúc.`);
-        return;
-      }
-      const diceRanges = [];
-      for (const part of diceParts) {
-        const match = part.match(/^(\d+)-(\d+)$/);
-        if (!match) {
-          message.reply(`❌ Định dạng dice không hợp lệ: \`${part}\`\nĐúng: \`<min>-<max>\` (VD: \`3-7\`)`);
-          return;
-        }
-        const min = parseInt(match[1], 10);
-        const max = parseInt(match[2], 10);
-        if (min >= max) {
-          message.reply(`❌ Min phải nhỏ hơn Max: \`${part}\``);
-          return;
-        }
-        diceRanges.push({ min, max });
-      }
-      const lines = diceRanges.map(({ min, max }) => {
-        const result = Math.floor(Math.random() * (max - min + 1)) + min;
-        return `🎲 \`${min}-${max}\` → **${result}**`;
-      });
-      const body = `${message.author} đã roll **${diceRanges.length} dice**:\n` + lines.join("\n");
-      message.reply(body.length > 2000 ? body.substring(0, 1990) + "\n…(bị cắt bớt)" : body);
-    } else {
-      // Single dice mode: "-rolldice 3-7" hoặc "-rolldice 3-7 5"
-      const parts = input.trim().split(/\s+/);
-      const diceStr = parts[0];
-      const timesRaw = parts[1] ? parseInt(parts[1], 10) : 1;
-
-      const match = diceStr.match(/^(\d+)-(\d+)$/);
-      if (!match) {
-        message.reply(`❌ Định dạng dice không hợp lệ: \`${diceStr}\`\nĐúng: \`<min>-<max>\` (VD: \`3-7\`)`);
-        return;
-      }
+    // Parse từng dice entry: "3-7 x5" hoặc "3-7"
+    function parseDiceEntry(raw) {
+      const trimmed = raw.trim();
+      // Match: <min>-<max> x<times> hoặc <min>-<max>
+      const match = trimmed.match(/^(\d+)-(\d+)(?:\s+x(\d+))?$/i);
+      if (!match) return { error: `Định dạng không hợp lệ: \`${trimmed}\`` };
       const min = parseInt(match[1], 10);
       const max = parseInt(match[2], 10);
-      if (min >= max) {
-        message.reply(`❌ Min phải nhỏ hơn Max: \`${diceStr}\``);
-        return;
-      }
-      if (isNaN(timesRaw) || timesRaw <= 0) {
-        message.reply("❌ Số lần roll phải lớn hơn 0.");
-        return;
-      }
-      if (timesRaw > ROLL_MAX_TIMES) {
-        message.reply(`❌ Số lần roll tối đa là ${ROLL_MAX_TIMES}.`);
-        return;
-      }
+      const times = match[3] ? parseInt(match[3], 10) : 1;
+      if (min >= max) return { error: `Min phải nhỏ hơn Max: \`${trimmed}\`` };
+      if (times <= 0) return { error: `Số lần roll phải lớn hơn 0: \`${trimmed}\`` };
+      if (times > ROLL_MAX_TIMES) return { error: `Số lần roll tối đa là ${ROLL_MAX_TIMES}: \`${trimmed}\`` };
+      return { min, max, times };
+    }
 
-      if (timesRaw === 1) {
-        const result = Math.floor(Math.random() * (max - min + 1)) + min;
-        message.reply(`🎲 ${message.author} rolled \`${min}-${max}\` → **${result}**`);
+    const rawEntries = input.split(",").map(s => s.trim()).filter(Boolean);
+    if (rawEntries.length > DICE_MAX_COUNT) {
+      message.reply(`❌ Tối đa ${DICE_MAX_COUNT} dice cùng lúc.`);
+      return;
+    }
+
+    const diceList = [];
+    for (const raw of rawEntries) {
+      const parsed = parseDiceEntry(raw);
+      if (parsed.error) {
+        message.reply(`❌ ${parsed.error}\nĐúng: \`<min>-<max>\` hoặc \`<min>-<max> x<lần>\` (VD: \`3-7 x5\`)`);
+        return;
+      }
+      diceList.push(parsed);
+    }
+
+    // Build output
+    const outputLines = [];
+    for (const { min, max, times } of diceList) {
+      const results = Array.from({ length: times }, () =>
+        Math.floor(Math.random() * (max - min + 1)) + min
+      );
+      if (times === 1) {
+        outputLines.push(`🎲 \`${min}-${max}\` → **${results[0]}**`);
       } else {
-        const results = Array.from({ length: timesRaw }, () =>
-          Math.floor(Math.random() * (max - min + 1)) + min
-        );
-        const lines = results.map((r, i) => `Lần ${i + 1}: **${r}**`);
         const total = results.reduce((a, b) => a + b, 0);
-        const avg = (total / timesRaw).toFixed(2);
-        const summary = `\n**Tổng kết:** Tổng = \`${total}\` | Trung bình = \`${avg}\` | Min = \`${Math.min(...results)}\` | Max = \`${Math.max(...results)}\``;
-        const body = `🎲 ${message.author} rolled \`${min}-${max}\` × **${timesRaw} lần**:\n` + lines.join("\n") + summary;
-        message.reply(body.length > 2000 ? body.substring(0, 1990) + "\n…(bị cắt bớt)" : body);
+        const avg = (total / times).toFixed(2);
+        outputLines.push(
+          `🎲 \`${min}-${max}\` ×${times}: **${total}** [${results.join(" ")}]` +
+          ` *(avg: ${avg} | min: ${Math.min(...results)} | max: ${Math.max(...results)})*`
+        );
       }
     }
+
+    const header = diceList.length > 1
+      ? `${message.author} đã roll **${diceList.length} dice**:\n`
+      : `${message.author} `;
+    const body = header + outputLines.join("\n");
+    message.reply(body.length > 2000 ? body.substring(0, 1990) + "\n…(bị cắt bớt)" : body);
     return;
   }
 
@@ -1761,7 +1743,7 @@ client.on("messageCreate", async (message) => {
       { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
-      { name: "🎲 -rolldice <range> [số lần]", value: ["Roll dice theo range tùy chỉnh.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> <số lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range>, <range>, ...` — roll nhiều dice cùng lúc (tối đa 10)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 5` | `-rolldice 3-17, 2-13, 3-14`"].join("\n"), inline: false },
+      { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
       { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv:`", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
