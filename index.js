@@ -2165,7 +2165,7 @@ const SKILLS = {
     roll() {
       const d1 = r(13,18);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1252828740988174377>Tremor Burst`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst`,
       ];
     },
   },
@@ -2177,7 +2177,7 @@ const SKILLS = {
       const hasDiceUp = d2 > 20;
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — đá địch lên trời, gây 14 <:Tremor:1513762737388257380>Tremor`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable] [Undodgeable] — đá xuống, gây <:TremorBurst:1252828740988174377>Tremor Burst`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable] [Undodgeable] — đá xuống, gây <:TremorBurst:1513802464632246352>Tremor Burst`,
         hasDiceUp ? `✨ Trên 20 Tremor: nhận 2 <:DiceUp:1513767795681398894>Dice Up cho 2 Turn kế tiếp` : `*(Cần trên 20 <:Tremor:1513762737388257380>Tremor để nhận <:DiceUp:1513767795681398894>Dice Up)*`,
       ];
     },
@@ -2237,7 +2237,7 @@ const SKILLS = {
       const d1 = r(18,27);
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] — lao vào địch, gây 4 lần sát thương cùng 5 <:Tremor:1513762737388257380>Tremor mỗi lần (không re-roll)`,
-        `→ Đòn cuối gây <:TremorBurst:1252828740988174377>Tremor Burst`,
+        `→ Đòn cuối gây <:TremorBurst:1513802464632246352>Tremor Burst`,
       ];
     },
   },
@@ -2986,7 +2986,7 @@ const SKILLS = {
       // Summary
       lines.push(`\n📊 **Tổng kết** (${hits.length} hit)`);
       lines.push(`> <:Blunt:1513768529718022254> Tổng DMG: **${totalDmg}** | Min: ${minHit} / Max: ${maxHit} / TB: ${(totalDmg / hits.length).toFixed(1)}`);
-      lines.push(`> <:TremorBurst:1252828740988174377> Tổng Stamina giảm: **${totalStamina}**`);
+      lines.push(`> <:TremorBurst:1513802464632246352> Tổng Stamina giảm: **${totalStamina}**`);
 
       return lines;
     },
@@ -3274,7 +3274,7 @@ const SKILLS = {
         `**[Undodgeable] [AOE] [Uncancellable]**`,
         `${D1} **${d1}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor`,
         `${D2} **${d2}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor`,
-        `${D3} **${d3}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor sau đó gây <:TremorBurst:1252828740988174377>TremorBurst`,
+        `${D3} **${d3}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor sau đó gây <:TremorBurst:1513802464632246352>TremorBurst`,
         hasHighTremor
           ? `${D3} ✨ Trên 10 <:Tremor:1513762737388257380>Tremor trước TremorBurst → gắn 6 <:Fairy:1513782007602216960>Fairy và làm giảm 4 Dice <:DiceDown:1513767826257874964>Dice Down`
           : `${D3} *(Cần trên 10 <:Tremor:1513762737388257380>Tremor trước TremorBurst để gắn 6 <:Fairy:1513782007602216960>Fairy và <:DiceDown:1513767826257874964>Dice Down)*`,
@@ -3315,7 +3315,7 @@ const SKILL_ALIASES = {
   "ib": "inferno burst",
   "takethiskid": "take this kid",
   "ttk": "take this kid",
-  "learnakainkid": "learn again kid",
+  "learnagainkid": "learn again kid",
   "learnakaink": "learn again kid",
   "lak": "learn again kid",
   "catchbreath": "catch breath",
@@ -3354,7 +3354,7 @@ const SKILL_ALIASES = {
   "fe": "fleet edge",
   "flowofthesword": "flow of the sword",
   "fots": "flow of the sword",
-  "violetflame": "violent flame",
+  "violentflame": "violent flame",
   "vf": "violent flame",
   "formingstorm": "forming storm",
   "fs": "forming storm",
@@ -3429,7 +3429,7 @@ const SKILL_ALIASES = {
   "cc": "cloud cutter",
   "skyclearingcut": "sky clearing cut",
   "scc": "sky clearing cut",
-  "darkcloudc leaver": "dark cloud cleaver",
+  "darkcloudcleaver": "dark cloud cleaver",
   "dcc": "dark cloud cleaver",
   "soberup": "sober up",
   "shadowcloudkick": "shadowcloud kick",
@@ -3934,7 +3934,7 @@ client.on("messageCreate", async (message) => {
     }
 
     if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
-      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`.");
+      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`, `books`, `items`.");
       return;
     }
     try {
