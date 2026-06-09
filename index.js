@@ -3458,8 +3458,10 @@ function findSkill(raw) {
   const aliasKey = SKILL_ALIASES[key.replace(/[\s\-,]/g, "").replace(/\s+/g, " ")];
   if (aliasKey && SKILLS[aliasKey]) return SKILLS[aliasKey];
   // Fuzzy: tìm skill nào có tên chứa input
+  // Thử strip số hoặc args cuối (VD: "solemn lament 5" → "solemn lament")
+  const keyStripped = key.replace(/\s+\S+$/, "").trim();
   for (const [k, v] of Object.entries(SKILLS)) {
-    if (k.includes(key)) return v;
+    if (k.includes(key) || (keyStripped && k.includes(keyStripped) && keyStripped.length >= 3)) return v;
   }
   return null;
 }
