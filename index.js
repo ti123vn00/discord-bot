@@ -2985,8 +2985,8 @@ const SKILLS = {
 
       // Summary
       lines.push(`\n📊 **Tổng kết** (${hits.length} hit)`);
-      lines.push(`> 🎯 Tổng DMG: **${totalDmg}** | Min: ${minHit} / Max: ${maxHit} / TB: ${(totalDmg / hits.length).toFixed(1)}`);
-      lines.push(`> 💥 Tổng Stamina giảm: **${totalStamina}**`);
+      lines.push(`> <:Blunt:1513768529718022254> Tổng DMG: **${totalDmg}** | Min: ${minHit} / Max: ${maxHit} / TB: ${(totalDmg / hits.length).toFixed(1)}`);
+      lines.push(`> <:TremorBurst:1252828740988174377> Tổng Stamina giảm: **${totalStamina}**`);
 
       return lines;
     },
@@ -3459,7 +3459,7 @@ function findSkill(raw) {
   if (aliasKey && SKILLS[aliasKey]) return SKILLS[aliasKey];
   // Fuzzy: tìm skill nào có tên chứa input
   for (const [k, v] of Object.entries(SKILLS)) {
-    if (k.includes(key) || key.includes(k)) return v;
+    if (k.includes(key)) return v;
   }
   return null;
 }
@@ -4373,12 +4373,13 @@ client.on("messageCreate", async (message) => {
 async function replyOnCooldown(interaction, ms) {
   if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
   try {
-    await interaction.reply({
-      content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`,
-      ephemeral: true,
-    });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.` });
+    } else {
+      await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, ephemeral: true });
+    }
   } catch {
-    // Interaction có thể đã expired hoặc đã reply rồi — bỏ qua
+    // Interaction có thể đã expired — bỏ qua
   }
   return true;
 }
