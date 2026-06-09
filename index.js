@@ -1142,6 +1142,416 @@ function parseBatchEntries(raw, findFn, entityLabel) {
 }
 
 
+
+// ─── SKILL DATA ───────────────────────────────────────────────────────────────
+const D1 = "<:Dice1:1508173590078558369>";
+const D2 = "<:Dice2:1508173623691710625>";
+const D3 = "<:Dice3:1508173643518050395>";
+const D4 = "<:Dice4:1508176464367845600>";
+const D5 = "<:Dice5:1508176500438990968>";
+
+function r(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+const SKILLS = {
+  "fare-thee well": {
+    name: "Fare-Thee Well",
+    cost: "3 Light", cd: "2 Turn", diceMul: "0.8x",
+    roll() {
+      const d1 = r(6,7), d2 = r(7,8), d3 = r(10,15);
+      return [
+        `${D1} **${d1}** [Slash] — gây 1 Bleed ở turn kế và nhận 3 Poise`,
+        `${D2} **${d2}** [Slash] — gây 1 Bleed ở turn kế và nhận 3 Poise`,
+        `${D3} *Nếu bản thân có trên 10 Poise, Dice 3 nhận 5 Dice Up*`,
+        `${D3} **${d3}** [Slash] [Guard Break] — gây 4 Bleed ở turn kế và nhận 4 Poise`,
+      ];
+    },
+  },
+  "purify": {
+    name: "Purify",
+    cost: "3 Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,16), d2 = r(8,12), d3 = r(12,16);
+      return [
+        `${D1} **${d1}** [Pierce] [Undodgeable] [Unblockable] — gây 2 Nail`,
+        `${D2} **${d2}** [Pierce] [Undodgeable] [Unblockable] — gây 2 Nail`,
+        `${D3} **${d3}** [Pierce] [Undodgeable] [Unblockable] — gây 3 Nail và 1 Paralyze`,
+        `${D3} Gây 1 Gaze — nếu địch có trên 7 Nails sẽ mất toàn bộ stack vượt quá 7`,
+      ];
+    },
+  },
+  "kicking": {
+    name: "Kicking",
+    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,5), d2 = r(5,6), d3 = r(6,7);
+      return [
+        `${D1} **${d1}** [Blunt]`,
+        `${D2} **${d2}** [Blunt]`,
+        `${D3} **${d3}** [Blunt] — gây 3 Bleed ở turn kế; nếu ở **Middle Syndicate** thêm 2 Paralyze`,
+      ];
+    },
+  },
+  "just a vengeance": {
+    name: "Just A Vengeance",
+    cost: "4 Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
+      return [
+        `${D1} **${d1}** [Blunt] — gây 2 Bleed ở turn kế`,
+        `${D2} **${d2}** [Blunt] — gây 2 Bleed ở turn kế`,
+        `${D3} **${d3}** [Blunt] — gây 2 Bind`,
+        `${D4} **${d4}** [Blunt] [Guard Break] [AOE 2 người] — gây 3 Paralyze`,
+      ];
+    },
+  },
+  "extract fuel": {
+    name: "Extract Fuel",
+    cost: "2 Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,12);
+      let heal = d1 === 7 ? "hồi 10 HP" : d1 === 12 ? "hồi 20 HP" : "hồi 15 HP";
+      return [
+        `${D1} **${d1}** [Slash] [Guard Break] — hồi lại 2 Light (${heal})`,
+      ];
+    },
+  },
+  "stamp of vengeance": {
+    name: "Stamp of Vengeance",
+    cost: "4 Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(16,24);
+      return [
+        `${D1} **${d1}** [Blunt] [Guard Break] [Undodgeable] [AOE 3 người] — gây 5 Bleed ở turn kế, 2 Bind và nhận 2 **Middle Nursefather Tattoos** với mỗi địch đánh trúng`,
+      ];
+    },
+  },
+  "complete and total extermination": {
+    name: "Complete and Total Extermination",
+    cost: "5 Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(18,25);
+      return [
+        `${D1} **${d1}** [Blunt] [Unblockable] [Undodgeable] — gây 4 Paralyze, Tremor Burst, 10 Fragile và 2 Vengeance Mark`,
+      ];
+    },
+  },
+  "following the flow": {
+    name: "Following the Flow",
+    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(7,9), d3 = r(8,10);
+      return [
+        `${D1} *Nếu địch có ≥4 Bind, mọi Dice của skill này add thêm 1 Burn*`,
+        `${D1} **${d1}** [Slash] [Undodgeable] — gây 2 Burn`,
+        `${D2} **${d2}** [Slash] [Unblockable] — gây 2 Burn và 2 Bind`,
+        `${D3} **${d3}** [Slash] [Unblockable] — gây 2 Burn`,
+      ];
+    },
+  },
+  "silence": {
+    name: "Silence",
+    cost: "5 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(5,7), d3 = r(7,10), d4 = r(8,12);
+      return [
+        `${D1} *Khi dùng: +1 Dice Up turn này và sau ứng với mỗi nhánh Skill Tree Wrath đã kích hoạt [Max: 4]*`,
+        `${D1} **${d1}** [Slash] [Guard Break] — gây 3 Burn`,
+        `${D2} **${d2}** [Slash] — gây 3 Burn`,
+        `${D3} **${d3}** [Slash] — gây 3 Burn`,
+        `${D4} **${d4}** [Slash] — gây 4 Bind và +1 Burn ứng với mỗi Bind trên địch`,
+      ];
+    },
+  },
+  "waltz in black": {
+    name: "Waltz In Black",
+    cost: "3 Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,14);
+      return [
+        `${D1} *Nếu turn trước địch dính Waltz In White: skill này thành 3x Dice Multiplier và [Unevadeable]*`,
+        `${D1} **${d1}** [Slash] [Guard Break]`,
+      ];
+    },
+  },
+  "waltz in white": {
+    name: "Waltz In White",
+    cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(13,24);
+      return [
+        `${D1} **${d1}** [Pierce] [Unevadeable] [Unblockable]`,
+      ];
+    },
+  },
+  "light attack": {
+    name: "Light Attack",
+    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8);
+      return [
+        `${D1} **${d1}** [Slash] [Unparriable] [Unblockable] — hồi 2 Light sau khi trúng`,
+      ];
+    },
+  },
+  "slash series": {
+    name: "Slash Series",
+    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(3,5), d3 = r(5,7);
+      return [
+        `${D1} **${d1}** [Slash] [Undodgeable] — nhận 2 Poise`,
+        `${D2} **${d2}** [Slash] [Undodgeable] — nhận 2 Poise`,
+        `${D3} **${d3}** [Slash] [Guard Break] — nhận 2 Poise`,
+      ];
+    },
+  },
+  "execute prescript": {
+    name: "Execute Prescript",
+    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,8);
+      return [
+        `${D1} **${d1}** [Slash] — gây 3 Rupture`,
+        `${D2} **${d2}** [Slash] — gây 4 Rupture; nếu trong Index Syndicate & Deck Singleton thì +4 Dice Up`,
+      ];
+    },
+  },
+  "will of the city": {
+    name: "Will of The City",
+    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10);
+      return [
+        `${D1} **${d1}** [Slash] [Guard Break] — hồi 1 Light`,
+      ];
+    },
+  },
+  "dodge and strike": {
+    name: "Dodge and Strike",
+    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,16);
+      return [
+        `${D1} **${d1}** [Slash]`,
+      ];
+    },
+  },
+  "prescript": {
+    name: "Prescript",
+    cost: "—", cd: "—", diceMul: "—",
+    roll() {
+      const PRESCRIPT_TABLE = [
+        "Dice 1: **27 Dmg** [Blunt] — nhận 2 Poise [20 Stamina]",
+        "Dice 2: **8 Dmg** [Pierce] — gây 2 Sinking [5 Stamina]",
+        "Dice 3: **15 Dmg** [Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
+        "Dice 4: **6 Dmg** [Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
+        "Dice 5: **25 Dmg** [Blunt] — giảm 50 Stamina địch [20 Stamina]",
+        "Dice 6: **24 Dmg** [Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
+        "Dice 7: **12 Dmg** [Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [10 Stamina]",
+        "Dice 8: **12 Dmg** [Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [10 Stamina]",
+        "Dice 9: **30 Dmg** [Slash] — 100% Crit [20 Stamina]",
+      ];
+      const picked = PRESCRIPT_TABLE[Math.floor(Math.random() * PRESCRIPT_TABLE.length)];
+      return [picked];
+    },
+  },
+  "soulburn": {
+    name: "Soulburn",
+    cost: "3 Light", cd: "3 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(3,6), d2 = r(3,6), d3 = r(5,9);
+      return [
+        `${D1} **${d1}** [Slash] [AOE tất cả] — gây 4 Burn và 1 Fragile ở turn kế`,
+        `${D2} **${d2}** [Slash] [AOE tất cả] — gây 6 Burn và 2 Fragile ở turn kế`,
+        `${D3} **${d3}** [Slash] [AOE tất cả] — gây 10 Burn và 2 Fragile ở turn kế`,
+      ];
+    },
+  },
+  "inferno burst": {
+    name: "Inferno Burst",
+    cost: "2 Light", cd: "2 Turn", diceMul: "1.5x",
+    roll() {
+      const d1 = r(9,12), d2 = r(11,13);
+      return [
+        `${D1} *Nếu địch có trên 10 Burn: tăng lượng Burn mỗi Hit thêm 3 Burn*`,
+        `${D1} **${d1}** [Slash] — gây 2 Burn`,
+        `${D2} **${d2}** [Blunt] — gây 4 Burn và kích Burning Sensation`,
+      ];
+    },
+  },
+  "take this kid": {
+    name: "Take this, Kid",
+    cost: "3 Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,16), d2 = r(16,24);
+      return [
+        `${D1} *Nếu địch có Bleed: gắn 1 Hemorrhage*`,
+        `${D1} **${d1}** [Blunt]`,
+        `${D2} **${d2}** [Blunt] — gây 4 Bleed ở turn kế`,
+      ];
+    },
+  },
+  "learn again kid": {
+    name: "Learn again, Kid",
+    cost: "3 Light", cd: "2 Turn", diceMul: "1.5x",
+    roll() {
+      const d1 = r(8,12), d2 = r(8,12), d3 = r(10,14), d4 = r(14,20);
+      return [
+        `${D1} *Nếu địch có Bleed: gắn 1 Hemorrhage*`,
+        `${D1} **${d1}** [Blunt]`,
+        `${D2} **${d2}** [Blunt] — gây 2 Bleed ở turn kế`,
+        `${D3} **${d3}** [Blunt] — gây 2 Bleed ở turn kế`,
+        `${D4} **${d4}** [Blunt] — gây 4 Bleed ở turn kế`,
+      ];
+    },
+  },
+  "catch breath": {
+    name: "Catch Breath",
+    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,15);
+      return [
+        `${D1} *Khi dưới 50% HP: Dice 1 nhận 4 Dice Up*`,
+        `${D1} **${d1}** [Slash] — nhận 6 Poise; khi dưới 50% HP thêm 2 Poise và 4 Haste`,
+      ];
+    },
+  },
+  "onrush": {
+    name: "Onrush",
+    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,26);
+      return [
+        `${D1} **${d1}** [Slash] — gây 3 Bleed ở turn kế, nhận 1 Imitation, giảm 40 Stamina địch`,
+        `${D1} *Nếu bản thân có ≥6 Light: dùng thêm 3 Light để reuse đòn này*`,
+      ];
+    },
+  },
+  "overthrow": {
+    name: "Overthrow",
+    cost: "5 Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,4), d2 = r(2,4), d3 = r(5,10);
+      return [
+        `${D1} **${d1}** [Slash] [Undodgeable] — gây 3 Bleed ở turn kế, nhận 2 Poise; nếu có trên 5 Poise thêm 2 Dice Up`,
+        `${D2} **${d2}** [Slash] [Undodgeable] — gây 3 Bleed ở turn kế, nhận 2 Poise`,
+        `${D3} *Nếu có ≥5 Poise: chuyển 5 Poise → 8 Dice Up cho Dice 3; nếu kết liễu được địch thêm 3 Dice Up turn sau*`,
+        `${D3} **${d3}** [Slash] [Undodgeable] [Unparriable] [Guard Break] — gây 10 Bleed ở turn kế, 5 Paralyze, nhận 5 Poise`,
+      ];
+    },
+  },
+  "shadowcloud shattercleaver": {
+    name: "Shadowcloud Shattercleaver",
+    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,5), d2 = r(2,5), d3 = r(8,10);
+      return [
+        `${D1} **${d1}** [Slash] — gây 2 Bleed ở turn kế, nhận 2 Defense Up`,
+        `${D2} **${d2}** [Slash] — gây 2 Bleed ở turn kế, nhận 2 Defense Up; nếu địch có trên 6 Bleed thêm 2 Defense Up`,
+        `${D3} **${d3}** [Slash] [Guard Break] — gây 5 Bleed ở turn kế`,
+      ];
+    },
+  },
+  "punting": {
+    name: "Punting",
+    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,5), d2 = r(5,6);
+      return [
+        `${D1} **${d1}** [Blunt] [Unblockable]`,
+        `${D2} **${d2}** [Blunt] [Unblockable] — gây 3 Bleed ở turn kế, nhận 2 Poise và 1 **Middle Nursefather Tattoos**`,
+      ];
+    },
+  },
+  "punching": {
+    name: "Punching",
+    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(5,7), d3 = r(6,8);
+      return [
+        `${D1} **${d1}** [Blunt]`,
+        `${D2} **${d2}** [Blunt]`,
+        `${D3} **${d3}** [Blunt] — gây 2 Paralyze nếu ở trong **Middle Syndicate**`,
+      ];
+    },
+  },
+  "furioso": {
+    name: "Furioso",
+    cost: "A Prayer For Loving Sorrow", cd: "—", diceMul: "2.5x",
+    roll() {
+      const d1=r(12,21), d2=r(11,20), d3=r(16,25), d4=r(15,21),
+            d5=r(17,26), d6=r(14,23), d7=r(17,26), d8=r(29,38), d9=r(17,26);
+      return [
+        `${D1} **${d1}** [Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `${D2} **${d2}** [Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `${D3} **${d3}** [Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 2 Tremor`,
+        `${D4} **${d4}** [Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 Rupture`,
+        `${D5} **${d5}** [Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 3 Bleed ở turn kế`,
+        `Dice 6: **${d6}** [50% Slash/50% Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 Fragile, Tremor Burst`,
+        `Dice 7: **${d7}** [Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 Tremor`,
+        `Dice 8: **${d8}** [50% Slash/50% Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `Dice 9: **${d9}** [Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 Rupture *trước* khi gây Dmg`,
+      ];
+    },
+  },
+};
+
+// Alias map để tìm skill linh hoạt hơn
+const SKILL_ALIASES = {
+  "fare thee well": "fare-thee well",
+  "fareewell": "fare-thee well",
+  "farewell": "fare-thee well",
+  "justagvengeance": "just a vengeance",
+  "jav": "just a vengeance",
+  "extractfuel": "extract fuel",
+  "stampofvengeance": "stamp of vengeance",
+  "sov": "stamp of vengeance",
+  "cate": "complete and total extermination",
+  "c&te": "complete and total extermination",
+  "completete": "complete and total extermination",
+  "followingtheflow": "following the flow",
+  "ftf": "following the flow",
+  "wib": "waltz in black",
+  "waltzblack": "waltz in black",
+  "wiw": "waltz in white",
+  "waltzwhite": "waltz in white",
+  "lightattack": "light attack",
+  "slashseries": "slash series",
+  "executeprescript": "execute prescript",
+  "ep": "execute prescript",
+  "willofthecity": "will of the city",
+  "wotc": "will of the city",
+  "dodgeandstrike": "dodge and strike",
+  "das": "dodge and strike",
+  "soulburn": "soulburn",
+  "infernoburst": "inferno burst",
+  "ib": "inferno burst",
+  "takethiskid": "take this kid",
+  "ttk": "take this kid",
+  "learnakainkid": "learn again kid",
+  "learnakaink": "learn again kid",
+  "lak": "learn again kid",
+  "catchbreath": "catch breath",
+  "cb": "catch breath",
+  "shadowcloudshattercleaver": "shadowcloud shattercleaver",
+  "scs": "shadowcloud shattercleaver",
+  "furioso": "furioso",
+};
+
+function findSkill(raw) {
+  const key = raw.toLowerCase().trim();
+  if (SKILLS[key]) return SKILLS[key];
+  const aliasKey = SKILL_ALIASES[key.replace(/[\s\-,]/g, "").replace(/\s+/g, " ")];
+  if (aliasKey && SKILLS[aliasKey]) return SKILLS[aliasKey];
+  // Fuzzy: tìm skill nào có tên chứa input
+  for (const [k, v] of Object.entries(SKILLS)) {
+    if (k.includes(key) || key.includes(k)) return v;
+  }
+  return null;
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -1237,6 +1647,94 @@ client.on("messageCreate", async (message) => {
       : `${message.author} `;
     const body = header + outputLines.join("\n");
     message.reply(body.length > 2000 ? body.substring(0, 1990) + "\n…(bị cắt bớt)" : body);
+    return;
+  }
+
+  // ── -Caduceus ──
+  // Cú pháp: -Caduceus [số lần] — roll Prescript nhiều lần
+  if (message.content.toLowerCase().startsWith("-caduceus")) {
+    if (isOnCooldown(message.author.id, "caduceus", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
+    const CADUCEUS_MAX = 20;
+    const PRESCRIPT_TABLE = [
+      "Dice 1: **27 Dmg** [Blunt] — nhận 2 Poise [20 Stamina]",
+      "Dice 2: **8 Dmg** [Pierce] — gây 2 Sinking [5 Stamina]",
+      "Dice 3: **15 Dmg** [Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
+      "Dice 4: **6 Dmg** [Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
+      "Dice 5: **25 Dmg** [Blunt] — giảm 50 Stamina địch [20 Stamina]",
+      "Dice 6: **24 Dmg** [Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
+      "Dice 7: **12 Dmg** [Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [10 Stamina]",
+      "Dice 8: **12 Dmg** [Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [10 Stamina]",
+      "Dice 9: **30 Dmg** [Slash] — 100% Crit [20 Stamina]",
+    ];
+    const arg = message.content.replace(/-caduceus/i, "").trim();
+    const timesRaw = parseInt(arg, 10);
+    const times = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
+    if (times > CADUCEUS_MAX) {
+      message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`);
+      return;
+    }
+    const results = Array.from({ length: times }, () =>
+      PRESCRIPT_TABLE[Math.floor(Math.random() * PRESCRIPT_TABLE.length)]
+    );
+    message.reply({
+      embeds: [{
+        title: `🎲 Prescript${times > 1 ? ` × ${times}` : ""}`,
+        color: 0xe74c3c,
+        description: results.join("\n"),
+      }],
+    });
+    return;
+  }
+
+  // ── -skill ──
+  // Cú pháp: -skill <tên skill> | -skill list
+  if (message.content.startsWith("-skill")) {
+    if (isOnCooldown(message.author.id, "skill", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
+    const input = message.content.replace("-skill", "").trim();
+
+    // -skill list
+    if (!input || input.toLowerCase() === "list") {
+      const skillNames = Object.values(SKILLS).map((s, i) =>
+        `\`${i + 1}.\` **${s.name}** — ${s.cost} | CD: ${s.cd} | Dice Mul: ${s.diceMul}`
+      );
+      const half = Math.ceil(skillNames.length / 2);
+      message.reply({
+        embeds: [{
+          title: "📖 Danh sách Skill",
+          color: 0x9b59b6,
+          fields: [
+            { name: "\u200b", value: skillNames.slice(0, half).join("\n"), inline: true },
+            { name: "\u200b", value: skillNames.slice(half).join("\n"), inline: true },
+          ],
+          footer: { text: "Dùng -skill <tên> để roll skill" },
+        }],
+      });
+      return;
+    }
+
+    const skill = findSkill(input);
+    if (!skill) {
+      message.reply(`❌ Không tìm thấy skill: \`${input}\`\nDùng \`-skill list\` để xem danh sách.`);
+      return;
+    }
+
+    const lines = skill.roll();
+    const header = skill.cost !== "—"
+      ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
+      : `[${skill.cost}] [Dice Mul: ${skill.diceMul}]`;
+    message.reply({
+      embeds: [{
+        title: `🎲 ${skill.name}`,
+        color: 0x5865f2,
+        description: header + "\n\n" + lines.join("\n"),
+      }],
+    });
     return;
   }
 
@@ -1742,6 +2240,7 @@ client.on("messageCreate", async (message) => {
       { name: "📖 -randombook [số]", value: "Mở Random Book để nhận sách ngẫu nhiên (tối đa 20 lần).\n> VD: `-randombook` hoặc `-randombook 5`", inline: false },
       { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
+      { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
       { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv:`", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
