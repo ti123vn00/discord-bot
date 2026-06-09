@@ -123,7 +123,7 @@ const SEALED_BOOK_POOL = [
   "Warp Corp Book",
   "Fragment Book",
   "Udjat Book",
-  "Red <:Gaze:1513768454967001179>Gaze Book",
+  "Red Gaze Book",
   "Red Mist Book",
   "Black Silence Book",
   "Library Book",
