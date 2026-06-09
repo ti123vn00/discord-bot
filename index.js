@@ -1307,6 +1307,17 @@ const SKILLS = {
       ];
     },
   },
+  "execute prescript": {
+    name: "Execute Prescript",
+    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,8);
+      return [
+        `${D1} **${d1}** [Slash] — gây 3 Rupture`,
+        `${D2} **${d2}** [Slash] — gây 4 Rupture; nếu trong Index Syndicate & Deck Singleton thì +4 Dice Up`,
+      ];
+    },
+  },
   "will of the city": {
     name: "Will of The City",
     cost: "1 Light", cd: "2 Turn", diceMul: "1x",
@@ -1325,25 +1336,6 @@ const SKILLS = {
       return [
         `${D1} **${d1}** [Slash]`,
       ];
-    },
-  },
-  "prescript": {
-    name: "Prescript",
-    cost: "—", cd: "—", diceMul: "—",
-    roll() {
-      const PRESCRIPT_TABLE = [
-        "Dice 1: **27 Dmg** [Blunt] — nhận 2 Poise [20 Stamina]",
-        "Dice 2: **8 Dmg** [Pierce] — gây 2 Sinking [5 Stamina]",
-        "Dice 3: **15 Dmg** [Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
-        "Dice 4: **6 Dmg** [Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
-        "Dice 5: **25 Dmg** [Blunt] — giảm 50 Stamina địch [20 Stamina]",
-        "Dice 6: **24 Dmg** [Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
-        "Dice 7: **12 Dmg** [Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [10 Stamina]",
-        "Dice 8: **12 Dmg** [Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [10 Stamina]",
-        "Dice 9: **30 Dmg** [Slash] — 100% Crit [20 Stamina]",
-      ];
-      const picked = PRESCRIPT_TABLE[Math.floor(Math.random() * PRESCRIPT_TABLE.length)];
-      return [picked];
     },
   },
   "soulburn": {
