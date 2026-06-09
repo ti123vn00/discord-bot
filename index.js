@@ -1201,7 +1201,7 @@ const SKILLS = {
       return [
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
         `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bind:1513767526654546082>Bind`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bind:1513768025881317457>Bind`,
         `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [AOE 2 người] — gây 3 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
@@ -1223,7 +1223,7 @@ const SKILLS = {
     roll() {
       const d1 = r(16,24);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE 3 người] — gây 5 <:Bleed:1513762688226955285>Bleed ở turn kế, 2 <:Bind:1513767526654546082>Bind và nhận 2 **Middle Nursefather Tattoos** với mỗi địch đánh trúng`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE 3 người] — gây 5 <:Bleed:1513762688226955285>Bleed ở turn kế, 2 <:Bind:1513768025881317457>Bind và nhận 2 **Middle Nursefather Tattoos** với mỗi địch đánh trúng`,
       ];
     },
   },
@@ -1243,9 +1243,9 @@ const SKILLS = {
     roll() {
       const d1 = r(3,6), d2 = r(7,9), d3 = r(8,10);
       return [
-        `${D1} *Nếu địch có ≥4 <:Bind:1513767526654546082>Bind, mọi Dice của skill này add thêm 1 <:Burn:1513762753691652177>Burn*`,
+        `${D1} *Nếu địch có ≥4 <:Bind:1513768025881317457>Bind, mọi Dice của skill này add thêm 1 <:Burn:1513762753691652177>Burn*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Burn:1513762753691652177>Burn và 2 <:Bind:1513767526654546082>Bind`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Burn:1513762753691652177>Burn và 2 <:Bind:1513768025881317457>Bind`,
         `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Burn:1513762753691652177>Burn`,
       ];
     },
@@ -1260,7 +1260,7 @@ const SKILLS = {
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
         `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Bind:1513767526654546082>Bind và +1 <:Burn:1513762753691652177>Burn ứng với mỗi <:Bind:1513767526654546082>Bind trên địch`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Bind:1513768025881317457>Bind và +1 <:Burn:1513762753691652177>Burn ứng với mỗi <:Bind:1513768025881317457>Bind trên địch`,
       ];
     },
   },
@@ -2739,7 +2739,7 @@ const SKILLS = {
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn và gắn 1 <:Bind:1513767526654546082>Bind với mỗi 2 <:Burn:1513762753691652177>Burn trên địch [Max: 6]`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn và gắn 1 <:Bind:1513768025881317457>Bind với mỗi 2 <:Burn:1513762753691652177>Burn trên địch [Max: 6]`,
       ];
     },
   },
@@ -2825,7 +2825,7 @@ const SKILLS = {
     roll() {
       const d1 = r(9,25), d2 = r(5,8);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nhảy lên chém xuống, gây 3 <:Bind:1513767526654546082>Bind và 3 Feeble`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nhảy lên chém xuống, gây 3 <:Bind:1513768025881317457>Bind và 3 Feeble`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — chém địch`,
       ];
     },
@@ -3164,7 +3164,7 @@ const SKILLS = {
       return [
         `*[AOE] — Lượng dmg = số dice x2*`,
         `<:Dice1:1508173590078558369> **${d1*2}** [<:Blunt:1513768529718022254>Blunt] — Màn một: khiến tất cả địch mất 3 <:Light:1513786082502770719>Light`,
-        `<:Dice2:1508173623691710625> **${d2*2}** [<:Blunt:1513768529718022254>Blunt] — Màn hai: tất cả địch nhận 10 <:Bind:1513767526654546082>Bind`,
+        `<:Dice2:1508173623691710625> **${d2*2}** [<:Blunt:1513768529718022254>Blunt] — Màn hai: tất cả địch nhận 10 <:Bind:1513768025881317457>Bind`,
         `<:Dice3:1508173643518050395> **${d3*2}** [<:Blunt:1513768529718022254>Blunt] — Màn cuối: tất cả địch nhận 2 Feeble`,
       ];
     },
@@ -3179,8 +3179,8 @@ const SKILLS = {
       const d1 = r(7,12), d2 = r(8,13);
       return [
         `*[AOE]*`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513767526654546082>Bind và 1 Feeble trong 1 Turn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513767526654546082>Bind và 1 Feeble trong 1 Turn`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
       ];
     },
   },
@@ -3219,7 +3219,7 @@ const SKILLS = {
         `**[Undodgeable]**`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — đạp địch ra xa, gây 2 <:Bind:1513767526654546082>Bind`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — đạp địch ra xa, gây 2 <:Bind:1513768025881317457>Bind`,
         `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [AoE 2 người] — gây 3 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
