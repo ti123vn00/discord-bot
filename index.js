@@ -1157,7 +1157,7 @@ function r(min, max) {
 const SKILLS = {
   "fare-thee well": {
     name: "Fare-Thee Well",
-    cost: "3 Light", cd: "2 Turn", diceMul: "0.8x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "0.8x",
     roll() {
       const d1 = r(6,7), d2 = r(7,8), d3 = r(10,15);
       return [
@@ -1170,7 +1170,7 @@ const SKILLS = {
   },
   "purify": {
     name: "Purify",
-    cost: "3 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,16), d2 = r(8,12), d3 = r(12,16);
       return [
@@ -1183,7 +1183,7 @@ const SKILLS = {
   },
   "kicking": {
     name: "Kicking",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,5), d2 = r(5,6), d3 = r(6,7);
       return [
@@ -1195,7 +1195,7 @@ const SKILLS = {
   },
   "just a vengeance": {
     name: "Just A Vengeance",
-    cost: "4 Light", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
       return [
@@ -1208,7 +1208,7 @@ const SKILLS = {
   },
   "extract fuel": {
     name: "Extract Fuel",
-    cost: "2 Light", cd: "4 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,12);
       let heal = d1 === 7 ? "hồi 10 HP" : d1 === 12 ? "hồi 20 HP" : "hồi 15 HP";
@@ -1219,7 +1219,7 @@ const SKILLS = {
   },
   "stamp of vengeance": {
     name: "Stamp of Vengeance",
-    cost: "4 Light", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(16,24);
       return [
@@ -1229,7 +1229,7 @@ const SKILLS = {
   },
   "complete and total extermination": {
     name: "Complete and Total Extermination",
-    cost: "5 Light", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(18,25);
       return [
@@ -1239,7 +1239,7 @@ const SKILLS = {
   },
   "following the flow": {
     name: "Following the Flow",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,6), d2 = r(7,9), d3 = r(8,10);
       return [
@@ -1252,7 +1252,7 @@ const SKILLS = {
   },
   "silence": {
     name: "Silence",
-    cost: "5 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,6), d2 = r(5,7), d3 = r(7,10), d4 = r(8,12);
       return [
@@ -1266,7 +1266,7 @@ const SKILLS = {
   },
   "waltz in black": {
     name: "Waltz In Black",
-    cost: "3 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(8,14);
       return [
@@ -1277,7 +1277,7 @@ const SKILLS = {
   },
   "waltz in white": {
     name: "Waltz In White",
-    cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(13,24);
       return [
@@ -1287,7 +1287,7 @@ const SKILLS = {
   },
   "light attack": {
     name: "Light Attack",
-    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8);
       return [
@@ -1297,7 +1297,7 @@ const SKILLS = {
   },
   "slash series": {
     name: "Slash Series",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,5), d2 = r(3,5), d3 = r(5,7);
       return [
@@ -1309,7 +1309,7 @@ const SKILLS = {
   },
   "execute prescript": {
     name: "Execute Prescript",
-    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,7), d2 = r(4,8);
       return [
@@ -1320,7 +1320,7 @@ const SKILLS = {
   },
   "will of the city": {
     name: "Will of The City",
-    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,10);
       return [
@@ -1330,7 +1330,7 @@ const SKILLS = {
   },
   "dodge and strike": {
     name: "Dodge and Strike",
-    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,16);
       return [
@@ -1359,7 +1359,7 @@ const SKILLS = {
   },
   "soulburn": {
     name: "Soulburn",
-    cost: "3 Light", cd: "3 Turn", diceMul: "2x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "2x",
     roll() {
       const d1 = r(3,6), d2 = r(3,6), d3 = r(5,9);
       return [
@@ -1371,7 +1371,7 @@ const SKILLS = {
   },
   "inferno burst": {
     name: "Inferno Burst",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1.5x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1.5x",
     roll() {
       const d1 = r(9,12), d2 = r(11,13);
       return [
@@ -1383,7 +1383,7 @@ const SKILLS = {
   },
   "take this kid": {
     name: "Take this, Kid",
-    cost: "3 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,16), d2 = r(16,24);
       return [
@@ -1395,7 +1395,7 @@ const SKILLS = {
   },
   "learn again kid": {
     name: "Learn again, Kid",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1.5x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1.5x",
     roll() {
       const d1 = r(8,12), d2 = r(8,12), d3 = r(10,14), d4 = r(14,20);
       return [
@@ -1409,7 +1409,7 @@ const SKILLS = {
   },
   "catch breath": {
     name: "Catch Breath",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(8,15);
       return [
@@ -1420,7 +1420,7 @@ const SKILLS = {
   },
   "onrush": {
     name: "Onrush",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(14,26);
       return [
@@ -1431,7 +1431,7 @@ const SKILLS = {
   },
   "overthrow": {
     name: "Overthrow",
-    cost: "5 Light", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(2,4), d2 = r(2,4), d3 = r(5,10);
       return [
@@ -1444,7 +1444,7 @@ const SKILLS = {
   },
   "shadowcloud shattercleaver": {
     name: "Shadowcloud Shattercleaver",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(2,5), d2 = r(2,5), d3 = r(8,10);
       return [
@@ -1456,7 +1456,7 @@ const SKILLS = {
   },
   "punting": {
     name: "Punting",
-    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,5), d2 = r(5,6);
       return [
@@ -1467,7 +1467,7 @@ const SKILLS = {
   },
   "punching": {
     name: "Punching",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,6), d2 = r(5,7), d3 = r(6,8);
       return [
@@ -1501,7 +1501,7 @@ const SKILLS = {
 
   // ── <:Sinking:1513762793436741652>Sinking skills ──
   "weight of knowledge": {
-    name: "Weight of Knowledge", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Weight of Knowledge", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(2,4),d2=r(3,5),d3=r(3,5),d4=r(3,6);
       return [
@@ -1514,7 +1514,7 @@ const SKILLS = {
     },
   },
   "illuminate thy vacuity": {
-    name: "Illuminate Thy Vacuity", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Illuminate Thy Vacuity", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(2,4),d2=r(2,4),d3=r(2,4),d4=r(2,4),d5=r(3,6);
       return [
@@ -1528,7 +1528,7 @@ const SKILLS = {
     },
   },
   "studious dedication": {
-    name: "Studious Dedication", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Studious Dedication", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(5,8),d2=r(5,8);
       return [
@@ -1538,7 +1538,7 @@ const SKILLS = {
     },
   },
   "scorch knowledge": {
-    name: "Scorch Knowledge", cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Scorch Knowledge", cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(2,4),d2=r(4,8),d3=r(13,18);
       return [
@@ -1563,7 +1563,7 @@ const SKILLS = {
 
   // ── <:Bleed:1513762688226955285>Bleed skills ──
   "sanguine painting": {
-    name: "Sanguine Painting", cost: "2 Light", cd: "3 Turn", diceMul: "0.66x",
+    name: "Sanguine Painting", cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "0.66x",
     roll() {
       const rolls = [r(4,9), r(4,9)];
       const lines = [
@@ -1580,7 +1580,7 @@ const SKILLS = {
     },
   },
   "hematic coloring": {
-    name: "Hematic Coloring", cost: "5 Light", cd: "3 Turn", diceMul: "(1~4): 0.5x / (5): 1x",
+    name: "Hematic Coloring", cost: "5 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "(1~4): 0.5x / (5): 1x",
     roll() {
       const EFFECTS = [
         `<:Burn:1513762753691652177>Burn`, `<:Tremor:1513762737388257380>Tremor`,
@@ -1640,7 +1640,7 @@ const SKILLS = {
 
   // ── <:Burn:1513762753691652177>Burn skills ──
   "perfected death fist": {
-    name: "Perfected Death Fist", cost: "3 Light", cd: "3 Turn", diceMul: "1x",
+    name: "Perfected Death Fist", cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1=r(3,6),d2=r(6,9),d3=r(9,12);
       return [
@@ -1653,7 +1653,7 @@ const SKILLS = {
     },
   },
   "raging storm": {
-    name: "Raging Storm", cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Raging Storm", cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(5,9),d2=r(10,16);
       return [
@@ -1663,7 +1663,7 @@ const SKILLS = {
     },
   },
   "fiery waltz": {
-    name: "Fiery Waltz", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Fiery Waltz", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(9,13);
       return [
@@ -1672,7 +1672,7 @@ const SKILLS = {
     },
   },
   "red kick": {
-    name: "Red Kick", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Red Kick", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(2,5),d2=r(8,13);
       return [
@@ -1683,7 +1683,7 @@ const SKILLS = {
     },
   },
   "flowing flame": {
-    name: "Flowing Flame", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Flowing Flame", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(8,14);
       return [
@@ -1693,7 +1693,7 @@ const SKILLS = {
     },
   },
   "fleet edge": {
-    name: "Fleet Edge", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Fleet Edge", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(3,6),d2=r(4,12);
       return [
@@ -1704,7 +1704,7 @@ const SKILLS = {
     },
   },
   "flow of the sword": {
-    name: "Flow of the Sword", cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Flow of the Sword", cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(3,5),d2=r(6,10);
       return [
@@ -1737,7 +1737,7 @@ const SKILLS = {
 
   // ── <:Poise:1513762945715142736>Poise / <:Bleed:1513762688226955285>Bleed mixed ──
   "extreme edge": {
-    name: "Extreme Edge", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Extreme Edge", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const normal=r(7,8), air=r(4,7), low=r(17,30);
       return [
@@ -1748,7 +1748,7 @@ const SKILLS = {
     },
   },
   "flying sword": {
-    name: "Flying Sword", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Flying Sword", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(4,8),d2=r(3,9),dAir=r(6,12);
       return [
@@ -1762,7 +1762,7 @@ const SKILLS = {
     },
   },
   "boundary of death": {
-    name: "Boundary of Death", cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Boundary of Death", cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const roll4 = r(1,4);
       if (roll4 === 4) {
@@ -1809,7 +1809,7 @@ const SKILLS = {
     },
   },
   "level slash": {
-    name: "Level Slash", cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Level Slash", cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(8,10),d2=r(9,11);
       return [
@@ -1820,7 +1820,7 @@ const SKILLS = {
     },
   },
   "spear": {
-    name: "Spear", cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    name: "Spear", cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1=r(4,5),d2=r(5,6),d3=r(6,7);
       return [
@@ -1831,7 +1831,7 @@ const SKILLS = {
     },
   },
   "focus spirit": {
-    name: "Focus Spirit", cost: "2 Light", cd: "4 Turn", diceMul: "1x",
+    name: "Focus Spirit", cost: "2 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1=r(10,20);
       const turns = d1 === 20 ? 3 : d1 >= 15 ? 2 : 1;
@@ -1913,7 +1913,7 @@ const SKILLS = {
 
   // ── Charge skills ──
   "charge shield": {
-    name: "Charge Shield", cost: "2 Light", cd: "4 Turn", diceMul: "1x",
+    name: "Charge Shield", cost: "2 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1=r(5,15);
       return [
@@ -1923,7 +1923,7 @@ const SKILLS = {
     },
   },
   "leap": {
-    name: "Leap", cost: "3 Light", cd: "1 Turn", diceMul: "1x",
+    name: "Leap", cost: "3 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1=r(4,8),d2=r(8,12),d3=r(12,16);
       return [
@@ -1935,7 +1935,7 @@ const SKILLS = {
     },
   },
   "overcharged ripple": {
-    name: "Overcharged Ripple", cost: "4 Light", cd: "2 Turn", diceMul: "1x",
+    name: "Overcharged Ripple", cost: "4 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1=r(5,7),d2=r(6,8),d3=r(7,9),d4=r(8,10);
       return [
@@ -1950,7 +1950,7 @@ const SKILLS = {
 
   // ── <:Poise:1513762945715142736>Poise (Blade Lineage) ──
   "moon-splitting draw": {
-    name: "Moon-Splitting Draw", cost: "4 Light", cd: "3 Turn", diceMul: "1x",
+    name: "Moon-Splitting Draw", cost: "4 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1=r(15,25);
       return [
@@ -1961,7 +1961,7 @@ const SKILLS = {
     },
   },
   "red plum blossom scatter": {
-    name: "Red Plum Blossom Scatter", cost: "3 Light", cd: "3 Turn", diceMul: "1.6x",
+    name: "Red Plum Blossom Scatter", cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1.6x",
     roll() {
       const d1=r(5,12),d2=r(4,7);
       return [
@@ -1971,7 +1971,7 @@ const SKILLS = {
     },
   },
   "yield my flesh": {
-    name: "Yield My Flesh", cost: "2 Light", cd: "5 Turn", diceMul: "1x",
+    name: "Yield My Flesh", cost: "2 <:Light:1322102399342481439>Light", cd: "5 Turn", diceMul: "1x",
     roll() {
       const d1=r(3,6),d2=r(6,12);
       return [
@@ -1982,7 +1982,7 @@ const SKILLS = {
     },
   },
   "to claim their bones": {
-    name: "To Claim Their Bones", cost: "0 Light", cd: "Khi Yield My Flesh kích hoạt", diceMul: "1x",
+    name: "To Claim Their Bones", cost: "0 <:Light:1322102399342481439>Light", cd: "Khi Yield My Flesh kích hoạt", diceMul: "1x",
     roll() {
       const d1=r(3,4),d2=r(4,5),d3=r(5,6),d4=r(6,7);
       return [
@@ -1999,7 +1999,7 @@ const SKILLS = {
   // ── <:Rupture:1513762812722155682>Rupture (Seven Association) ──
   "dissect target": {
     name: "Dissect Target",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7);
       return [
@@ -2011,7 +2011,7 @@ const SKILLS = {
   },
   "swash": {
     name: "Swash",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,6), d2 = r(6,9), d3 = r(9,11);
       return [
@@ -2023,7 +2023,7 @@ const SKILLS = {
   },
   "profiling": {
     name: "Profiling",
-    cost: "4 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,10), d2 = r(7,11), d3 = r(13,18);
       return [
@@ -2037,7 +2037,7 @@ const SKILLS = {
   // ── Protection (Udjat) ──
   "sand split": {
     name: "Sand Split",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,13), d2 = r(7,9);
       return [
@@ -2049,7 +2049,7 @@ const SKILLS = {
   },
   "furusiyya": {
     name: "Furūsiyya",
-    cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,10);
       return [
@@ -2059,7 +2059,7 @@ const SKILLS = {
   },
   "jamadhar": {
     name: "Jamadhar",
-    cost: "4 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,9), d2 = r(7,8), d3 = r(5,9), d4 = r(8,10);
       return [
@@ -2072,7 +2072,7 @@ const SKILLS = {
   },
   "mirage incision": {
     name: "Mirage Incision",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,4), d2 = r(2,6), d3 = r(2,6), d4 = r(7,12);
       return [
@@ -2085,7 +2085,7 @@ const SKILLS = {
   },
   "khopesh swordplay": {
     name: "Khopesh Swordplay",
-    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,15), d2 = r(4,6);
       return [
@@ -2098,7 +2098,7 @@ const SKILLS = {
   // ── Defense (Zwei) ──
   "blade whirl": {
     name: "Blade Whirl",
-    cost: "3 Light", cd: "3 Turn", diceMul: "0.5x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "0.5x",
     roll() {
       const d1 = r(4,7), d2 = r(4,8), d3 = r(4,9), d4 = r(9,14);
       return [
@@ -2111,7 +2111,7 @@ const SKILLS = {
   },
   "client protection": {
     name: "Client Protection",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,6), d2 = r(4,8), d3 = r(5,9);
       return [
@@ -2124,7 +2124,7 @@ const SKILLS = {
   },
   "standoff": {
     name: "Standoff",
-    cost: "1 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,10), d2 = r(4,10);
       return [
@@ -2135,7 +2135,7 @@ const SKILLS = {
   },
   "law and order": {
     name: "Law and Order",
-    cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,5), d2 = r(5,9), d3 = r(8,14);
       return [
@@ -2150,7 +2150,7 @@ const SKILLS = {
   // ── <:Tremor:1513762737388257380>Tremor (Augury) ──
   "augury crusher": {
     name: "Augury Crusher",
-    cost: "3 Light", cd: "3 Turn", diceMul: "0.75x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "0.75x",
     roll() {
       const d1 = r(7,16), d2 = r(7,16);
       return [
@@ -2161,7 +2161,7 @@ const SKILLS = {
   },
   "augury infusion": {
     name: "Augury Infusion",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(13,18);
       return [
@@ -2171,7 +2171,7 @@ const SKILLS = {
   },
   "augury kick": {
     name: "Augury Kick",
-    cost: "4 Light", cd: "5 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light", cd: "5 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,9), d2 = r(18,26);
       const hasDiceUp = d2 > 20;
@@ -2184,7 +2184,7 @@ const SKILLS = {
   },
   "celestial sight": {
     name: "Celestial Sight",
-    cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8);
       return [
@@ -2196,7 +2196,7 @@ const SKILLS = {
   // ── <:Tremor:1513762737388257380>Tremor (L'Heure du Loup) ──
   "lupine onslaught": {
     name: "Lupine Onslaught",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,5), d2 = r(3,6), d3 = r(4,7), d4 = r(4,8);
       return [
@@ -2210,7 +2210,7 @@ const SKILLS = {
   },
   "kick and stomps": {
     name: "Kick And Stomps",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,10), d2 = r(6,10);
       return [
@@ -2221,7 +2221,7 @@ const SKILLS = {
   },
   "rapacious assault": {
     name: "Rapacious Assault",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,9), d2 = r(10,16);
       return [
@@ -2232,7 +2232,7 @@ const SKILLS = {
   },
   "pitch-black pulverizer": {
     name: "Pitch-Black Pulverizer",
-    cost: "5 Light", cd: "5 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light", cd: "5 Turn", diceMul: "1x",
     roll() {
       const d1 = r(18,27);
       return [
@@ -2245,7 +2245,7 @@ const SKILLS = {
   // ── <:Bleed:1513762688226955285>Bleed (Kurokumo) ──
   "cloud cutter": {
     name: "Cloud Cutter",
-    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(1,5), d2 = r(1,5);
       return [
@@ -2257,7 +2257,7 @@ const SKILLS = {
   },
   "sky clearing cut": {
     name: "Sky Clearing Cut",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,7), d2 = r(5,9), d3 = r(6,10);
       return [
@@ -2269,7 +2269,7 @@ const SKILLS = {
   },
   "dark cloud cleaver": {
     name: "Dark Cloud Cleaver",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,7), d2 = r(7,10);
       return [
@@ -2280,7 +2280,7 @@ const SKILLS = {
   },
   "sober up": {
     name: "Sober Up",
-    cost: "1 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,7);
       return [
@@ -2290,7 +2290,7 @@ const SKILLS = {
   },
   "shadowcloud kick": {
     name: "Shadowcloud Kick",
-    cost: "1 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,6), d2 = r(6,8);
       return [
@@ -2301,7 +2301,7 @@ const SKILLS = {
   },
   "silent mist": {
     name: "Silent Mist",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,10);
       return [
@@ -2313,7 +2313,7 @@ const SKILLS = {
   // ── Rupture/Nails (Smiling Faces) ──
   "somber procuration": {
     name: "Somber Procuration",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8), d2 = r(4,6), d3 = r(2,4);
       return [
@@ -2325,7 +2325,7 @@ const SKILLS = {
   },
   "trash disposal": {
     name: "Trash Disposal",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,6);
       const isMin = d1 === 4;
@@ -2339,7 +2339,7 @@ const SKILLS = {
   },
   "cackle": {
     name: "Cackle",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,7), d2 = r(8,14);
       return [
@@ -2352,7 +2352,7 @@ const SKILLS = {
   // ── Index ──
   "unlock": {
     name: "Unlock",
-    cost: "0 Light", cd: "0 Turn", diceMul: "1x",
+    cost: "0 <:Light:1322102399342481439>Light", cd: "0 Turn", diceMul: "1x",
     roll() {
       const stage = Math.floor(Math.random() * 3) + 1;
       if (stage === 1) {
@@ -2382,7 +2382,7 @@ const SKILLS = {
   // ── Misc ──
   "blade flourish": {
     name: "Blade Flourish",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,7), d2 = r(5,8), d3 = r(6,9);
       return [
@@ -2397,7 +2397,7 @@ const SKILLS = {
   "beak": {
     name: "Beak",
     tags: "Ego Pages <:TETH:1449759432119419070>",
-    cost: "4 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "5 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "5 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,14), d2 = r(7,10);
       return [
@@ -2410,7 +2410,7 @@ const SKILLS = {
   "punishing beak": {
     name: "Punishing Beak",
     tags: "Corrosion Pages <:TETH:1449759432119419070>",
-    cost: "6 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "6 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(15,20);
       return [
@@ -2423,7 +2423,7 @@ const SKILLS = {
   "lamp": {
     name: "Lamp",
     tags: "Ego Pages <:HE:1449759447152070796>",
-    cost: "3 Light <:Light:1322102399342481439> & 5 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light & 5 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,18);
       return [
@@ -2434,7 +2434,7 @@ const SKILLS = {
   "eyes lamp": {
     name: "Eyes Lamp",
     tags: "Corrosion Pages <:HE:1449759447152070796>",
-    cost: "8 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "8 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,15);
       return [
@@ -2448,7 +2448,7 @@ const SKILLS = {
   "justitia": {
     name: "Justitia",
     tags: "Ego Pages <:WAW:1449759461001527518>",
-    cost: "3 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(15,25);
       return [
@@ -2460,7 +2460,7 @@ const SKILLS = {
   "the justice scale": {
     name: "The Justice Scale",
     tags: "Corrosion Pages <:WAW:1449759461001527518>",
-    cost: "6 Light <:Light:1322102399342481439> & 25 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "6 <:Light:1322102399342481439>Light & 25 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,50);
       return [
@@ -2474,7 +2474,7 @@ const SKILLS = {
   "twillight": {
     name: "Twillight",
     tags: "Ego Pages <:ALEPH:1449759474268242021>",
-    cost: "5 Light <:Light:1322102399342481439> & 25 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light & 25 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       return [
         `<:Dice1:1282932482437546004> Giảm 0.2 Res cho toàn bộ trong 3 turn. Khi chết sẽ kích hoạt Apocalypse với sát thương Blunt`,
@@ -2484,7 +2484,7 @@ const SKILLS = {
   },
   "apocalypse": {
     name: "Apocalypse",
-    cost: "5 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "—", diceMul: "1.5x",
+    cost: "5 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "—", diceMul: "1.5x",
     roll() {
       const d1 = r(25,35);
       const lowHp = Math.random() < 0.5;
@@ -2500,7 +2500,7 @@ const SKILLS = {
   "greatsword rend": {
     name: "Greatsword Rend",
     tags: "Sinking",
-    cost: "1 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,10);
       return [
@@ -2511,7 +2511,7 @@ const SKILLS = {
   "beheading": {
     name: "Beheading",
     tags: "Sinking",
-    cost: "1 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     needsReuse: false,
     roll() {
       const hasDullahan = Math.random() < 0.5;
@@ -2533,7 +2533,7 @@ const SKILLS = {
   "smackdown": {
     name: "Smackdown",
     tags: "Sinking",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(2,4), d2 = r(4,6), d3 = r(8,10);
       return [
@@ -2546,7 +2546,7 @@ const SKILLS = {
   "memorial procession": {
     name: "Memorial Procession",
     tags: "Sinking",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const hasDullahan = Math.random() < 0.5;
       if (hasDullahan) {
@@ -2570,7 +2570,7 @@ const SKILLS = {
   // ── Smoke skills ──
   "inhale": {
     name: "Inhale",
-    cost: "1 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,12);
       return [
@@ -2580,7 +2580,7 @@ const SKILLS = {
   },
   "exhale smoke": {
     name: "Exhale Smoke",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,13);
       return [
@@ -2590,7 +2590,7 @@ const SKILLS = {
   },
   "loss of senses": {
     name: "Loss of Senses",
-    cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,11);
       return [
@@ -2602,7 +2602,7 @@ const SKILLS = {
   // ── Misc combat skills ──
   "y-you only live once": {
     name: "Y-you Only Live Once",
-    cost: "1 Light", cd: "4 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(1,12);
       return [
@@ -2613,7 +2613,7 @@ const SKILLS = {
   "crush": {
     name: "Crush",
     tags: "Tremor",
-    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,6), d2 = r(3,6);
       return [
@@ -2626,7 +2626,7 @@ const SKILLS = {
   "you're too slow": {
     name: "You're Too Slow",
     tags: "Bleed",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(14,23);
       return [
@@ -2640,7 +2640,7 @@ const SKILLS = {
   "coin trick": {
     name: "Coin Trick",
     tags: "Rupture",
-    cost: "1 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,13);
       return [
@@ -2650,7 +2650,7 @@ const SKILLS = {
   },
   "pistol draw": {
     name: "Pistol Draw",
-    cost: "1 Light", cd: "1 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,8), d2 = r(6,8), d3 = r(6,8);
       return [
@@ -2664,7 +2664,7 @@ const SKILLS = {
   "summary judgement": {
     name: "Summary Judgement",
     tags: "Tremor/Burn",
-    cost: "2 Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,9), d2 = r(10,15);
       return [
@@ -2679,7 +2679,7 @@ const SKILLS = {
   "contre attaque": {
     name: "Contre Attaque",
     tags: "Haste",
-    cost: "3 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,10), d2 = r(3,5), d3 = r(7,13);
       return [
@@ -2692,7 +2692,7 @@ const SKILLS = {
   "engagement": {
     name: "Engagement",
     tags: "Haste",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,6), d2 = r(5,10), d3 = r(6,8);
       return [
@@ -2705,7 +2705,7 @@ const SKILLS = {
   "balestra fente": {
     name: "Balestra Fente",
     tags: "Haste",
-    cost: "2 Light", cd: "2 Turn", diceMul: "Dice1: 1x / Dice2: 0.5x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "Dice1: 1x / Dice2: 0.5x",
     roll() {
       const d1 = r(5,8), d2 = r(7,11);
       const hasPoise = Math.random() < 0.5;
@@ -2720,7 +2720,7 @@ const SKILLS = {
   "scorching incision": {
     name: "Scorching Incision",
     tags: "Burn",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,6), d2 = r(4,6), d3 = r(4,6);
       return [
@@ -2735,7 +2735,7 @@ const SKILLS = {
   "fourth match flame": {
     name: "Fourth Match Flame",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "4 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,40);
       return [
@@ -2746,7 +2746,7 @@ const SKILLS = {
   "today's expression": {
     name: "Today's Expression",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "3 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(18,30), d2 = r(6,9), d3 = r(5,10);
       return [
@@ -2759,7 +2759,7 @@ const SKILLS = {
   "regret": {
     name: "Regret",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "5 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,8), d2 = r(6,8), d3 = r(9,19);
       return [
@@ -2772,7 +2772,7 @@ const SKILLS = {
   "fragments from somewhere": {
     name: "Fragments from Somewhere",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "3 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,7), d2 = r(4,7), d3 = r(4,7);
       return [
@@ -2786,7 +2786,7 @@ const SKILLS = {
   "wrist cutter": {
     name: "Wrist Cutter",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "5 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(19,27);
       return [
@@ -2797,7 +2797,7 @@ const SKILLS = {
   "aspiration": {
     name: "Aspiration",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "5 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(24,39);
       return [
@@ -2808,7 +2808,7 @@ const SKILLS = {
   "red eyes": {
     name: "Red Eyes",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "4 Light <:Light:1322102399342481439> & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,25), d2 = r(5,8);
       return [
@@ -2820,7 +2820,7 @@ const SKILLS = {
   "marionette": {
     name: "Marionette",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ZAYIN:1449759413966606398>",
-    cost: "1 Light <:Light:1322102399342481439> & 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light & 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(19,27);
       return [
@@ -2834,7 +2834,7 @@ const SKILLS = {
   "wingbeat": {
     name: "Wingbeat",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ZAYIN:1449759413966606398>",
-    cost: "3 Light <:Light:1322102399342481439> & 10 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light & 10 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     needsReuse: true,
     roll(reuse = true) {
       const d1 = r(3,8), d2 = r(6,8);
@@ -2851,7 +2851,7 @@ const SKILLS = {
   "the forgotten": {
     name: "The Forgotten",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,25);
       return [
@@ -2862,7 +2862,7 @@ const SKILLS = {
   "grinder mk. 5-2": {
     name: "Grinder Mk. 5-2",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(2,7), d2 = r(3,8), d3 = r(4,9);
       return [
@@ -2876,7 +2876,7 @@ const SKILLS = {
   "harmony": {
     name: "Harmony",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "5 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     needsReuse: true,
     roll() {
       const d1 = r(4,7), d2 = r(3,6), d3 = r(4,8);
@@ -2894,7 +2894,7 @@ const SKILLS = {
   "solemn lament": {
     name: "Solemn Lament",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     needsReuse: true,
     roll(deadCount = 0) {
       const d1 = r(1,6);
@@ -2909,7 +2909,7 @@ const SKILLS = {
   "magic bullet": {
     name: "Magic Bullet",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "1 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "???", diceMul: "1x",
+    cost: "1 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "???", diceMul: "1x",
     roll() {
       const d1 = r(4,8);
       return [
@@ -2922,7 +2922,7 @@ const SKILLS = {
   "flooding bullets": {
     name: "Flooding Bullets",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796> (Der Freischütz)",
-    cost: "5 Light <:Light:1322102399342481439>", cd: "2 Turn", diceMul: "1x (dmg = dice x2)",
+    cost: "5 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x (dmg = dice x2)",
     roll() {
       const d1 = r(4,8), d2 = r(4,8), d3 = r(4,8);
       return [
@@ -2936,7 +2936,7 @@ const SKILLS = {
   "magic bullet df": {
     name: "Magic Bullet (Der Freischütz)",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796> (Der Freischütz)",
-    cost: "0 Light <:Light:1322102399342481439>", cd: "1 Turn", diceMul: "1x",
+    cost: "0 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,10);
       return [
@@ -2947,7 +2947,7 @@ const SKILLS = {
   "inevitable bullet": {
     name: "Inevitable Bullet",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796> (Der Freischütz)",
-    cost: "3 Light <:Light:1322102399342481439>", cd: "2 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,9), d2 = r(5,9);
       return [
@@ -2960,7 +2960,7 @@ const SKILLS = {
   "our galaxy": {
     name: "Our Galaxy",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,8), d2 = r(3,8), d3 = r(3,6);
       return [
@@ -2974,7 +2974,7 @@ const SKILLS = {
   "pleasure": {
     name: "Pleasure",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "5 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const turnBonus = r(1,5);
       const d1 = r(5,15);
@@ -2990,7 +2990,7 @@ const SKILLS = {
   "laetitia": {
     name: "Laetitia",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,18);
       return [
@@ -3001,7 +3001,7 @@ const SKILLS = {
   "sanguine desire": {
     name: "Sanguine Desire",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 Light <:Light:1322102399342481439> & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,10), d2 = r(3,9), d3 = r(4,6);
       const hasBleed = Math.random() < 0.5;
@@ -3018,7 +3018,7 @@ const SKILLS = {
   "hornet": {
     name: "Hornet",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "2 Light <:Light:1322102399342481439> & 30 Sanity 🧠", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light & 30 Sanity 🧠", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,32);
       return [
@@ -3029,7 +3029,7 @@ const SKILLS = {
   "green stem": {
     name: "Green Stem",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "5 Light <:Light:1322102399342481439> & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x (dmg = dice x2)",
+    cost: "5 <:Light:1322102399342481439>Light & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x (dmg = dice x2)",
     roll() {
       const d1 = r(3,9), d2 = r(3,9), d3 = r(3,10);
       return [
@@ -3043,7 +3043,7 @@ const SKILLS = {
   "faint aroma": {
     name: "Faint Aroma",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "5 Light <:Light:1322102399342481439> & 30 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
+    cost: "5 <:Light:1322102399342481439>Light & 30 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
     roll() {
       const d1 = r(3,7), d2 = r(3,7), d3 = r(3,7);
       const stagger = Math.random() < 0.4;
@@ -3058,7 +3058,7 @@ const SKILLS = {
   "black swan": {
     name: "Black Swan",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "5 Light <:Light:1322102399342481439> & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "5 <:Light:1322102399342481439>Light & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8), d2 = r(9,18);
       return [
@@ -3073,7 +3073,7 @@ const SKILLS = {
   "da capo": {
     name: "Da Capo",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ALEPH:1449759474268242021>",
-    cost: "5 Light <:Light:1322102399342481439> & 40 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
+    cost: "5 <:Light:1322102399342481439>Light & 40 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
     roll() {
       const d1 = r(4,8), d2 = r(4,9), d3 = r(5,9);
       return [
@@ -3089,7 +3089,7 @@ const SKILLS = {
   "frost splinter": {
     name: "Frost Splinter",
     tags: "Abnormalities <:The_Library:1474374220023857192>",
-    cost: "6 Light <:Light:1322102399342481439>", cd: "4 Turn", diceMul: "1x",
+    cost: "6 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,12), d2 = r(8,13);
       return [
@@ -3104,7 +3104,7 @@ const SKILLS = {
   "my hair coupooooooons": {
     name: "MY HAIR COUPOOOOOOONS!",
     tags: "Tremor",
-    cost: "5 Light", cd: "4 Turn", diceMul: "1.5x",
+    cost: "5 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1.5x",
     roll() {
       const d1 = r(18,32);
       return [
@@ -3115,7 +3115,7 @@ const SKILLS = {
   "proof of loyalty": {
     name: "Proof of Loyalty",
     tags: "Bleed",
-    cost: "2 Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,10), d2 = r(8,11);
       return [
@@ -3127,7 +3127,7 @@ const SKILLS = {
   "just a vengeance": {
     name: "Just A Vengeance",
     tags: "Bleed",
-    cost: "4 Light", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
       return [
@@ -3144,7 +3144,7 @@ const SKILLS = {
   "degraded fairy": {
     name: "Degraded Fairy",
     tags: "Fairy <:Fairy:1513782007602216960>",
-    cost: "2 Light <:Light:1322102399342481439>", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8), d2 = r(4,8);
       return [
@@ -3157,7 +3157,7 @@ const SKILLS = {
   "degraded pillar": {
     name: "Degraded Pillar",
     tags: "Fairy <:Fairy:1513782007602216960>",
-    cost: "3 Light <:Light:1322102399342481439>", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1322102399342481439>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,11);
       return [
@@ -3169,7 +3169,7 @@ const SKILLS = {
   "degraded lock": {
     name: "Degraded Lock",
     tags: "Fairy <:Fairy:1513782007602216960>",
-    cost: "4 Light <:Light:1322102399342481439>", cd: "5 Turn", diceMul: "1x",
+    cost: "4 <:Light:1322102399342481439>Light", cd: "5 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,20);
       return [
@@ -3181,7 +3181,7 @@ const SKILLS = {
   "degraded shockwave": {
     name: "Degraded Shockwave",
     tags: "Fairy <:Fairy:1513782007602216960>",
-    cost: "5 Light <:Light:1322102399342481439>", cd: "2 Turn", diceMul: "0.7x",
+    cost: "5 <:Light:1322102399342481439>Light", cd: "2 Turn", diceMul: "0.7x",
     roll() {
       const d1 = r(5,10), d2 = r(10,20), d3 = r(15,30);
       const hasHighTremor = Math.random() < 0.5; // placeholder for >10 Tremor check
@@ -3557,8 +3557,8 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Sanguine Pointilism y��u cầu nhập % reuse
-    if (skill.needsReuse) {
+    // Sanguine Pointilism yêu cầu nhập % reuse
+    if (skill.needsReuse && skill.name === "Sanguine Pointilism") {
       const parts = input.trim().split(/\s+/);
       const lastPart = parts[parts.length - 1];
       const reusePct = parseInt(lastPart, 10);
