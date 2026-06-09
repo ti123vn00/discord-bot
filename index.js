@@ -1307,17 +1307,6 @@ const SKILLS = {
       ];
     },
   },
-  "execute prescript": {
-    name: "Execute Prescript",
-    cost: "2 Light", cd: "1 Turn", diceMul: "1x",
-    roll() {
-      const d1 = r(4,7), d2 = r(4,8);
-      return [
-        `${D1} **${d1}** [Slash] — gây 3 Rupture`,
-        `${D2} **${d2}** [Slash] — gây 4 Rupture; nếu trong Index Syndicate & Deck Singleton thì +4 Dice Up`,
-      ];
-    },
-  },
   "will of the city": {
     name: "Will of The City",
     cost: "1 Light", cd: "2 Turn", diceMul: "1x",
