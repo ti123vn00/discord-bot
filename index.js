@@ -1616,23 +1616,23 @@ const SKILLS = {
     name: "Sanguine Pointilism", cost: "—", cd: "2 Turn", diceMul: "1x",
     needsReuse: true,
     roll(reusePct = 40) {
+      const D1 = `<:Dice1:1508173590078558369>`;
+      const D2 = `<:Dice2:1508173623691710625>`;
+      const D3 = `<:Dice3:1508173643518050395>`;
+      const REUSE_EMOJIS = [D2, D3, `<:Dice4:1508176464367845600>`];
       const d1 = 14;
       const lines = [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture`,
       ];
-      // Reuse 1
-      const reuse1 = Math.random() * 100 < reusePct;
-      if (reuse1) {
-        lines.push(`<:Dice2:1508173623691710625> **Reuse lần 1** (${reusePct}% → ✅ kích hoạt)`);
-        // Reuse 2
-        const reuse2 = Math.random() * 100 < reusePct;
-        if (reuse2) {
-          lines.push(`<:Dice2:1508173623691710625> **Reuse lần 2** (${reusePct}% → ✅ kích hoạt)`);
+      for (let i = 1; i <= 2; i++) {
+        const triggered = Math.random() * 100 < reusePct;
+        const dEmoji = REUSE_EMOJIS[i - 1] ?? REUSE_EMOJIS[REUSE_EMOJIS.length - 1];
+        if (triggered) {
+          lines.push(`${dEmoji} ↩️ Reuse ${i} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture *(${reusePct}% → ✅)*`);
         } else {
-          lines.push(`<:Dice2:1508173623691710625> **Reuse lần 2** (${reusePct}% → ❌ không kích hoạt)`);
+          lines.push(`${dEmoji} ↩️ Reuse ${i} dừng tại đây *(${reusePct}% → ❌)*`);
+          break;
         }
-      } else {
-        lines.push(`<:Dice2:1508173623691710625> **Reuse lần 1** (${reusePct}% → ❌ không kích hoạt)`);
       }
       return lines;
     },
@@ -2327,14 +2327,27 @@ const SKILLS = {
     name: "Trash Disposal",
     cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
-      const d1 = r(4,6);
-      const isMin = d1 === 4;
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — đâm vào địch, gắn 5 <:Fragile:1513763336167100536>Fragile (1 lần duy nhất)`,
-        isMin
-          ? `*(Roll Min — không reuse)*`
-          : `✨ Không phải Min → Reuse! (Max 6 lần, hồi 3 HP mỗi lần)`,
+      const MAX_REUSE = 6;
+      const DICE_EMOJIS = [
+        `<:Dice1:1508173590078558369>`,`<:Dice2:1508173623691710625>`,`<:Dice3:1508173643518050395>`,
+        `<:Dice4:1508176464367845600>`,`<:Dice5:1508176500438990968>`,
+        `<:Dice5:1508176500438990968>`,`<:Dice5:1508176500438990968>`,
       ];
+      const lines = [];
+      let stopped = false;
+      for (let i = 0; i <= MAX_REUSE; i++) {
+        const val = r(4,6);
+        const isMin = val === 4;
+        const dEmoji = DICE_EMOJIS[i] ?? DICE_EMOJIS[DICE_EMOJIS.length - 1];
+        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        if (i === 0) {
+          lines.push(`${dEmoji}${label} **${val}** [<:Slash:1513768633434640517>Slash] — đâm vào địch, gắn 5 <:Fragile:1513763336167100536>Fragile${isMin ? " *(Min — dừng)*" : ""}`);
+        } else {
+          lines.push(`${dEmoji}${label} **${val}** [<:Slash:1513768633434640517>Slash] — đâm, hồi 3 HP${isMin ? " *(Min — dừng)*" : i === MAX_REUSE ? " *(hết Reuse)*" : ""}`);
+        }
+        if (isMin) { stopped = true; break; }
+      }
+      return lines;
     },
   },
   "cackle": {
@@ -2836,13 +2849,26 @@ const SKILLS = {
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ZAYIN:1449759413966606398>",
     cost: "3 <:Light:1513786082502770719>Light & 10 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     needsReuse: true,
-    roll(reuse = true) {
-      const d1 = r(3,8), d2 = r(6,8);
-      const isMin1 = d1 === 3;
-      const lines = [
-        `<:Dice1:1282932482437546004> **${d1}** [<:Pierce:1513768511179329556>Pierce] — lao đến đâm, hồi 3 HP${!isMin1 ? " → Reuse! (tối đa 5 lần)" : " *(Min — không reuse)*"}`,
-        `<:Dice2:1282932563349868617> **${d2}** [<:Pierce:1513768511179329556>Pierce] — lao đến đâm địch`,
+    roll() {
+      const DICE_EMOJIS = [
+        `<:Dice1:1282932482437546004>`,`<:Dice2:1282932563349868617>`,
+        `<:Dice3:1282932613165744173>`,`<:Dice4:1283216858249560175>`,`<:Dice5:1283216903535329311>`,
+        `<:Dice5:1283216903535329311>`,`<:Dice5:1283216903535329311>`,
       ];
+      const MAX_REUSE = 5;
+      const lastD2 = r(6,8);
+      const lines = [];
+      let reuseStopped = false;
+      for (let i = 0; i <= MAX_REUSE; i++) {
+        const val = r(3,8);
+        const isMin = val === 3;
+        const dEmoji = DICE_EMOJIS[i] ?? DICE_EMOJIS[DICE_EMOJIS.length - 1];
+        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        lines.push(`${dEmoji}${label} **${val}** [<:Pierce:1513768511179329556>Pierce] — lao đến đâm, hồi 3 HP${isMin ? " *(Min — dừng)*" : ""}`);
+        if (isMin) { reuseStopped = true; break; }
+      }
+      if (!reuseStopped) lines.push(`*(Đã hết 5 lần Reuse)*`);
+      lines.push(`<:Dice2:1282932563349868617> **${lastD2}** [<:Pierce:1513768511179329556>Pierce] — lao đến đâm địch`);
       return lines;
     },
   },
@@ -2879,16 +2905,34 @@ const SKILLS = {
     cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
     needsReuse: true,
     roll() {
-      const d1 = r(4,7), d2 = r(3,6), d3 = r(4,8);
-      const isMin1 = d1 === 4, isMin2 = d2 === 3, isMin3 = d3 === 4;
-      return [
+      const DICE_EMOJIS = [
+        `<:Dice1:1282932482437546004>`,`<:Dice2:1282932563349868617>`,`<:Dice3:1282932613165744173>`,
+      ];
+      const MINS = [4, 3, 4];
+      const RANGES = [[4,7],[3,6],[4,8]];
+      const MAX_REUSE = 2;
+      const lines = [
         `*Mỗi lần tấn công thành công: 1 đồng minh ngẫu nhiên mất 3 Stamina*`,
         `*Mỗi 2 lần tấn công thành công: 1 đồng minh nhận 1 <:DiceUp:1513767795681398894>Dice Up*`,
         `*Nếu có thể kết liễu địch: toàn bộ đồng minh nhận 2 <:DiceUp:1513767795681398894>Dice Up*`,
-        `<:Dice1:1282932482437546004> **${d1}** [<:Blunt:1513768529718022254>Blunt] — cưa địch${!isMin1 ? " → Reuse! [Max: 2]" : " *(Min)*"}`,
-        `<:Dice2:1282932563349868617> **${d2}** [<:Blunt:1513768529718022254>Blunt] — cưa địch${!isMin2 ? " → Reuse! [Max: 2]" : " *(Min)*"}`,
-        `<:Dice3:1282932613165744173> **${d3}** [<:Blunt:1513768529718022254>Blunt] — cưa địch${!isMin3 ? " → Reuse! [Max: 2]" : " *(Min)*"}`,
       ];
+      for (let di = 0; di < 3; di++) {
+        const [mn, mx] = RANGES[di];
+        const min = MINS[di];
+        const dEmoji = DICE_EMOJIS[di];
+        const val = r(mn, mx);
+        const isMin = val === min;
+        lines.push(`${dEmoji} **${val}** [<:Blunt:1513768529718022254>Blunt] — cưa địch${isMin ? " *(Min — dừng)*" : ""}`);
+        if (!isMin) {
+          for (let re = 1; re <= MAX_REUSE; re++) {
+            const rval = r(mn, mx);
+            const rMin = rval === min;
+            lines.push(`${dEmoji} ↩️ Reuse ${re} **${rval}** [<:Blunt:1513768529718022254>Blunt] — cưa địch${rMin ? " *(Min — dừng)*" : re === MAX_REUSE ? " *(hết Reuse)*" : ""}`);
+            if (rMin) break;
+          }
+        }
+      }
+      return lines;
     },
   },
   "solemn lament": {
@@ -2897,13 +2941,27 @@ const SKILLS = {
     cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     needsReuse: true,
     roll(deadCount = 0) {
-      const d1 = r(1,6);
-      const reuses = Math.min(deadCount * 8, 40);
-      return [
-        `<:Dice1:1282932482437546004> **${d1}** [<:Blunt:1513768529718022254>Blunt] — bắn vào mặt địch, giảm Stamina địch = dice + 3`,
-        `*(Trong lần Encounter này: ${deadCount} mạng đã ngã xuống → Reuse thêm ${reuses} lần)*`,
-        reuses > 0 ? `✨ Đang có ${reuses} lần Reuse khả dụng` : `*(Chưa có ai chết — chưa có Reuse)*`,
+      const MAX_REUSE = Math.min(deadCount * 8, 40);
+      const DICE_EMOJIS = [
+        `<:Dice1:1282932482437546004>`,`<:Dice2:1282932563349868617>`,`<:Dice3:1282932613165744173>`,
+        `<:Dice4:1283216858249560175>`,`<:Dice5:1283216903535329311>`,
       ];
+      const getDEmoji = (i) => DICE_EMOJIS[Math.min(i, DICE_EMOJIS.length - 1)];
+      const lines = [];
+      if (deadCount === 0) {
+        const d1 = r(1,6);
+        lines.push(`${getDEmoji(0)} **${d1}** [<:Blunt:1513768529718022254>Blunt] — bắn vào mặt địch, giảm Stamina địch = ${d1 + 3}`);
+        lines.push(`*(Chưa có ai chết — không có Reuse)*`);
+        return lines;
+      }
+      lines.push(`*(${deadCount} mạng đã ngã → ${MAX_REUSE} lần Reuse)*`);
+      for (let i = 0; i <= MAX_REUSE; i++) {
+        const val = r(1,6);
+        const dEmoji = getDEmoji(i);
+        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        lines.push(`${dEmoji}${label} **${val}** [<:Blunt:1513768529718022254>Blunt] — giảm Stamina địch = ${val + 3}${i === MAX_REUSE ? " *(hết Reuse)*" : ""}`);
+      }
+      return lines;
     },
   },
   "magic bullet": {
