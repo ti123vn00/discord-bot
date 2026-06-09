@@ -2129,7 +2129,7 @@ const SKILLS = {
       const d1 = r(4,10), d2 = r(4,10);
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 3 <:DefenseUp:1513767487894716497>Defense Up`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 3 <:DefenseUp:1513767487894716497>Defense Up`,
+        `<:Dice2:1508173590078558369> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 3 <:DefenseUp:1513767487894716497>Defense Up`,
       ];
     },
   },
@@ -2941,7 +2941,7 @@ const SKILLS = {
     cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     needsReuse: true,
     roll(deadCount = 0) {
-      const MAX_REUSE = Math.min(deadCount * 8, 40);
+      const MAX_REUSE = deadCount * 8;
       const DICE_EMOJIS = [
         `<:Dice1:1508173590078558369>`,`<:Dice2:1508173623691710625>`,`<:Dice3:1508173643518050395>`,
         `<:Dice4:1508176464367845600>`,`<:Dice5:1508176500438990968>`,
@@ -2954,13 +2954,40 @@ const SKILLS = {
         lines.push(`*(Chưa có ai chết — không có Reuse)*`);
         return lines;
       }
-      lines.push(`*(${deadCount} mạng đã ngã → ${MAX_REUSE} lần Reuse)*`);
+
+      // Roll tất cả hits trước
+      const hits = [];
       for (let i = 0; i <= MAX_REUSE; i++) {
         const val = r(1,6);
-        const dEmoji = getDEmoji(i);
-        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
-        lines.push(`${dEmoji}${label} **${val}** [<:Blunt:1513768529718022254>Blunt] — giảm Stamina địch = ${val + 3}${i === MAX_REUSE ? " *(hết Reuse)*" : ""}`);
+        hits.push({ val, staminaDmg: val + 3 });
       }
+      const totalStamina = hits.reduce((s, h) => s + h.staminaDmg, 0);
+      const totalDmg = hits.reduce((s, h) => s + h.val, 0);
+      const minHit = Math.min(...hits.map(h => h.val));
+      const maxHit = Math.max(...hits.map(h => h.val));
+
+      lines.push(`*(${deadCount} mạng đã ngã → ${MAX_REUSE} lần Reuse)*`);
+
+      // Hiện 3 hit đầu, gộp phần còn lại
+      const SHOW = 3;
+      const showCount = Math.min(SHOW, hits.length);
+      for (let i = 0; i < showCount; i++) {
+        const { val, staminaDmg } = hits[i];
+        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        const tail = i === hits.length - 1 ? " *(hết Reuse)*" : "";
+        lines.push(`${getDEmoji(i)}${label} **${val}** [<:Blunt:1513768529718022254>Blunt] — giảm Stamina địch = ${staminaDmg}${tail}`);
+      }
+      if (hits.length > SHOW) {
+        const restStamina = hits.slice(SHOW).reduce((s, h) => s + h.staminaDmg, 0);
+        const restDmg = hits.slice(SHOW).reduce((s, h) => s + h.val, 0);
+        lines.push(`*↩️ Reuse ${SHOW}–${MAX_REUSE}: [${hits.slice(SHOW).map(h => h.val).join("")}] — tổng ${restDmg} DMG, giảm ${restStamina} Stamina *(hết Reuse)**`);
+      }
+
+      // Summary
+      lines.push(`\n📊 **Tổng kết** (${hits.length} hit)`);
+      lines.push(`> 🎯 Tổng DMG: **${totalDmg}** | Min: ${minHit} / Max: ${maxHit} / TB: ${(totalDmg / hits.length).toFixed(1)}`);
+      lines.push(`> 💥 Tổng Stamina giảm: **${totalStamina}**`);
+
       return lines;
     },
   },
@@ -3620,17 +3647,18 @@ client.on("messageCreate", async (message) => {
       const parts = input.trim().split(/\s+/);
       const lastPart = parts[parts.length - 1];
       const deadCount = parseInt(lastPart, 10);
-      const validDead = !isNaN(deadCount) && deadCount >= 0 && deadCount <= 5;
+      const validDead = !isNaN(deadCount) && deadCount >= 0;
       if (!validDead) {
         message.reply(
           "❓ **Solemn Lament** cần nhập số đồng đội đã chết.\n" +
           "> Cú pháp: `-skill solemn lament <số chết>`\n" +
           "> VD: `-skill solemn lament 0` (chưa ai chết)\n" +
-          "> VD: `-skill solemn lament 3` (3 người chết → 24 lần Reuse)"
+          "> VD: `-skill solemn lament 3` (3 người chết → 24 lần Reuse)\n" +
+          "> VD: `-skill solemn lament 20` (20 người chết → 160 lần Reuse)"
         );
         return;
       }
-      const MAX_REUSE = Math.min(deadCount * 8, 40);
+      const MAX_REUSE = deadCount * 8;
       const lines = skill.roll(deadCount);
       const header = `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}] [${deadCount} chết → ${MAX_REUSE} Reuse]`;
       message.reply({
