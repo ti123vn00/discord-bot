@@ -141,7 +141,7 @@ const CHIPBOARD_CACHE_POOL = [
 ];
 
 // ─── VALID BOOKS & ITEMS ──────────────────────────────────────────────────────
-const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice"];
+const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice", "Book of Sorcerer"];
 const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
 
 // Derive từ CHIPBOARD_CACHE_POOL để tránh khai báo trùng MK1–MK3
