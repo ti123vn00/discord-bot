@@ -3276,8 +3276,8 @@ const SKILLS = {
         `${D2} **${d2}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor`,
         `${D3} **${d3}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor sau đó gây <:TremorBurst:1513802464632246352>TremorBurst`,
         hasHighTremor
-          ? `${D3} ✨ Trên 10 <:Tremor:1513762737388257380>Tremor trước TremorBurst → gắn 6 <:Fairy:1513782007602216960>Fairy và làm giảm 4 Dice <:DiceDown:1513767826257874964>Dice Down`
-          : `${D3} *(Cần trên 10 <:Tremor:1513762737388257380>Tremor trước TremorBurst để gắn 6 <:Fairy:1513782007602216960>Fairy và <:DiceDown:1513767826257874964>Dice Down)*`,
+          ? `${D3} ✨ Trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>TremorBurst → gắn 6 <:Fairy:1513782007602216960>Fairy và làm giảm 4 Dice <:DiceDown:1513767826257874964>Dice Down`
+          : `${D3} *(Cần trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>TremorBurst để gắn 6 <:Fairy:1513782007602216960>Fairy và <:DiceDown:1513767826257874964>Dice Down)*`,
       ];
     },
   },
