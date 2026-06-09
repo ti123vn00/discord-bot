@@ -1505,11 +1505,11 @@ const SKILLS = {
     roll() {
       const d1=r(2,4),d2=r(3,5),d3=r(3,5),d4=r(3,6);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 2 <:Sinking:1513762793436741652>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 1 <:Sinking:1513762793436741652>`,
-        `<:Dice3:1282932613165744173> **${d3}** [Blunt] — gây 3 <:Sinking:1513762793436741652>`,
-        `<:Dice4:1283216858249560175> **${d4}** [Blunt] — gây 3 <:Sinking:1513762793436741652>`,
-        `<:Dice4:1283216858249560175> *Nếu địch có trên 8 <:Sinking:1513762793436741652>: nhận 15 **Shield HP***`,
+        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice3:1282932613165744173> **${d3}** [Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice4:1283216858249560175> **${d4}** [Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice4:1283216858249560175> *Nếu địch có trên 8 <:Sinking:1513762793436741652>Sinking: nhận 15 **Shield HP***`,
       ];
     },
   },
@@ -1518,12 +1518,12 @@ const SKILLS = {
     roll() {
       const d1=r(2,4),d2=r(2,4),d3=r(2,4),d4=r(2,4),d5=r(3,6);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 1 <:Sinking:1513762793436741652>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 1 <:Sinking:1513762793436741652>`,
-        `<:Dice3:1282932613165744173> **${d3}** [Blunt] — gây 1 <:Sinking:1513762793436741652>`,
-        `<:Dice4:1283216858249560175> **${d4}** [Blunt] — gây 1 <:Sinking:1513762793436741652>`,
-        `<:Dice5:1283216903535329311> **${d5}** [Blunt] [Guard Break] — gây 2 <:Sinking:1513762793436741652>`,
-        `<:Dice5:1283216903535329311> *Nếu địch có trên 6 <:Sinking:1513762793436741652>: nhận 25 **Shield HP***`,
+        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice3:1282932613165744173> **${d3}** [Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice4:1283216858249560175> **${d4}** [Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice5:1283216903535329311> **${d5}** [Blunt] [Guard Break] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice5:1283216903535329311> *Nếu địch có trên 6 <:Sinking:1513762793436741652>Sinking: nhận 25 **Shield HP***`,
       ];
     },
   },
@@ -1532,8 +1532,8 @@ const SKILLS = {
     roll() {
       const d1=r(5,8),d2=r(5,8);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 3 <:Sinking:1513762793436741652>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 4 <:Sinking:1513762793436741652>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 4 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -1542,9 +1542,9 @@ const SKILLS = {
     roll() {
       const d1=r(2,4),d2=r(4,8),d3=r(13,18);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 2 <:Sinking:1513762793436741652>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 1 <:Sinking:1513762793436741652>`,
-        `<:Dice3:1282932613165744173> **${d3}** [Blunt] — gây 5 <:Sinking:1513762793436741652>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1282932563349868617> **${d2}** [Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice3:1282932613165744173> **${d3}** [Blunt] — gây 5 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -1553,10 +1553,10 @@ const SKILLS = {
     roll() {
       const d1=r(4,7),d2=r(4,7),d3=r(7,10),d4=r(10,13);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [Blunt] — gây 4 <:Sinking:1513762793436741652>`,
+        `<:Dice1:1508173590078558369> **${d1}** [Blunt] — gây 4 <:Sinking:1513762793436741652>Sinking`,
         `<:Dice2:1508173623691710625> **${d2}** [Blunt]`,
         `<:Dice3:1508173643518050395> **${d3}** [Blunt]`,
-        `<:Dice4:1508176464367845600> **${d4}** [Blunt] — gây 3 <:Sinking:1513762793436741652>`,
+        `<:Dice4:1508176464367845600> **${d4}** [Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -1567,13 +1567,13 @@ const SKILLS = {
     roll() {
       const rolls = [r(4,9), r(4,9)];
       const lines = [
-        `*Chém 2 nhát, mỗi nhát gây 2 <:Bleed:1513762688226955285>*`,
+        `*Chém 2 nhát, mỗi nhát gây 2 <:Bleed:1513762688226955285>Bleed*`,
         `<:Dice1:1282932482437546004> Nhát 1: **${rolls[0]}** [Pierce]`,
         `<:Dice2:1282932563349868617> Nhát 2: **${rolls[1]}** [Pierce]`,
       ];
       // Nếu địch trên 6 Bleed: thêm 2 lần với +5 dice
       const bonus1=r(9,14), bonus2=r(9,14);
-      lines.push(`*Nếu địch có trên 6 <:Bleed:1513762688226955285>: thêm 2 nhát với +5 Dice, mỗi nhát gây 2 <:Bleed:1513762688226955285>*`);
+      lines.push(`*Nếu địch có trên 6 <:Bleed:1513762688226955285>Bleed: thêm 2 nhát với +5 Dice, mỗi nhát gây 2 <:Bleed:1513762688226955285>Bleed*`);
       lines.push(`<:Dice1:1282932482437546004> Nhát bonus 1: **${bonus1}** [Pierce]`);
       lines.push(`<:Dice2:1282932563349868617> Nhát bonus 2: **${bonus2}** [Pierce]`);
       return lines;
@@ -1583,8 +1583,8 @@ const SKILLS = {
     name: "Hematic Coloring", cost: "5 Light", cd: "3 Turn", diceMul: "(1~4): 0.5x / (5): 1x",
     roll() {
       const EFFECTS = [
-        `<:Burn:1513762753691652177>`, `<:Tremor:1513762737388257380>`,
-        `<:Rupture:1513762812722155682>`, `<:Sinking:1513762793436741652>`, `<:Bleed:1513762688226955285>`
+        `<:Burn:1513762753691652177>Burn`, `<:Tremor:1513762737388257380>Tremor`,
+        `<:Rupture:1513762812722155682>Rupture`, `<:Sinking:1513762793436741652>Sinking`, `<:Bleed:1513762688226955285>Bleed`
       ];
       function pickEffects() {
         const pool = [...EFFECTS];
@@ -1618,7 +1618,7 @@ const SKILLS = {
     roll(reusePct = 40) {
       const d1 = 14;
       const lines = [
-        `<:Dice1:1508173590078558369> **${d1}** [Pierce] — gây 2 <:Bleed:1513762688226955285> 2 <:Burn:1513762753691652177> 2 <:Tremor:1513762737388257380> 2 <:Sinking:1513762793436741652> 2 <:Rupture:1513762812722155682>`,
+        `<:Dice1:1508173590078558369> **${d1}** [Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture`,
       ];
       // Reuse 1
       const reuse1 = Math.random() * 100 < reusePct;
@@ -1644,11 +1644,11 @@ const SKILLS = {
     roll() {
       const d1=r(3,6),d2=r(6,9),d3=r(9,12);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 2 <:Burn:1513762753691652177>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Pierce] [Guard Break] — gây 2 <:Burn:1513762753691652177>`,
-        `<:Dice3:1282932613165744173> **${d3}** [Pierce] — gây 2 <:Burn:1513762753691652177>`,
-        `<:Dice3:1282932613165744173> *Nếu địch có trên 8 <:Burn:1513762753691652177>: gắn thêm 3 <:Burn:1513762753691652177>*`,
-        `<:Dice3:1282932613165744173> *Nếu địch có trên 6 <:Burn:1513762753691652177>: +5 Dice Up cho bản thân*`,
+        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1282932563349868617> **${d2}** [Pierce] [Guard Break] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice3:1282932613165744173> **${d3}** [Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice3:1282932613165744173> *Nếu địch có trên 8 <:Burn:1513762753691652177>Burn: gắn thêm 3 <:Burn:1513762753691652177>Burn*`,
+        `<:Dice3:1282932613165744173> *Nếu địch có trên 6 <:Burn:1513762753691652177>Burn: +5 Dice Up cho bản thân*`,
       ];
     },
   },
@@ -1657,8 +1657,8 @@ const SKILLS = {
     roll() {
       const d1=r(5,9),d2=r(10,16);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] [Khuếch tán 3 mục tiêu] — gây 4 <:Burn:1513762753691652177>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Slash] [Khuếch tán 3 mục tiêu] — gây 8 <:Burn:1513762753691652177>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] [Khuếch tán 3 mục tiêu] — gây 4 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1282932563349868617> **${d2}** [Slash] [Khuếch tán 3 mục tiêu] — gây 8 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -1667,7 +1667,7 @@ const SKILLS = {
     roll() {
       const d1=r(9,13);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 5 <:Burn:1513762753691652177>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 5 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -1676,9 +1676,9 @@ const SKILLS = {
     roll() {
       const d1=r(2,5),d2=r(8,13);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>`,
-        `<:Dice2:1282932563349868617> *Tấn công cộng thêm (số <:Burn:1513762753691652177> trên địch ÷ 3) dice*`,
+        `<:Dice1:1282932482437546004> **${d1}** [Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1282932563349868617> **${d2}** [Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1282932563349868617> *Tấn công cộng thêm (số <:Burn:1513762753691652177>Burn trên địch ÷ 3) dice*`,
       ];
     },
   },
@@ -1687,8 +1687,8 @@ const SKILLS = {
     roll() {
       const d1=r(8,14);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gắn 4 <:Burn:1513762753691652177>`,
-        `<:Dice1:1282932482437546004> *Trên 30 Sanity: gắn 6 <:Burn:1513762753691652177> | Trên 45 Sanity: gắn 8 <:Burn:1513762753691652177>*`,
+        `<:Dice1:1282932482437546004> **${d1}** [Blunt] — gắn 4 <:Burn:1513762753691652177>Burn`,
+        `<:Dice1:1282932482437546004> *Trên 30 Sanity: gắn 6 <:Burn:1513762753691652177>Burn | Trên 45 Sanity: gắn 8 <:Burn:1513762753691652177>Burn*`,
       ];
     },
   },
@@ -1697,9 +1697,9 @@ const SKILLS = {
     roll() {
       const d1=r(3,6),d2=r(4,12);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 2 <:Burn:1513762753691652177>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Pierce] — gây 3 <:Burn:1513762753691652177>`,
-        `<:Dice2:1282932563349868617> *Nếu địch có trên 10 <:Burn:1513762753691652177>: gắn thêm 3 Defense Down <:DefenseDown:1288291945625423872>*`,
+        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1282932563349868617> **${d2}** [Pierce] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1282932563349868617> *Nếu địch có trên 10 <:Burn:1513762753691652177>Burn: gắn thêm 3 Defense Down <:DefenseDown:1288291945625423872>*`,
       ];
     },
   },
@@ -1708,19 +1708,19 @@ const SKILLS = {
     roll() {
       const d1=r(3,5),d2=r(6,10);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Burn:1513762753691652177>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 4 <:Burn:1513762753691652177>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 4 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
-  "violet flame": {
-    name: "Violet Flame", cost: "—", cd: "2 Turn", diceMul: "1x",
+  "violent flame": {
+    name: "Violent Flame", cost: "—", cd: "2 Turn", diceMul: "1x",
     weaponOf: "Liu Martial Arts",
     roll() {
       const d1=r(5,8),d2=r(6,16);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [Blunt] — gây 3 <:Burn:1513762753691652177>`,
-        `<:Dice2:1508173623691710625> **${d2}** [Blunt] [Guard Break] — gây 6 <:Burn:1513762753691652177>`,
+        `<:Dice1:1508173590078558369> **${d1}** [Blunt] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [Blunt] [Guard Break] — gây 6 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -1730,7 +1730,7 @@ const SKILLS = {
     roll() {
       const d1=r(12,20);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [Slash] [Unblockable] [Guard Break] [Đánh lan 3 mục tiêu] — gắn 5 <:Burn:1513762753691652177>`,
+        `<:Dice1:1508173590078558369> **${d1}** [Slash] [Unblockable] [Guard Break] [Đánh lan 3 mục tiêu] — gắn 5 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -1741,9 +1741,9 @@ const SKILLS = {
     roll() {
       const normal=r(7,8), air=r(4,7), low=r(17,30);
       return [
-        `**Mặt đất:** **${normal}** [Slash] [Unblockable] [Knockback] — gây 5 <:Bleed:1513762688226955285> và 2 Defense Down <:DefenseDown:1288291945625423872>`,
+        `**Mặt đất:** **${normal}** [Slash] [Unblockable] [Knockback] — gây 5 <:Bleed:1513762688226955285>Bleed và 2 Defense Down <:DefenseDown:1288291945625423872>`,
         `**Trên không:** **${air}** [Slash] — gây 5 Defense Down <:DefenseDown:1288291945625423872>`,
-        `**Dưới 33% HP:** **${low}** [Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285> và 5 Defense Down <:DefenseDown:1288291945625423872>`,
+        `**Dưới 33% HP:** **${low}** [Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285>Bleed và 5 Defense Down <:DefenseDown:1288291945625423872>`,
       ];
     },
   },
@@ -1752,11 +1752,11 @@ const SKILLS = {
     roll() {
       const d1=r(4,8),d2=r(3,9),dAir=r(6,12);
       return [
-        `*Nhận 6 <:Poise:1513762945715142736>*`,
+        `*Nhận 6 <:Poise:1513762945715142736>Poise*`,
         `**Mặt đất:**`,
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>`,
-        `**Trên không:** *Nhận 6 <:Poise:1513762945715142736>*`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice2:1282932563349868617> **${d2}** [Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `**Trên không:** *Nhận 6 <:Poise:1513762945715142736>Poise*`,
         `<:Dice1:1282932482437546004> **${dAir}** [Slash] [Undodgeable] [Uptilt] — gây 5 Defense Down <:DefenseDown:1288291945625423872>`,
       ];
     },
@@ -1785,7 +1785,7 @@ const SKILLS = {
     roll() {
       const d1=r(12,28);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [Slash] — gây 2 <:Bleed:1513762688226955285> và nhận 6 <:Poise:1513762945715142736>`,
+        `<:Dice1:1508173590078558369> **${d1}** [Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 6 <:Poise:1513762945715142736>Poise`,
       ];
     },
   },
@@ -1814,8 +1814,8 @@ const SKILLS = {
       const d1=r(8,10),d2=r(9,11);
       return [
         `*Khi trong E.G.O mà kết liễu địch: nhận 5 <:DiceUp:1262936110133411951>*`,
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Bleed:1513762688226955285> và nhận 1 <:Imitation:1449581836539007077>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 3 <:Bleed:1513762688226955285> và nhận 1 <:Imitation:1449581836539007077>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1449581836539007077>`,
+        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1449581836539007077>`,
       ];
     },
   },
@@ -1824,9 +1824,9 @@ const SKILLS = {
     roll() {
       const d1=r(4,5),d2=r(5,6),d3=r(6,7);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 2 <:Bleed:1513762688226955285> và nhận 1 <:Imitation:1449581836539007077>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Pierce] — gây 2 <:Bleed:1513762688226955285>`,
-        `<:Dice3:1282932613165744173> **${d3}** [Pierce] — gây 2 <:Bleed:1513762688226955285> và nhận 1 <:Imitation:1449581836539007077>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1449581836539007077>`,
+        `<:Dice2:1282932563349868617> **${d2}** [Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice3:1282932613165744173> **${d3}** [Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1449581836539007077>`,
       ];
     },
   },
@@ -1849,8 +1849,8 @@ const SKILLS = {
     roll() {
       const d1=r(6,10),d2=r(9,15);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Bleed:1513762688226955285> ở turn kế và nhận 1 <:Imitation:1449581836539007077>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 3 <:Bleed:1513762688226955285> ở turn kế và nhận 1 <:Imitation:1449581836539007077>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế và nhận 1 <:Imitation:1449581836539007077>`,
+        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế và nhận 1 <:Imitation:1449581836539007077>`,
       ];
     },
   },
@@ -1883,8 +1883,8 @@ const SKILLS = {
       const hasCharge = Math.random() < 0.5; // placeholder
       const dNormal=r(6,12), dCharged=r(16,24);
       return [
-        `*Tiêu thụ 15 <:Charge:1513762867558613033> nếu đủ → đổi Dice 1 thành [16~24] và gây 6 <:Rupture:1513762812722155682>*`,
-        `<:Dice1:1282932482437546004> **${dNormal}** [Pierce] *(thường)* / **${dCharged}** [Pierce] *(có 15 Charge)* — gây 3 <:Rupture:1513762812722155682> và nhận 4 <:Charge:1513762867558613033>`,
+        `*Tiêu thụ 15 <:Charge:1513762867558613033>Charge nếu đủ → đổi Dice 1 thành [16~24] và gây 6 <:Rupture:1513762812722155682>Rupture*`,
+        `<:Dice1:1282932482437546004> **${dNormal}** [Pierce] *(thường)* / **${dCharged}** [Pierce] *(có 15 Charge)* — gây 3 <:Rupture:1513762812722155682>Rupture và nhận 4 <:Charge:1513762867558613033>Charge`,
       ];
     },
   },
@@ -1894,8 +1894,8 @@ const SKILLS = {
     roll() {
       const d1=r(12,16);
       return [
-        `*Khi ≥15 <:Charge:1513762867558613033>: +5 Dice Up*`,
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Rupture:1513762812722155682> và nhận 3 <:Charge:1513762867558613033>`,
+        `*Khi ≥15 <:Charge:1513762867558613033>Charge: +5 Dice Up*`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Rupture:1513762812722155682>Rupture và nhận 3 <:Charge:1513762867558613033>Charge`,
       ];
     },
   },
@@ -1905,8 +1905,8 @@ const SKILLS = {
     roll() {
       const d1=r(4,8),d2=r(4,8);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285> và nhận 2 <:Poise:1513762945715142736>`,
-        `<:Dice2:1508173623691710625> **${d2}** [Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285> và nhận 2 <:Poise:1513762945715142736>`,
+        `<:Dice1:1508173590078558369> **${d1}** [Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
+        `<:Dice2:1508173623691710625> **${d2}** [Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
       ];
     },
   },
@@ -1917,8 +1917,8 @@ const SKILLS = {
     roll() {
       const d1=r(5,15);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [Blunt] [Guard Break] — gây 2 <:Rupture:1513762812722155682>, nhận 5 <:ChargeBarrier:1280408566007599126> Charge Barrier`,
-        `*Nếu ≥10 <:Charge:1513762867558613033>: tiêu thụ toàn bộ Charge → đổi thành Shield HP tương đương*`,
+        `<:Dice1:1508173590078558369> **${d1}** [Blunt] [Guard Break] — gây 2 <:Rupture:1513762812722155682>Rupture, nhận 5 <:ChargeBarrier:1280408566007599126> Charge Barrier`,
+        `*Nếu ≥10 <:Charge:1513762867558613033>Charge: tiêu thụ toàn bộ Charge → đổi thành Shield HP tương đương*`,
       ];
     },
   },
@@ -1927,10 +1927,10 @@ const SKILLS = {
     roll() {
       const d1=r(4,8),d2=r(8,12),d3=r(12,16);
       return [
-        `*Nếu ≥10 <:Charge:1513762867558613033>: +5 Dice Up*`,
-        `<:Dice1:1508173590078558369> **${d1}** [Pierce] — nhận 3 <:Charge:1513762867558613033> và gây 2 <:Fragile:1513763336167100536>`,
-        `<:Dice2:1508173623691710625> **${d2}** [Pierce] [Unblockable] — nhận 3 <:Charge:1513762867558613033> và gây 2 <:Fragile:1513763336167100536>`,
-        `<:Dice3:1508173643518050395> **${d3}** [Pierce] [Guard Break] — gây 4 <:Fragile:1513763336167100536>`,
+        `*Nếu ≥10 <:Charge:1513762867558613033>Charge: +5 Dice Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** [Pierce] — nhận 3 <:Charge:1513762867558613033>Charge và gây 2 <:Fragile:1513763336167100536>Fragile`,
+        `<:Dice2:1508173623691710625> **${d2}** [Pierce] [Unblockable] — nhận 3 <:Charge:1513762867558613033>Charge và gây 2 <:Fragile:1513763336167100536>Fragile`,
+        `<:Dice3:1508173643518050395> **${d3}** [Pierce] [Guard Break] — gây 4 <:Fragile:1513763336167100536>Fragile`,
       ];
     },
   },
@@ -1939,11 +1939,11 @@ const SKILLS = {
     roll() {
       const d1=r(5,7),d2=r(6,8),d3=r(7,9),d4=r(8,10);
       return [
-        `*Nếu ≥10 <:Charge:1513762867558613033>: Dice Multiplier → 1.5x*`,
-        `<:Dice1:1508173590078558369> **${d1}** [Blunt] — nhận 1 <:Charge:1513762867558613033>`,
-        `<:Dice2:1508173623691710625> **${d2}** [Blunt] — nhận 1 <:Charge:1513762867558613033>`,
-        `<:Dice3:1508173643518050395> **${d3}** [Blunt] — nhận 1 <:Charge:1513762867558613033>`,
-        `<:Dice4:1508176464367845600> **${d4}** [Blunt] [Guard Break] — nhận 4 <:Charge:1513762867558613033>`,
+        `*Nếu ≥10 <:Charge:1513762867558613033>Charge: Dice Multiplier → 1.5x*`,
+        `<:Dice1:1508173590078558369> **${d1}** [Blunt] — nhận 1 <:Charge:1513762867558613033>Charge`,
+        `<:Dice2:1508173623691710625> **${d2}** [Blunt] — nhận 1 <:Charge:1513762867558613033>Charge`,
+        `<:Dice3:1508173643518050395> **${d3}** [Blunt] — nhận 1 <:Charge:1513762867558613033>Charge`,
+        `<:Dice4:1508176464367845600> **${d4}** [Blunt] [Guard Break] — nhận 4 <:Charge:1513762867558613033>Charge`,
       ];
     },
   },
@@ -1954,8 +1954,8 @@ const SKILLS = {
     roll() {
       const d1=r(15,25);
       return [
-        `*Nếu bản thân có trên 15 <:Poise:1513762945715142736>: +5 <:DiceUp:1262936110133411951>*`,
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] [Undodgeable] [Guard Break] — gây 3 <:Paralyze:1513763316479295548>, nhận 5 <:Poise:1513762945715142736>, mất 5 HP và nhận 3 <:Light:1322102399342481439>`,
+        `*Nếu bản thân có trên 15 <:Poise:1513762945715142736>Poise: +5 <:DiceUp:1262936110133411951>*`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] [Undodgeable] [Guard Break] — gây 3 <:Paralyze:1513763316479295548>Paralyze, nhận 5 <:Poise:1513762945715142736>Poise, mất 5 HP và nhận 3 <:Light:1322102399342481439>`,
         `*Nếu địch parry thành công hay không dính dmg: không hồi <:Light:1322102399342481439>*`,
       ];
     },
@@ -1987,10 +1987,10 @@ const SKILLS = {
       const d1=r(3,4),d2=r(4,5),d3=r(5,6),d4=r(6,7);
       return [
         `*[Unblockable] — Chỉ dùng được sau khi Yield My Flesh phản công hoặc clash thua*`,
-        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Bleed:1513762688226955285>`,
-        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 3 <:Bleed:1513762688226955285>`,
-        `<:Dice3:1282932613165744173> **${d3}** [Slash] — gây 3 <:Bleed:1513762688226955285>`,
-        `<:Dice4:1283216858249560175> **${d4}** [Slash] — gây 3 <:Bleed:1513762688226955285> và 5 <:Paralyze:1513763316479295548>`,
+        `<:Dice1:1282932482437546004> **${d1}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice2:1282932563349868617> **${d2}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice3:1282932613165744173> **${d3}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice4:1283216858249560175> **${d4}** [Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và 5 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
   },
@@ -2068,8 +2068,8 @@ const SKILL_ALIASES = {
   "fe": "fleet edge",
   "flowofthesword": "flow of the sword",
   "fots": "flow of the sword",
-  "violetflame": "violet flame",
-  "vf": "violet flame",
+  "violetflame": "violent flame",
+  "vf": "violent flame",
   "formingstorm": "forming storm",
   "fs": "forming storm",
   "extremeedge": "extreme edge",
