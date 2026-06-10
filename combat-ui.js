@@ -410,8 +410,13 @@ async function showGMPanel(interaction, battle, asFollowUp = false) {
       .setStyle(ButtonStyle.Secondary),
   ));
 
-  const payload = { embeds: [embed], components, ephemeral: true };
-  if (asFollowUp) await interaction.followUp(payload);
+  const payload = { embeds: [embed], components };
+  // ephemeral chỉ hoạt động với slash interaction, không áp dụng với message
+  if (interaction.reply && interaction.deferred !== undefined) {
+    // Discord interaction (slash)
+    Object.assign(payload, { ephemeral: true });
+  }
+  if (asFollowUp && interaction.followUp) await interaction.followUp(payload);
   else await interaction.reply(payload);
 }
 
@@ -1065,8 +1070,240 @@ async function handleCombatInteraction(interaction) {
   return false;
 }
 
+// ─── PREFIX COMMAND HANDLER ───────────────────────────────────────────────────
+/**
+ * Xử lý prefix command -combat
+ *
+ * Cú pháp:
+ *   -combat create <battlename> | boss: <bossname> hp: <số> [sta: <số>]
+ *   -combat join <battleid> name: <charname> weapon: <weaponid> hp: <số> [light: <số>]
+ *   -combat addmob <battleid> name: <mobname> hp: <số>
+ *   -combat addplayer <battleid> @user name: <charname> weapon: <weaponid> hp: <số> [light: <số>] [sta: <số>]
+ *   -combat panel <battleid>
+ */
+async function handleCombatMessage(message) {
+  const content = message.content.slice("-combat".length).trim();
+  const firstSpace = content.indexOf(" ");
+  const sub = firstSpace === -1 ? content.toLowerCase() : content.slice(0, firstSpace).toLowerCase();
+  const rest = firstSpace === -1 ? "" : content.slice(firstSpace + 1).trim();
+
+  // Helper: lấy key-value đơn giản từ chuỗi
+  function kv(str) {
+    const result = {};
+    const re = /(\w+):\s*([^\s|]+(?:\s+[^\s|]+)*?)(?=\s+\w+:|$)/gi;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      result[m[1].toLowerCase()] = m[2].trim();
+    }
+    return result;
+  }
+
+  try {
+    // ── create ───────────────────────────────────────────────────────────────
+    if (sub === "create") {
+      // -combat create <battlename> | boss: <name> hp: <số> [sta: <số>]
+      const pipeIdx = rest.indexOf("|");
+      const battleName = pipeIdx === -1 ? rest.trim() : rest.slice(0, pipeIdx).trim();
+      const bossStr   = pipeIdx === -1 ? "" : rest.slice(pipeIdx + 1).trim();
+      if (!battleName) {
+        message.reply("❌ Cú pháp: `-combat create <tên trận> | boss: <tên boss> hp: <số> [sta: <số>]`");
+        return;
+      }
+      const bossKV = kv(bossStr);
+      const bossName = bossKV["boss"] ?? bossKV["name"] ?? "Boss";
+      const bossHp   = parseInt(bossKV["hp"]) || 100;
+      const bossSta  = parseInt(bossKV["sta"]) || 100;
+
+      const battleId = await createBattle(message.author.id, battleName);
+      await addBoss(battleId, { name: bossName, hp: bossHp, sta: bossSta });
+
+      message.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(`⚔️ ${battleName} — Trận đã tạo!`)
+            .setColor(0xe74c3c)
+            .setDescription(
+              `GM: ${message.author}\n\n**Battle ID:** \`${battleId}\`\nGửi ID này cho players để họ join bằng \`-combat join ${battleId} ...\``
+            )
+            .addFields(
+              { name: "🐉 Boss", value: `**${bossName}** — HP: ${bossHp} | Sta: ${bossSta}` },
+            )
+        ],
+      });
+      return;
+    }
+
+    // ── join ─────────────────────────────────────────────────────────────────
+    if (sub === "join") {
+      // -combat join <battleid> name: <charname> weapon: <weaponid> hp: <số> [light: <số>]
+      const spIdx = rest.indexOf(" ");
+      const battleId = spIdx === -1 ? rest : rest.slice(0, spIdx);
+      const argStr   = spIdx === -1 ? "" : rest.slice(spIdx + 1).trim();
+      const args     = kv(argStr);
+      const charName = args["name"];
+      const weaponId = args["weapon"];
+      const maxHp    = parseInt(args["hp"]);
+      const maxLight = Math.min(6, parseInt(args["light"]) || 4);
+
+      if (!battleId || !charName || !weaponId || isNaN(maxHp)) {
+        message.reply(
+          "❌ Cú pháp: `-combat join <battleid> name: <tên> weapon: <weaponid> hp: <số> [light: <số>]`\n" +
+          "Weapon IDs: `" + listWeapons().map(w => w.id).join("`, `") + "`"
+        );
+        return;
+      }
+      const battle = await getBattle(battleId);
+      if (!battle) { message.reply("❌ Trận đấu không tìm thấy."); return; }
+      const weapon = getWeapon(weaponId);
+      if (!weapon) { message.reply(`❌ Vũ khí không hợp lệ: \`${weaponId}\`\nWeapon IDs: \`${listWeapons().map(w => w.id).join("`, `")}\``); return; }
+
+      const ok = await addPlayer(battleId, message.author.id, { name: charName, hp: maxHp, weaponId, maxLight });
+      if (!ok) { message.reply("❌ Không thể tham gia (đã trong trận hoặc lỗi)."); return; }
+
+      message.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("✅ Tham gia thành công")
+            .setColor(0x2ecc71)
+            .setDescription(`${message.author} đã tham gia trận **${battle.battleName}**`)
+            .addFields(
+              { name: "Nhân vật", value: charName, inline: true },
+              { name: "Vũ khí", value: `${weapon.name} (${weapon.type} — ${weapon.category})`, inline: true },
+              { name: "HP", value: `${maxHp}/${maxHp}`, inline: true },
+              { name: "Max Light", value: `${maxLight}`, inline: true },
+            )
+            .setFooter({ text: `Dùng -combat panel ${battleId} để mở panel chiến đấu` })
+        ],
+      });
+      return;
+    }
+
+    // ── addmob ───────────────────────────────────────────────────────────────
+    if (sub === "addmob") {
+      // -combat addmob <battleid> name: <mobname> hp: <số>
+      const spIdx  = rest.indexOf(" ");
+      const battleId = spIdx === -1 ? rest : rest.slice(0, spIdx);
+      const argStr   = spIdx === -1 ? "" : rest.slice(spIdx + 1).trim();
+      const args     = kv(argStr);
+      const mobName  = args["name"];
+      const hp       = parseInt(args["hp"]);
+
+      if (!battleId || !mobName || isNaN(hp)) {
+        message.reply("❌ Cú pháp: `-combat addmob <battleid> name: <tên mob> hp: <số>`");
+        return;
+      }
+      const battle = await getBattle(battleId);
+      if (!battle || battle.gmId !== message.author.id) {
+        message.reply("❌ Trận không tìm thấy hoặc bạn không phải GM.");
+        return;
+      }
+      await addBoss(battleId, { name: mobName, hp });
+      message.reply(`✅ **${mobName}** (HP: ${hp}) đã được thêm vào trận **${battle.battleName}**.`);
+      return;
+    }
+
+    // ── addplayer ─────────────────────────────────────────────────────────────
+    if (sub === "addplayer") {
+      // -combat addplayer <battleid> @user name: <charname> weapon: <weaponid> hp: <số> [light: <số>] [sta: <số>]
+      const spIdx  = rest.indexOf(" ");
+      const battleId = spIdx === -1 ? rest : rest.slice(0, spIdx);
+      const argStr   = spIdx === -1 ? "" : rest.slice(spIdx + 1).trim();
+
+      const targetUser = message.mentions.users.first();
+      if (!targetUser) { message.reply("❌ Hãy mention player cần thêm. VD: `-combat addplayer <battleid> @user name: Tên hp: 500 weapon: standard-sword`"); return; }
+
+      const args     = kv(argStr);
+      const charName = args["name"];
+      const weaponId = args["weapon"];
+      const maxHp    = parseInt(args["hp"]);
+      const maxLight = Math.min(6, parseInt(args["light"]) || 4);
+      const maxSta   = parseInt(args["sta"]) || 100;
+
+      if (!battleId || !charName || !weaponId || isNaN(maxHp)) {
+        message.reply("❌ Cú pháp: `-combat addplayer <battleid> @user name: <tên> weapon: <weaponid> hp: <số> [light: <số>] [sta: <số>]`");
+        return;
+      }
+      const battle = await getBattle(battleId);
+      if (!battle || battle.gmId !== message.author.id) { message.reply("❌ Trận không tìm thấy hoặc bạn không phải GM."); return; }
+      const weapon = getWeapon(weaponId);
+      if (!weapon) { message.reply(`❌ Vũ khí không hợp lệ: \`${weaponId}\``); return; }
+
+      if (battle.participants.find(p => p.userId === targetUser.id)) {
+        message.reply(`❌ ${targetUser} đã có trong trận rồi.`);
+        return;
+      }
+      await addPlayer(battleId, targetUser.id, { name: charName, hp: maxHp, sta: maxSta, weaponId, maxLight });
+      message.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("✅ Thêm Player thành công")
+            .setColor(0x2ecc71)
+            .setDescription(`GM đã thêm ${targetUser} vào trận **${battle.battleName}**`)
+            .addFields(
+              { name: "Nhân vật", value: charName, inline: true },
+              { name: "Vũ khí", value: weapon.name, inline: true },
+              { name: "HP", value: `${maxHp}/${maxHp}`, inline: true },
+              { name: "Max Sta", value: `${maxSta}`, inline: true },
+              { name: "Max Light", value: `${maxLight}`, inline: true },
+            )
+            .setFooter({ text: `${targetUser.username} dùng -combat panel ${battleId} để mở panel` })
+        ],
+        ephemeral: false,
+      });
+      return;
+    }
+
+    // ── panel ─────────────────────────────────────────────────────────────────
+    if (sub === "panel") {
+      const battleId = rest.trim();
+      if (!battleId) { message.reply("❌ Cú pháp: `-combat panel <battleid>`"); return; }
+
+      const battle = await getBattle(battleId);
+      if (!battle) { message.reply("❌ Trận đấu không tìm thấy."); return; }
+
+      const isGM   = battle.gmId === message.author.id;
+      const player = battle.participants.find(p => p.userId === message.author.id);
+
+      // Fake interaction-like object để tái dùng renderPage / showGMPanel
+      // Dùng message.reply thay, nhưng cần tạo ephemeral-like reply
+      if (player) {
+        const embed = buildPlayerEmbed(player, battle);
+        const components = buildMainMenuComponents(battle, player);
+        await message.reply({ embeds: [embed], components });
+        if (isGM) await showGMPanel({ reply: (p) => message.channel.send(p) }, battle, false);
+      } else if (isGM) {
+        await showGMPanel({ reply: (p) => message.reply(p) }, battle, false);
+      } else {
+        message.reply("❌ Bạn không có trong trận này.");
+      }
+      return;
+    }
+
+    // ── help / unknown ────────────────────────────────────────────────────────
+    message.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("⚔️ Combat — Hướng dẫn")
+          .setColor(0x3498db)
+          .addFields(
+            { name: "-combat create <tên trận> | boss: <tên> hp: <số> [sta: <số>]", value: "GM tạo trận mới", inline: false },
+            { name: "-combat join <battleid> name: <tên> weapon: <id> hp: <số> [light: <số>]", value: "Player tham gia trận", inline: false },
+            { name: "-combat addmob <battleid> name: <tên> hp: <số>", value: "GM thêm mob/boss", inline: false },
+            { name: "-combat addplayer <battleid> @user name: <tên> weapon: <id> hp: <số>", value: "GM thêm player thủ công", inline: false },
+            { name: "-combat panel <battleid>", value: "Mở panel chiến đấu", inline: false },
+          )
+          .setFooter({ text: `Weapon IDs: ${listWeapons().map(w => `${w.id} (${w.name})`).join(" | ")}` })
+      ],
+    });
+  } catch (err) {
+    console.error("[combat prefix]", err);
+    message.reply(`❌ Lỗi: ${err.message}`);
+  }
+}
+
 module.exports = {
-  COMBAT_COMMAND_DEF,
+  COMBAT_COMMAND_DEF: null, // Không dùng nữa — đã chuyển sang prefix
   handleCombatInteraction,
+  handleCombatMessage,
   initCombatUI,
 };
