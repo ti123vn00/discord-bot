@@ -957,7 +957,7 @@ async function buildInventoryEmbed(targetUser) {
 
 // ─── SHARED BUSINESS LOGIC: GIVE / REMOVE ────────────────────────────────────
 /**
- * executeGive — logic chung cho cả prefix -give và slash /give
+ * executeGive — logic chung cho cả prefix -give và slash /give hm
  * @param {object} opts
  * @param {string}  opts.senderId   — userId người gửi (null nếu admin bypass)
  * @param {string}  opts.targetId   — userId người nhận
