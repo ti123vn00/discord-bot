@@ -1,3 +1,4 @@
+/**
  * combat-ui.js
  * Discord UI cho hệ thống combat — navigation menu
  *
@@ -721,10 +722,10 @@ async function handleCombatInteraction(interaction) {
             if (result?.error) {
               await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
             } else {
-              // FIX #2: result.finalDmg
               const critTxt = result.isCrit ? " ✨ **CRIT!**" : "";
+              const staggerTxt = result.justStaggered ? "\n⚡ **STAGGER!** Không thể hành động turn kế tiếp" : "";
               await interaction.reply({
-                content: `⚔️ **${result.player.name}** dùng **${result.weapon.name}**\nRoll: **${result.roll}**${critTxt} → DMG: **${result.finalDmg}**`,
+                content: `⚔️ **${result.player.name}** dùng **${result.weapon.name}**\nRoll: **${result.roll}**${critTxt} → DMG: **${result.finalDmg}**${staggerTxt}`,
                 ephemeral: true,
               });
             }
@@ -819,18 +820,24 @@ async function handleCombatInteraction(interaction) {
 
       // ── GM actions: gm::subAction::battleId::bossId ─────────────────────────
       if (action === "gm") {
-        if (battle.gmId !== interaction.user.id) {
-          await interaction.reply({ content: "❌ Chỉ GM mới dùng được nút này", ephemeral: true });
-          return true;
-        }
-
-        // Với GM buttons: customId = gm::subAction::battleId::bossId
-        // parseCustomId: action=gm, battleId=subAction, extra=battleId, extra2=bossId
-        // → cần re-parse đúng
-        const parts = interaction.customId.split("::");
+        // Với GM buttons customId = gm::subAction::battleId::bossId
+        // parseCustomId map: action=gm, battleId=subAction, extra=battleId(thật), extra2=bossId
+        // → re-parse thủ công để lấy đúng
+        const parts    = interaction.customId.split("::");
         const gmSub    = parts[1];
         const gmBattle = parts[2];
         const gmBossId = parts[3] ?? null;
+
+        // Fetch lại battle bằng gmBattle (ID thật) thay vì battle đã fetch sai ở trên
+        const gmBattleData = await getBattle(gmBattle);
+        if (!gmBattleData) {
+          await interaction.reply({ content: "❌ Trận đấu không tìm thấy", ephemeral: true });
+          return true;
+        }
+        if (gmBattleData.gmId !== interaction.user.id) {
+          await interaction.reply({ content: "❌ Chỉ GM mới dùng được nút này", ephemeral: true });
+          return true;
+        }
 
         const sel = getGmSel(gmBattle, interaction.user.id);
 
@@ -963,18 +970,57 @@ async function handleCombatInteraction(interaction) {
         target.isGuarding = false;
         target.guarding   = false;
 
+        // Injury check (dùng finalDmg thực tế, không phải rawDmg)
+        let injuryNote = "";
+        if (finalDmg > target.maxHp * 0.3) {
+          const roll = Math.random() * 100;
+          if (roll < 10) {
+            const heavyChoices = ["mất-tay", "mất-chân", "vết-thương-lớn"];
+            const injury = heavyChoices[Math.floor(Math.random() * heavyChoices.length)];
+            if (injury === "vết-thương-lớn") {
+              target.maxHp = Math.max(1, target.maxHp - 100);
+              target.hp = Math.min(target.hp, target.maxHp);
+              injuryNote = `💀 Chấn thương nặng: **Vết Thương Lớn** (Max HP -100 → ${target.maxHp})`;
+            } else if (!target.injuries.includes(injury)) {
+              target.injuries.push(injury);
+              injuryNote = `💀 Chấn thương nặng: **${injury}**`;
+            }
+          } else if (roll < 50) {
+            const lightChoices = ["gãy-tay", "gãy-chân", "gãy-xương", "choáng"];
+            const injury = lightChoices[Math.floor(Math.random() * lightChoices.length)];
+            if (injury === "gãy-xương") {
+              target.maxHp = Math.max(1, target.maxHp - 30);
+              target.hp = Math.min(target.hp, target.maxHp);
+              injuryNote = `🩹 Chấn thương nhẹ: **Gãy Xương** (Max HP -30 → ${target.maxHp})`;
+            } else if (injury === "choáng") {
+              target.stunsStacks = (target.stunsStacks ?? 0) + 1;
+              injuryNote = `🩹 Chấn thương nhẹ: **Choáng** (Stack ${target.stunsStacks}/2)`;
+            } else if (!target.injuries.includes(injury)) {
+              target.injuries.push(injury);
+              injuryNote = `🩹 Chấn thương nhẹ: **${injury}**`;
+            }
+          }
+        }
+
+        // Panic check sau khi nhận dmg
+        if (target.sanity !== undefined && target.sanity <= -45 && !target.isPanic) {
+          target.isPanic = true;
+          injuryNote += (injuryNote ? "\n" : "") + `😱 **${target.name}** PANIC — Không thể hành động 1 turn`;
+        }
+
         const logLine = `[T${battle.turnNumber}] 🐉 ${boss?.name ?? "Boss"} → ${target.name}: ${rawDmg}×${resMulti}${isGuarding ? "×0.1G" : ""} = **${finalDmg}**${note ? ` (${note})` : ""}`;
         battle.log.push(logLine);
+        if (injuryNote) battle.log.push(injuryNote);
         if (battle.log.length > 20) battle.log.shift();
         await saveBattle(battle);
 
-        // Check injury
         const lines = [
           `🐉 **${boss?.name ?? "Boss"}** tấn công **${target.name}**`,
           `> ${rawDmg} ${dmgTypeRaw} × ${resMulti}x${isGuarding ? " × 0.1 Guard" : ""} = **${finalDmg} DMG**`,
           `> HP còn lại: ${target.hp}/${target.maxHp}`,
         ];
         if (note) lines.push(`> _${note}_`);
+        if (injuryNote) lines.push(`> ${injuryNote}`);
         if (target.hp <= 0) lines.push(`> ☠️ **${target.name} đã chết!**`);
 
         await interaction.reply({ content: lines.join("\n"), ephemeral: false });
