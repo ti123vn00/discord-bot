@@ -1399,7 +1399,7 @@ const SKILLS = {
     roll() {
       const d1 = r(8,12), d2 = r(8,12), d3 = r(10,14), d4 = r(14,20);
       return [
-        `${D1} *Nếu địch có Bleed: gắn 1 <:Hemorrhage:1513762688226955285>Hemorrhage*`,
+        `${D1} *Nếu địch có <:Bleed:1513762688226955285>Bleed: gắn 1 <:Hemorrhage:1513762688226955285>Hemorrhage*`,
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
         `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
@@ -1413,7 +1413,7 @@ const SKILLS = {
     roll() {
       const d1 = r(8,15);
       return [
-        `${D1} *Khi dưới 50% HP: Dice 1 nhận 4 <:DiceUp:1513767795681398894>Dice Up*`,
+        `${D1} *Khi dưới 50% HP: <:Dice1:1508173590078558369>Dice 1 nhận 4 <:DiceUp:1513767795681398894>Dice Up*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 6 <:Poise:1513762945715142736>Poise; khi dưới 50% HP thêm 2 <:Poise:1513762945715142736>Poise và 4 <:Haste:1513768004222062632>Haste`,
       ];
     },
@@ -1489,9 +1489,9 @@ const SKILLS = {
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 2 <:Tremor:1513762737388257380>Tremor`,
         `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture`,
         `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `Dice 6: **${d6}** [50% Slash/50% Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:Tremor:1513762737388257380>Tremor Burst`,
+        `Dice 6: **${d6}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:Tremor:1513762737388257380>Tremor Burst`,
         `Dice 7: **${d7}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 <:Tremor:1513762737388257380>Tremor`,
-        `Dice 8: **${d8}** [50% Slash/50% Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `Dice 8: **${d8}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
         `Dice 9: **${d9}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture *trước* khi gây Dmg`,
       ];
     },
@@ -1792,7 +1792,7 @@ const SKILLS = {
 
   // ── Misc skills ──
   "xuất lực tối đa": {
-    name: "Xuất Lực Tối Đa", cost: "1 Light + 20 Cursed Energy", cd: "0 Turn", diceMul: "1x",
+    name: "Xuất Lực Tối Đa", cost: "1 <:Light:1513786082502770719>Light + 20 Cursed Energy", cd: "0 Turn", diceMul: "1x",
     roll() {
       const d1=r(13,17);
       const isBlackFlash = Math.random() < 0.05;
