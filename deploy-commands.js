@@ -1,5 +1,6 @@
 // deploy-commands.js
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
+const { COMBAT_COMMAND_DEF } = require("./combat-ui");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
@@ -156,6 +157,11 @@ const commands = [
       opt.setName("books").setDescription("Xóa nhiều sách (VD: Random Book x2, N Corp Book x1)").setRequired(false))
     .addStringOption(opt =>
       opt.setName("items").setDescription("Xóa nhiều vật phẩm (VD: Chipboard MK1 x3, Chipboard MK2 x1)").setRequired(false)),
+
+  // ── /combat ─────────────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName("combat")
+    .setDescription("Mở giao diện combat"),
 
 ].map(cmd => cmd.toJSON());
 
