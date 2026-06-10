@@ -1,6 +1,5 @@
 // deploy-commands.js
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
-const { COMBAT_COMMAND_DEF } = require("./combat-ui");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
@@ -161,14 +160,6 @@ const commands = [
       opt.setName("books").setDescription("Xóa nhiều sách (VD: Random Book x2, N Corp Book x1)").setRequired(false))
     .addStringOption(opt =>
       opt.setName("items").setDescription("Xóa nhiều vật phẩm (VD: Chipboard MK1 x3, Chipboard MK2 x1)").setRequired(false)),
-
-  // ── /combat ─────────────────────────────────────────────────────────────────
-  // Dùng COMBAT_COMMAND_DEF từ combat-ui.js — bao gồm đầy đủ subcommands:
-  //   create  → GM tạo trận, nhập tên trận + boss đầu tiên
-  //   join    → Player tham gia trận với charname + weapon + maxhp
-  //   addmob  → GM thêm boss/mob vào trận
-  //   panel   → Mở GM panel hoặc player panel (tự động detect theo userId)
-  COMBAT_COMMAND_DEF,
 
 ].map(cmd => cmd.toJSON());
 
