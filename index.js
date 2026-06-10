@@ -2,6 +2,7 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 const express = require("express");
 const { Redis } = require("@upstash/redis");
+const { COMBAT_COMMAND_DEF, handleCombatInteraction } = require("./combat-ui");
 
 const app = express();
 
@@ -4371,6 +4372,7 @@ async function replyOnCooldown(interaction, ms) {
 }
 
 client.on("interactionCreate", async (interaction) => {
+  if (await handleCombatInteraction(interaction)) return;
   if (!interaction.isChatInputCommand()) return;
   try {
 
