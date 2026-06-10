@@ -29,8 +29,12 @@ const commands = [
         .setMinValue(0).setMaxValue(99).setRequired(false))
     .addBooleanOption(opt =>
       opt.setName("critdiv").setDescription("Crit Divide? (mỗi lần crit, Poise stacks giảm đôi)").setRequired(false))
+    // sanity: sanity BẢN THÂN khi bắt đầu tính (ảnh hưởng dmg roll của player)
     .addNumberOption(opt =>
-      opt.setName("sanity").setDescription("Sanity ban đầu của địch (VD: 45)").setRequired(false))
+      opt.setName("sanity").setDescription("Sanity bản thân (ảnh hưởng dmg: +1 sanity = +1% dice, VD: 30)").setRequired(false))
+    // enemysanity: sanity địch (để tính Sinking bonus khi địch đạt -45)
+    .addNumberOption(opt =>
+      opt.setName("enemysanity").setDescription("Sanity ban đầu của địch để tính Sinking (VD: 0)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("dicemul").setDescription("Dice Multiplier (VD: 1.2)").setRequired(false))
     .addNumberOption(opt =>
@@ -159,9 +163,12 @@ const commands = [
       opt.setName("items").setDescription("Xóa nhiều vật phẩm (VD: Chipboard MK1 x3, Chipboard MK2 x1)").setRequired(false)),
 
   // ── /combat ─────────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
-    .setName("combat")
-    .setDescription("Mở giao diện combat"),
+  // Dùng COMBAT_COMMAND_DEF từ combat-ui.js — bao gồm đầy đủ subcommands:
+  //   create  → GM tạo trận, nhập tên trận + boss đầu tiên
+  //   join    → Player tham gia trận với charname + weapon + maxhp
+  //   addmob  → GM thêm boss/mob vào trận
+  //   panel   → Mở GM panel hoặc player panel (tự động detect theo userId)
+  COMBAT_COMMAND_DEF,
 
 ].map(cmd => cmd.toJSON());
 
