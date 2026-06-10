@@ -1,7 +1,7 @@
 /**
  * weapons.js
  * Database vũ khí với base damage, passive, critical skill
- * Format: { name, type, baseDamg, category, passive, critical }
+ * Light = 5 Sta, Medium = 10 Sta, Heavy = 20 Sta
  */
 
 const WEAPONS = {
@@ -9,9 +9,10 @@ const WEAPONS = {
     id: "moonlit-azure-blade",
     name: "Moonlit Azure Blade",
     type: "Slash",
-    baseShort: "5",
-    baseLong: "5-10", // Nếu là range, roll từ min-max
-    category: "Light",
+    baseMin: 5,
+    baseMax: 10,
+    category: "Light", // 5 Sta per attack
+    staCost: 5,
     description: "Lam chiếc kiếm ánh trăng",
     passive: {
       name: "The Orthodox Blade [整劍]",
@@ -20,8 +21,10 @@ const WEAPONS = {
     critical: {
       name: "Fallstar Slayer [落星一殺]",
       cd: 3,
-      desc: "Lướt lên rút kiếm ra chém kẻ địch",
-      diceRange: "8-9",
+      cost: "3 Light",
+      desc: "Lướt lên rút kiếm ra chém kẻ địch sau đó tra kiếm lại vào, cắt đứt không gian trước mặt",
+      diceMin: 8,
+      diceMax: 9,
       effect: "Cứ mỗi 1 Poise có trên người, đòn này sẽ được +1 Dice Up [Max: 19] [Slash] [Undodgeable]",
       consumePoise: true,
       poiseMul: 3,
@@ -31,15 +34,18 @@ const WEAPONS = {
     id: "standard-sword",
     name: "Standard Sword",
     type: "Slash",
-    baseShort: "5",
-    baseLong: "5-8",
-    category: "Medium",
+    baseMin: 5,
+    baseMax: 8,
+    category: "Medium", // 10 Sta per attack
+    staCost: 10,
     description: "Kiếm tiêu chuẩn",
     passive: null,
     critical: {
       name: "Power Slash",
       cd: 2,
-      diceRange: "10-15",
+      cost: "2 Light",
+      diceMin: 10,
+      diceMax: 15,
       desc: "Chém mạnh",
       effect: "Gây dmg cộng thêm 20%",
       consumePoise: false,
@@ -49,20 +55,33 @@ const WEAPONS = {
     id: "heavy-hammer",
     name: "Heavy Hammer",
     type: "Blunt",
-    baseShort: "7",
-    baseLong: "7-12",
-    category: "Heavy",
+    baseMin: 7,
+    baseMax: 12,
+    category: "Heavy", // 20 Sta per attack
+    staCost: 20,
     description: "Búa nặng",
     passive: null,
     critical: {
       name: "Shockwave",
       cd: 3,
-      diceRange: "12-18",
+      cost: "3 Light",
+      diceMin: 12,
+      diceMax: 18,
       desc: "Đánh mạnh để phát sóng xung kích",
       effect: "Gây 4 Tremor + giảm 20 Stamina enemy",
       consumePoise: false,
     },
   },
+};
+
+/**
+ * Action costs
+ */
+const ACTION_COSTS = {
+  attack: (weapon) => weapon.staCost,
+  dodge: () => 20,
+  guard: () => 10,
+  parry: () => 0,
 };
 
 /**
@@ -81,6 +100,7 @@ function listWeapons() {
     name: w.name,
     type: w.type,
     category: w.category,
+    staCost: w.staCost,
   }));
 }
 
@@ -88,17 +108,21 @@ function listWeapons() {
  * Roll base dmg của vũ khí
  */
 function rollWeaponDamage(weapon) {
-  const dmgStr = weapon.baseLong || weapon.baseShort;
-  if (!dmgStr.includes("-")) {
-    return parseInt(dmgStr, 10);
-  }
-  const [min, max] = dmgStr.split("-").map(s => parseInt(s.trim(), 10));
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(Math.random() * (weapon.baseMax - weapon.baseMin + 1)) + weapon.baseMin;
+}
+
+/**
+ * Roll critical skill dice
+ */
+function rollCriticalDice(critical) {
+  return Math.floor(Math.random() * (critical.diceMax - critical.diceMin + 1)) + critical.diceMin;
 }
 
 module.exports = {
   WEAPONS,
+  ACTION_COSTS,
   getWeapon,
   listWeapons,
   rollWeaponDamage,
+  rollCriticalDice,
 };
