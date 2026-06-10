@@ -82,6 +82,7 @@ function addPlayer(battleId, userId, playerData) {
     maxSta: playerData.sta ?? 100,
     light: playerData.light ?? 0,
     maxLight: Math.min(6, playerData.maxLight ?? 4),
+    baseMaxLight: Math.min(6, playerData.maxLight ?? 4), // dùng để tính delta emotion
     sanity: 0,
     maxSanity: 45,
     weapon: weapon.id,
@@ -142,9 +143,13 @@ function takeDamage(battleId, targetType, targetId, dmgData) {
     addLog(battleId, `🛡️ ${target.name} Guard giảm dmg → ${amount}`);
   }
 
+  // FIX #5: Shin mod — giảm tạm thời res của địch 0.2x cho đòn này
+  const shinResMod = dmgData.shinResMod ?? 0;
+
   // Tính resistance (True Dmg bỏ qua res nếu res < 1x)
-  let res = target.res[dmgData.type] ?? 1;
+  let res = (target.res[dmgData.type] ?? 1) + shinResMod;
   if (dmgData.isTrueDmg && res < 1) res = 1;
+  res = Math.max(0, res); // không âm
   const finalDmg = Math.ceil(amount * res);
 
   // Sinking: mỗi lần bị tấn công trừ 1 sanity, giảm 1 count
@@ -189,11 +194,6 @@ function takeDamage(battleId, targetType, targetId, dmgData) {
     }
   }
 
-  // Check stagger
-  if (targetType === "player" && target.sta <= 0 && !target.isStaggered) {
-    _applyStagger(battleId, target);
-  }
-
   // Check panic
   if (target.sanity !== undefined && target.sanity <= -45 && !target.isPanic) {
     _applyPanic(battleId, target);
@@ -229,6 +229,9 @@ function playerAttack(battleId, playerId, targetBossId) {
   player.staUsedThisTurn += staCost;
   player.isGuarding = false; // hủy guard khi tấn công
 
+  // FIX #6: Check stagger ngay sau khi trừ sta
+  if (player.sta <= 0 && !player.isStaggered) _applyStagger(battleId, player);
+
   // Poise passive: reset nếu có weapon passive consumePoise
   if (weapon.passive?.name?.includes("Orthodox")) {
     // Reset poise khi tấn công (passive của moonlit-azure-blade)
@@ -253,20 +256,22 @@ function playerAttack(battleId, playerId, targetBossId) {
     }
   }
 
-  // Sanity modifier: +1 sanity = +1% dice, -1 sanity = -1% dice
-  const sanityMod = 1 + player.sanity / 100;
-  let finalDmg = Math.ceil(dmgRoll * Math.max(0, sanityMod));
+  // FIX #1: Sanity modifier chỉ áp cho Dice skill, KHÔNG áp cho đòn M1 thường.
+  // Đòn thường (M1) là flat dmg từ vũ khí, không phải dice — sanity không ảnh hưởng.
+  // (sanity modifier cho Dice được xử lý trong calcMath / skill system riêng)
+  let finalDmg = dmgRoll;
 
-  // Mất tay: -50% dmg
+  // Mất tay: -50% dmg gây ra
   if (hasMissingArm) {
     finalDmg = Math.ceil(finalDmg * 0.5);
     addLog(battleId, `⚠️ Mất tay: DMG giảm còn ${finalDmg}`);
   }
 
-  // Shin/Mang
+  // FIX #2: Operator precedence — dùng ngoặc để tránh `Math.ceil(...) ?? 1.1`
   if (player.isMangActive) {
-    finalDmg = Math.ceil(finalDmg * player._mangMul ?? 1.1);
-    addLog(battleId, `⬛ Mang kích hoạt → DMG +${Math.round(((player._mangMul ?? 1.1) - 1) * 100)}%`);
+    const mangMul = player._mangMul ?? 1.1;
+    finalDmg = Math.ceil(finalDmg * mangMul);
+    addLog(battleId, `⬛ Mang kích hoạt → DMG +${Math.round((mangMul - 1) * 100)}%`);
   }
 
   const boss = targetBossId
@@ -274,10 +279,13 @@ function playerAttack(battleId, playerId, targetBossId) {
     : battle.bosses.find(b => b.hp > 0);
   if (!boss) return { error: "Không tìm thấy boss" };
 
+  // FIX #5: Shin giảm res của ĐỊCH khi bản thân tấn công (không phải res bản thân).
+  // Truyền shinResMod vào takeDamage để áp tạm thời lên res boss cho đòn này.
   const hitResult = takeDamage(battleId, "boss", boss.bossId, {
     amount: finalDmg,
     type: weapon.type,
-    isTrueDmg: player.isShinActive || player.isMangActive,
+    isTrueDmg: player.isMangActive, // Mang = True Dmg
+    shinResMod: player.isShinActive ? -0.2 : 0, // Shin: res địch -0.2x cho đòn này
   });
 
   player.totalDmgDealt += hitResult?.finalDmg ?? 0;
@@ -285,11 +293,12 @@ function playerAttack(battleId, playerId, targetBossId) {
 
   addLog(
     battleId,
-    `⚔️ **${player.name}** [${weapon.name}] Roll: ${dmgRoll} → Sanity(${player.sanity >= 0 ? "+" : ""}${player.sanity}) → **${finalDmg} DMG**`
+    `⚔️ **${player.name}** [${weapon.name}] Roll: ${dmgRoll} → **${finalDmg} DMG**`
   );
 
-  // Bleed tick khi địch hành động (tick mỗi lần hành động)
-  _tickBleedOnAction(battleId, "boss", boss.bossId);
+  // FIX #8: Bleed của PLAYER tick khi PLAYER hành động (không phải bleed của boss).
+  // Boss bleed tick sẽ được GM trigger khi boss hành động.
+  _tickBleedOnAction(battleId, "player", player.userId);
 
   return { player, weapon, roll: dmgRoll, finalDmg, isCrit, hitResult };
 }
@@ -316,6 +325,9 @@ function playerDodge(battleId, playerId) {
   player.staUsedThisTurn += staCost;
   player.isGuarding = false;
 
+  // FIX #6: Check stagger ngay sau khi trừ sta
+  if (player.sta <= 0 && !player.isStaggered) _applyStagger(battleId, player);
+
   addLog(battleId, `💨 **${player.name}** né (Sta: -${staCost})`);
   return { success: true, staCost };
 }
@@ -334,6 +346,9 @@ function playerGuard(battleId, playerId) {
   player.sta -= 10;
   player.staUsedThisTurn += 10;
   player.isGuarding = true;
+
+  // FIX #6: Check stagger ngay sau khi trừ sta
+  if (player.sta <= 0 && !player.isStaggered) _applyStagger(battleId, player);
 
   addLog(battleId, `🛡️ **${player.name}** Guard (Sta: -10) — Giảm 90% dmg`);
   return { success: true };
