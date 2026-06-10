@@ -1233,7 +1233,7 @@ const SKILLS = {
     roll() {
       const d1 = r(18,25);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — gây 4 <:Paralyze:1513763316479295548>Paralyze, <:Tremor:1513762737388257380>Tremor Burst, 10 <:Fragile:1513763336167100536>Fragile và 2 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — gây 4 <:Paralyze:1513763316479295548>Paralyze, <:TremorBurst:1513802464632246352>Tremor Burst, 10 <:Fragile:1513763336167100536>Fragile và 2 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
       ];
     },
   },
@@ -1336,25 +1336,6 @@ const SKILLS = {
       return [
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash]`,
       ];
-    },
-  },
-  "prescript": {
-    name: "Prescript",
-    cost: "—", cd: "—", diceMul: "—",
-    roll() {
-      const PRESCRIPT_TABLE = [
-        "Dice 1: **27 Dmg** [<:Blunt:1513768529718022254>Blunt] — nhận 2 <:Poise:1513762945715142736>Poise [20 Stamina]",
-        "Dice 2: **8 Dmg** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Sinking:1513762793436741652>Sinking [5 Stamina]",
-        "Dice 3: **15 Dmg** [<:Slash:1513768633434640517>Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
-        "Dice 4: **6 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
-        "Dice 5: **25 Dmg** [<:Blunt:1513768529718022254>Blunt] — giảm 50 Stamina địch [20 Stamina]",
-        "Dice 6: **24 Dmg** [<:Slash:1513768633434640517>Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
-        "Dice 7: **12 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [10 Stamina]",
-        "Dice 8: **12 Dmg** [<:Blunt:1513768529718022254>Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [10 Stamina]",
-        "Dice 9: **30 Dmg** [<:Slash:1513768633434640517>Slash] — 100% Crit [20 Stamina]",
-      ];
-      const picked = PRESCRIPT_TABLE[Math.floor(Math.random() * PRESCRIPT_TABLE.length)];
-      return [picked];
     },
   },
   "soulburn": {
@@ -1489,7 +1470,7 @@ const SKILLS = {
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 2 <:Tremor:1513762737388257380>Tremor`,
         `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture`,
         `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `Dice 6: **${d6}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:Tremor:1513762737388257380>Tremor Burst`,
+        `Dice 6: **${d6}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:TremorBurst:1513802464632246352>Tremor Burst`,
         `Dice 7: **${d7}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 <:Tremor:1513762737388257380>Tremor`,
         `Dice 8: **${d8}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
         `Dice 9: **${d9}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture *trước* khi gây Dmg`,
@@ -1615,6 +1596,16 @@ const SKILLS = {
   "sanguine pointilism": {
     name: "Sanguine Pointilism", cost: "—", cd: "2 Turn", diceMul: "1x",
     needsReuse: true,
+    promptArg: {
+      label: "% Reuse",
+      parse: (s) => parseInt(s, 10),
+      validate: (v) => !isNaN(v) && v >= 0 && v <= 100,
+      errorMsg:
+        "❓ **Sanguine Pointilism** cần nhập % Reuse.\n" +
+        "> Cú pháp: `-skill sanguine pointilism <% reuse>`\n" +
+        "> VD: `-skill sanguine pointilism 60` (mặc định 40%, +20% mỗi 5 Bleed trên địch)",
+      buildHeader: (v, s) => `[Reuse: ${v}%] [CD: ${s.cd}] [Dice Mul: ${s.diceMul}]`,
+    },
     roll(reusePct = 40) {
       const D1 = `<:Dice1:1508173590078558369>`;
       const D2 = `<:Dice2:1508173623691710625>`;
@@ -1794,6 +1785,17 @@ const SKILLS = {
   "xuất lực tối đa": {
     name: "Xuất Lực Tối Đa", cost: "1 <:Light:1513786082502770719>Light + 20 Cursed Energy", cd: "0 Turn", diceMul: "1x",
     needsBlackFlash: true,
+    promptArg: {
+      label: "% Hắc Thiểm",
+      parse: (s) => parseFloat(s),
+      validate: (v) => !isNaN(v) && v >= 0 && v <= 100,
+      errorMsg:
+        "❓ **Xuất Lực Tối Đa** có thể nhập % Hắc Thiểm (mặc định 5%).\n" +
+        "> Cú pháp: `-skill xuất lực tối đa [%]`\n" +
+        "> VD: `-skill xltd` | `-skill xltd 20` | `-skill xltd 0.5`",
+      buildHeader: (v, s) => `[${s.cost}] [CD: ${s.cd}] [Hắc Thiểm: ${v}%]`,
+    },
+    embedColor: 0x1a1a2e,
     roll(blackFlashPct = 5) {
       const d1=r(13,17);
       const isBlackFlash = Math.random() * 100 < blackFlashPct;
@@ -3194,7 +3196,7 @@ const SKILLS = {
     roll() {
       const d1 = r(18,32);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AoE] [Guard Break] — <:Tremor:1513762737388257380>Tremor Burst và 7 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AoE] [Guard Break] — <:TremorBurst:1513802464632246352>Tremor Burst và 7 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
   },
@@ -3275,10 +3277,10 @@ const SKILLS = {
         `**[Undodgeable] [AOE] [Uncancellable]**`,
         `${D1} **${d1}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor`,
         `${D2} **${d2}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor`,
-        `${D3} **${d3}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor sau đó gây <:TremorBurst:1513802464632246352>TremorBurst`,
+        `${D3} **${d3}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor sau đó gây <:TremorBurst:1513802464632246352>Tremor Burst`,
         hasHighTremor
-          ? `${D3} ✨ Trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>TremorBurst → gắn 6 <:Fairy:1513782007602216960>Fairy và làm giảm 4 Dice <:DiceDown:1513767826257874964>Dice Down`
-          : `${D3} *(Cần trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>TremorBurst để gắn 6 <:Fairy:1513782007602216960>Fairy và <:DiceDown:1513767826257874964>Dice Down)*`,
+          ? `${D3} ✨ Trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>Tremor Burst → gắn 6 <:Fairy:1513782007602216960>Fairy và làm giảm 4 Dice <:DiceDown:1513767826257874964>Dice Down`
+          : `${D3} *(Cần trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>Tremor Burst để gắn 6 <:Fairy:1513782007602216960>Fairy và <:DiceDown:1513767826257874964>Dice Down)*`,
       ];
     },
   },
@@ -3467,6 +3469,20 @@ function findSkill(raw) {
   return null;
 }
 
+// ─── PRESCRIPT TABLE ──────────────────────────────────────────────────────────
+const PRESCRIPT_TABLE = [
+  "Dice 1: **27 Dmg** [<:Blunt:1513768529718022254>Blunt] — nhận 2 <:Poise:1513762945715142736>Poise [20 Stamina]",
+  "Dice 2: **8 Dmg** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Sinking:1513762793436741652>Sinking [5 Stamina]",
+  "Dice 3: **15 Dmg** [<:Slash:1513768633434640517>Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
+  "Dice 4: **6 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
+  "Dice 5: **25 Dmg** [<:Blunt:1513768529718022254>Blunt] — giảm 50 Stamina địch [20 Stamina]",
+  "Dice 6: **24 Dmg** [<:Slash:1513768633434640517>Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
+  "Dice 7: **12 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [10 Stamina]",
+  "Dice 8: **12 Dmg** [<:Blunt:1513768529718022254>Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [10 Stamina]",
+  "Dice 9: **30 Dmg** [<:Slash:1513768633434640517>Slash] — 100% Crit [20 Stamina]",
+];
+
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -3484,6 +3500,7 @@ client.once("ready", () => {
 // ─── PREFIX COMMANDS ──────────────────────────────────────────────────────────
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  try {
 
   // ── -rolldice ──
   // Cú pháp: -rolldice <min>-<max> [x<lần>], <min>-<max> [x<lần>], ...
@@ -3517,7 +3534,7 @@ client.on("messageCreate", async (message) => {
       const min = parseInt(match[1], 10);
       const max = parseInt(match[2], 10);
       const times = match[3] ? parseInt(match[3], 10) : 1;
-      if (min >= max) return { error: `Min phải nhỏ hơn Max: \`${trimmed}\`` };
+      if (min >= max || min < 0) return { error: `Min phải nhỏ hơn Max và không âm: \`${trimmed}\`` };
       if (times <= 0) return { error: `Số lần roll phải lớn hơn 0: \`${trimmed}\`` };
       if (times > ROLL_MAX_TIMES) return { error: `Số lần roll tối đa là ${ROLL_MAX_TIMES}: \`${trimmed}\`` };
       return { min, max, times };
@@ -3573,17 +3590,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
     const CADUCEUS_MAX = 20;
-    const PRESCRIPT_TABLE = [
-      "Dice 1: **27 Dmg** [<:Blunt:1513768529718022254>Blunt] — nhận 2 <:Poise:1513762945715142736>Poise [20 Stamina]",
-      "Dice 2: **8 Dmg** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Sinking:1513762793436741652>Sinking [5 Stamina]",
-      "Dice 3: **15 Dmg** [<:Slash:1513768633434640517>Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
-      "Dice 4: **6 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
-      "Dice 5: **25 Dmg** [<:Blunt:1513768529718022254>Blunt] — giảm 50 Stamina địch [20 Stamina]",
-      "Dice 6: **24 Dmg** [<:Slash:1513768633434640517>Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
-      "Dice 7: **12 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [10 Stamina]",
-      "Dice 8: **12 Dmg** [<:Blunt:1513768529718022254>Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [10 Stamina]",
-      "Dice 9: **30 Dmg** [<:Slash:1513768633434640517>Slash] — 100% Crit [20 Stamina]",
-    ];
+    // dùng PRESCRIPT_TABLE global
     const arg = message.content.replace(/-caduceus/i, "").trim();
     const timesRaw = parseInt(arg, 10);
     const times = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
@@ -3606,7 +3613,7 @@ client.on("messageCreate", async (message) => {
 
   // ── -skill ──
   // Cú pháp: -skill <tên skill> | -skill list
-  if (message.content.startsWith("-skill")) {
+  if (/^-skill(\s|$)/i.test(message.content)) {
     if (isOnCooldown(message.author.id, "skill", 2000)) {
       message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
       return;
@@ -3625,8 +3632,13 @@ client.on("messageCreate", async (message) => {
       const pageSkills = skillEntries.slice(start, start + PAGE_SIZE);
       const skillLines = pageSkills.map((s, i) => {
         const num = start + i + 1;
-        const weapon = s.weaponOf ? ` *[${s.weaponOf}]*` : "";
-        return `\`${num}.\` **${s.name}**${weapon} — ${s.cost} | CD: ${s.cd} | ${s.diceMul}`;
+        const tags = [];
+        if (s.weaponOf) tags.push(`⚔️ ${s.weaponOf}`);
+        if (s.needsBlackFlash) tags.push("nhập %");
+        if (s.needsReuse) tags.push("nhập %reuse");
+        if (s.name === "Solemn Lament") tags.push("nhập số chết");
+        const tagStr = tags.length ? ` *(${tags.join(", ")})*` : "";
+        return `\`${num}.\` **${s.name}**${tagStr} — ${s.cost} | CD: ${s.cd} | ${s.diceMul}`;
       });
       message.reply({
         embeds: [{
@@ -3645,80 +3657,22 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Solemn Lament yêu cầu nhập số đồng đội đã chết
-    if (skill.name === "Solemn Lament") {
+    // Skill đặc biệt cần arg — dùng promptArg nếu có
+    if (skill.promptArg) {
+      const { parse, validate, errorMsg, buildHeader } = skill.promptArg;
       const parts = input.trim().split(/\s+/);
       const lastPart = parts[parts.length - 1];
-      const deadCount = parseInt(lastPart, 10);
-      const validDead = !isNaN(deadCount) && deadCount >= 0;
-      if (!validDead) {
-        message.reply(
-          "❓ **Solemn Lament** cần nhập số đồng đội đã chết.\n" +
-          "> Cú pháp: `-skill solemn lament <số chết>`\n" +
-          "> VD: `-skill solemn lament 0` (chưa ai chết)\n" +
-          "> VD: `-skill solemn lament 3` (3 người chết → 24 lần Reuse)\n" +
-          "> VD: `-skill solemn lament 20` (20 người chết → 160 lần Reuse)"
-        );
+      const parsed = parse(lastPart);
+      if (!validate(parsed)) {
+        message.reply(errorMsg);
         return;
       }
-      const MAX_REUSE = deadCount * 8;
-      const lines = skill.roll(deadCount);
-      const header = `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}] [${deadCount} chết → ${MAX_REUSE} Reuse]`;
+      const lines = skill.roll(parsed);
+      const header = buildHeader(parsed, skill);
       message.reply({
         embeds: [{
           title: `🎲 ${skill.name}`,
-          color: 0x5865f2,
-          description: header + "\n\n" + lines.join("\n"),
-        }],
-      });
-      return;
-    }
-
-    // Sanguine Pointilism yêu cầu nhập % reuse
-    if (skill.needsBlackFlash) {
-      const parts = input.trim().split(/\s+/);
-      const lastPart = parts[parts.length - 1];
-      const bfPct = parseFloat(lastPart);
-      const validPct = !isNaN(bfPct) && bfPct >= 0 && bfPct <= 100;
-      if (!validPct) {
-        message.reply(
-          "❓ **Xuất Lực Tối Đa** có thể nhập % HẮC Thiểm (mặc định 5%).\n" +
-          "> Cú pháp: `-skill xuất lực tối đa [%]`\n" +
-          "> VD: `-skill xltd` | `-skill xltd 20` | `-skill xltd 0.5`"
-        );
-        return;
-      }
-      const lines = skill.roll(bfPct);
-      const header = `[${skill.cost}] [CD: ${skill.cd}] [HẮC Thiểm: ${bfPct}%]`;
-      message.reply({
-        embeds: [{
-          title: `🎲 ${skill.name}`,
-          color: 0x1a1a2e,
-          description: header + "\n\n" + lines.join("\n"),
-        }],
-      });
-      return;
-    }
-
-    if (skill.needsReuse && skill.name === "Sanguine Pointilism") {
-      const parts = input.trim().split(/\s+/);
-      const lastPart = parts[parts.length - 1];
-      const reusePct = parseInt(lastPart, 10);
-      const validReuse = !isNaN(reusePct) && reusePct >= 0 && reusePct <= 100;
-      if (!validReuse) {
-        message.reply(
-          "❓ **Sanguine Pointilism** cần nhập % Reuse.\n" +
-          "> Cú pháp: `-skill sanguine pointilism <% reuse>`\n" +
-          "> VD: `-skill sanguine pointilism 60` (mặc định 40%, +20% mỗi 5 <:Bleed:1513762688226955285>Bleed trên địch)"
-        );
-        return;
-      }
-      const lines = skill.roll(reusePct);
-      const header = `[Reuse: ${reusePct}%] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
-      message.reply({
-        embeds: [{
-          title: `🎲 ${skill.name}`,
-          color: 0x5865f2,
+          color: skill.embedColor ?? 0x5865f2,
           description: header + "\n\n" + lines.join("\n"),
         }],
       });
@@ -4395,6 +4349,10 @@ client.on("messageCreate", async (message) => {
     }));
     return;
   }
+  } catch (err) {
+    console.error("[messageCreate error]", err);
+    try { message.reply("❌ Có lỗi không mong muốn xảy ra.").catch(() => {}); } catch {}
+  }
 });
 
 // ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
@@ -4759,7 +4717,7 @@ if (interaction.commandName === "use") {
       return;
     }
 
-try {
+    try {
       const changes = await withLock(targetUser.id, () => executeRemove({
         actorId: interaction.user.id, targetId: targetUser.id,
         isAdmin, expRemove, ahnRemove, bookEntries, itemEntries,
