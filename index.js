@@ -2615,7 +2615,7 @@ const SKILLS = {
     },
   },
 
-  // ── Misc combat skills ──
+  // ── Misc combat skills non status ──
   "y-you only live once": {
     name: "Y-you Only Live Once",
     cost: "1 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
