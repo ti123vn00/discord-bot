@@ -1,22 +1,25 @@
 /**
  * combat-system.js
  * Quản lý logic trận đấu: HP, Stamina, turn order, effect ticking, Injury, Shin/Mang
+ *
+ * RULESET VERSION: đã sửa & hoàn thiện
  */
 
-const { rollWeaponDamage, rollCriticalDice, getWeapon, ACTION_COSTS } = require("./weapons");
+const { rollWeaponDamage, rollCriticalDice, getWeapon } = require("./weapons");
 
 const COMBAT_STATE = new Map(); // battleId -> battle data
-const SHIN_ENABLED_USERS = new Set(); // Usernames enabled to use Shin/Mang (populate từ database)
+const SHIN_ENABLED_USERS = new Set(); // userId đã học Shin
 
-/**
- * Tạo battle ID duy nhất
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// KHỞI TẠO
+// ─────────────────────────────────────────────────────────────────────────────
+
 function generateBattleId() {
   return `battle_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 }
 
 /**
- * Khởi tạo trận đấu mới
+ * Tạo trận đấu mới
  */
 function createBattle(gmId, battleName) {
   const battleId = generateBattleId();
@@ -24,43 +27,39 @@ function createBattle(gmId, battleName) {
     battleId,
     gmId,
     battleName,
-    participants: [], // { userId, name, hp, maxHp, sta, maxSta, light, maxLight, sanity, maxSanity, weapon, res: {B,P,S}, buff: {}, debuff: {}, effects: {}, injuries: [], emotionLevel: 0, totalDmgDealt: 0, isShinActive: false, staSinceLastLight: 0 }
-    bosses: [],       // { bossId, name, hp, maxHp, sta, maxSta, sanity, maxSanity, res: {B,P,S}, buff: {}, debuff: {}, effects: {} }
-    turnIndex: 0,     // 0 = boss turn, 1+ = player turn index
-    currentTurnActor: null, // { type: "boss"/"player", id }
-    log: [],          // 15 action gần nhất
+    participants: [],
+    bosses: [],
+    log: [],
     turnNumber: 1,
-    turnPhase: "boss", // "boss" / "player" / "end"
+    turnPhase: "boss", // "boss" | "player" | "end"
     status: "ongoing",
-    currentPlayerTurnIdx: 0, // Index player hiện tại trong turn
   });
   return battleId;
 }
 
 /**
- * Thêm boss vào trận
+ * Thêm boss/mob vào trận
  */
 function addBoss(battleId, bossData) {
   const battle = COMBAT_STATE.get(battleId);
   if (!battle) return false;
 
   const bossId = `boss_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-  const boss = {
+  battle.bosses.push({
     bossId,
     name: bossData.name,
     hp: bossData.hp,
     maxHp: bossData.hp,
-    sta: bossData.sta || 100,
-    maxSta: bossData.sta || 100,
-    sanity: bossData.sanity || 0,
+    sta: bossData.sta ?? 100,
+    maxSta: bossData.sta ?? 100,
+    sanity: 0,
     maxSanity: 45,
-    res: bossData.res || { B: 1, P: 1, S: 1 },
+    res: bossData.res ?? { B: 1, P: 1, S: 1 },
     buff: {},
     debuff: {},
-    effects: {}, // burn, bleed, rupture, tremor, sinking, etc.
-  };
-  battle.bosses.push(boss);
-  addLog(battleId, `🐉 Boss **${boss.name}** tham gia trận [HP: ${boss.hp}/${boss.maxHp}]`);
+    effects: {}, // burn, bleed, rupture, tremor, sinking
+  });
+  addLog(battleId, `🐉 Boss **${bossData.name}** xuất hiện [HP: ${bossData.hp}]`);
   return bossId;
 }
 
@@ -74,470 +73,710 @@ function addPlayer(battleId, userId, playerData) {
   const weapon = getWeapon(playerData.weaponId);
   if (!weapon) return false;
 
-  const participant = {
+  battle.participants.push({
     userId,
     name: playerData.name,
     hp: playerData.hp,
     maxHp: playerData.hp,
-    sta: playerData.sta || 100,
-    maxSta: playerData.sta || 100,
-    light: playerData.light || 0,
-    maxLight: playerData.maxLight || 4,
-    sanity: 0, // Always start at 0
+    sta: playerData.sta ?? 100,
+    maxSta: playerData.sta ?? 100,
+    light: playerData.light ?? 0,
+    maxLight: Math.min(6, playerData.maxLight ?? 4),
+    sanity: 0,
     maxSanity: 45,
     weapon: weapon.id,
-    res: playerData.res || { B: 1, P: 1, S: 1 },
+    res: playerData.res ?? { B: 1, P: 1, S: 1 },
+    baseRes: playerData.res ?? { B: 1, P: 1, S: 1 }, // dùng để restore sau stagger
     buff: {},
     debuff: {},
-    effects: {}, // burn, bleed, rupture, poise, etc.
-    injuries: [], // gãy tay, gãy chân, gãy xương, choáng, mất tay, mất chân, vết thương lớn
-    emotionLevel: 0, // 0 / 1 / 2
-    emotionTurnCounter: 0,
+    effects: {}, // burn, bleed, rupture, tremor, sinking, poise, charge
+    injuries: [],
+    emotionLevel: 0,
+    emotionActiveTurns: 0,   // số turn còn lại của emotion level
+    emotionCooldown: 0,      // countdown 5 turn sau khi hết
     totalDmgDealt: 0,
+    emotionDmgThreshold: 0,  // dmg đã tích lũy từ mốc hiện tại
     isShinActive: false,
-    staSinceLastLight: 0,
+    isMangActive: false,
+    // Light recovery: đếm sta đã dùng trong turn hiện tại (reset đầu mỗi turn)
+    staUsedThisTurn: 0,
+    pendingLightGain: 0, // light sẽ nhận vào đầu turn sau
+    // Guard flag
+    isGuarding: false,
+    // Stagger
     isStaggered: false,
-    staggerTurnCounter: 0,
+    staggerTurnsLeft: 0,
+    // Panic
     isPanic: false,
-    skillCd: {}, // skillId -> remainingCd
-  };
-  battle.participants.push(participant);
-  addLog(battleId, `⚔️ Player **${participant.name}** tham gia trận [HP: ${participant.hp}/${participant.maxHp}]`);
+    // Injury: choáng stack
+    stunsStacks: 0,
+    // Skill cooldown
+    skillCd: {},
+  });
+
+  addLog(battleId, `⚔️ **${playerData.name}** tham gia trận [HP: ${playerData.hp} | Vũ khí: ${weapon.name}]`);
   return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DAMAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Trừ HP với tính toán Res
- * dmgData = { amount, type: "B"/"P"/"S", source: "player"/"boss" }
+ * Gây dmg lên target, tính res, guard, injury trigger
+ * dmgData = { amount, type: "B"|"P"|"S", isTrueDmg: bool, skipInjuryCheck: bool }
+ * Trả về { finalDmg, targetHp, maxHp }
  */
 function takeDamage(battleId, targetType, targetId, dmgData) {
   const battle = COMBAT_STATE.get(battleId);
   if (!battle) return null;
 
-  let target = null;
-  if (targetType === "boss") {
-    target = battle.bosses.find(b => b.bossId === targetId);
-  } else {
-    target = battle.participants.find(p => p.userId === targetId);
-  }
+  const target = _getTarget(battle, targetType, targetId);
   if (!target) return null;
 
-  const res = target.res[dmgData.type] || 1;
-  const finalDmg = Math.ceil(dmgData.amount * res);
-  
-  // Check injury debuffs
-  if (target.injuries && targetType === "player") {
-    if (target.injuries.includes("mất-tay")) {
-      const reducedDmg = Math.ceil(finalDmg * 0.5);
-      addLog(battleId, `⚠️ ${target.name} bị "Mất Tay" - Dmg từ ${finalDmg} → ${reducedDmg}`);
-      target.hp = Math.max(0, target.hp - reducedDmg);
-      return { finalDmg: reducedDmg, targetHp: target.hp, maxHp: target.maxHp };
-    }
-    if (target.injuries.includes("vết-thương-lớn")) {
-      target.maxHp = Math.max(1, target.maxHp - 100);
-      addLog(battleId, `⚠️ ${target.name} bị "Vết Thương Lớn" - Max HP → ${target.maxHp}`);
+  let amount = dmgData.amount;
+
+  // Guard: giảm 90% dmg
+  if (target.isGuarding) {
+    amount = Math.ceil(amount * 0.1);
+    addLog(battleId, `🛡️ ${target.name} Guard giảm dmg → ${amount}`);
+  }
+
+  // Tính resistance (True Dmg bỏ qua res nếu res < 1x)
+  let res = target.res[dmgData.type] ?? 1;
+  if (dmgData.isTrueDmg && res < 1) res = 1;
+  const finalDmg = Math.ceil(amount * res);
+
+  // Sinking: mỗi lần bị tấn công trừ 1 sanity, giảm 1 count
+  if (target.effects.sinking && target.effects.sinking >= 1) {
+    target.sanity = Math.max(-45, (target.sanity ?? 0) - 1);
+    // Bonus dmg nếu sanity <= -45 hoặc không có sanity (boss không có sanity)
+    const bonusSinking =
+      (targetType === "boss" && target.sanity === undefined) ||
+      (target.sanity !== undefined && target.sanity <= -45)
+        ? target.effects.sinking
+        : 0;
+    target.effects.sinking = Math.max(0, target.effects.sinking - 1);
+    if (target.effects.sinking < 0.5) target.effects.sinking = 0;
+    if (bonusSinking > 0) {
+      addLog(battleId, `💀 Sinking bonus +${bonusSinking} DMG`);
     }
   }
 
-  target.hp = Math.max(0, target.hp - finalDmg);
-  addLog(battleId, `💥 ${target.name} nhận ${finalDmg} DMG [${dmgData.type}] (Res: ${res}x) | HP: ${target.hp}/${target.maxHp}`);
+  // Rupture: bonus dmg bằng count, giảm 1 mỗi đòn
+  let ruptureDmg = 0;
+  if (target.effects.rupture && target.effects.rupture >= 1) {
+    ruptureDmg = Math.floor(target.effects.rupture);
+    target.effects.rupture = Math.max(0, target.effects.rupture - 1);
+    if (target.effects.rupture < 0.5) target.effects.rupture = 0;
+  }
 
-  // Check injury trigger (dmg > 30% maxHp)
-  if (targetType === "player" && finalDmg > target.maxHp * 0.3) {
-    const injuryRoll = Math.random() * 100;
-    if (injuryRoll < 10) {
+  const totalDmg = finalDmg + ruptureDmg;
+  target.hp = Math.max(0, target.hp - totalDmg);
+
+  const logParts = [`💥 ${target.name} nhận **${finalDmg}** DMG [${dmgData.type}] (Res: ${res}x)`];
+  if (ruptureDmg > 0) logParts.push(`+${ruptureDmg} Rupture`);
+  logParts.push(`| HP: ${target.hp}/${target.maxHp}`);
+  addLog(battleId, logParts.join(" "));
+
+  // Injury check: chỉ cho player, và không bỏ qua
+  if (targetType === "player" && !dmgData.skipInjuryCheck && totalDmg > target.maxHp * 0.3) {
+    const roll = Math.random() * 100;
+    if (roll < 10) {
       applyHeavyInjury(battleId, targetId);
-    } else if (injuryRoll < 50) {
+    } else if (roll < 50) {
       applyLightInjury(battleId, targetId);
     }
   }
 
-  return { finalDmg, targetHp: target.hp, maxHp: target.maxHp };
-}
-
-/**
- * Apply light injury (10% when dmg > 30% HP)
- */
-function applyLightInjury(battleId, playerId) {
-  const battle = COMBAT_STATE.get(battleId);
-  const player = battle.participants.find(p => p.userId === playerId);
-  if (!player) return;
-
-  const injuryTypes = ["gãy-tay", "gãy-chân", "gãy-xương", "choáng"];
-  const injury = injuryTypes[Math.floor(Math.random() * injuryTypes.length)];
-
-  if (!player.injuries.includes(injury)) {
-    player.injuries.push(injury);
-    addLog(battleId, `🩹 ${player.name} bị chấn thương nhẹ: **${injury}**`);
+  // Check stagger
+  if (targetType === "player" && target.sta <= 0 && !target.isStaggered) {
+    _applyStagger(battleId, target);
   }
-}
 
-/**
- * Apply heavy injury (40% when dmg > 30% HP)
- */
-function applyHeavyInjury(battleId, playerId) {
-  const battle = COMBAT_STATE.get(battleId);
-  const player = battle.participants.find(p => p.userId === playerId);
-  if (!player) return;
-
-  const injuryTypes = ["mất-tay", "mất-chân", "vết-thương-lớn"];
-  const injury = injuryTypes[Math.floor(Math.random() * injuryTypes.length)];
-
-  if (!player.injuries.includes(injury)) {
-    player.injuries.push(injury);
-    addLog(battleId, `💀 ${player.name} bị chấn thương nặng: **${injury}**`);
+  // Check panic
+  if (target.sanity !== undefined && target.sanity <= -45 && !target.isPanic) {
+    _applyPanic(battleId, target);
   }
+
+  return { finalDmg: totalDmg, targetHp: target.hp, maxHp: target.maxHp };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PLAYER ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Player action: Đánh
+ * Đánh thường
  */
-function playerAttack(battleId, playerId) {
+function playerAttack(battleId, playerId, targetBossId) {
   const battle = COMBAT_STATE.get(battleId);
-  const player = battle.participants.find(p => p.userId === playerId);
-  if (!player || battle.bosses.length === 0) return null;
+  if (!battle || battle.bosses.length === 0) return { error: "Không có boss" };
+
+  const player = _getPlayer(battle, playerId);
+  if (!player) return { error: "Không tìm thấy player" };
+  if (player.isStaggered || player.isPanic) return { error: "Đang Stagger/Panic, không thể hành động" };
 
   const weapon = getWeapon(player.weapon);
   const staCost = weapon.staCost;
 
-  if (player.sta < staCost) {
-    addLog(battleId, `❌ ${player.name} không đủ Stamina`);
-    return { error: "Không đủ Stamina" };
+  if (player.sta < staCost) return { error: "Không đủ Stamina" };
+
+  // Mất tay: -50% dmg gây ra
+  const hasMissingArm = player.injuries.includes("mất-tay");
+
+  player.sta -= staCost;
+  player.staUsedThisTurn += staCost;
+  player.isGuarding = false; // hủy guard khi tấn công
+
+  // Poise passive: reset nếu có weapon passive consumePoise
+  if (weapon.passive?.name?.includes("Orthodox")) {
+    // Reset poise khi tấn công (passive của moonlit-azure-blade)
+    player._orthodoxSkipTurn = false;
   }
 
-  const dmgRoll = rollWeaponDamage(weapon);
-  player.sta -= staCost;
-  player.staSinceLastLight += staCost;
+  // Roll damage
+  let dmgRoll = rollWeaponDamage(weapon);
 
-  // Apply Sanity modifier: mỗi -1 sanity = -1% dice
-  const sanityMod = 1 - Math.abs(player.sanity) / 100;
-  const modifiedDmg = Math.ceil(dmgRoll * sanityMod);
+  // Poise: tính crit rate (5% per poise stack)
+  let isCrit = false;
+  let poiseStacks = player.effects.poise ?? 0;
+  if (poiseStacks >= 1) {
+    const critChance = Math.min(poiseStacks * 0.05, 0.99);
+    isCrit = Math.random() < critChance;
+    if (isCrit) {
+      dmgRoll = Math.ceil(dmgRoll * 1.3);
+      // Halve poise sau khi crit
+      player.effects.poise = poiseStacks / 2;
+      if (player.effects.poise < 0.5) player.effects.poise = 0;
+      addLog(battleId, `✨ CRIT! Poise kích hoạt → DMG x1.3`);
+    }
+  }
 
-  const boss = battle.bosses[0];
-  const dmgData = { amount: modifiedDmg, type: weapon.type, source: "player" };
-  const hitResult = takeDamage(battleId, "boss", boss.bossId, dmgData);
+  // Sanity modifier: +1 sanity = +1% dice, -1 sanity = -1% dice
+  const sanityMod = 1 + player.sanity / 100;
+  let finalDmg = Math.ceil(dmgRoll * Math.max(0, sanityMod));
 
-  player.totalDmgDealt += modifiedDmg;
+  // Mất tay: -50% dmg
+  if (hasMissingArm) {
+    finalDmg = Math.ceil(finalDmg * 0.5);
+    addLog(battleId, `⚠️ Mất tay: DMG giảm còn ${finalDmg}`);
+  }
+
+  // Shin/Mang
+  if (player.isMangActive) {
+    finalDmg = Math.ceil(finalDmg * player._mangMul ?? 1.1);
+    addLog(battleId, `⬛ Mang kích hoạt → DMG +${Math.round(((player._mangMul ?? 1.1) - 1) * 100)}%`);
+  }
+
+  const boss = targetBossId
+    ? battle.bosses.find(b => b.bossId === targetBossId)
+    : battle.bosses.find(b => b.hp > 0);
+  if (!boss) return { error: "Không tìm thấy boss" };
+
+  const hitResult = takeDamage(battleId, "boss", boss.bossId, {
+    amount: finalDmg,
+    type: weapon.type,
+    isTrueDmg: player.isShinActive || player.isMangActive,
+  });
+
+  player.totalDmgDealt += hitResult?.finalDmg ?? 0;
   checkEmotionLevel(battleId, playerId);
 
-  addLog(battleId, `⚔️ ${player.name} [${weapon.name}] → Roll: ${dmgRoll} (Sanity mod: ${sanityMod.toFixed(2)}) → ${modifiedDmg} DMG`);
+  addLog(
+    battleId,
+    `⚔️ **${player.name}** [${weapon.name}] Roll: ${dmgRoll} → Sanity(${player.sanity >= 0 ? "+" : ""}${player.sanity}) → **${finalDmg} DMG**`
+  );
 
-  return { player, weapon, roll: dmgRoll, modifiedDmg, hitResult };
+  // Bleed tick khi địch hành động (tick mỗi lần hành động)
+  _tickBleedOnAction(battleId, "boss", boss.bossId);
+
+  return { player, weapon, roll: dmgRoll, finalDmg, isCrit, hitResult };
 }
 
 /**
- * Player action: Né
+ * Né (Dodge)
  */
 function playerDodge(battleId, playerId) {
-  const player = COMBAT_STATE.get(battleId).participants.find(p => p.userId === playerId);
-  if (!player) return null;
+  const battle = COMBAT_STATE.get(battleId);
+  const player = _getPlayer(battle, playerId);
+  if (!player) return { error: "Không tìm thấy player" };
+  if (player.isStaggered || player.isPanic) return { error: "Đang Stagger/Panic, không thể hành động" };
 
-  // Check injury: mất chân = không thể né
   if (player.injuries.includes("mất-chân")) {
-    addLog(battleId, `❌ ${player.name} không thể né vì bị mất chân`);
-    return { error: "Bị mất chân - không thể né" };
+    return { error: "Bị mất chân — không thể né" };
   }
 
   let staCost = 20;
-  // Gãy chân: mất gấp đôi stamina để né
-  if (player.injuries.includes("gãy-chân")) staCost = 40;
+  if (player.injuries.includes("gãy-chân")) staCost = 40; // gãy chân: x2 sta để né
 
-  if (player.sta < staCost) {
-    return { error: "Không đủ Stamina" };
-  }
+  if (player.sta < staCost) return { error: `Không đủ Stamina (cần ${staCost})` };
 
   player.sta -= staCost;
-  addLog(battleId, `💨 ${player.name} né (Sta: -${staCost})`);
-  return { success: true, sta: staCost };
+  player.staUsedThisTurn += staCost;
+  player.isGuarding = false;
+
+  addLog(battleId, `💨 **${player.name}** né (Sta: -${staCost})`);
+  return { success: true, staCost };
 }
 
 /**
- * Player action: Guard
+ * Guard (giảm 90% dmg nhận)
  */
 function playerGuard(battleId, playerId) {
-  const player = COMBAT_STATE.get(battleId).participants.find(p => p.userId === playerId);
-  if (!player) return null;
+  const battle = COMBAT_STATE.get(battleId);
+  const player = _getPlayer(battle, playerId);
+  if (!player) return { error: "Không tìm thấy player" };
+  if (player.isStaggered || player.isPanic) return { error: "Đang Stagger/Panic, không thể hành động" };
 
-  if (player.sta < 10) {
-    return { error: "Không đủ Stamina" };
-  }
+  if (player.sta < 10) return { error: "Không đủ Stamina (cần 10)" };
 
   player.sta -= 10;
-  addLog(battleId, `🛡️ ${player.name} Guard (Sta: -10)`);
+  player.staUsedThisTurn += 10;
+  player.isGuarding = true;
+
+  addLog(battleId, `🛡️ **${player.name}** Guard (Sta: -10) — Giảm 90% dmg`);
   return { success: true };
 }
 
 /**
- * Player action: Parry (d20 vs d16)
- * Nếu thắng: no dmg, +10 sanity
- * Nếu thua: -40 sta, nhận full dmg, -10 sanity
+ * Parry (player d20 vs boss d16)
+ * Thắng: không nhận dmg, +10 sanity
+ * Thua: -40 sta, nhận full dmg, -10 sanity
  */
 function playerParry(battleId, playerId) {
-  const player = COMBAT_STATE.get(battleId).participants.find(p => p.userId === playerId);
-  if (!player) return null;
+  const battle = COMBAT_STATE.get(battleId);
+  const player = _getPlayer(battle, playerId);
+  if (!player) return { error: "Không tìm thấy player" };
+  if (player.isStaggered || player.isPanic) return { error: "Đang Stagger/Panic, không thể hành động" };
 
-  // Check injury: gãy tay/gãy xương = trừ dice parry
-  let playerDice = 20;
-  if (player.injuries.includes("gãy-tay")) playerDice -= 5;
-  if (player.injuries.includes("gãy-xương")) playerDice -= 30;
-  if (player.injuries.includes("mất-tay")) playerDice -= 10;
+  player.isGuarding = false;
 
-  playerDice = Math.max(1, playerDice);
+  // Điều chỉnh dice theo injury
+  let playerDiceMax = 20;
+  if (player.injuries.includes("gãy-tay")) playerDiceMax -= 5;
+  if (player.injuries.includes("gãy-chân")) playerDiceMax -= 3;
+  if (player.injuries.includes("mất-chân")) playerDiceMax -= 10;
+  playerDiceMax = Math.max(1, playerDiceMax);
 
-  const bossParryDice = Math.floor(Math.random() * 16) + 1; // d16
-  const playerParryDice = Math.floor(Math.random() * playerDice) + 1;
+  const playerRoll = Math.floor(Math.random() * playerDiceMax) + 1;
+  const bossRoll = Math.floor(Math.random() * 16) + 1;
 
-  const success = playerParryDice >= bossParryDice;
+  const success = playerRoll >= bossRoll;
 
   if (success) {
     player.sanity = Math.min(45, player.sanity + 10);
-    addLog(battleId, `🎯 ${player.name} Parry thành công! [${playerParryDice} vs ${bossParryDice}] (+10 Sanity)`);
-    return { success: true, clash: true, sanityChange: 10 };
+    addLog(
+      battleId,
+      `🎯 **${player.name}** Parry thành công! [${playerRoll} vs ${bossRoll}] (+10 Sanity)`
+    );
+    return { success: true, playerRoll, bossRoll, sanityChange: +10 };
   } else {
-    player.sta = Math.max(0, player.sta - 40);
+    // Thua: -40 sta
+    let staPenalty = 40;
+    if (player.injuries.includes("gãy-tay")) staPenalty *= 2; // gãy tay: parry hụt mất x2 sta
+
+    player.sta = Math.max(0, player.sta - staPenalty);
     player.sanity = Math.max(-45, player.sanity - 10);
-    addLog(battleId, `❌ ${player.name} Parry thất bại [${playerParryDice} vs ${bossParryDice}] (-40 Sta, -10 Sanity)`);
-    return { success: false, clash: true, staLoss: 40, sanityChange: -10 };
+
+    addLog(
+      battleId,
+      `❌ **${player.name}** Parry thất bại [${playerRoll} vs ${bossRoll}] (-${staPenalty} Sta, -10 Sanity)`
+    );
+
+    // Check stagger sau khi mất sta
+    if (player.sta <= 0 && !player.isStaggered) _applyStagger(battleId, player);
+    // Check panic
+    if (player.sanity <= -45 && !player.isPanic) _applyPanic(battleId, player);
+
+    return { success: false, playerRoll, bossRoll, staPenalty, sanityChange: -10 };
   }
 }
 
 /**
- * Check & update Emotion Level
+ * Kích hoạt Shin/Mang (tốn 25 sanity, không dùng được khi sanity < -10)
+ */
+function playerActivateShin(battleId, playerId) {
+  const battle = COMBAT_STATE.get(battleId);
+  const player = _getPlayer(battle, playerId);
+  if (!player) return { error: "Không tìm thấy player" };
+  if (!canUseShin(playerId)) return { error: "Bạn chưa học được Shin" };
+  if (player.sanity < -10) return { error: "Sanity quá thấp để dùng Shin (cần > -10)" };
+
+  player.sanity -= 25;
+  player.isShinActive = true;
+  player.isMangActive = true;
+
+  // Tính Mang multiplier: +10% base, +10% mỗi vòng (cần track turnMangActivated)
+  player._mangStartTurn = battle.turnNumber;
+  player._mangMul = 1.1;
+
+  // Shin: giảm 0.2x mọi loại res
+  player.res = {
+    B: Math.max(0, player.res.B - 0.2),
+    P: Math.max(0, player.res.P - 0.2),
+    S: Math.max(0, player.res.S - 0.2),
+  };
+
+  addLog(battleId, `⬜ **${player.name}** kích hoạt Shin/Mang (-25 Sanity, Res -0.2x, Dmg +10%)`);
+  return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EMOTION LEVEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Kiểm tra và cập nhật Emotion Level sau mỗi lần gây dmg
  */
 function checkEmotionLevel(battleId, playerId) {
-  const player = COMBAT_STATE.get(battleId).participants.find(p => p.userId === playerId);
-  if (!player) return;
+  const battle = COMBAT_STATE.get(battleId);
+  const player = _getPlayer(battle, playerId);
+  if (!player || player.emotionCooldown > 0) return;
 
-  if (player.totalDmgDealt >= 500 && player.emotionLevel < 2) {
+  const totalDmg = player.totalDmgDealt;
+
+  if (player.emotionLevel < 2 && totalDmg >= 500) {
+    // Level 2
     player.emotionLevel = 2;
-    player.emotionTurnCounter = 0;
-    player.maxLight = Math.min(6, player.maxLight + 2);
-    addLog(battleId, `🔥 ${player.name} đạt Emotion Level 2! (Max Light +2)`);
-  } else if (player.totalDmgDealt >= 200 && player.emotionLevel < 1) {
+    player.emotionActiveTurns = 2;
+    player.maxLight = Math.min(6, player.maxLight + (player.emotionLevel === 1 ? 1 : 2));
+    const hpHeal = Math.ceil(player.maxHp * 0.10);
+    player.hp = Math.min(player.maxHp, player.hp + hpHeal);
+    addLog(
+      battleId,
+      `🔥 **${player.name}** → **Emotion Level 2**! (Max Light +2, Hồi ${hpHeal} HP, +2 Dice Up)`
+    );
+  } else if (player.emotionLevel < 1 && totalDmg >= 200) {
+    // Level 1
     player.emotionLevel = 1;
-    player.emotionTurnCounter = 0;
+    player.emotionActiveTurns = 2;
     player.maxLight = Math.min(6, player.maxLight + 1);
-    addLog(battleId, `🔥 ${player.name} đạt Emotion Level 1! (Max Light +1)`);
+    const hpHeal = Math.ceil(player.maxHp * 0.05);
+    player.hp = Math.min(player.maxHp, player.hp + hpHeal);
+    addLog(
+      battleId,
+      `🔥 **${player.name}** → **Emotion Level 1**! (Max Light +1, Hồi ${hpHeal} HP, +1 Dice Up)`
+    );
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EFFECTS TICK
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Tick effect damage (Burn, Bleed, etc) + apply Stagger/Panic
+ * Tick Burn + Bleed cuối turn (end turn phase)
+ * Burn: dmg = count * 2, halve; Bleed: halve (đã tick per-action)
  */
-function tickEffects(battleId, targetType, targetId) {
+function tickEffectsEndTurn(battleId, targetType, targetId) {
   const battle = COMBAT_STATE.get(battleId);
-  let target = null;
-
-  if (targetType === "boss") {
-    target = battle.bosses.find(b => b.bossId === targetId);
-  } else {
-    target = battle.participants.find(p => p.userId === targetId);
-  }
-
+  const target = _getTarget(battle, targetType, targetId);
   if (!target) return;
 
-  // Burn: dmg = 2x count, then halve
-  if (target.effects.burn && target.effects.burn > 0) {
-    const burnDmg = target.effects.burn * 2;
+  // Burn: gây dmg = count * 2, sau đó halve
+  if (target.effects.burn && target.effects.burn >= 1) {
+    const burnDmg = Math.ceil(target.effects.burn * 2);
     target.hp = Math.max(0, target.hp - burnDmg);
-    target.effects.burn /= 2;
+    target.effects.burn = target.effects.burn / 2;
     if (target.effects.burn < 0.5) target.effects.burn = 0;
-    addLog(battleId, `🔥 ${target.name} nhận ${burnDmg} Burn DMG`);
+    addLog(battleId, `🔥 ${target.name} nhận ${burnDmg} Burn DMG (count còn ${target.effects.burn.toFixed(1)})`);
   }
 
-  // Bleed: dmg = count/4 per action, halve on end turn
-  if (target.effects.bleed && target.effects.bleed > 0) {
-    const bleedDmg = Math.ceil(target.effects.bleed / 4);
-    target.hp = Math.max(0, target.hp - bleedDmg);
-    addLog(battleId, `🩸 ${target.name} nhận ${bleedDmg} Bleed DMG`);
-  }
-
-  // Check Stagger (sta = 0)
-  if (targetType === "player" && target.sta === 0 && !target.isStaggered) {
-    target.isStaggered = true;
-    target.staggerTurnCounter = 1;
-    target.res = { B: 2, P: 2, S: 2 };
-    addLog(battleId, `⚡ ${target.name} bị STAGGER! Không thể hành động 1 turn, Res: 2x`);
-  }
-
-  // Check Panic (sanity = -45)
-  if (target.sanity <= -45 && !target.isPanic) {
-    target.isPanic = true;
-    addLog(battleId, `😱 ${target.name} bị PANIC! Không thể hành động 1 turn`);
+  // Bleed: halve end turn (dmg đã tick per-action riêng)
+  if (target.effects.bleed && target.effects.bleed >= 0.5) {
+    target.effects.bleed = target.effects.bleed / 2;
+    if (target.effects.bleed < 0.5) target.effects.bleed = 0;
   }
 }
 
 /**
- * End Turn: Hồi Sta, Light recovery, Emotion tick, Effect halve
+ * Tick Bleed khi target hành động (per-action, không phải end turn)
+ * Gây dmg = count / 4
+ */
+function _tickBleedOnAction(battleId, targetType, targetId) {
+  const battle = COMBAT_STATE.get(battleId);
+  const target = _getTarget(battle, targetType, targetId);
+  if (!target || !target.effects.bleed || target.effects.bleed < 0.5) return;
+
+  const bleedDmg = Math.ceil(target.effects.bleed / 4);
+  target.hp = Math.max(0, target.hp - bleedDmg);
+  addLog(battleId, `🩸 ${target.name} nhận ${bleedDmg} Bleed DMG (hành động)`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// END TURN
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Kết thúc turn: hồi Stamina, Light recovery, Emotion tick, Effect halve, Stagger/Panic cleanup
  */
 function endTurn(battleId) {
   const battle = COMBAT_STATE.get(battleId);
   if (!battle) return;
 
-  // Participants: Hồi 30 Sta, Light recovery, Emotion tick, Remove Stagger/Panic
   for (const player of battle.participants) {
-    // Stagger cleanup
+    // ── Stagger ──
     if (player.isStaggered) {
-      player.staggerTurnCounter--;
-      if (player.staggerTurnCounter === 0) {
+      player.staggerTurnsLeft--;
+      if (player.staggerTurnsLeft <= 0) {
         player.isStaggered = false;
-        player.sta = player.maxSta; // Hồi đầy
-        // Reset res thành tính từ equipment
-        player.res = { B: 1, P: 1, S: 1 }; // TODO: lấy từ equipment
-        addLog(battleId, `✅ ${player.name} hết Stagger, Sta hồi đầy`);
+        player.sta = player.maxSta;
+        player.res = { ...player.baseRes }; // restore base res
+        addLog(battleId, `✅ **${player.name}** hết Stagger — Sta hồi đầy`);
+      } else {
+        addLog(battleId, `⚡ **${player.name}** vẫn đang Stagger (${player.staggerTurnsLeft} turn còn lại)`);
       }
     } else {
-      // Normal turn: Hồi 30 Sta
+      // Hồi 30 Sta
       player.sta = Math.min(player.maxSta, player.sta + 30);
     }
 
-    // Panic cleanup
+    // ── Panic ──
     if (player.isPanic) {
       player.isPanic = false;
       player.sanity = 0;
-      addLog(battleId, `✅ ${player.name} hết Panic, Sanity reset về 0`);
+      addLog(battleId, `✅ **${player.name}** hết Panic — Sanity reset về 0`);
     }
 
-    // Light recovery: nếu dùng ≥20 Sta trong turn
-    if (player.staSinceLastLight >= 20) {
-      const lightGain = Math.floor(player.staSinceLastLight / 20);
-      player.light = Math.min(player.maxLight, player.light + lightGain);
-      addLog(battleId, `💡 ${player.name} nhận +${lightGain} Light`);
-      player.staSinceLastLight = 0;
+    // ── Light recovery ──
+    // Đầu turn sau nhận pendingLight từ turn trước
+    if (player.pendingLightGain > 0) {
+      player.light = Math.min(player.maxLight, player.light + player.pendingLightGain);
+      addLog(battleId, `💡 **${player.name}** nhận +${player.pendingLightGain} Light`);
+      player.pendingLightGain = 0;
     }
+    // Tính light cho turn kế: mỗi 20 sta đã dùng trong turn này = 1 light
+    const newLight = Math.floor(player.staUsedThisTurn / 20);
+    if (newLight > 0) player.pendingLightGain = newLight;
+    player.staUsedThisTurn = 0;
 
-    // Emotion Level tick
+    // ── Guard reset ──
+    player.isGuarding = false;
+
+    // ── Emotion Level tick ──
     if (player.emotionLevel > 0) {
-      player.emotionTurnCounter++;
-      if (player.emotionTurnCounter >= 5) {
+      player.emotionActiveTurns--;
+      if (player.emotionActiveTurns <= 0) {
+        const prevLevel = player.emotionLevel;
         player.emotionLevel = 0;
-        addLog(battleId, `📉 ${player.name} mất Emotion Level`);
+        player.emotionCooldown = 5;
+        // Giảm maxLight về lại mức cũ
+        player.maxLight = Math.max(4, player.maxLight - (prevLevel === 2 ? 2 : 1));
+        addLog(battleId, `📉 **${player.name}** mất Emotion Level — Cooldown 5 turn`);
       }
     }
+    if (player.emotionCooldown > 0) {
+      player.emotionCooldown--;
+    }
 
-    // Effect halve
-    if (player.effects.burn) player.effects.burn /= 2;
-    if (player.effects.bleed) player.effects.bleed /= 2;
-    if (player.effects.rupture) player.effects.rupture /= 2;
-    if (player.effects.tremor) player.effects.tremor /= 2;
-    if (player.effects.sinking) player.effects.sinking /= 2;
-    if (player.effects.poise) player.effects.poise /= 2;
+    // ── Shin/Mang reset sau mỗi turn ──
+    if (player.isShinActive) {
+      // Mang mul tăng 10% mỗi turn
+      player._mangMul = Math.min(player._mangMul + 0.1, 2.0); // cap 2x
+    }
 
-    // Cleanup if < 0.5
-    for (const key of ["burn", "bleed", "rupture", "tremor", "sinking", "poise"]) {
-      if (player.effects[key] && player.effects[key] < 0.5) {
-        player.effects[key] = 0;
-      }
+    // ── Burn/Bleed tick end turn ──
+    tickEffectsEndTurn(battleId, "player", player.userId);
+
+    // ── Cooldown reduction ──
+    for (const skillId of Object.keys(player.skillCd)) {
+      player.skillCd[skillId] = Math.max(0, player.skillCd[skillId] - 1);
     }
   }
 
-  // Boss effects halve
+  // Boss: burn/bleed tick + effect cleanup
   for (const boss of battle.bosses) {
-    if (boss.effects.burn) boss.effects.burn /= 2;
-    if (boss.effects.bleed) boss.effects.bleed /= 2;
-    if (boss.effects.rupture) boss.effects.rupture /= 2;
-    if (boss.effects.tremor) boss.effects.tremor /= 2;
-    if (boss.effects.sinking) boss.effects.sinking /= 2;
-
-    for (const key of ["burn", "bleed", "rupture", "tremor", "sinking"]) {
-      if (boss.effects[key] && boss.effects[key] < 0.5) {
-        boss.effects[key] = 0;
-      }
-    }
+    tickEffectsEndTurn(battleId, "boss", boss.bossId);
   }
 
   battle.turnNumber++;
-  addLog(battleId, `⏭️ End Turn ${battle.turnNumber - 1} → Start Turn ${battle.turnNumber}`);
+  addLog(battleId, `⏭️ ─── End Turn ${battle.turnNumber - 1} → Turn ${battle.turnNumber} ───`);
 }
 
-/**
- * Thêm log (keep 15 gần nhất)
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// INJURY
+// ─────────────────────────────────────────────────────────────────────────────
+
+function applyLightInjury(battleId, playerId) {
+  const battle = COMBAT_STATE.get(battleId);
+  const player = _getPlayer(battle, playerId);
+  if (!player) return;
+
+  const choices = ["gãy-tay", "gãy-chân", "gãy-xương", "choáng"];
+  const injury = choices[Math.floor(Math.random() * choices.length)];
+
+  if (injury === "gãy-xương") {
+    player.maxHp = Math.max(1, player.maxHp - 30);
+    player.hp = Math.min(player.hp, player.maxHp);
+    addLog(battleId, `🩹 **${player.name}** Chấn thương nhẹ: **Gãy Xương** (Max HP -30 → ${player.maxHp})`);
+  } else if (injury === "choáng") {
+    player.stunsStacks = (player.stunsStacks ?? 0) + 1;
+    addLog(
+      battleId,
+      `🩹 **${player.name}** Chấn thương nhẹ: **Choáng** (Stack ${player.stunsStacks}/2 — 2 stack sẽ tăng stagger từ 1 → 2 turn)`
+    );
+  } else {
+    if (!player.injuries.includes(injury)) {
+      player.injuries.push(injury);
+      addLog(battleId, `🩹 **${player.name}** Chấn thương nhẹ: **${injury}**`);
+    }
+  }
+}
+
+function applyHeavyInjury(battleId, playerId) {
+  const battle = COMBAT_STATE.get(battleId);
+  const player = _getPlayer(battle, playerId);
+  if (!player) return;
+
+  const choices = ["mất-tay", "mất-chân", "vết-thương-lớn"];
+  const injury = choices[Math.floor(Math.random() * choices.length)];
+
+  if (injury === "vết-thương-lớn") {
+    player.maxHp = Math.max(1, player.maxHp - 100);
+    player.hp = Math.min(player.hp, player.maxHp);
+    addLog(battleId, `💀 **${player.name}** Chấn thương nặng: **Vết Thương Lớn** (Max HP -100 → ${player.maxHp})`);
+  } else {
+    if (!player.injuries.includes(injury)) {
+      player.injuries.push(injury);
+      addLog(battleId, `💀 **${player.name}** Chấn thương nặng: **${injury}**`);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAGGER / PANIC
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _applyStagger(battleId, player) {
+  let staggerDuration = 1;
+
+  // Choáng: 2 stack thì stagger tăng từ 1 → 2 turn
+  if ((player.stunsStacks ?? 0) >= 2) {
+    staggerDuration = 2;
+    player.stunsStacks = 0; // reset sau khi trigger
+    addLog(battleId, `⚡ **${player.name}** STAGGER ${staggerDuration} turn (Choáng x2!)`);
+  } else {
+    addLog(battleId, `⚡ **${player.name}** STAGGER — Không thể hành động 1 turn`);
+  }
+
+  player.isStaggered = true;
+  player.staggerTurnsLeft = staggerDuration;
+  // Set res về 2x trong khi stagger
+  player.res = { B: 2, P: 2, S: 2 };
+}
+
+function _applyPanic(battleId, player) {
+  player.isPanic = true;
+  addLog(battleId, `😱 **${player.name}** PANIC — Không thể hành động 1 turn`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER / UTILITY
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _getPlayer(battle, playerId) {
+  return battle?.participants.find(p => p.userId === playerId) ?? null;
+}
+
+function _getTarget(battle, type, id) {
+  if (type === "boss") return battle.bosses.find(b => b.bossId === id) ?? null;
+  return battle.participants.find(p => p.userId === id) ?? null;
+}
+
 function addLog(battleId, message) {
   const battle = COMBAT_STATE.get(battleId);
   if (!battle) return;
-
   battle.log.push(message);
-  if (battle.log.length > 15) battle.log.shift();
+  if (battle.log.length > 20) battle.log.shift();
 }
 
-/**
- * Format hiển thị trạng thái
- */
-function formatParticipantStatus(participant) {
-  const hpBar = formatBar(participant.hp, participant.maxHp, 20);
-  const staBar = formatBar(participant.sta, participant.maxSta, 20);
-
-  const resStr = `B:${participant.res.B}x P:${participant.res.P}x S:${participant.res.S}x`;
-  const effectStrs = [];
-  for (const [key, val] of Object.entries(participant.effects)) {
-    if (val > 0) effectStrs.push(`${key}:${val.toFixed(1)}`);
-  }
-  const effectStr = effectStrs.join(" ") || "None";
-  const buffStr = Object.keys(participant.buff).join(", ") || "None";
-  const injuryStr = participant.injuries.join(", ") || "None";
-
-  return {
-    hpBar,
-    staBar,
-    light: `${participant.light}/${participant.maxLight}`,
-    sanity: `${participant.sanity}/45`,
-    res: resStr,
-    effects: effectStr,
-    buff: buffStr,
-    injuries: injuryStr,
-  };
-}
-
-/**
- * Format bar visual
- */
-function formatBar(current, max, length = 20) {
-  const percent = Math.min(100, Math.max(0, (current / max) * 100));
-  const filled = Math.round((percent / 100) * length);
-  const bar = "🟩".repeat(filled) + "⬛".repeat(length - filled);
-  return `${bar} ${current}/${max}`;
-}
-
-/**
- * Get battle
- */
 function getBattle(battleId) {
   return COMBAT_STATE.get(battleId) ?? null;
 }
 
-/**
- * Enable Shin/Mang for user
- */
 function enableShinForUser(userId) {
   SHIN_ENABLED_USERS.add(userId);
 }
 
-/**
- * Check if user can use Shin
- */
 function canUseShin(userId) {
   return SHIN_ENABLED_USERS.has(userId);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FORMAT DISPLAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+function formatParticipantStatus(participant) {
+  const effectStrs = [];
+  for (const [key, val] of Object.entries(participant.effects ?? {})) {
+    if (val > 0) effectStrs.push(`${key}: ${val % 1 === 0 ? val : val.toFixed(1)}`);
+  }
+
+  const injuryParts = [...(participant.injuries ?? [])];
+  if ((participant.stunsStacks ?? 0) > 0) injuryParts.push(`Choáng x${participant.stunsStacks}`);
+
+  return {
+    hpBar: formatBar(participant.hp, participant.maxHp, 15),
+    staBar: formatBar(participant.sta, participant.maxSta, 15),
+    light: `${participant.light}/${participant.maxLight}`,
+    sanity: `${participant.sanity >= 0 ? "+" : ""}${participant.sanity} / ±45`,
+    res: `B:${participant.res.B}x  P:${participant.res.P}x  S:${participant.res.S}x`,
+    effects: effectStrs.join("  ") || "None",
+    buff: Object.keys(participant.buff ?? {}).join(", ") || "None",
+    injuries: injuryParts.join(", ") || "None",
+    emotionLevel: participant.emotionLevel,
+    stateFlags: [
+      participant.isStaggered ? `⚡ Stagger (${participant.staggerTurnsLeft}t)` : null,
+      participant.isPanic ? "😱 Panic" : null,
+      participant.isGuarding ? "🛡️ Guarding" : null,
+      participant.isShinActive ? "⬜ Shin/Mang" : null,
+    ]
+      .filter(Boolean)
+      .join("  ") || "None",
+  };
+}
+
+function formatBar(current, max, length = 15) {
+  if (max <= 0) return `— ${current}/${max}`;
+  const pct = Math.min(1, Math.max(0, current / max));
+  const filled = Math.round(pct * length);
+  return "🟩".repeat(filled) + "⬛".repeat(length - filled) + ` ${current}/${max}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORTS
+// ─────────────────────────────────────────────────────────────────────────────
+
 module.exports = {
+  // Battle lifecycle
   generateBattleId,
   createBattle,
   addBoss,
   addPlayer,
-  takeDamage,
+  getBattle,
+  endTurn,
+  addLog,
+  // Actions
   playerAttack,
   playerDodge,
   playerGuard,
   playerParry,
+  playerActivateShin,
+  // Damage / Effects
+  takeDamage,
+  tickEffectsEndTurn,
+  // Injury
+  applyLightInjury,
+  applyHeavyInjury,
+  // Emotion
   checkEmotionLevel,
-  tickEffects,
-  endTurn,
-  addLog,
+  // Display
   formatParticipantStatus,
   formatBar,
-  getBattle,
+  // Shin
   enableShinForUser,
   canUseShin,
+  // State (for debugging/admin)
   COMBAT_STATE,
 };
