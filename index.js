@@ -1793,18 +1793,19 @@ const SKILLS = {
   // ── Misc skills ──
   "xuất lực tối đa": {
     name: "Xuất Lực Tối Đa", cost: "1 <:Light:1513786082502770719>Light + 20 Cursed Energy", cd: "0 Turn", diceMul: "1x",
-    roll() {
+    needsBlackFlash: true,
+    roll(blackFlashPct = 5) {
       const d1=r(13,17);
-      const isBlackFlash = Math.random() < 0.05;
+      const isBlackFlash = Math.random() * 100 < blackFlashPct;
       if (isBlackFlash) {
         return [
           `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break]`,
-          `⚫ **HẮC THIỂM!** Dice Multiplier → **2.5x**`,
+          `⚫ **HẮC THIỂM!** Dice Multiplier → **2.5x** *(tỷ lệ: ${blackFlashPct}%)*`,
         ];
       }
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break]`,
-        `*(5% Hắc Thiểm → không kích hoạt)*`,
+        `*(${blackFlashPct}% HẮC Thiểm → không kích hoạt)*`,
       ];
     },
   },
@@ -3674,6 +3675,31 @@ client.on("messageCreate", async (message) => {
     }
 
     // Sanguine Pointilism yêu cầu nhập % reuse
+    if (skill.needsBlackFlash) {
+      const parts = input.trim().split(/\s+/);
+      const lastPart = parts[parts.length - 1];
+      const bfPct = parseFloat(lastPart);
+      const validPct = !isNaN(bfPct) && bfPct >= 0 && bfPct <= 100;
+      if (!validPct) {
+        message.reply(
+          "❓ **Xuất Lực Tối Đa** có thể nhập % HẮC Thiểm (mặc định 5%).\n" +
+          "> Cú pháp: `-skill xuất lực tối đa [%]`\n" +
+          "> VD: `-skill xltd` | `-skill xltd 20` | `-skill xltd 0.5`"
+        );
+        return;
+      }
+      const lines = skill.roll(bfPct);
+      const header = `[${skill.cost}] [CD: ${skill.cd}] [HẮC Thiểm: ${bfPct}%]`;
+      message.reply({
+        embeds: [{
+          title: `🎲 ${skill.name}`,
+          color: 0x1a1a2e,
+          description: header + "\n\n" + lines.join("\n"),
+        }],
+      });
+      return;
+    }
+
     if (skill.needsReuse && skill.name === "Sanguine Pointilism") {
       const parts = input.trim().split(/\s+/);
       const lastPart = parts[parts.length - 1];
