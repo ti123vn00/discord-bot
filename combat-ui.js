@@ -330,6 +330,10 @@ async function showGMPanel(interaction, battle, asFollowUp = false) {
       .setCustomId(`gm::endturn::${battle.battleId}`)
       .setLabel("⏭️ End Boss Turn")
       .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`gm::endencounter::${battle.battleId}`)
+      .setLabel("🏁 End Encounter")
+      .setStyle(ButtonStyle.Secondary),
   );
   components.push(actionRow);
 
@@ -596,9 +600,38 @@ async function handleCombatInteraction(interaction) {
 
       if (subAction === "endturn") {
         endTurn(battle.battleId);
-        // Reset selection cho turn mới
         sel.targetUserId = null;
         await interaction.reply({ content: `✅ End Boss Turn → Player Phase bắt đầu`, ephemeral: true });
+        return true;
+      }
+
+      if (subAction === "endencounter") {
+        // Tổng kết encounter: Stamina hồi đầy, HP giữ nguyên
+        const summary = battle.participants.map(p => {
+          const survived = p.hp > 0;
+          p.sta = p.maxSta ?? 100;
+          return `${survived ? "✅" : "☠️"} **${p.name}** — HP: ${Math.max(0, p.hp)}/${p.maxHp}`;
+        }).join("\n") || "Không có player";
+
+        const bossSummary = battle.bosses.map(b =>
+          `${b.hp <= 0 ? "☠️" : "🐉"} **${b.name}** — HP: ${Math.max(0, b.hp)}/${b.maxHp}`
+        ).join("\n") || "Không có boss";
+
+        battle.ended = true;
+        battle.log.push(`[Turn ${battle.turnNumber}] 🏁 Encounter kết thúc bởi GM`);
+
+        const embed = new EmbedBuilder()
+          .setTitle(`🏁 Encounter Kết Thúc — ${battle.battleName}`)
+          .setColor(0x95a5a6)
+          .addFields(
+            { name: "⚔️ Kết quả Players", value: summary, inline: false },
+            { name: "🐉 Kết quả Bosses", value: bossSummary, inline: false },
+            { name: "📊 Thống kê", value: `Turn: ${battle.turnNumber}
+Log entries: ${battle.log.length}`, inline: false },
+          )
+          .setFooter({ text: "Stamina của tất cả player đã được hồi đầy. HP giữ nguyên." });
+
+        await interaction.reply({ embeds: [embed], ephemeral: false });
         return true;
       }
 
