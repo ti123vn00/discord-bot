@@ -65,6 +65,21 @@ const COMBAT_COMMAND_DEF = new SlashCommandBuilder()
   )
   .addSubcommand(sub =>
     sub
+      .setName("addplayer")
+      .setDescription("GM thêm player vào trận thủ công")
+      .addStringOption(opt => opt.setName("battleid").setDescription("ID trận").setRequired(true))
+      .addUserOption(opt => opt.setName("user").setDescription("User Discord của player").setRequired(true))
+      .addStringOption(opt => opt.setName("charname").setDescription("Tên nhân vật").setRequired(true))
+      .addStringOption(opt => {
+        const weaponChoices = listWeapons().map(w => ({ name: w.name, value: w.id }));
+        return opt.setName("weapon").setDescription("Chọn vũ khí").setRequired(true).addChoices(...weaponChoices);
+      })
+      .addIntegerOption(opt => opt.setName("maxhp").setDescription("Max HP").setRequired(true))
+      .addIntegerOption(opt => opt.setName("maxlight").setDescription("Max Light (mặc định 4)").setRequired(false))
+      .addIntegerOption(opt => opt.setName("maxsta").setDescription("Max Stamina (mặc định 100)").setRequired(false))
+  )
+  .addSubcommand(sub =>
+    sub
       .setName("panel")
       .setDescription("Mở panel GM hoặc player")
       .addStringOption(opt => opt.setName("battleid").setDescription("ID trận").setRequired(true))
@@ -142,6 +157,64 @@ async function handleCombatJoin(interaction) {
 }
 
 /**
+ * Handle /combat addplayer (GM thêm player thủ công)
+ */
+async function handleCombatAddPlayer(interaction) {
+  const battleId = interaction.options.getString("battleid");
+  const targetUser = interaction.options.getUser("user");
+  const charName = interaction.options.getString("charname");
+  const weaponId = interaction.options.getString("weapon");
+  const maxHp = interaction.options.getInteger("maxhp");
+  const maxLight = interaction.options.getInteger("maxlight") ?? 4;
+  const maxSta = interaction.options.getInteger("maxsta") ?? 100;
+
+  const battle = getBattle(battleId);
+  if (!battle) {
+    await interaction.reply({ content: "❌ Trận đấu không tìm thấy", ephemeral: true });
+    return;
+  }
+  if (battle.gmId !== interaction.user.id) {
+    await interaction.reply({ content: "❌ Chỉ GM mới có thể thêm player", ephemeral: true });
+    return;
+  }
+
+  const weapon = getWeapon(weaponId);
+  if (!weapon) {
+    await interaction.reply({ content: "❌ Vũ khí không hợp lệ", ephemeral: true });
+    return;
+  }
+
+  const alreadyIn = battle.participants.find(p => p.userId === targetUser.id);
+  if (alreadyIn) {
+    await interaction.reply({ content: `❌ ${targetUser} đã có trong trận rồi (nhân vật: **${alreadyIn.name}**)`, ephemeral: true });
+    return;
+  }
+
+  addPlayer(battleId, targetUser.id, {
+    name: charName,
+    hp: maxHp,
+    maxSta,
+    weaponId,
+    maxLight: Math.min(6, maxLight),
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle("✅ Thêm Player thành công")
+    .setColor(0x2ecc71)
+    .setDescription(`GM đã thêm ${targetUser} vào trận **${battle.battleName}**`)
+    .addFields(
+      { name: "Nhân vật", value: charName, inline: true },
+      { name: "Vũ khí", value: `${weapon.name} (${weapon.type})`, inline: true },
+      { name: "HP", value: `${maxHp}/${maxHp}`, inline: true },
+      { name: "Max Stamina", value: `${maxSta}`, inline: true },
+      { name: "Max Light", value: `${Math.min(6, maxLight)}`, inline: true },
+    )
+    .setFooter({ text: `${targetUser.username} dùng /combat panel ${battleId} để mở panel` });
+
+  await interaction.reply({ embeds: [embed], ephemeral: false });
+}
+
+/**
  * Handle /combat addmob
  */
 async function handleCombatAddmob(interaction) {
@@ -179,13 +252,54 @@ async function handleCombatPanel(interaction) {
   const isGM = battle.gmId === interaction.user.id;
   const player = battle.participants.find(p => p.userId === interaction.user.id);
 
-  if (isGM) {
-    await showGMPanel(interaction, battle);
-  } else if (player) {
+  // Nếu là player (dù có là GM hay không) → show player panel
+  if (player) {
     await showPlayerPanel(interaction, battle, player);
+    // Nếu đồng thời là GM, follow up với GM panel (ephemeral riêng)
+    if (isGM) {
+      await showGMPanelFollowUp(interaction, battle);
+    }
+  } else if (isGM) {
+    await showGMPanel(interaction, battle);
   } else {
     await interaction.reply({ content: "❌ Bạn không có trong trận này", ephemeral: true });
   }
+}
+
+/**
+ * GM Panel as a followUp (khi GM cũng là player, reply đã dùng cho player panel)
+ */
+async function showGMPanelFollowUp(interaction, battle) {
+  const embed = new EmbedBuilder()
+    .setTitle(`⚔️ ${battle.battleName} - GM Panel (Turn ${battle.turnNumber})`)
+    .setColor(0xe74c3c)
+    .addFields(
+      {
+        name: "🐉 Bosses",
+        value: battle.bosses.map(b => `**${b.name}** - HP: ${formatBar(b.hp, b.maxHp, 10)}`).join("\n") || "Không có",
+        inline: false,
+      },
+      {
+        name: "⚔️ Players",
+        value: battle.participants.map(p => `**${p.name}** - HP: ${formatBar(p.hp, p.maxHp, 10)}`).join("\n") || "Chưa có",
+        inline: false,
+      },
+      {
+        name: "📋 Recent Log",
+        value: battle.log.slice(-5).map(l => `> ${l}`).join("\n") || "Trống",
+        inline: false,
+      }
+    )
+    .setFooter({ text: `Battle ID: ${battle.battleId}` });
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`gm::endturn::${battle.battleId}`)
+      .setLabel("⏭️ End Boss Turn")
+      .setStyle(ButtonStyle.Success)
+  );
+
+  await interaction.followUp({ embeds: [embed], components: [buttons], ephemeral: true });
 }
 
 /**
@@ -217,7 +331,7 @@ async function showGMPanel(interaction, battle) {
 
   const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`gm_end_boss_turn_${battle.battleId}`)
+      .setCustomId(`gm::endturn::${battle.battleId}`)
       .setLabel("⏭️ End Boss Turn")
       .setStyle(ButtonStyle.Success)
   );
@@ -249,26 +363,26 @@ async function showPlayerPanel(interaction, battle, player) {
 
   const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`attack_${battle.battleId}_${player.userId}`)
+      .setCustomId(`attack::${battle.battleId}::${player.userId}`)
       .setLabel("⚔️ Đánh")
       .setStyle(ButtonStyle.Danger)
       .setDisabled(player.sta < weapon.staCost),
     new ButtonBuilder()
-      .setCustomId(`dodge_${battle.battleId}_${player.userId}`)
+      .setCustomId(`dodge::${battle.battleId}::${player.userId}`)
       .setLabel("💨 Né")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(player.sta < 20),
     new ButtonBuilder()
-      .setCustomId(`guard_${battle.battleId}_${player.userId}`)
+      .setCustomId(`guard::${battle.battleId}::${player.userId}`)
       .setLabel("🛡️ Guard")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(player.sta < 10),
     new ButtonBuilder()
-      .setCustomId(`parry_${battle.battleId}_${player.userId}`)
+      .setCustomId(`parry::${battle.battleId}::${player.userId}`)
       .setLabel("🎯 Parry")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId(`skill_${battle.battleId}_${player.userId}`)
+      .setCustomId(`skill::${battle.battleId}::${player.userId}`)
       .setLabel("✨ Skill")
       .setStyle(ButtonStyle.Secondary)
   );
@@ -292,6 +406,9 @@ async function handleCombatInteraction(interaction) {
         case "join":
           await handleCombatJoin(interaction);
           return true;
+        case "addplayer":
+          await handleCombatAddPlayer(interaction);
+          return true;
         case "addmob":
           await handleCombatAddmob(interaction);
           return true;
@@ -306,7 +423,14 @@ async function handleCombatInteraction(interaction) {
   }
 
   if (interaction.isButton()) {
-    const [action, battleId, userId] = interaction.customId.split("_");
+    // customId format: "action::battleId::userId" (dùng :: để tránh conflict với _ trong battleId)
+    const firstSep = interaction.customId.indexOf("::");
+    const rest = interaction.customId.slice(firstSep + 2);
+    const secondSep = rest.indexOf("::");
+    const action = interaction.customId.slice(0, firstSep);
+    const battleId = secondSep === -1 ? rest : rest.slice(0, secondSep);
+    const userId = secondSep === -1 ? null : rest.slice(secondSep + 2);
+
     const battle = getBattle(battleId);
 
     if (!battle) {
