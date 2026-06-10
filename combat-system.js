@@ -14,6 +14,11 @@
  *   #5  Boss selector dùng b.id thay vì b.bossId
  *   #6  Emotion Level 2 tính maxLight sai (dùng baseMaxLight thay vì player.emotionLevel)
  *   #7  Shin giảm res bản thân (đúng theo ruleset) chứ không phải res địch
+ *   #8  GM buttons dùng battleId sai từ parseCustomId → "Trận đấu không tìm thấy"
+ *   #9  Boss modal attack không check injury / panic
+ *   #10 Light gain tính cả Dodge/Guard thay vì chỉ đánh thường
+ *   #11 Shin/Mang không bao giờ tắt → thêm _shinDuration 3 turn
+ *   #12 Moonlit Azure Blade passive chưa implement → grant +10 Poise khi không đánh
  */
 
 const { rollWeaponDamage, rollCriticalDice, getWeapon } = require("./weapons");
@@ -150,6 +155,8 @@ async function addPlayer(battleId, userId, playerData) {
     isShinActive: false,
     isMangActive: false,
     staUsedThisTurn: 0,
+    attackStaThisTurn: 0,
+    didAttackThisTurn: false,
     pendingLightGain: 0,
     isGuarding: false,
     isStaggered: false,
@@ -267,12 +274,14 @@ async function playerAttack(battleId, playerId, targetBossId) {
 
   player.sta -= staCost;
   player.staUsedThisTurn += staCost;
+  player.attackStaThisTurn = (player.attackStaThisTurn ?? 0) + staCost;
+  player.didAttackThisTurn = true;
   player.isGuarding = false;
 
   if (player.sta <= 0 && !player.isStaggered) _applyStagger(battle, player);
+  const justStaggered = player.isStaggered;
 
   // Poise: tính crit rate (5% per poise stack)
-  let isCrit = false;
   const poiseStacks = player.effects.poise ?? 0;
   if (poiseStacks >= 1) {
     const critChance = Math.min(poiseStacks * 0.05, 0.99);
@@ -319,7 +328,7 @@ async function playerAttack(battleId, playerId, targetBossId) {
   _tickBleedOnAction(battle, "player", player.userId);
 
   await saveBattleToRedis(battle);
-  return { player, weapon, roll: dmgRoll, finalDmg, isCrit, hitResult };
+  return { player, weapon, roll: dmgRoll, finalDmg, isCrit, hitResult, justStaggered };
 }
 
 async function playerDodge(battleId, playerId) {
@@ -427,6 +436,7 @@ async function playerActivateShin(battleId, playerId) {
   player.isMangActive = true;
   player._mangStartTurn = battle.turnNumber;
   player._mangMul = 1.1;
+  player._shinDuration = 3; // tắt sau 3 turn
 
   // FIX #7: Shin giảm res của BẢN THÂN (theo ruleset), không phải res địch
   player.res = {
@@ -477,9 +487,26 @@ async function endTurn(battleId) {
       _addLog(battle, `💡 **${player.name}** nhận +${player.pendingLightGain} Light`);
       player.pendingLightGain = 0;
     }
-    const newLight = Math.floor(player.staUsedThisTurn / 20);
+    const newLight = Math.floor(player.attackStaThisTurn / 20);
     if (newLight > 0) player.pendingLightGain = newLight;
     player.staUsedThisTurn = 0;
+    player.attackStaThisTurn = 0;
+
+    // Moonlit Azure Blade passive: không tấn công turn này → +10 Poise (max 2 stack = 20)
+    const weapon = getWeapon(player.weapon);
+    if (weapon?.passive?.name?.includes("Orthodox")) {
+      if (!player.didAttackThisTurn) {
+        const curPoise = player.effects.poise ?? 0;
+        if (curPoise < 20) {
+          player.effects.poise = Math.min(20, curPoise + 10);
+          _addLog(battle, `⚔️ **${player.name}** Orthodox Blade: +10 Poise → ${player.effects.poise}`);
+        }
+      } else {
+        // Reset poise passive counter khi tấn công
+        // (poise stacks từ crit vẫn giữ, chỉ passive không cộng thêm)
+      }
+    }
+    player.didAttackThisTurn = false;
 
     player.isGuarding = false;
 
@@ -497,9 +524,19 @@ async function endTurn(battleId) {
     }
     if (player.emotionCooldown > 0) player.emotionCooldown--;
 
-    // Mang mul tăng 10% mỗi turn khi Shin active
+    // Mang mul tăng 10% mỗi turn khi Shin active, tắt sau _shinDuration turn
     if (player.isShinActive) {
-      player._mangMul = Math.min(player._mangMul + 0.1, 2.0);
+      player._shinDuration = (player._shinDuration ?? 3) - 1;
+      if (player._shinDuration <= 0) {
+        player.isShinActive = false;
+        player.isMangActive = false;
+        player._mangMul = 1.0;
+        // Hồi lại res bản thân
+        player.res = { ...player.baseRes };
+        _addLog(battle, `⬜ **${player.name}** Shin/Mang kết thúc — Res hồi lại`);
+      } else {
+        player._mangMul = Math.min(player._mangMul + 0.1, 2.0);
+      }
     }
 
     // Burn/Bleed tick cuối turn
