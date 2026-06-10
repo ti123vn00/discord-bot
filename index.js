@@ -3236,8 +3236,8 @@ const SKILLS = {
     roll() {
       const d1 = r(4,8), d2 = r(4,8);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Triệu hồi gai chọt đít kẻ thù gây 2 <:Fairy:1513782007602216960>Fairy`,
-        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Triệu hồi gai chọt đít kẻ thù gây 2 <:Fairy:1513782007602216960>Fairy`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Triệu hồi gai đâm kẻ thù gây 2 <:Fairy:1513782007602216960>Fairy`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Triệu hồi gai đâm kẻ thù gây 2 <:Fairy:1513782007602216960>Fairy`,
         `${D2} Nhận 1 <:Light:1513786082502770719>Light nếu đánh dính kẻ thù`,
       ];
     },
