@@ -27,7 +27,7 @@ const commands = [
       opt.setName("poise").setDescription("Starting Poise stacks (1 stack = 5% crit, tối đa 99)")
         .setMinValue(0).setMaxValue(99).setRequired(false))
     .addBooleanOption(opt =>
-      opt.setName("critdiv").setDescription("Crit Divide? (mỗi lần crit, Poise stacks giảm đôi)").setRequired(false))
+      opt.setName("critdiv").setDescription("Crit Divide (mỗi lần crit, Poise stacks giảm theo số đã ghi, mặc định là 2)").setRequired(false))
     // sanity: sanity BẢN THÂN khi bắt đầu tính (ảnh hưởng dmg roll của player)
     .addNumberOption(opt =>
       opt.setName("sanity").setDescription("Sanity bản thân (ảnh hưởng dmg: +1 sanity = +1% dice, VD: 30)").setRequired(false))
