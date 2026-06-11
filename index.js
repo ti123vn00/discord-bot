@@ -2498,19 +2498,30 @@ const SKILLS = {
       ];
     },
   },
-  "apocalypse": {
+"apocalypse": {
     name: "Apocalypse",
     cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "—", diceMul: "1.5x",
-    roll() {
-      const d1 = r(25,35);
-      const lowHp = Math.random() < 0.5;
-      return [
-        `*[Before Use] Nếu bản thân dưới 50% HP: nhân đôi Dice*`,
-        `*[Before Use] Nếu chết trước khi kích hoạt: kích hoạt lại 1 đòn không có hiệu ứng sát thương chuẩn*`,
-        `<:Dice1:1508173590078558369> **${lowHp ? d1*2 : d1}** [<:Blunt:1513768529718022254>Blunt] [True Damage]${lowHp ? " *(Dưới 50% HP: Dice x2)*" : ""} — nếu địch dưới 50% gây thêm 50% damage`,
-      ];
-    },
+promptArg: {
+  label: "Dưới 50% HP?",
+  parse: (s) => {
+    const v = s.toLowerCase().trim();
+    if (v === "yes" || v === "y" || v === "1" || v === "true") return "yes";
+    return "no"; // mặc định no khi không nhập hoặc nhập sai
   },
+  validate: (v) => true,
+  errorMsg: "", // không dùng nữa vì luôn pass
+  buildHeader: (v, s) => `[${s.cost}] [CD: ${s.cd}] [Dice Mul: ${s.diceMul}]${v === "yes" ? " *(Dưới 50% HP: Dice x2)*" : ""}`,
+},
+roll(v = "no") {
+  const lowHp = v === "yes";
+  const d1 = r(25,35);
+  return [
+    `*[Before Use] Nếu bản thân dưới 50% HP: nhân đôi Dice*`,
+    `*[Before Use] Nếu chết trước khi kích hoạt: kích hoạt lại 1 đòn không có hiệu ứng sát thương chuẩn*`,
+    `<:Dice1:1508173590078558369> **${lowHp ? d1*2 : d1}** [<:Blunt:1513768529718022254>Blunt] [True Damage]${lowHp ? " *(Dưới 50% HP: Dice x2)*" : ""} — nếu địch dưới 50% gây thêm 50% damage`,
+  ];
+},
+},
 
   // ── Sinking (Fused Blade) ──
   "greatsword rend": {
@@ -3453,6 +3464,8 @@ const SKILL_ALIASES = {
   "dl": "degraded lock",
   "degradedshockwave": "degraded shockwave",
   "ds": "degraded shockwave",
+  "apocalypse": "apocalypse",
+  "apo": "apocalypse",
 };
 
 function findSkill(raw) {
