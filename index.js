@@ -673,6 +673,7 @@ function calcMath(opts) {
     poiseInit = 0,
     critDiv = 0,
     sanityInit = 0,
+    enemySanityInit = 0,
     diceMul = 1,
     sinkingInit = 0,
     ruptureInit = 0,
@@ -710,6 +711,7 @@ function calcMath(opts) {
   }
 
   let sanity = sanityInit;
+  let enemySanity = enemySanityInit;
   let totalDmg = 0;
   let totalPoise = poiseInit;
   let enemySinking = Math.min(sinkingInit, SINKING_MAX);
@@ -738,8 +740,8 @@ function calcMath(opts) {
     // sau đó mới trừ 1 stack — đòn hiện tại không hưởng lợi từ stack nó vừa tự áp.
     let sinkingBonus = 0;
     if (enemySinking > 0) {
-      sanity = Math.max(sanity - 1, SANITY_MIN);
-      if (sanity <= SANITY_MIN || isNaN(sanity)) {
+      enemySanity = Math.max(enemySanity - 1, SANITY_MIN);
+      if (enemySanity <= SANITY_MIN || isNaN(enemySanity)) {
         instanceDmg += enemySinking;
         sinkingBonus = enemySinking;
       }
@@ -830,7 +832,7 @@ const poiseDisplay = critDiv > 1 && critCount > 0
     { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
-    { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
+    { name: "Enemy's Sanity", value: enemySanity.toString(), inline: true },
     { name: "Remaining <:Poise:1513762945715142736>Poise", value: finalPoiseStacks.toString(), inline: true },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true },
@@ -1193,8 +1195,8 @@ const SKILLS = {
       ];
     },
   },
-  "just a vengeance": {
-    name: "Just A Vengeance",
+  "just a vengeance (original)": {
+    name: "Just A Vengeance (Original)",
     cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
@@ -4410,13 +4412,14 @@ client.on("interactionCreate", async (interaction) => {
     const sinkingInit = interaction.options.getNumber("sinking") ?? 0;
     const ruptureInit = interaction.options.getNumber("rupture") ?? 0;
     const sanityInit = interaction.options.getNumber("sanity") ?? 0;
+    const enemySanityInit = interaction.options.getNumber("enemysanity") ?? 0;
     const bonusPct = interaction.options.getNumber("bonus") ?? 0;
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
     const critDivOption = interaction.options.getString("critdiv") ?? null;
     let critDivSlash = 0;
-    if (critDivOption === true || critDivOption === "yes" || critDivOption === "true") {
+    if (critDivOption === "yes" || critDivOption === "true" || critDivOption === "1") {
       critDivSlash = 2;
     } else if (typeof critDivOption === "string") {
       const p = parseFloat(critDivOption);
@@ -4432,6 +4435,7 @@ client.on("interactionCreate", async (interaction) => {
       poiseInit,
       critDiv: critDivSlash,
       sanityInit,
+      enemySanityInit,
       diceMul,
       sinkingInit,
       ruptureInit,
