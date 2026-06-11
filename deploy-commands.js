@@ -1,4 +1,4 @@
-// deploy-commands.js
+//  deploy-commands.js
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
