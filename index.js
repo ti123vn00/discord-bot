@@ -4326,14 +4326,13 @@ client.on("messageCreate", async (message) => {
     const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
-    const critDivRaw = (kv["critdiv"] ?? "0").toLowerCase().trim();
+    const critDivStr = (kv["critdiv"] ?? "").trim();
     let critDiv = 0;
-    if (critDivRaw === "yes" || critDivRaw === "true" || critDivRaw === "1") {
-      critDiv = 2; // legacy: "yes" = Overbearing (chia 2)
-    } else {
-      const parsed = parseFloat(critDivRaw);
-      if (!isNaN(parsed) && parsed > 1) critDiv = parsed;
-      // 0, "no", "false" hoặc <=1 → critDiv = 0 (không chia)
+    if (critDivStr === "yes" || critDivStr === "true" || critDivStr === "1") {
+      critDiv = 2;
+        } else {
+    const parsed = parseFloat(critDivStr);
+    if (!isNaN(parsed) && parsed > 1) critDiv = parsed;
     }
 
     message.reply(calcMath({
