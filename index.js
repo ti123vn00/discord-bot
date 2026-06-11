@@ -28,7 +28,7 @@ const SANITY_MIN = -45;
 const POISE_CRIT_BONUS_PER_STACK = 0.05;
 const POISE_RESET_THRESHOLD = 1;
 const POISE_MAX = 99;
-const POISE_CRIT_HALVE = 0.5;
+const POISE_CRIT_DIV_DEFAULT = 2;
 const SINKING_MAX = 99;
 const RUPTURE_MAX = 99;
 
@@ -671,7 +671,7 @@ function calcMath(opts) {
     sanityBonusPct = 0,
     critMul = 1,
     poiseInit = 0,
-    critDiv = false,
+    critDiv = 0,
     sanityInit = 0,
     diceMul = 1,
     sinkingInit = 0,
@@ -770,8 +770,8 @@ function calcMath(opts) {
       effectsStr, isDice,
     });
 
-    if (didCrit && critDiv) {
-      totalPoise = Math.floor(totalPoise * POISE_CRIT_HALVE);
+if (didCrit && critDiv > 1) {
+      totalPoise = Math.floor(totalPoise / critDiv);
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
     }
   }
@@ -814,8 +814,8 @@ function calcMath(opts) {
   }
 
   const startingCritRate = poiseInit * POISE_CRIT_BONUS_PER_STACK;
-  const poiseDisplay = critDiv && critCount > 0
-    ? `${poiseInit} → ${finalPoiseStacks} stacks (after ${critCount} crit${critCount > 1 ? "s" : ""})`
+const poiseDisplay = critDiv > 1 && critCount > 0
+    ? `${poiseInit} → ${finalPoiseStacks} stacks (after ${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`
     : `${poiseInit} stacks (${(startingCritRate * 100).toFixed(0)}% crit)`;
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
@@ -828,7 +828,7 @@ function calcMath(opts) {
     { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true },
     { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
-    { name: "Crit Divide", value: critDiv ? "Yes" : "No", inline: true },
+    { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
     { name: "Remaining <:Poise:1513762945715142736>Poise", value: finalPoiseStacks.toString(), inline: true },
@@ -4211,10 +4211,9 @@ client.on("messageCreate", async (message) => {
       { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
-      { name: "🎲 -Caduceus [số lần]", value: "Roll Prescript ngẫu nhiên từ bảng 9 dice (tối đa 20 lần).\n> VD: `-Caduceus` | `-Caduceus 5`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv:`", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting <:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
+      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting <:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
     ];
@@ -4327,8 +4326,15 @@ client.on("messageCreate", async (message) => {
     const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
-    const critDivRaw = (kv["critdiv"] ?? "no").toLowerCase().trim();
-    const critDiv = critDivRaw === "yes" || critDivRaw === "true" || critDivRaw === "1";
+    const critDivRaw = (kv["critdiv"] ?? "0").toLowerCase().trim();
+    let critDiv = 0;
+    if (critDivRaw === "yes" || critDivRaw === "true" || critDivRaw === "1") {
+      critDiv = 2; // legacy: "yes" = Overbearing (chia 2)
+    } else {
+      const parsed = parseFloat(critDivRaw);
+      if (!isNaN(parsed) && parsed > 1) critDiv = parsed;
+      // 0, "no", "false" hoặc <=1 → critDiv = 0 (không chia)
+    }
 
     message.reply(calcMath({
       dmgStr,
@@ -4409,6 +4415,15 @@ client.on("interactionCreate", async (interaction) => {
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
+    const critDivOption = interaction.options.getString("critdiv") ?? interaction.options.getBoolean("critdiv");
+    let critDivSlash = 0;
+    if (critDivOption === true || critDivOption === "yes" || critDivOption === "true") {
+      critDivSlash = 2;
+    } else if (typeof critDivOption === "string") {
+      const p = parseFloat(critDivOption);
+      if (!isNaN(p) && p > 1) critDivSlash = p;
+    }
+
     await interaction.editReply(calcMath({
       dmgStr,
       resStr: interaction.options.getString("res") ?? "",
@@ -4416,7 +4431,7 @@ client.on("interactionCreate", async (interaction) => {
       sanityBonusPct,
       critMul,
       poiseInit,
-      critDiv: interaction.options.getBoolean("critdiv") ?? false,
+      critDiv: critDivSlash,
       sanityInit,
       diceMul,
       sinkingInit,
