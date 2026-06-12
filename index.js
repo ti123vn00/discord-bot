@@ -4351,13 +4351,13 @@ client.on("messageCreate", async (message) => {
     const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
-    const critDivStr = (kv["critdiv"] ?? "").trim();
+    const critDivStr = (kv["critdiv"] ?? "").trim().toLowerCase();
     let critDiv = 0;
-    if (critDivStr === "Yes" || critDivStr === "yes" || critDivStr === "true" || critDivStr === "1") {
+    if (critDivStr === "yes" || critDivStr === "true" || critDivStr === "1") {
       critDiv = 2;
-        } else {
-    const parsed = parseFloat(critDivStr);
-    if (!isNaN(parsed) && parsed > 1) critDiv = parsed;
+    } else {
+      const parsed = parseFloat(critDivStr);
+      if (!isNaN(parsed) && parsed > 1) critDiv = parsed;
     }
 
     message.reply(calcMath({
