@@ -737,12 +737,13 @@ function calcMath(opts) {
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
 
-    // Sinking: check sanity TRƯỚC khi trừ — bonus kích hoạt khi sanity địch đã ở SANITY_MIN,
-    // hoặc đòn này là cú đẩy xuống SANITY_MIN. Ghi lại giá trị trước để cover cả hai trường hợp.
+    // Sinking: mỗi hit luôn trừ 1 sanity địch (đúng cơ chế).
+    // Nếu có Sinking count: trừ 1 stack, cộng bonus dmg khi sanity địch đang ở SANITY_MIN
+    // (kiểm tra sanityBefore để cover cả trường hợp đòn này vừa đẩy xuống SANITY_MIN).
+    const sanityBefore = sanity;
+    sanity = Math.max(sanity - 1, SANITY_MIN);
     let sinkingBonus = 0;
     if (enemySinking > 0) {
-      const sanityBefore = sanity;
-      sanity = Math.max(sanity - 1, SANITY_MIN);
       if (sanityBefore <= SANITY_MIN || sanity <= SANITY_MIN) {
         instanceDmg += enemySinking;
         sinkingBonus = enemySinking;
@@ -774,7 +775,7 @@ function calcMath(opts) {
       effectsStr, isDice,
     });
 
-if (didCrit && critDiv > 1) {
+    if (didCrit && critDiv > 1) {
       totalPoise = Math.floor(totalPoise / critDiv);
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
     }
@@ -4426,7 +4427,7 @@ client.on("interactionCreate", async (interaction) => {
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
     const critDivOption = interaction.options.getString("critdiv") ?? null;
     let critDivSlash = 0;
-    if (critDivOption === true || critDivOption === "yes" || critDivOption === "true") {
+    if (critDivOption === "yes" || critDivOption === "true" || critDivOption === "1") {
       critDivSlash = 2;
     } else if (typeof critDivOption === "string") {
       const p = parseFloat(critDivOption);
