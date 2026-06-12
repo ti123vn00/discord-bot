@@ -478,11 +478,14 @@ function formatNumber(n) {
 
 // ─── SHARED LOGIC: OPEN CACHE ─────────────────────────────────────────────────
 function parseOpenCount(raw, max = 20) {
-  const parsed = parseInt(raw);
-  if (!isNaN(parsed) && parsed <= 0) return { error: `❌ Số lần mở phải lớn hơn 0.` };
-  const count = (!isNaN(parsed) && Number.isFinite(parsed) && parsed > 0) ? parsed : 1;
-  if (count > max) return { error: `❌ Số lần mở tối đa là ${max}.` };
-  return { count };
+  // Không nhập arg → default 1
+  if (raw === undefined || raw === null || String(raw).trim() === "") return { count: 1 };
+  const parsed = parseInt(raw, 10);
+  // Nhập chữ (NaN) → lỗi rõ ràng, không silent-fallback về 1
+  if (isNaN(parsed)) return { error: `❌ Số lần mở không hợp lệ: \`${raw}\`. Nhập số nguyên dương.` };
+  if (parsed <= 0) return { error: `❌ Số lần mở phải lớn hơn 0.` };
+  if (parsed > max) return { error: `❌ Số lần mở tối đa là ${max}.` };
+  return { count: parsed };
 }
 
 async function handleOpenCache(userId, { cacheKey, pool, dataField, count = 1 }) {
@@ -673,7 +676,6 @@ function calcMath(opts) {
     poiseInit = 0,
     critDiv = 0,
     sanityInit = 0,
-    enemySanityInit = 0,
     diceMul = 1,
     sinkingInit = 0,
     ruptureInit = 0,
@@ -711,7 +713,6 @@ function calcMath(opts) {
   }
 
   let sanity = sanityInit;
-  let enemySanity = enemySanityInit;
   let totalDmg = 0;
   let totalPoise = poiseInit;
   let enemySinking = Math.min(sinkingInit, SINKING_MAX);
@@ -736,12 +737,13 @@ function calcMath(opts) {
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
 
-    // <:Sinking:1513762793436741652>Sinking & Rupture: dùng stack hiện tại để tính dmg bonus trước,
-    // sau đó mới trừ 1 stack — đòn hiện tại không hưởng lợi từ stack nó vừa tự áp.
+    // Sinking: check enemySanity TRƯỚC khi trừ — bonus kích hoạt khi sanity địch đã ở SANITY_MIN,
+    // hoặc đòn này là cú đẩy xuống SANITY_MIN. Ghi lại giá trị trước để cover cả hai trường hợp.
     let sinkingBonus = 0;
     if (enemySinking > 0) {
+      const enemySanityBefore = enemySanity;
       enemySanity = Math.max(enemySanity - 1, SANITY_MIN);
-      if (enemySanity <= SANITY_MIN || isNaN(enemySanity)) {
+      if (enemySanityBefore <= SANITY_MIN || enemySanity <= SANITY_MIN || isNaN(enemySanity)) {
         instanceDmg += enemySinking;
         sinkingBonus = enemySinking;
       }
@@ -832,7 +834,7 @@ const poiseDisplay = critDiv > 1 && critCount > 0
     { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
-    { name: "Enemy's Sanity", value: enemySanity.toString(), inline: true },
+    { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
     { name: "Remaining <:Poise:1513762945715142736>Poise", value: finalPoiseStacks.toString(), inline: true },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true },
@@ -1124,22 +1126,23 @@ async function executeCraft(userId, itemName, craftCount) {
  * @returns {{ entries: Array<{name:string,count:number}> } | { error: string }}
  */
 function parseBatchEntries(raw, findFn, entityLabel) {
-  const entries = [];
+  // Dùng Map để tự động gộp entries cùng tên (VD: "Random Book x2, Random Book x3" → x5)
+  const entryMap = new Map();
   const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
   for (const part of parts) {
     const match = part.match(/^(.+?)\s+x(\d+)$/i);
     if (!match) {
       return { error: `❌ Định dạng ${entityLabel} sai: \`${part}\`\nĐúng: \`Tên ${entityLabel === "sách" ? "Sách" : "Item"} x<số>\` (VD: \`${entityLabel === "sách" ? "Random Book x2" : "Chipboard MK1 x3"}\`)` };
     }
-    // Validate count > 0 trước khi xử lý
     const count = parseInt(match[2], 10);
     if (count <= 0) {
       return { error: `❌ Số lượng ${entityLabel} phải lớn hơn 0: \`${part}\`` };
     }
     const name = findFn(match[1].trim());
     if (!name) return { error: `❌ Tên ${entityLabel} không hợp lệ: \`${match[1].trim()}\`` };
-    entries.push({ name, count });
+    entryMap.set(name, (entryMap.get(name) ?? 0) + count);
   }
+  const entries = Array.from(entryMap.entries()).map(([name, count]) => ({ name, count }));
   return { entries };
 }
 
@@ -1195,8 +1198,8 @@ const SKILLS = {
       ];
     },
   },
-  "just a vengeance (original)": {
-    name: "Just A Vengeance (Original)",
+  "just a vengeance": {
+    name: "Just A Vengeance",
     cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
@@ -3459,7 +3462,7 @@ const SKILL_ALIASES = {
   "bf": "blade flourish",
   // Degraded Fairy skills
   "degradedfairy": "degraded fairy",
-  "df": "degraded fairy",
+  "dfa": "degraded fairy",          // "df" cũ đổi sang "dfa" để tránh nhầm với magic bullet df
   "degradedpillar": "degraded pillar",
   "dp": "degraded pillar",
   "degradedlock": "degraded lock",
@@ -3468,6 +3471,11 @@ const SKILL_ALIASES = {
   "ds": "degraded shockwave",
   "apocalypse": "apocalypse",
   "apo": "apocalypse",
+  // Magic Bullet Der Freischütz aliases — "df" được dành riêng cho skill này
+  "df": "magic bullet df",
+  "mdf": "magic bullet df",
+  "mbdf": "magic bullet df",
+  "magicbulletdf": "magic bullet df",
 };
 
 function findSkill(raw) {
@@ -4412,14 +4420,13 @@ client.on("interactionCreate", async (interaction) => {
     const sinkingInit = interaction.options.getNumber("sinking") ?? 0;
     const ruptureInit = interaction.options.getNumber("rupture") ?? 0;
     const sanityInit = interaction.options.getNumber("sanity") ?? 0;
-    const enemySanityInit = interaction.options.getNumber("enemysanity") ?? 0;
     const bonusPct = interaction.options.getNumber("bonus") ?? 0;
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
     const critDivOption = interaction.options.getString("critdiv") ?? null;
     let critDivSlash = 0;
-    if (critDivOption === "yes" || critDivOption === "true" || critDivOption === "1") {
+    if (critDivOption === true || critDivOption === "yes" || critDivOption === "true") {
       critDivSlash = 2;
     } else if (typeof critDivOption === "string") {
       const p = parseFloat(critDivOption);
@@ -4435,7 +4442,6 @@ client.on("interactionCreate", async (interaction) => {
       poiseInit,
       critDiv: critDivSlash,
       sanityInit,
-      enemySanityInit,
       diceMul,
       sinkingInit,
       ruptureInit,
