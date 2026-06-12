@@ -764,20 +764,24 @@ function calcMath(opts) {
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
 
+    // Ghi lại poise sau gain nhưng trước critDiv để hiển thị trong breakdown
+    const poiseAfterGain = totalPoise;
+
+    if (didCrit && critDiv > 1) {
+      totalPoise = Math.floor(totalPoise / critDiv);
+      if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
+    }
+
     instanceResults.push({
       dmg, dmgType, didCrit, critChance, poiseOverflow,
-      poiseStacksAfter: totalPoise,
+      poiseStacksAfter: totalPoise,  // sau critDiv — giá trị thực dùng cho hit tiếp theo
+      poiseAfterGain,                 // sau gain, trước critDiv — để hiển thị gain chính xác
       instanceDmg, ruptureBonus, sinkingBonus,
       sinkingApplied: sinkingToApply,
       ruptureApplied: ruptureToApply,
       poiseApplied: poiseToApply,
       effectsStr, isDice,
     });
-
-    if (didCrit && critDiv > 1) {
-      totalPoise = Math.floor(totalPoise / critDiv);
-      if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
-    }
   }
 
   const finalPoiseStacks = totalPoise;
@@ -795,7 +799,13 @@ function calcMath(opts) {
     if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} <:Sinking:1513762793436741652>Sinking`;
     if (r.ruptureBonus > 0) extraInfo += ` | +${r.ruptureBonus} dmg từ <:Rupture:1513762812722155682>Rupture`;
     if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} <:Rupture:1513762812722155682>Rupture`;
-    if (r.poiseApplied > 0) extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} stacks`;
+    if (r.poiseApplied > 0) {
+      if (critDiv > 1 && r.didCrit && r.poiseAfterGain !== r.poiseStacksAfter) {
+        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} stacks`;
+      } else {
+        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} stacks`;
+      }
+    }
     if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
       const critVal = r.effectsStr.match(/\+Crit(\d+)/i)[1];
       extraInfo += ` | +Crit${critVal}%`;
@@ -818,9 +828,15 @@ function calcMath(opts) {
   }
 
   const startingCritRate = poiseInit * POISE_CRIT_BONUS_PER_STACK;
-const poiseDisplay = critDiv > 1 && critCount > 0
-    ? `${poiseInit} → ${finalPoiseStacks} stacks (after ${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`
-    : `${poiseInit} stacks (${(startingCritRate * 100).toFixed(0)}% crit)`;
+  const finalCritRate = finalPoiseStacks * POISE_CRIT_BONUS_PER_STACK;
+  let poiseDisplay;
+  if (critDiv > 1 && critCount > 0) {
+    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} stacks (${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`;
+  } else if (poiseInit !== finalPoiseStacks) {
+    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} stacks (${(startingCritRate * 100).toFixed(0)}% → ${(finalCritRate * 100).toFixed(0)}% crit)`;
+  } else {
+    poiseDisplay = `${poiseInit} stacks (${(startingCritRate * 100).toFixed(0)}% crit)`;
+  }
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
 
@@ -835,7 +851,6 @@ const poiseDisplay = critDiv > 1 && critCount > 0
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
-    { name: "Remaining <:Poise:1513762945715142736>Poise", value: finalPoiseStacks.toString(), inline: true },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true },
   ];
