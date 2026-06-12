@@ -16,13 +16,13 @@ const commands = [
     .addStringOption(opt =>
       opt.setName("dmg").setDescription("VD: 100B 50x2P 30DiceS+1Sinking").setRequired(true))
     .addStringOption(opt =>
-      opt.setName("res").setDescription("VD: 0.5B 0.8P 1S").setRequired(false))
+      opt.setName("res").setDescription("VD: 2xS 2xB 2xP hoặc 0.5B 1.3P").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("bonus").setDescription("% DMG Bonus (VD: 20)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("sanitybonus").setDescription("Sanity của bản thân để tính % DMG Bonus thêm (VD: 15)").setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("critmul").setDescription("Crit Multiplier (VD: 1.3)").setRequired(false))
+      opt.setName("critmul").setDescription("Crit Multiplier (VD: 1.3)").setMinValue(1).setRequired(false))
     .addIntegerOption(opt =>
       opt.setName("poise").setDescription("Starting Poise stacks (1 stack = 5% crit, tối đa 99)")
         .setMinValue(0).setMaxValue(99).setRequired(false))
@@ -32,13 +32,13 @@ const commands = [
         .setRequired(false))
     // sanity: sanity ban đầu của địch (để tính Sinking bonus khi địch đạt -45)
     .addNumberOption(opt =>
-      opt.setName("sanity").setDescription("Sanity ban đầu của địch để tính Sinking (VD: 0, min -45)").setRequired(false))
+      opt.setName("sanity").setDescription("Sanity ban đầu của địch để tính Sinking (VD: 0, min -45)").setMinValue(-45).setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("dicemul").setDescription("Dice Multiplier (VD: 1.2)").setRequired(false))
+      opt.setName("dicemul").setDescription("Dice Multiplier (VD: 1.2)").setMinValue(0).setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("sinking").setDescription("Sinking counts ban đầu của địch").setRequired(false))
+      opt.setName("sinking").setDescription("Sinking counts ban đầu của địch").setMinValue(0).setMaxValue(99).setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("rupture").setDescription("Rupture counts ban đầu của địch").setRequired(false)),
+      opt.setName("rupture").setDescription("Rupture counts ban đầu của địch").setMinValue(0).setMaxValue(99).setRequired(false)),
 
   // ── /huntermath ─────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
