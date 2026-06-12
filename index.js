@@ -737,13 +737,13 @@ function calcMath(opts) {
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
 
-    // Sinking: check enemySanity TRƯỚC khi trừ — bonus kích hoạt khi sanity địch đã ở SANITY_MIN,
+    // Sinking: check sanity TRƯỚC khi trừ — bonus kích hoạt khi sanity địch đã ở SANITY_MIN,
     // hoặc đòn này là cú đẩy xuống SANITY_MIN. Ghi lại giá trị trước để cover cả hai trường hợp.
     let sinkingBonus = 0;
     if (enemySinking > 0) {
-      const enemySanityBefore = enemySanity;
-      enemySanity = Math.max(enemySanity - 1, SANITY_MIN);
-      if (enemySanityBefore <= SANITY_MIN || enemySanity <= SANITY_MIN || isNaN(enemySanity)) {
+      const sanityBefore = sanity;
+      sanity = Math.max(sanity - 1, SANITY_MIN);
+      if (sanityBefore <= SANITY_MIN || sanity <= SANITY_MIN) {
         instanceDmg += enemySinking;
         sinkingBonus = enemySinking;
       }
