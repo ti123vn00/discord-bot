@@ -2560,8 +2560,9 @@ roll(v = "no") {
     tags: "Sinking",
     cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
     needsReuse: false,
-    roll() {
-      const hasDullahan = Math.random() < 0.5;
+    hasDullahanRoll: true,
+    roll(forceDullahan) {
+      const hasDullahan = forceDullahan !== undefined ? forceDullahan : Math.random() < 0.5;
       if (hasDullahan) {
         const d1 = r(8,13), d2 = r(13,16);
         return [
@@ -2594,8 +2595,9 @@ roll(v = "no") {
     name: "Memorial Procession",
     tags: "Sinking",
     cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
-    roll() {
-      const hasDullahan = Math.random() < 0.5;
+    hasDullahanRoll: true,
+    roll(forceDullahan) {
+      const hasDullahan = forceDullahan !== undefined ? forceDullahan : Math.random() < 0.5;
       if (hasDullahan) {
         const d1 = r(5,10), d2 = r(10,20), d3 = r(14,20);
         return [
@@ -3656,7 +3658,16 @@ client.on("messageCreate", async (message) => {
       message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
       return;
     }
-    const input = message.content.replace("-skill", "").trim();
+    const rawInput = message.content.replace("-skill", "").trim();
+
+    // Cho phép thêm "dullahan" hoặc "no dullahan" / "nodullahan" ở cuối để buộc kết quả Dullahan on/off
+    let forceDullahan = false;
+    let input = rawInput;
+    const dullahanMatch = input.match(/\s*(dullahan)\s*$/i);
+    if (dullahanMatch) {
+      forceDullahan = true;
+      input = input.slice(0, dullahanMatch.index).trim();
+    }
 
     // -skill list [trang]
     // Cú pháp: -skill list | -skill list 2 | -skill list 3
@@ -3674,7 +3685,7 @@ client.on("messageCreate", async (message) => {
         if (s.weaponOf) tags.push(`⚔️ ${s.weaponOf}`);
         if (s.needsBlackFlash) tags.push("nhập %");
         if (s.needsReuse) tags.push("nhập %reuse");
-        if (s.name === "Solemn Lament") tags.push("nhập số chết");
+        if (s.hasDullahanRoll) tags.push("mặc định bản thường, nhập dullahan để ra bản Dullahan");
         const tagStr = tags.length ? ` *(${tags.join(", ")})*` : "";
         return `\`${num}.\` **${s.name}**${tagStr} — ${s.cost} | CD: ${s.cd} | ${s.diceMul}`;
       });
@@ -3717,7 +3728,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const lines = skill.roll();
+    const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan) : skill.roll();
     const header = skill.weaponOf
       ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
       : skill.cost !== "—"
