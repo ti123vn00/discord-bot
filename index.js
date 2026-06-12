@@ -4439,7 +4439,7 @@ client.on("interactionCreate", async (interaction) => {
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
-    const critDivOption = interaction.options.getString("critdiv") ?? null;
+    const critDivOption = (interaction.options.getString("critdiv") ?? "").trim().toLowerCase() || null;
     let critDivSlash = 0;
     if (critDivOption === "yes" || critDivOption === "true" || critDivOption === "1") {
       critDivSlash = 2;
