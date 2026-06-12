@@ -3299,21 +3299,857 @@ roll(v = "no") {
       ];
     },
   },
-  "degraded shockwave": {
-    name: "Degraded Shockwave",
-    tags: "Fairy <:Fairy:1513782007602216960>",
-    cost: "5 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "0.7x",
+
+  // ══════════════ Weapon Criticals ══════════════
+  "patrolling": {
+    name: "Patrolling", weaponOf: "Zweihander", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
     roll() {
-      const d1 = r(5,10), d2 = r(10,20), d3 = r(15,30);
-      const hasHighTremor = Math.random() < 0.5; // placeholder for >10 Tremor check
+      const d1 = r(3,5), d2 = r(7,10);
       return [
-        `**[Undodgeable] [AOE] [Uncancellable]**`,
-        `${D1} **${d1}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor`,
-        `${D2} **${d2}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor`,
-        `${D3} **${d3}** — Giật điện gây 6 <:Tremor:1513762737388257380>Tremor sau đó gây <:TremorBurst:1513802464632246352>Tremor Burst`,
-        hasHighTremor
-          ? `${D3} ✨ Trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>Tremor Burst → gắn 6 <:Fairy:1513782007602216960>Fairy và làm giảm 4 Dice <:DiceDown:1513767826257874964>Dice Down`
-          : `${D3} *(Cần trên 10 <:Tremor:1513762737388257380>Tremor trước <:TremorBurst:1513802464632246352>Tremor Burst để gắn 6 <:Fairy:1513782007602216960>Fairy và <:DiceDown:1513767826257874964>Dice Down)*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Chém kẻ địch, nhận 3 Defense Up`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ địch, nhận 4 Defense Up và gây 5 Defense Down`,
+      ];
+    },
+  },
+  "bayonet combat": {
+    name: "Bayonet Combat", weaponOf: "Soldato Rifle", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(5,7), d3 = r(4,7);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Chém xuống bằng lưỡi súng, gây 2 Tremor`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Chém lên, gây 2 Tremor`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Lùi lại đâm, gây 2 Tremor và nhận 1 viên đạn`,
+      ];
+    },
+  },
+  "shock round": {
+    name: "Shock Round", weaponOf: "Soldato Rifle", tags: "Weapon",
+    cost: "Tiêu 2 viên đạn", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(9,17);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Chém ngang bằng lưỡi súng, gây 4 Tremor`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Đạn nổ thổi bay kẻ địch, gây 3 Tremor và Tremor Burst`,
+      ];
+    },
+  },
+  "sharp cuts": {
+    name: "Sharp Cuts", weaponOf: "Blade Lineage Hwando", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8), d2 = r(4,8);
+      return [
+        `**[Unblockable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 Bleed và nhận 2 Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 Bleed và nhận 2 Poise`,
+      ];
+    },
+  },
+  "thundercleaver": {
+    name: "Thundercleaver", weaponOf: "Kurokumo Katana", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "0.5x",
+    roll() {
+      const d1 = r(5,9), d2 = r(5,13), d3 = r(5,17);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 Bleed`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 Bleed`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 Bleed`,
+      ];
+    },
+  },
+  "upstanding slash": {
+    name: "Upstanding Slash", weaponOf: "Mimicry Blade", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,10), d2 = r(9,15);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Chém ngang, gây 3 Bleed (turn kế) và nhận 1 Imitation`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Chém dọc theo sau, gây 3 Bleed (turn kế) và nhận 1 Imitation`,
+      ];
+    },
+  },
+  "great split vertical": {
+    name: "Great Split: Vertical", weaponOf: "Mimicry Blade", tags: "Weapon",
+    cost: "Tiêu 5 Imitation", cd: "—", diceMul: "2x",
+    roll() {
+      const d1 = r(15,26);
+      return [
+        `**[Slash] [Unblockable]**`,
+        `${D1} **${d1}** — Bổ dọc kẻ địch từ trên xuống, cắt đôi người chúng`,
+      ];
+    },
+  },
+  "great split horizontal": {
+    name: "Great Split: Horizontal", weaponOf: "Mimicry Blade", tags: "Weapon",
+    cost: "Tiêu 5 Imitation, cần bản thân dưới 30% HP", cd: "—", diceMul: "3x",
+    roll() {
+      const d1 = r(32,43);
+      return [
+        `**[Slash] [Unblockable] [Undodgeable]**`,
+        `${D1} **${d1}** — Vung Mimicry theo chiều ngang cắt đôi kẻ địch`,
+      ];
+    },
+  },
+  "excruciating study": {
+    name: "Excruciating Study", weaponOf: "Dieci Association Kata", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "0.5x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,7), d3 = r(7,10), d4 = r(10,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 4 Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 3 Sinking`,
+      ];
+    },
+  },
+  "unveil": {
+    name: "Unveil", weaponOf: "Dieci Association Key", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "0.8x",
+    roll() {
+      const d1 = r(4,4), d2 = r(4,8), d3 = r(4,12), d4 = r(4,16);
+      return [
+        `**[Undodgeable]**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 Sinking`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 Sinking`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 Sinking`,
+      ];
+    },
+  },
+  "scorching desperation": {
+    name: "Scorching Desperation", weaponOf: "The Crying Children", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,18);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tạo một cái cánh hất vào mặt kẻ thù, gây 7 Burn; bản thân giảm 15 Sanity`,
+      ];
+    },
+  },
+  "resonate": {
+    name: "Resonate", weaponOf: "Reverberation Scythe", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(4,8);
+      return [
+        `**[Unblockable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Xoay lưỡi hái một vòng; nếu kẻ địch có số Tremor bằng số Dice này thì sẽ Stagger ngay`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Xoay lưỡi hái một vòng nữa`,
+      ];
+    },
+  },
+  "magic impact": {
+    name: "Magic Impact", weaponOf: "Yesterday's Promise", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,20);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tạo một cánh tay ma thuật đục vào mặt kẻ thù`,
+      ];
+    },
+  },
+  "beatdown": {
+    name: "Beatdown", weaponOf: "L'Heure du Loup", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(17,35);
+      return [
+        `**[Unblockable] [Unclashable]**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đạp vào mặt kẻ thù, gây 4 Paralyze và 2 lần Tremor Burst`,
+      ];
+    },
+  },
+  "overbreath": {
+    name: "Overbreath", weaponOf: "Shi Association Katana", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,28);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt về phía kẻ thù, gây 2 Bleed và nhận 6 Poise`,
+      ];
+    },
+  },
+  "forming storm": {
+    name: "Forming Storm", weaponOf: "Liu Guan Dao", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,20);
+      return [
+        `**[Unblockable] [Guard Break] [AOE 3 người]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Đập trường đao xuống tạo vùng lửa lớn, gắn 5 Burn`,
+      ];
+    },
+  },
+  "violent flame": {
+    name: "Violent Flame", weaponOf: "Liu Martial Arts", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(6,16);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 3 Burn`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đấm vào mặt kẻ thù, gây 6 Burn`,
+      ];
+    },
+  },
+  "dimensional rift": {
+    name: "Dimensional Rift", weaponOf: "WARP Corp. Dagger", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const hasCharge = Math.random() < 0.5; // placeholder cho ≥15 Charge
+      const d1 = hasCharge ? r(16,24) : r(6,12);
+      return [
+        hasCharge
+          ? `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — *(≥15 Charge: tiêu 15 Charge)* Dice 1 đổi thành [16~24], gây 6 Rupture`
+          : `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Nhảy vọt không gian rồi cắt đứt kẻ địch, gây 3 Rupture và nhận 4 Charge`,
+      ];
+    },
+  },
+  "dimensional rift gauntlets": {
+    name: "Dimensional Rift", weaponOf: "WARP Corp. Gauntlets", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const hasCharge = Math.random() < 0.5; // placeholder cho ≥15 Charge
+      const d1 = hasCharge ? r(12,16) + 5 : r(12,16);
+      return [
+        hasCharge
+          ? `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — *(≥15 Charge: +5 Dice Up)* Túm kẻ địch, dao không gian cắt đứt chúng, gây 3 Rupture và nhận 3 Charge`
+          : `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Túm kẻ địch, dao không gian cắt đứt chúng, gây 3 Rupture và nhận 3 Charge`,
+      ];
+    },
+  },
+  "the udjat": {
+    name: "The Udjat", weaponOf: "Udjat Khopesh", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,12), d2 = r(5,7), d3 = r(5,8);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Nhảy lên đâm xuống, nhận 2 Protection`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Vung kiếm ngang, nhận 1 Protection`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Tiếp tục vung ngang`,
+      ];
+    },
+  },
+  "moulinet": {
+    name: "Moulinet", weaponOf: "Seven Association Longsword", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(7,10), d3 = r(12,14);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Chém ngang, gây 1 Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Vung kiếm lên, gây 1 Rupture`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Các động tác tạo hình số 7 rồi nổ tung, gây 3 Rupture`,
+      ];
+    },
+  },
+  "unyielding strike": {
+    name: "Unyielding Strike", weaponOf: "Augury Spear", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x (2x nếu kích Tremor Burst)",
+    roll() {
+      const d1 = r(6,16);
+      return [
+        `*[Nếu địch ≥5 Tremor trước khi gây dmg: thêm 3 Tremor và Tremor Burst kẻ địch]*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Lướt lên cường hóa tay rồi đấm kẻ địch, gây 5 Tremor và nhận 1 Trigram`,
+      ];
+    },
+  },
+  "true trigram formation": {
+    name: "True Trigram Formation", weaponOf: "Augury Spear", tags: "Weapon",
+    cost: "Cần đủ 4 Trigram", cd: "—", diceMul: "1x (2x nếu kích Tremor Burst)",
+    roll() {
+      const d1 = r(8,14), d2 = r(9,18);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — Đâm ngọn giáo về phía trước, gây 4 Tremor. Tiêu toàn bộ Trigram; nếu địch ≥5 Tremor sẽ Tremor Burst`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Ngọn giáo biến thành vô số lưỡi nhọn đâm kẻ địch, gây 3 Paralyze. Nếu địch ≥7 Tremor: nhận Shield HP bằng Tremor trên người chúng`,
+      ];
+    },
+  },
+  "eliminate": {
+    name: "Eliminate", weaponOf: "Index Longsword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém ngang kẻ địch, gây 4 Rupture. Nếu có **Unlocked Blade**: dùng tiếp Castigation`,
+      ];
+    },
+  },
+  "castigation": {
+    name: "Castigation", weaponOf: "Index Longsword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(4,10), d3 = r(4,10), d4 = r(1,4);
+      return [
+        `**[Undodgeable] [Unblockable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lao lên chém kẻ địch, gây 2 Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Lướt quanh chém liên tục`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Kết thúc bằng một đòn chém ngang`,
+        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] — Gây thêm bonus dmg = Dice x6, sau đó xóa stack **Unlocked Blade**`,
+      ];
+    },
+  },
+  "decapitation": {
+    name: "Decapitation", weaponOf: "Index Cleaver", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(15,22);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Bắn xích kéo kẻ địch lại gần rồi trảm đầu, gây 4 Rupture`,
+      ];
+    },
+  },
+  "requiem": {
+    name: "Requiem", weaponOf: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,12), d2 = r(12,18);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Gây 2 Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Gây 5 Sinking, nhận 1 Coffin. +1 Dice Up cho mỗi Coffin (Max 10) và +1 Dice Up cho mỗi Sinking trên địch (Max 8)`,
+      ];
+    },
+  },
+  "lament mourn and despair": {
+    name: "Lament, Mourn and Despair", weaponOf: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
+    cost: "Chỉ dùng khi có Dullahan", cd: "2 Turn", diceMul: "1x (Dice âm)",
+    roll() {
+      const d1 = r(12,24), d2 = r(24,27);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Gây 3 Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Gây 1 Sinking, nhận 1 Coffin. +1 Dice Up/Coffin (Max 10), +1 Dice Up/Sinking trên địch (Max 8), +3 Dice Up/Dullahan (Max 9)`,
+        `*[Turn End sau khi dùng] mất hết stack Dullahan*`,
+      ];
+    },
+  },
+  "promised suffering": {
+    name: "Promised Suffering", weaponOf: "Chains of Loyalty", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(6,8), d3 = r(7,10);
+      return [
+        `**[Blunt]**`,
+        `${D1} **${d1}** — Túm kẻ địch quật ngã, gây 1 Fragile`,
+        `${D2} **${d2}** — Tiếp tục, gây 1 Fragile`,
+        `${D3} **${d3}** — Đá thẳng vào mặt kết liễu, gây 2 Fragile và 1 Vengeance Mark. Nếu địch ≥3 Vengeance Mark: +2 Fragile/hit và +5% Dmg/Vengeance Mark`,
+      ];
+    },
+  },
+  "murche defensive": {
+    name: "Murche Defensive", weaponOf: "Cinq Rapier", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,12), d2 = r(3,14);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ thù, nhận 3 Poise`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ thù, nhận 4 Haste`,
+      ];
+    },
+  },
+  "viriscent pyrojade violet": {
+    name: "Viriscent Pyrojade Violet", weaponOf: "Viriscent Pyrojade Ring", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(2,4), d3 = r(10,12);
+      return [
+        `**[Undodgeable]**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, nhận 5 Poise`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 4 Burn`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 4 Bleed`,
+      ];
+    },
+  },
+  "durandal": {
+    name: "Durandal", weaponOf: "Durandal", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(5,8), d3 = r(6,9);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Chém kẻ địch một nhát`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Theo sau một nhát nữa`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Trảm xuống một đường, nhận 3 Dice Up đến hết turn`,
+      ];
+    },
+  },
+  "mook workshop": {
+    name: "Mook Workshop", weaponOf: "Mook Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,19);
+      return [
+        `**[Undodgeable] [Slash]**`,
+        `${D1} **${d1}** — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit và nhận 1 Light`,
+      ];
+    },
+  },
+  "slay all": {
+    name: "Slay All", weaponOf: "Mook Workshop", tags: "Weapon",
+    cost: "Cần kẻ địch Airborne", cd: "2 Turn", diceMul: "2x", 
+    roll() {
+      const d1 = r(10,19);
+      return [
+        `**[Undodgeable] [Slash] [AOE 5 người]**`,
+        `${D1} **${d1}** — Rút kiếm cắt đứt toàn bộ không gian xung quanh, gây dmg 6 hit`,
+      ];
+    },
+  },
+  "crystal atelier": {
+    name: "Crystal Atelier", weaponOf: "Crystal Atelier", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,11), d2 = r(7,11);
+      return [
+        `**[AOE 2 người]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Đâm hai thanh kiếm vào kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Trảm ngang người chúng`,
+      ];
+    },
+  },
+  "zelkova workshop": {
+    name: "Zelkova Workshop", weaponOf: "Zelkova Workshop", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,9), d2 = r(8,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Dùng rìu chặt đứt kẻ địch, gây 4 Bleed (turn sau)`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Dùng chùy kết liễu, gây 6 Tremor và Tremor Burst`,
+      ];
+    },
+  },
+  "atelier logic shotgun": {
+    name: "Atelier Logic: Shotgun", weaponOf: "Atelier Logic", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,14);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Bóp cò Shotgun bắn kẻ địch, gây 3 Rupture, sau đó đổi qua dạng Pistols`,
+      ];
+    },
+  },
+  "atelier logic pistols": {
+    name: "Atelier Logic: Pistols", weaponOf: "Atelier Logic", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,9), d2 = r(7,10);
+      return [
+        `**[Undodgeable] [Unblockable] [Pierce]**`,
+        `${D1} **${d1}** — Dùng Pistol bên trái bắn kẻ địch`,
+        `${D2} **${d2}** — Kết thúc bằng Pistol bên phải, đổi về dạng Shotgun`,
+      ];
+    },
+  },
+  "old boys workshop": {
+    name: "Old Boys Workshop", weaponOf: "Old Boys Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,4), d2 = r(5,7), d3 = r(7,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đập búa xuống, gây 1 Tremor`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Thêm 1 nhát búa, gây 1 Tremor`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Tụ lực giáng đòn cuối, gây 5 Tremor và Tremor Burst`,
+      ];
+    },
+  },
+  "wheels industry": {
+    name: "Wheel's Industry", weaponOf: "Wheel's Industry", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,24);
+      return [
+        `**[AOE 3 người] [Undodgeable] [Guard Break] [Blunt]**`,
+        `${D1} **${d1}** — Lao lên bổ xuống kẻ địch`,
+      ];
+    },
+  },
+  "allas workshop": {
+    name: "Allas Workshop", weaponOf: "Allas Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,18);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — Dùng ngọn thương đâm xuyên kẻ địch trong chớp mắt`,
+      ];
+    },
+  },
+  "ranga workshop": {
+    name: "Ranga Workshop", weaponOf: "Ranga Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,7), d2 = r(3,7), d3 = r(4,10);
+      return [
+        `**[Pierce]**`,
+        `${D1} **${d1}** — Lao lên chém kẻ địch bằng dao, gây 3 Bleed (turn sau)`,
+        `${D2} **${d2}** — Dùng vuốt nhọn cấu xé, gây 3 Bleed (turn sau)`,
+        `${D3} **${d3}** — Kết liễu bằng một cú vung, gây 2 Bleed (turn sau). Nếu có >5 stack Realization: kích toàn bộ Bleed hiện tại trên địch (không giảm count)`,
+      ];
+    },
+  },
+  "open wound": {
+    name: "Open Wound", weaponOf: "Sharp Greatsword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,4), d2 = r(3,6);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 4 Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 4 Rupture`,
+      ];
+    },
+  },
+  "fallstar slayer": {
+    name: "Fallstar Slayer [落星一殺]", weaponOf: "Moonlit Azure Blade", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,9);
+      return [
+        `**[Slash] [Undodgeable]**`,
+        `${D1} **${d1}** — Lướt lên chém kẻ địch rồi tra kiếm, cắt đứt không gian. +1 Dice Up cho mỗi Poise trên người (Max 19)`,
+        `*[Sau đó] tiêu toàn bộ Poise, tăng base dmg cho Dice 1 = (tổng Poise tiêu thụ) x3*`,
+      ];
+    },
+  },
+  "chop up": {
+    name: "Chop Up", weaponOf: "Bug Arm", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(6,16);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Vung cánh tay bọ đâm vào tim kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục vung bổ chúng ra`,
+      ];
+    },
+  },
+  "sabre slash": {
+    name: "Sabre Slash", weaponOf: "Family Heir Sabre", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,11);
+      return [
+        `${D1} **${d1}** — Gây 3 Sinking`,
+      ];
+    },
+  },
+  "remise": {
+    name: "Remise", weaponOf: "Family Heir Sabre", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(4,10);
+      return [
+        `${D1} **${d1}** — Gây 2 Sinking`,
+        `${D2} **${d2}** — Gây 3 Sinking`,
+      ];
+    },
+  },
+  "nightmare hunt": {
+    name: "Nightmare Hunt", weaponOf: "Family Heir Sabre", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(10,13), d3 = r(13,16), d4 = r(13,16);
+      return [
+        `${D1} **${d1}** — Gây 1 Sinking`,
+        `${D2} **${d2}** — Gây 1 Sinking`,
+        `${D3} **${d3}** — Gây 1 Sinking`,
+        `${D4} **${d4}** — Gây 3 Sinking. Nếu địch ≥10 Sinking: tiêu hết và +3 Dice Up cho bản thân turn này và sau`,
+      ];
+    },
+  },
+  "grappling": {
+    name: "Grappling", weaponOf: "Brawler", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,15);
+      return [
+        `*[Hakuda] Nếu xài Critical sau khi xài skill có tag Airborne: dice đổi thành [14~30]*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Quật ngã kẻ địch, gây 3 Tremor và Tremor Burst, nhận 1 Light`,
+      ];
+    },
+  },
+  "stob": {
+    name: "Stob", weaponOf: "Dolch", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,9), d2 = r(11,15);
+      return [
+        `**[Pierce]**`,
+        `${D1} **${d1}** — Đâm vào bụng kẻ địch, gây 4 Bleed (turn sau)`,
+        `${D2} **${d2}** — Đâm tiếp, gây 4 Bleed (turn sau)`,
+      ];
+    },
+  },
+  "thrust": {
+    name: "Thrust", weaponOf: "Dagger", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(6,8);
+      return [
+        `**[Pierce]**`,
+        `${D1} **${d1}** — Đâm vào bụng kẻ địch, gây 2 Bleed (turn sau)`,
+        `${D2} **${d2}** — Đâm tiếp, gây 2 Bleed (turn sau)`,
+      ];
+    },
+  },
+  "slice": {
+    name: "Slice", weaponOf: "Scythe of Sorrow", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(10,11);
+      return [
+        `**[Slash]**`,
+        `${D1} **${d1}** — Lướt lên xoay lưỡi hái cắt mọi thứ`,
+        `${D2} **${d2}** — Tiếp tục cắt, gắn 6 Sinking (turn sau)`,
+      ];
+    },
+  },
+  "breakam slash": {
+    name: "Breakam Slash", weaponOf: "Breakam Zeztzer", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(8,20);
+      return [
+        `**[Slash] [Khuếch tán 3 mục tiêu]**`,
+        `${D1} **${d1}** — Phủ thanh kiếm năng lượng xanh rồi chém ngang cắt đứt kẻ địch`,
+      ];
+    },
+  },
+  "breakam bullet": {
+    name: "Breakam Bullet", weaponOf: "Breakam Zeztzer: Gun Mode", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(10,17);
+      return [
+        `**[Unevadeable] [Guard Break] [Pierce] [AOE 3 người]**`,
+        `${D1} **${d1}** — Tụ lực bắn một đường đạn cực mạnh vào đối phương`,
+      ];
+    },
+  },
+  "backflip & shoot": {
+    name: "Backflip & Shoot", weaponOf: "Double Handgun", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,9), d2 = r(7,10);
+      return [
+        `**[Pierce]**`,
+        `${D1} **${d1}** — Nhảy lùi ra sau bắn kẻ địch`,
+        `${D2} **${d2}** — Bắn tiếp lần thứ hai`,
+      ];
+    },
+  },
+  "blinkstep": {
+    name: "Blinkstep", weaponOf: "Mao Branch Sword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,13);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch hai lần liên tiếp, gây 3 Rupture. Nếu ≥5 Haste: tái sử dụng skill này một lần nữa`,
+      ];
+    },
+  },
+  "jack of all trades": {
+    name: "Jack of All Trades", weaponOf: "Thiên Cỏ Vạn", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,8), d2 = r(3,5), d3 = r(22,35), d4 = r(10,17);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Cung Void`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Dù-Khiên`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Đại Kiếm`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — Trường Thương`,
+      ];
+    },
+  },
+  "beam of nihil": {
+    name: "Beam Of Nihil", weaponOf: "Manifested E.G.O: Nihil", tags: "Weapon",
+    cost: "5 Lights", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(24,40);
+      return [
+        `**[AOE 2 người] [Guard Break] [Unparriable]**`,
+        `${D1} **${d1}** — Tạo tia sáng năng lượng hư vô bắn vào kẻ địch. Nhận 7 Haste và gây 14 Bleed, 8 Sinking`,
+      ];
+    },
+  },
+  "abyssial life": {
+    name: "Abyssial Life", weaponOf: "Manifested E.G.O: Nihil", tags: "Weapon",
+    cost: "3 Lights", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,5);
+      return [
+        `${D1} **${d1}** — Nhận số stack **Nihil** tương ứng. Mỗi Nihil: +10% Dmg, +2% Hút máu (Max 5, mất khi end turn)`,
+      ];
+    },
+  },
+  "meaningless struggle": {
+    name: "Meaningless Struggle (Phản Kháng Vô Nghĩa)", weaponOf: "Void-Scythe: Nihilism", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,18), d2 = r(21,30);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Uplift] — Hất tung vũ khí địch, áp 6 Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Trúng đích, áp 2 Freeble (giảm 4 Dice mọi kỹ năng turn sau)`,
+      ];
+    },
+  },
+  "trailing blade": {
+    name: "Trailing Blade", weaponOf: "Ages of Harvest", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10), d2 = r(3,12), d3 = r(8,11);
+      return [
+        `**[Slash]**`,
+        `${D1} **${d1}** — Điều khiển kiếm xoay vòng quanh bản thân, cắt mọi thứ`,
+        `${D2} **${d2}** — Tiếp tục xoay`,
+        `${D3} **${d3}** — Tiếp tục xoay`,
+      ];
+    },
+  },
+  "overpower": {
+    name: "Overpower", weaponOf: "Fixer's Blade", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,15);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Đâm vào bụng kẻ địch rồi nhanh chóng vung bổ xuống, áp 4 Bleed (turn sau)`,
+      ];
+    },
+  },
+  "life taker": {
+    name: "Life Taker", weaponOf: "Havoc Scythe", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(17,26);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Vung lưỡi hái hút sinh lực kẻ địch, gây 5 Havoc Bane và hồi máu = 50% Dmg gây ra`,
+      ];
+    },
+  },
+  "instant of annihilation": {
+    name: "Instant of Annihilation", weaponOf: "Manifested E.G.O (Havoc)", tags: "Weapon",
+    cost: "3 Lights", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,12), d2 = r(10,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Sải cánh bay lại gần kẻ địch rồi quật bằng cánh`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Tạo ngọn thương Havoc đâm chúng, gây 10 Havoc Bane`,
+      ];
+    },
+  },
+  "deadening abyss": {
+    name: "Deadening Abyss", weaponOf: "Manifested E.G.O (Havoc)", tags: "Weapon",
+    cost: "5 Lights", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(21,30);
+      return [
+        `**[AOE 3 người] [Unevadeable] [Guard Break] [Blunt]**`,
+        `${D1} **${d1}** — Nổ năng lượng phía trước. +2 Dice Up cho mỗi Havoc Bane trên kẻ địch, sau đó tiêu toàn bộ`,
+      ];
+    },
+  },
+  "solemn lament for the living": {
+    name: "Solemn Lament for the Living", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,8), d2 = r(10,15);
+      return [
+        `*[Mỗi Dice có thể tốn 5 viên đạn The Living and The Departed để +1 Dice Up/Dice và +1 Sinking mỗi viên]*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Bắn liên tục vào kẻ địch`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Lao tới bắn phát cuối, gây 3 Sinking. Tùy theo Sinking trên địch: 0 → -2 Dice Down | 1-19 → 6 Bind | ≥20 → 6 Fragile`,
+      ];
+    },
+  },
+  "kaen jujizan": {
+    name: "Kaen Jūjizan", weaponOf: "Kaenken Rekka", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x (2x nếu địch >10 Burn)",
+    roll() {
+      const d1 = r(6,20);
+      return [
+        `**[Slash] [Khuếch tán 3 mục tiêu]**`,
+        `${D1} **${d1}** — Lướt lên chém kẻ địch, triệu hồi rồng lửa cuốn vòng rồi tung chuỗi chém, gây 6 Burn`,
+      ];
+    },
+  },
+  "crash hissatsu giri": {
+    name: "Crash Hissatsu Giri", weaponOf: "Kaenken Rekka", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1.75x",
+    roll() {
+      const d1 = r(24,32);
+      return [
+        `**[True DMG] [Guard Break] [Chỉ dùng khi ở Primitive Dragon]**`,
+        `${D1} **${d1}** — Triệu hồi Void Talon, kéo kẻ địch lại gần rồi tung một đòn chém`,
+      ];
+    },
+  },
+  "shinra banshozan": {
+    name: "Shinra Banshozan", weaponOf: "Kaenken Rekka", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1.75x",
+    roll() {
+      const d1 = r(24,32);
+      return [
+        `**[Guard Break] [Elemental Dragon]**`,
+        `${D1} **${d1}** — Tích tụ toàn bộ nguyên tố vào kiếm rồi chém kẻ địch, gây 7 Hex`,
+      ];
+    },
+  },
+  "barrage": {
+    name: "Barrage", weaponOf: "Star Platinum", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,15);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+      ];
+    },
+  },
+  "punishment": {
+    name: "Punishment", weaponOf: "Beak Mace", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,30);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Cây chùy biến thành vô số xúc tu nuốt chửng kẻ địch, gây 6 Bleed (turn sau)`,
+      ];
+    },
+  },
+  "piercing": {
+    name: "Piercing", weaponOf: "Sharp Spear", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt đâm xuyên người kẻ địch, gây 9 Bleed (turn sau)`,
+      ];
+    },
+  },
+  "mighty critical finish": {
+    name: "Mighty Critical Finish", weaponOf: "Gashacon Breaker", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,19);
+      return [
+        `${D1} **${d1}** [Blunt/Slash] — Phủ năng lượng vào vũ khí rồi tấn công. Chắc chắn crit; dmg type đổi theo dạng vũ khí đang dùng`,
+      ];
+    },
+  },
+  "mighty critical strike": {
+    name: "Mighty Critical Strike", weaponOf: "Gamer Driver", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10), d2 = r(10,18);
+      return [
+        `**[Blunt] — Chắc chắn crit**`,
+        `${D1} **${d1}** — Nhảy vào đá kẻ địch`,
+        `${D2} **${d2}** — Liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
+      ];
+    },
+  },
+  "mighty double critical strike": {
+    name: "Mighty Double Critical Strike", weaponOf: "Gamer Driver", tags: "Weapon",
+    cost: "Chỉ khi ở Level 20", cd: "2 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(5,10), d2 = r(10,18);
+      return [
+        `**[Blunt] — Chắc chắn crit**`,
+        `${D1} **${d1}** — Cùng bản thể còn lại nhảy vào đá kẻ địch`,
+        `${D2} **${d2}** — Cả hai liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
       ];
     },
   },
