@@ -2223,11 +2223,11 @@ const SKILLS = {
     roll() {
       const d1 = r(3,5), d2 = r(3,6), d3 = r(4,7), d4 = r(4,8);
       return [
-        `**[Unblockable]** — nếu địch có trên 5 <:Tremor:1513762737388257380>Tremor: **[Uptilt]**`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
-        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `*Nếu địch có trên 5 <:Tremor:1513762737388257380>Tremor: **[Uptilt]***`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
   },
@@ -3252,11 +3252,10 @@ roll(v = "no") {
     roll() {
       const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
       return [
-        `**[Undodgeable]**`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — đạp địch ra xa, gây 2 <:Bind:1513768025881317457>Bind`,
-        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [AoE 2 người] — gây 3 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đạp địch ra xa, gây 2 <:Bind:1513768025881317457>Bind`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [AoE 2 người] — gây 3 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
   },
@@ -3282,8 +3281,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,11);
       return [
-        `**[Undodgeable]**`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Triệu hồi cây cột đập mặt kẻ thù gây 4 <:Fairy:1513782007602216960>Fairy [Guard Break]`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] — Triệu hồi cây cột đập mặt kẻ thù gây 4 <:Fairy:1513782007602216960>Fairy`,
       ];
     },
   },
@@ -3294,8 +3292,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,20);
       return [
-        `**[Undodgeable]**`,
-        `${D1} **${d1}** — Xích kẻ thù lại gây 5 <:Fairy:1513782007602216960>Fairy và 1 **Chained** <:chained:1513782041307643984>Chained`,
+        `${D1} **${d1}** [Undodgeable] — Xích kẻ thù lại gây 5 <:Fairy:1513782007602216960>Fairy và 1 **Chained** <:chained:1513782041307643984>Chained`,
       ];
     },
   },
@@ -3341,9 +3338,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,8), d2 = r(4,8);
       return [
-        `**[Unblockable]**`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
       ];
     },
   },
@@ -3376,8 +3372,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(15,26);
       return [
-        `**[Slash] [Unblockable]**`,
-        `${D1} **${d1}** — Bổ dọc kẻ địch từ trên xuống, cắt đôi người chúng`,
+        `**[<:Slash:1513768633434640517>Slash] [Unblockable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Bổ dọc kẻ địch từ trên xuống, cắt đôi người chúng`,
       ];
     },
   },
@@ -3387,8 +3383,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(32,43);
       return [
-        `**[Slash] [Unblockable] [Undodgeable]**`,
-        `${D1} **${d1}** — Vung Mimicry theo chiều ngang cắt đôi kẻ địch`,
+        `**[<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Vung Mimicry theo chiều ngang cắt đôi kẻ địch`,
       ];
     },
   },
@@ -3411,11 +3407,10 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,4), d2 = r(4,8), d3 = r(4,12), d4 = r(4,16);
       return [
-        `**[Undodgeable]**`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
-        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
-        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -3435,9 +3430,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,7), d2 = r(4,8);
       return [
-        `**[Unblockable]**`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Xoay lưỡi hái một vòng; nếu kẻ địch có số <:Tremor:1513762737388257380>Tremor bằng số Dice này thì sẽ Stagger ngay`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Xoay lưỡi hái một vòng nữa`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Xoay lưỡi hái một vòng; nếu kẻ địch có số <:Tremor:1513762737388257380>Tremor bằng số Dice này thì sẽ Stagger ngay`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Xoay lưỡi hái một vòng nữa`,
       ];
     },
   },
@@ -3457,8 +3451,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(17,35);
       return [
-        `**[Unblockable] [Unclashable]**`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đạp vào mặt kẻ thù, gây 4 <:Paralyze:1513763316479295548>Paralyze và 2 lần <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Unclashable] — Đạp vào mặt kẻ thù, gây 4 <:Paralyze:1513763316479295548>Paralyze và 2 lần <:TremorBurst:1513802464632246352>Tremor Burst`,
       ];
     },
   },
@@ -3478,8 +3471,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,20);
       return [
-        `**[Unblockable] [Guard Break] [AOE 3 người]**`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Đập trường đao xuống tạo vùng lửa lớn, gắn 5 <:Burn:1513762753691652177>Burn`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Guard Break] [AOE 3 người] — Đập trường đao xuống tạo vùng lửa lớn, gắn 5 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -3582,11 +3574,10 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,10), d2 = r(4,10), d3 = r(4,10), d4 = r(1,4);
       return [
-        `**[Undodgeable] [Unblockable]**`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lao lên chém kẻ địch, gây 2 <:Rupture:1513762812722155682>Rupture`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Lướt quanh chém liên tục`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Kết thúc bằng một đòn chém ngang`,
-        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] — Gây thêm bonus dmg = Dice x6, sau đó xóa stack **Unlocked Blade**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Lao lên chém kẻ địch, gây 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Lướt quanh chém liên tục`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Kết thúc bằng một đòn chém ngang`,
+        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Gây thêm bonus dmg = Dice x6, sau đó xóa stack **Unlocked Blade**`,
       ];
     },
   },
@@ -3629,10 +3620,9 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,6), d2 = r(6,8), d3 = r(7,10);
       return [
-        `**[Blunt]**`,
-        `${D1} **${d1}** — Túm kẻ địch quật ngã, gây 1 Fragile`,
-        `${D2} **${d2}** — Tiếp tục, gây 1 Fragile`,
-        `${D3} **${d3}** — Đá thẳng vào mặt kết liễu, gây 2 Fragile và 1 Vengeance Mark. Nếu địch ≥3 Vengeance Mark: +2 Fragile/hit và +5% Dmg/Vengeance Mark`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Túm kẻ địch quật ngã, gây 1 Fragile`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Tiếp tục, gây 1 Fragile`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — Đá thẳng vào mặt kết liễu, gây 2 Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Nếu địch ≥3 <:VengeanceMark:1513768136023740436>Vengeance Mark: +2 Fragile/hit và +5% Dmg/<:VengeanceMark:1513768136023740436>Vengeance Mark`,
       ];
     },
   },
@@ -3653,10 +3643,9 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,8), d2 = r(2,4), d3 = r(10,12);
       return [
-        `**[Undodgeable]**`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, nhận 5 <:Poise:1513762945715142736>Poise`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 4 <:Burn:1513762753691652177>Burn`,
-        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 4 <:Bleed:1513762688226955285>Bleed`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, nhận 5 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, gây 4 <:Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, gây 4 <:Bleed:1513762688226955285>Bleed`,
       ];
     },
   },
@@ -3678,8 +3667,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(10,19);
       return [
-        `**[Undodgeable] [Slash]**`,
-        `${D1} **${d1}** — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit và nhận 1 <:Light:1513786082502770719>Light`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit và nhận 1 <:Light:1513786082502770719>Light`,
       ];
     },
   },
@@ -3689,8 +3677,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(10,19);
       return [
-        `**[Undodgeable] [Slash] [AOE 5 người]**`,
-        `${D1} **${d1}** — Rút kiếm cắt đứt toàn bộ không gian xung quanh, gây dmg 6 hit`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [AOE 5 người] — Rút kiếm cắt đứt toàn bộ không gian xung quanh, gây dmg 6 hit`,
       ];
     },
   },
@@ -3733,9 +3720,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,9), d2 = r(7,10);
       return [
-        `**[Undodgeable] [Unblockable] [Pierce]**`,
-        `${D1} **${d1}** — Dùng Pistol bên trái bắn kẻ địch`,
-        `${D2} **${d2}** — Kết thúc bằng Pistol bên phải, đổi về dạng Shotgun`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Dùng Pistol bên trái bắn kẻ địch`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Kết thúc bằng Pistol bên phải, đổi về dạng Shotgun`,
       ];
     },
   },
@@ -3778,10 +3764,9 @@ roll(v = "no") {
     roll() {
       const d1 = r(3,7), d2 = r(3,7), d3 = r(4,10);
       return [
-        `**[Pierce]**`,
-        `${D1} **${d1}** — Lao lên chém kẻ địch bằng dao, gây 3 <:Bleed:1513762688226955285>Bleed (turn sau)`,
-        `${D2} **${d2}** — Dùng vuốt nhọn cấu xé, gây 3 <:Bleed:1513762688226955285>Bleed (turn sau)`,
-        `${D3} **${d3}** — Kết liễu bằng một cú vung, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau). Nếu có >5 stack Realization: kích toàn bộ <:Bleed:1513762688226955285>Bleed hiện tại trên địch (không giảm count)`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Lao lên chém kẻ địch bằng dao, gây 3 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Dùng vuốt nhọn cấu xé, gây 3 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] — Kết liễu bằng một cú vung, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau). Nếu có >5 stack Realization: kích toàn bộ <:Bleed:1513762688226955285>Bleed hiện tại trên địch (không giảm count)`,
       ];
     },
   },
@@ -3802,8 +3787,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(8,9);
       return [
-        `**[Slash] [Undodgeable]**`,
-        `${D1} **${d1}** — Lướt lên chém kẻ địch rồi tra kiếm, cắt đứt không gian. +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi <:Poise:1513762945715142736>Poise trên người (Max 19)`,
+        `**[<:Slash:1513768633434640517>Slash] [Undodgeable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch rồi tra kiếm, cắt đứt không gian. +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi <:Poise:1513762945715142736>Poise trên người (Max 19)`,
         `*[Sau đó] tiêu toàn bộ <:Poise:1513762945715142736>Poise, tăng base dmg cho Dice 1 = (tổng <:Poise:1513762945715142736>Poise tiêu thụ) x3*`,
       ];
     },
@@ -3870,9 +3855,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(8,9), d2 = r(11,15);
       return [
-        `**[Pierce]**`,
-        `${D1} **${d1}** — Đâm vào bụng kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
-        `${D2} **${d2}** — Đâm tiếp, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đâm vào bụng kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm tiếp, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
       ];
     },
   },
@@ -3882,9 +3866,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,8), d2 = r(6,8);
       return [
-        `**[Pierce]**`,
-        `${D1} **${d1}** — Đâm vào bụng kẻ địch, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau)`,
-        `${D2} **${d2}** — Đâm tiếp, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đâm vào bụng kẻ địch, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm tiếp, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau)`,
       ];
     },
   },
@@ -3894,9 +3877,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,10), d2 = r(10,11);
       return [
-        `**[Slash]**`,
-        `${D1} **${d1}** — Lướt lên xoay lưỡi hái cắt mọi thứ`,
-        `${D2} **${d2}** — Tiếp tục cắt, gắn 6 <:Sinking:1513762793436741652>Sinking (turn sau)`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên xoay lưỡi hái cắt mọi thứ`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục cắt, gắn 6 <:Sinking:1513762793436741652>Sinking (turn sau)`,
       ];
     },
   },
@@ -3906,8 +3888,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(8,20);
       return [
-        `**[Slash] [Khuếch tán 3 mục tiêu]**`,
-        `${D1} **${d1}** — Phủ thanh kiếm năng lượng xanh rồi chém ngang cắt đứt kẻ địch`,
+        `**[<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Phủ thanh kiếm năng lượng xanh rồi chém ngang cắt đứt kẻ địch`,
       ];
     },
   },
@@ -3917,8 +3899,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(10,17);
       return [
-        `**[Unevadeable] [Guard Break] [Pierce] [AOE 3 người]**`,
-        `${D1} **${d1}** — Tụ lực bắn một đường đạn cực mạnh vào đối phương`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unevadeable] [Guard Break] [AOE 3 người] — Tụ lực bắn một đường đạn cực mạnh vào đối phương`,
       ];
     },
   },
@@ -3928,9 +3909,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,9), d2 = r(7,10);
       return [
-        `**[Pierce]**`,
-        `${D1} **${d1}** — Nhảy lùi ra sau bắn kẻ địch`,
-        `${D2} **${d2}** — Bắn tiếp lần thứ hai`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Nhảy lùi ra sau bắn kẻ địch`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Bắn tiếp lần thứ hai`,
       ];
     },
   },
@@ -3995,10 +3975,9 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,10), d2 = r(3,12), d3 = r(8,11);
       return [
-        `**[Slash]**`,
-        `${D1} **${d1}** — Điều khiển kiếm xoay vòng quanh bản thân, cắt mọi thứ`,
-        `${D2} **${d2}** — Tiếp tục xoay`,
-        `${D3} **${d3}** — Tiếp tục xoay`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Điều khiển kiếm xoay vòng quanh bản thân, cắt mọi thứ`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay`,
       ];
     },
   },
@@ -4062,8 +4041,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,20);
       return [
-        `**[Slash] [Khuếch tán 3 mục tiêu]**`,
-        `${D1} **${d1}** — Lướt lên chém kẻ địch, triệu hồi rồng lửa cuốn vòng rồi tung chuỗi chém, gây 6 <:Burn:1513762753691652177>Burn`,
+        `**[<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch, triệu hồi rồng lửa cuốn vòng rồi tung chuỗi chém, gây 6 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -4084,8 +4063,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(24,32);
       return [
-        `**[Guard Break] [Elemental Dragon]**`,
-        `${D1} **${d1}** — Tích tụ toàn bộ nguyên tố vào kiếm rồi chém kẻ địch, gây 7 Hex`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Elemental Dragon] — Tích tụ toàn bộ nguyên tố vào kiếm rồi chém kẻ địch, gây 7 Hex`,
       ];
     },
   },
@@ -4135,9 +4113,9 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,10), d2 = r(10,18);
       return [
-        `**[Blunt] — Chắc chắn crit**`,
-        `${D1} **${d1}** — Nhảy vào đá kẻ địch`,
-        `${D2} **${d2}** — Liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
+        `**[<:Blunt:1513768529718022254>Blunt] — Chắc chắn crit**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Nhảy vào đá kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
       ];
     },
   },
@@ -4147,9 +4125,9 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,10), d2 = r(10,18);
       return [
-        `**[Blunt] — Chắc chắn crit**`,
-        `${D1} **${d1}** — Cùng bản thể còn lại nhảy vào đá kẻ địch`,
-        `${D2} **${d2}** — Cả hai liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
+        `**[<:Blunt:1513768529718022254>Blunt] — Chắc chắn crit**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Cùng bản thể còn lại nhảy vào đá kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Cả hai liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
       ];
     },
   },
