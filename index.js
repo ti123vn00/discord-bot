@@ -3687,9 +3687,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,11), d2 = r(7,11);
       return [
-        `**[AOE 2 người]**`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Đâm hai thanh kiếm vào kẻ địch`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Trảm ngang người chúng`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [AOE 2 người] — Đâm hai thanh kiếm vào kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] [AOE 2 người] — Trảm ngang người chúng`,
       ];
     },
   },
@@ -3743,8 +3742,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,24);
       return [
-        `**[AOE 3 người] [Undodgeable] [Guard Break] [Blunt]**`,
-        `${D1} **${d1}** — Lao lên bổ xuống kẻ địch`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] [AOE 3 người] — Lao lên bổ xuống kẻ địch`,
       ];
     },
   },
@@ -3943,8 +3941,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(24,40);
       return [
-        `**[AOE 2 người] [Guard Break] [Unparriable]**`,
-        `${D1} **${d1}** — Tạo tia sáng năng lượng hư vô bắn vào kẻ địch. Nhận 7 <:Haste:1513768004222062632>Haste và gây 14 <:Bleed:1513762688226955285>Bleed, 8 <:Sinking:1513762793436741652>Sinking`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Unparriable] [AOE 2 người] — Tạo tia sáng năng lượng hư vô bắn vào kẻ địch. Nhận 7 <:Haste:1513768004222062632>Haste và gây 14 <:Bleed:1513762688226955285>Bleed, 8 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -4018,8 +4015,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(21,30);
       return [
-        `**[AOE 3 người] [Unevadeable] [Guard Break] [Blunt]**`,
-        `${D1} **${d1}** — Nổ năng lượng phía trước. +2 <:DiceUp:1513767795681398894>Dice Up cho mỗi Havoc Bane trên kẻ địch, sau đó tiêu toàn bộ`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] [AOE 3 người] — Nổ năng lượng phía trước. +2 <:DiceUp:1513767795681398894>Dice Up cho mỗi Havoc Bane trên kẻ địch, sau đó tiêu toàn bộ`,
       ];
     },
   },
@@ -4052,8 +4048,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(24,32);
       return [
-        `**[True DMG] [Guard Break] [Chỉ dùng khi ở Primitive Dragon]**`,
-        `${D1} **${d1}** — Triệu hồi Void Talon, kéo kẻ địch lại gần rồi tung một đòn chém`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [True DMG] [Guard Break] [Chỉ dùng khi ở Primitive Dragon] — Triệu hồi Void Talon, kéo kẻ địch lại gần rồi tung một đòn chém`,
       ];
     },
   },
