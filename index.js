@@ -4339,7 +4339,7 @@ client.on("messageCreate", async (message) => {
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
     const critDivStr = (kv["critdiv"] ?? "").trim();
     let critDiv = 0;
-    if (critDivStr === "Yes" || critDivStr === "true" || critDivStr === "1") {
+    if (critDivStr === "Yes" || critDivStr === "yes" || critDivStr === "true" || critDivStr === "1") {
       critDiv = 2;
         } else {
     const parsed = parseFloat(critDivStr);
