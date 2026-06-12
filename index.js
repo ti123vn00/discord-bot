@@ -737,13 +737,12 @@ function calcMath(opts) {
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
 
-    // Sinking: mỗi hit luôn trừ 1 sanity địch (đúng cơ chế).
-    // Nếu có Sinking count: trừ 1 stack, cộng bonus dmg khi sanity địch đang ở SANITY_MIN
-    // (kiểm tra sanityBefore để cover cả trường hợp đòn này vừa đẩy xuống SANITY_MIN).
-    const sanityBefore = sanity;
-    sanity = Math.max(sanity - 1, SANITY_MIN);
+    // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).
+    // Mỗi hit tiêu thụ 1 stack và trừ 1 sanity; cộng bonus dmg khi sanity địch ở SANITY_MIN.
     let sinkingBonus = 0;
     if (enemySinking > 0) {
+      const sanityBefore = sanity;
+      sanity = Math.max(sanity - 1, SANITY_MIN);
       if (sanityBefore <= SANITY_MIN || sanity <= SANITY_MIN) {
         instanceDmg += enemySinking;
         sinkingBonus = enemySinking;
