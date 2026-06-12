@@ -30,12 +30,9 @@ const commands = [
       opt.setName("critdiv")
         .setDescription("Crit Divide: 'yes'/số (VD: 2, 1.5). Mặc định không dùng.")
         .setRequired(false))
-    // sanity: sanity BẢN THÂN khi bắt đầu tính (ảnh hưởng dmg roll của player)
+    // sanity: sanity ban đầu của địch (để tính Sinking bonus khi địch đạt -45)
     .addNumberOption(opt =>
-      opt.setName("sanity").setDescription("Sanity bản thân (ảnh hưởng dmg: +1 sanity = +1% dice, VD: 30)").setRequired(false))
-    // enemysanity: sanity địch (để tính Sinking bonus khi địch đạt -45)
-    .addNumberOption(opt =>
-      opt.setName("enemysanity").setDescription("Sanity ban đầu của địch để tính Sinking (VD: 0)").setRequired(false))
+      opt.setName("sanity").setDescription("Sanity ban đầu của địch để tính Sinking (VD: 0, min -45)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("dicemul").setDescription("Dice Multiplier (VD: 1.2)").setRequired(false))
     .addNumberOption(opt =>
