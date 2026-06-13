@@ -4730,7 +4730,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // ID phiên duy nhất — dùng làm customId nút để tra lại session khi click
+    // ID phiên duy nhất — dùng làm customId nút để tra lại session khi click vào button
     const sessionId = `${message.author.id}_${Date.now()}`;
     const customId  = `parryrt_${sessionId}`;
     const windowMs  = 400;
