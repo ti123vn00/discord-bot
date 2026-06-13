@@ -37,7 +37,7 @@ const DAILY_EXP_REWARD = 5;
 const DAILY_AHN_REWARD = 100_000;
 const DAILY_STREAK_EXP_BONUS = 25;
 const DAILY_STREAK_AHN_BONUS = 400_000;
-const DAILY_KEY_TTL_SECONDS = 86400 * 3;
+const DAILY_KEY_TTL_SECONDS = 86400 * 2;
 
 // ─── LEVELING ─────────────────────────────────────────────────────────────────
 const GRADE_EXP_REQUIRED = {
@@ -92,11 +92,10 @@ function calcExpForGrade(targetGrade) {
 // ─── UI CONSTANTS ─────────────────────────────────────────────────────────────
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
 
-const ADMIN_IDS = new Set([
-  "208187560692940803",
-  "1072123095739019346",
-  "675899106614575150",
-]);
+const ADMIN_IDS = new Set(
+  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150")
+    .split(",").map(s => s.trim()).filter(Boolean)
+);
 
 // ─── BOOK POOLS ───────────────────────────────────────────────────────────────
 const RANDOM_BOOK_POOL = [
@@ -192,10 +191,9 @@ const KNOWN_KEYS = new Set([
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
-const _KV_KEY_RE = new RegExp(_KV_KEY_RE_SRC, "gi");
 
 function parseKeyValues(input) {
-  _KV_KEY_RE.lastIndex = 0;
+  const _KV_KEY_RE = new RegExp(_KV_KEY_RE_SRC, "gi");
   const anchors = [];
   let m;
   while ((m = _KV_KEY_RE.exec(input)) !== null) {
@@ -217,14 +215,10 @@ function parseKeyValues(input) {
 function filterZeroFields(fields) {
   return fields.filter((f) => {
     if (f.alwaysShow) return true;
+    if ("showIf" in f) return f.showIf;
+    // Fallback cho các field không có showIf
     const v = String(f.value).trim();
-    if (v === "0") return false;
-    if (v === "0.0%") return false;
-    if (v === "0.00%") return false;
-    if (v === "0.00x") return false;
-    if (v === "1.00x") return false;
-    if (v === "No") return false;
-    return true;
+    return v !== "0" && v !== "No";
   });
 }
 
@@ -843,16 +837,16 @@ function calcMath(opts) {
   const allFields = [
     { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
     { name: "% Dmg Bonus", value: bonusPct.toFixed(1) + "%", inline: true, alwaysShow: true },
-    { name: "Sanity % DMG Bonus", value: sanityBonusPct.toFixed(1) + "%", inline: true },
+    { name: "Sanity % DMG Bonus", value: sanityBonusPct.toFixed(1) + "%", inline: true, showIf: sanityBonusPct !== 0 },
     { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
     { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
-    { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true },
+    { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
     { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
-    { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true },
+    { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
-    { name: "Enemy's Sanity", value: sanity.toString(), inline: true },
-    { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true },
-    { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true },
+    { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
+    { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
+    { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
   ];
 
   return {
@@ -4434,8 +4428,8 @@ function findSkill(raw) {
 
 // ─── PRESCRIPT TABLE ──────────────────────────────────────────────────────────
 const PRESCRIPT_TABLE = [
-  "Dice 1: **27 Dmg** [<:Blunt:1513768529718022254>Blunt] — nhận 2 <:<:Poise:1513762945715142736>Poise:1513762945715142736><:Poise:1513762945715142736>Poise [20 Stamina]",
-  "Dice 2: **8 Dmg** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:<:Sinking:1513762793436741652>Sinking:1513762793436741652><:Sinking:1513762793436741652>Sinking [5 Stamina]",
+  "Dice 1: **27 Dmg** [<:Blunt:1513768529718022254>Blunt] — nhận 2 <:Poise:1513762945715142736>Poise [20 Stamina]",
+  "Dice 2: **8 Dmg** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Sinking:1513762793436741652>Sinking [5 Stamina]",
   "Dice 3: **15 Dmg** [<:Slash:1513768633434640517>Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
   "Dice 4: **6 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
   "Dice 5: **25 Dmg** [<:Blunt:1513768529718022254>Blunt] — giảm 50 Stamina địch [20 Stamina]",
@@ -5562,7 +5556,7 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-if (interaction.commandName === "use") {
+  if (interaction.commandName === "use") {
     if (await replyOnCooldown(interaction, 2000)) return; 
     const userId = interaction.user.id;
     await interaction.deferReply();
@@ -5597,6 +5591,7 @@ if (interaction.commandName === "use") {
   }
 
   if (interaction.commandName === "give") {
+    if (await replyOnCooldown(interaction, 3000)) return;
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     await interaction.deferReply();
     const targetUser = interaction.options.getUser("user");
@@ -5646,6 +5641,7 @@ if (interaction.commandName === "use") {
   }
 
   if (interaction.commandName === "remove") {
+    if (await replyOnCooldown(interaction, 3000)) return;
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     await interaction.deferReply();
     const mentionedUser = interaction.options.getUser("user");
@@ -5735,19 +5731,17 @@ app.use((req, res) => res.status(404).send("Not found."));
 app.use((err, req, res, next) => { console.error("[Express error]", err); res.status(500).send("Internal server error."); });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system", `Server running on port ${PORT}`));
+const server = app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system", `Server running on port ${PORT}`));
 
 // Clear timer khi process shutdown để tránh memory leak
-process.on("SIGTERM", () => {
+function gracefulShutdown(signal) {
+  log("info", "shutdown", "system", `${signal} received, shutting down.`);
   clearInterval(cooldownCleanupTimer);
-  log("info", "shutdown", "system", "SIGTERM received, shutting down.");
-  process.exit(0);
-});
-process.on("SIGINT", () => {
-  clearInterval(cooldownCleanupTimer);
-  log("info", "shutdown", "system", "SIGINT received, shutting down.");
-  process.exit(0);
-});
+  server.close(() => process.exit(0));
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
 
 process.on("uncaughtException", (err) => log("error", "uncaughtException", "system", err.message, { stack: err.stack }));
 process.on("unhandledRejection", (reason) => log("error", "unhandledRejection", "system", String(reason)));
