@@ -4711,8 +4711,8 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ── -parryrt  (Parry thời gian thực) ──────────────────────────────────────
-  if (message.content.startsWith("-parryrt")) {
+  // ── -rtparry  (Parry thời gian thực) ──────────────────────────────────────
+  if (message.content.startsWith("-rtparry")) {
     if (isOnCooldown(message.author.id, "parryrt", 5000)) {
       message.reply("⏳ Chờ **5 giây** trước khi thử parry tiếp nhé.");
       return;
@@ -4793,7 +4793,7 @@ client.on("messageCreate", async (message) => {
               `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
               `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
             color: 0xe74c3c,
-            footer: { text: "Dùng -parryrt để thử lại" },
+            footer: { text: "Dùng -rtparry để thử lại" },
           }],
           components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
         }).catch(() => {});
@@ -5280,7 +5280,7 @@ client.on("messageCreate", async (message) => {
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
-      { name: "🎯 -parryrt", value: "Parry thời gian thực! Nhấn nút đúng khi đòn đánh đến.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry thay đổi mỗi lần — luyện phản xạ!", inline: false },
+      { name: "🎯 -rtparry", value: "Parry thời gian thực! Nhấn nút đúng khi đòn đánh đến.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry thay đổi mỗi lần", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
       { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting <:<:Poise:1513762945715142736>Poise:1513762945715142736><:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
@@ -5488,7 +5488,7 @@ client.on("interactionCreate", async (interaction) => {
             `${interaction.user} bấm **quá sớm**! ❌\n` +
             `> Đòn đánh chưa đến — cần kiên nhẫn hơn.`,
           color: 0xe74c3c,
-          footer: { text: "Dùng -parryrt để thử lại" },
+          footer: { text: "Dùng -rtparry để thử lại" },
         }],
         components: [buildParryRow(customId, "✗  Quá sớm!", ButtonStyle.Danger, true)],
       }).catch(() => {});
@@ -5511,7 +5511,7 @@ client.on("interactionCreate", async (interaction) => {
             `> ⚡ Phản ứng: **${reactionMs}ms** — ${rating}\n` +
             `> Cửa sổ parry: **${session.windowMs}ms**`,
           color: 0x2ecc71,
-          footer: { text: "Dùng -parryrt để thử lại" },
+          footer: { text: "Dùng -rtparry để thử lại" },
         }],
         components: [buildParryRow(customId, "✓  Parry thành công!", ButtonStyle.Success, true)],
       }).catch(() => {});
