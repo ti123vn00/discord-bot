@@ -37,7 +37,7 @@ const RUPTURE_MAX = 99;
 const activeParrySessions = new Map();
 
 // Dọn session cũ (>30 giây) mỗi 30 giây để tránh memory leak
-setInterval(() => {
+const parrySessionCleanupTimer = setInterval(() => {
   const cutoff = Date.now() - 30_000;
   for (const [id, s] of activeParrySessions)
     if (s.createdAt < cutoff) activeParrySessions.delete(id);
@@ -208,8 +208,7 @@ const KNOWN_KEYS = new Set([
   "dmg", "res", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
   "poise",
-  "books", "items", "stat", "scaleskill",
-  "dmgnegationboss", "vulnerability", "buffbonus", "dmgbaseweapon",
+  "books", "items",
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -246,12 +245,19 @@ function filterZeroFields(fields) {
 
 function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit }) {
   const errors = [];
+  if (isNaN(bonusPct))       errors.push("bonus phải là số");
+  if (isNaN(sanityBonusPct)) errors.push("sanitybonus phải là số");
+  if (isNaN(critMul))        errors.push("critmul phải là số");
+  if (isNaN(diceMul))        errors.push("dicemul phải là số");
+  if (isNaN(sinkingInit))    errors.push("sinking phải là số");
+  if (isNaN(ruptureInit))    errors.push("rupture phải là số");
+  if (isNaN(sanityInit))     errors.push("sanity phải là số");
   if (poiseInit < 0 || poiseInit > POISE_MAX) errors.push(`Poise phải từ 0–${POISE_MAX}`);
-  if (critMul < 1) errors.push("CritMul phải ≥ 1");
-  if (diceMul < 0) errors.push("DiceMul phải ≥ 0");
-  if (sinkingInit < 0 || sinkingInit > SINKING_MAX) errors.push(`Sinking phải từ 0–${SINKING_MAX}`);
-  if (ruptureInit < 0 || ruptureInit > RUPTURE_MAX) errors.push(`Rupture phải từ 0–${RUPTURE_MAX}`);
-  if (sanityInit < SANITY_MIN) errors.push(`Sanity phải ≥ ${SANITY_MIN}`);
+  if (!isNaN(critMul) && critMul < 1) errors.push("CritMul phải ≥ 1");
+  if (!isNaN(diceMul) && diceMul < 0) errors.push("DiceMul phải ≥ 0");
+  if (!isNaN(sinkingInit) && (sinkingInit < 0 || sinkingInit > SINKING_MAX)) errors.push(`Sinking phải từ 0–${SINKING_MAX}`);
+  if (!isNaN(ruptureInit) && (ruptureInit < 0 || ruptureInit > RUPTURE_MAX)) errors.push(`Rupture phải từ 0–${RUPTURE_MAX}`);
+  if (!isNaN(sanityInit) && sanityInit < SANITY_MIN) errors.push(`Sanity phải ≥ ${SANITY_MIN}`);
   return errors;
 }
 
@@ -490,9 +496,10 @@ async function savePlayerData(userId, data) {
 
 async function saveMultiplePlayerData(entries) {
   const pipeline = redis.pipeline();
-  for (const { userId, data } of entries) {
-    const slot = await getActiveProfileSlot(userId);
-    pipeline.set(playerKeyForSlot(userId, slot), JSON.stringify(data));
+  const slots = await Promise.all(entries.map(e => getActiveProfileSlot(e.userId)));
+  for (let i = 0; i < entries.length; i++) {
+    const { userId, data } = entries[i];
+    pipeline.set(playerKeyForSlot(userId, slots[i]), JSON.stringify(data));
   }
   const results = await withTimeout(pipeline.exec());
   if (Array.isArray(results)) {
@@ -912,46 +919,6 @@ function calcMath(opts) {
   };
 }
 
-function calcHunterMath(opts) {
-  const {
-    dmgBaseWeapon = 0,
-    bonusPct = 0,
-    statValue = 0,
-    scaleSkillPct = 0,
-    dmgNegationPct = 0,
-    vulnerabilityPct = 0,
-    buffDmgBonus = 0,
-  } = opts;
-
-  const partWeapon =
-    dmgBaseWeapon * (1 + bonusPct / 100) * (1 - dmgNegationPct / 100) * (1 + vulnerabilityPct / 100) +
-    (scaleSkillPct / 100) * buffDmgBonus;
-
-  const partStat =
-    statValue * (scaleSkillPct / 100) * (1 - dmgNegationPct / 100) * (1 + vulnerabilityPct / 100) +
-    (scaleSkillPct / 100) * buffDmgBonus;
-
-  const finalDmg = partWeapon + partStat;
-
-  const allFields = [
-    { name: "DmgBaseWeapon", value: dmgBaseWeapon.toString(), inline: true },
-    { name: "Bonus %", value: bonusPct.toFixed(1) + "%", inline: true },
-    { name: "Stat Value", value: statValue.toString(), inline: true },
-    { name: "ScaleSkill %", value: scaleSkillPct.toFixed(1) + "%", inline: true },
-    { name: "Boss Negation %", value: dmgNegationPct.toFixed(1) + "%", inline: true },
-    { name: "Vulnerability %", value: vulnerabilityPct.toFixed(1) + "%", inline: true },
-    { name: "BuffBonus", value: buffDmgBonus.toString(), inline: true },
-    { name: "Final DMG", value: finalDmg.toFixed(3), inline: false },
-  ];
-
-  return {
-    embeds: [{
-      title: "📊 Kết quả tính DMG",
-      color: 0xff6600,
-      fields: filterZeroFields(allFields),
-    }],
-  };
-}
 
 // ─── SHARED: buildBalanceEmbed / buildInventoryEmbed ──────────────────────────
 async function buildBalanceEmbed(targetUser) {
@@ -1747,6 +1714,10 @@ client.on("messageCreate", async (message) => {
 
   // ── -give ──
   if (message.content.startsWith("-give")) {
+    if (isOnCooldown(message.author.id, "give", 3000)) {
+      message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
+      return;
+    }
     const isAdmin = ADMIN_IDS.has(message.author.id);
     const targetUser = message.mentions.users.first();
     if (!targetUser) {
@@ -1827,6 +1798,10 @@ client.on("messageCreate", async (message) => {
 
   // ── -remove ──
   if (message.content.startsWith("-remove")) {
+    if (isOnCooldown(message.author.id, "remove", 3000)) {
+      message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
+      return;
+    }
     const isAdmin = ADMIN_IDS.has(message.author.id);
     const mentionedUser = message.mentions.users.first();
     let targetUser;
@@ -2378,22 +2353,6 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ── -huntermath ──
-  if (message.content.startsWith("-huntermath")) {
-    if (isOnCooldown(message.author.id, "huntermath", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
-    const input = message.content.replace("-huntermath", "").trim();
-    const kv = parseKeyValues(input);
-    message.reply(calcHunterMath({
-      dmgBaseWeapon: parseFloat(kv["dmgbaseweapon"] ?? "0"),
-      bonusPct: parseFloat((kv["bonus"] ?? "0").replace("%", "")),
-      statValue: parseFloat(kv["stat"] ?? "0"),
-      scaleSkillPct: parseFloat((kv["scaleskill"] ?? "0").replace("%", "")),
-      dmgNegationPct: parseFloat((kv["dmgnegationboss"] ?? "0").replace("%", "")),
-      vulnerabilityPct: parseFloat((kv["vulnerability"] ?? "0").replace("%", "")),
-      buffDmgBonus: parseFloat(kv["buffbonus"] ?? "0"),
-    }));
-    return;
-  }
   } catch (err) {
     console.error("[messageCreate error]", err);
     try { message.reply("❌ Có lỗi không mong muốn xảy ra.").catch(() => {}); } catch {}
@@ -2403,6 +2362,7 @@ client.on("messageCreate", async (message) => {
 // ─── BUTTON INTERACTIONS ──────────────────────────────────────────────────────
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
+  try {
 
   // ── Nút parry thời gian thực ──
   if (interaction.customId.startsWith("parryrt_")) {
@@ -2497,17 +2457,18 @@ client.on("interactionCreate", async (interaction) => {
       flags: MessageFlags.Ephemeral,
     }).catch(() => {});
   }
+  } catch (err) {
+    log("error", "buttonInteraction", interaction.user?.id ?? "unknown", err.message);
+    interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
 });
 
 // ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
 async function replyOnCooldown(interaction, ms) {
   if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
   try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.` });
-    } else {
-      await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, flags: MessageFlags.Ephemeral });
-    }
+    // replyOnCooldown luôn được gọi trước deferReply nên interaction chưa bao giờ ở trạng thái deferred/replied
+    await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, flags: MessageFlags.Ephemeral });
   } catch {
     // Interaction có thể đã expired — bỏ qua
   }
@@ -2561,21 +2522,6 @@ client.on("interactionCreate", async (interaction) => {
       diceMul,
       sinkingInit,
       ruptureInit,
-    }));
-    return;
-  }
-
-  if (interaction.commandName === "huntermath") {
-    if (await replyOnCooldown(interaction, 2000)) return;
-    await interaction.deferReply();
-    await interaction.editReply(calcHunterMath({
-      dmgBaseWeapon: interaction.options.getNumber("dmgbaseweapon") ?? 0,
-      bonusPct: interaction.options.getNumber("bonus") ?? 0,
-      statValue: interaction.options.getNumber("stat") ?? 0,
-      scaleSkillPct: interaction.options.getNumber("scaleskill") ?? 0,
-      dmgNegationPct: interaction.options.getNumber("dmgnegationboss") ?? 0,
-      vulnerabilityPct: interaction.options.getNumber("vulnerability") ?? 0,
-      buffDmgBonus: interaction.options.getNumber("buffbonus") ?? 0,
     }));
     return;
   }
@@ -2978,6 +2924,7 @@ const server = app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system"
 function gracefulShutdown(signal) {
   log("info", "shutdown", "system", `${signal} received, shutting down.`);
   clearInterval(cooldownCleanupTimer);
+  clearInterval(parrySessionCleanupTimer);
   server.close(() => process.exit(0));
 }
 
