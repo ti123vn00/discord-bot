@@ -2298,10 +2298,10 @@ client.on("messageCreate", async (message) => {
           const claimedToday = dd && dd.lastClaim === today;
           const streak = dd ? (dd.streak ?? 0) : 0;
           if (d) {
-            const grade = getGradeInfo(d.exp ?? 0);
+            const { grade } = calcGrade(d.exp ?? 0);
             lines.push(
               `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-              `> 🏅 Grade **${grade.grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
+              `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
               `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
             );
           } else {
@@ -2310,8 +2310,8 @@ client.on("messageCreate", async (message) => {
               `> *(chưa có dữ liệu)*`
             );
           }
-        } catch {
-          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi đọc dữ liệu)*`);
+        } catch (e) {
+          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi: ${e.message})*`);
         }
       }
       message.reply({
@@ -2928,10 +2928,10 @@ client.on("interactionCreate", async (interaction) => {
           const claimedToday = dd && dd.lastClaim === today;
           const streak = dd ? (dd.streak ?? 0) : 0;
           if (d) {
-            const grade = getGradeInfo(d.exp ?? 0);
+            const { grade } = calcGrade(d.exp ?? 0);
             lines.push(
               `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-              `> 🏅 Grade **${grade.grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
+              `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
               `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
             );
           } else {
@@ -2940,8 +2940,8 @@ client.on("interactionCreate", async (interaction) => {
               `> *(chưa có dữ liệu)*`
             );
           }
-        } catch {
-          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi đọc dữ liệu)*`);
+        } catch (e) {
+          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi: ${e.message})*`);
         }
       }
       await interaction.editReply({
