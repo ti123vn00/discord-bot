@@ -4696,8 +4696,8 @@ client.on("messageCreate", async (message) => {
       return;
     }
     let rolls = (!isNaN(parsedRolls) && Number.isFinite(parsedRolls) && parsedRolls > 0) ? parsedRolls : 1;
-    if (rolls > 50) {
-      message.reply("❌ Số lần roll tối đa là 50.");
+    if (rolls > 30) {
+      message.reply("❌ Số lần roll tối đa là 30.");
       return;
     }
     const { successCount, failCount, lines } = runParryRolls(rolls);
@@ -4905,7 +4905,7 @@ client.on("messageCreate", async (message) => {
           }).catch(() => {});
 
           await advanceRound();
-        }, windowMs);
+        }, windowMs + 1);
       };
 
       // Tick đầu tiên cũng có delay ngẫu nhiên trước khi edit
@@ -5397,7 +5397,7 @@ client.on("messageCreate", async (message) => {
       { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
-      { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
+      { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 30 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
       { name: "🎯 -rtparry [số]", value: "Parry thời gian thực! Đếm ngược kết thúc thì bấm.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry: 400ms\n> Thêm số để parry liên tiếp nhiều lần (tối đa 20): `-rtparry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
       { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting <:<:Poise:1513762945715142736>Poise:1513762945715142736><:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
@@ -5743,7 +5743,7 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "parry") {
     if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
-    const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, 50);
+    const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, 30);
     const { successCount, failCount, lines } = runParryRolls(rolls);
     let body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
     if (body.length > 2000) body = body.substring(0, 1990) + "\n…(bị cắt bớt)";
