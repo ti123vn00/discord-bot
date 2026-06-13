@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const express = require("express");
 const { Redis } = require("@upstash/redis");
 
@@ -1356,7 +1356,7 @@ const SKILLS = {
   },
   "will of the city": {
     name: "Will of The City",
-    cost: "1 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,10);
       return [
@@ -1366,7 +1366,7 @@ const SKILLS = {
   },
   "dodge and strike": {
     name: "Dodge and Strike",
-    cost: "1 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,16);
       return [
@@ -2010,12 +2010,12 @@ const SKILLS = {
     },
   },
   "yield my flesh": {
-    name: "Yield My Flesh", cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    name: "Yield My Flesh", cost: "2 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
     roll() {
       const d1=r(3,6),d2=r(6,12);
       return [
         `*Skill đặc biệt của Blade Lineage — yêu cầu Outfit Blade Lineage*`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Ngắt đòn đánh hoặc clash`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Né 4 đòn đánh thường hoặc clash`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — Nếu địch không đánh để né/clash: chém và nhận 2 <:Light:1513786082502770719>Light`,
       ];
     },
@@ -2088,11 +2088,11 @@ const SKILLS = {
   },
   "furusiyya": {
     name: "Furūsiyya",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
-      const d1 = r(8,10);
+      const d1 = r(5,10);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Ngắt một đòn của kẻ địch  , nhận 2 Protection`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — ngắt 4 đòn đánh thường của địch, nhận 2 Protection`,
       ];
     },
   },
@@ -2174,11 +2174,11 @@ const SKILLS = {
   },
   "law and order": {
     name: "Law and Order",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,5), d2 = r(5,9), d3 = r(8,14);
       return [
-        `*Chặn đòn đánh của địch — nhận 5 <:DefenseUp:1513767487894716497>Defense Up*`,
+        `*Chặn 4 đòn đánh thường của địch — nhận 5 <:DefenseUp:1513767487894716497>Defense Up*`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
         `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
@@ -2223,11 +2223,11 @@ const SKILLS = {
   },
   "celestial sight": {
     name: "Celestial Sight",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — Counter một đòn của kẻ địch, phản công gây 6 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — né 4 đòn thường của địch, phản công gây 6 <:Tremor:1513762737388257380>Tremor`,
       ];
     },
   },
@@ -2655,11 +2655,11 @@ roll(v = "no") {
   },
   "loss of senses": {
     name: "Loss of Senses",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,11);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Counter] [Undodgeable] — Ngắt một đòn kẻ địch; phản công gây 2 lần sát thương, mỗi lần gây 2 <:Smoke:1513778039610282015>Smoke; rồi gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Counter] [Undodgeable] — né 4 đòn đánh thường; phản công gây 2 lần sát thương, mỗi lần gây 2 <:Smoke:1513778039610282015>Smoke; rồi gây 1 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
   },
@@ -4711,33 +4711,41 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ── -rtparry  (Parry thời gian thực) ──────────────────────────────────────
+  // ── -rtparry  (Parry thời gian thực, hỗ trợ nhiều lần liên tiếp) ───────────
   if (message.content.startsWith("-rtparry")) {
-    if (isOnCooldown(message.author.id, "parryrt", 5000)) {
-      message.reply("⏳ Chờ **5 giây** trước khi thử parry tiếp nhé.");
+    const argStr = message.content.replace("-rtparry", "").trim();
+    let rounds = 1;
+    if (argStr) {
+      const n = parseInt(argStr, 10);
+      if (!Number.isInteger(n) || n < 1 || n > 20) {
+        message.reply("⚠️ Số lần parry phải là số nguyên từ **1** đến **20**.\n> VD: `-rtparry` hoặc `-rtparry 10`");
+        return;
+      }
+      rounds = n;
+    }
+
+    const cooldownMs = 5000 + (rounds - 1) * 1500;
+    if (isOnCooldown(message.author.id, "parryrt", cooldownMs)) {
+      message.reply(`⏳ Chờ **${Math.ceil(cooldownMs / 1000)} giây** trước khi thử parry tiếp nhé.`);
       return;
     }
 
     // ID phiên duy nhất — dùng làm customId nút để tra lại session khi click
     const sessionId = `${message.author.id}_${Date.now()}`;
     const customId  = `parryrt_${sessionId}`;
+    const windowMs  = 400;
 
-    // Số tick đếm ngược random 2–4
-    const tickCount = 2 + Math.floor(Math.random() * 3);
-    // Cửa sổ parry random 700ms – 1100ms
-    const windowMs = 400;
-
-    // ── Gửi tin nhắn — Pha 1 (Waiting): nút enabled ngay từ đầu, bấm sớm = quá sớm ──
+    // ── Gửi tin nhắn ban đầu ──
     let sentMsg;
     try {
       sentMsg = await message.reply({
         embeds: [{
-          title: "⚔️ Parry Real Time",
-          description: `Hãy sẵn sàng… Đòn đánh đến sau: **${tickCount}**...`,
+          title: rounds > 1 ? `⚔️ Parry Real Time — Lần 1/${rounds}` : "⚔️ Parry Real Time",
+          description: "Hãy sẵn sàng…",
           color: 0xf39c12,
           footer: { text: "Bấm đúng lúc đếm ngược kết thúc!" },
         }],
-        components: [buildParryRow(customId, "⚠️  Chưa phải lúc…", ButtonStyle.Secondary, false)],
+        components: [buildParryRow(customId, "⚠️  Chuẩn bị…", ButtonStyle.Secondary, true)],
       });
     } catch (err) {
       log("error", "parryrt", message.author.id, err.message);
@@ -4753,79 +4761,163 @@ client.on("messageCreate", async (message) => {
       createdAt:   Date.now(),
       windowTimer: null,
       expireTimer: null,
+      rounds,
+      current:     1,
+      results:     [], // { success: bool, reactionMs?: number, early?: bool }
     };
     activeParrySessions.set(sessionId, session);
 
-    // ── Pha đếm ngược: mỗi tick tốc độ ngẫu nhiên 600–1000ms ───────────────
-    const runTick = async (remaining) => {
-      if (session.responded) return;
+    const titleFor = (n) => session.rounds > 1
+      ? `⚔️ Parry Real Time — Lần ${n}/${session.rounds}`
+      : "⚔️ Parry Real Time";
 
-      if (remaining > 0) {
+    // ── Tổng kết khi đã chạy hết các round ─────────────────────────────────
+    const finishSession = async () => {
+      activeParrySessions.delete(sessionId);
+
+      if (session.rounds === 1) return; // round đơn đã tự render kết quả riêng
+
+      const successCount = session.results.filter(r => r.success).length;
+      const successReactions = session.results.filter(r => r.success).map(r => r.reactionMs);
+      const avgMs = successReactions.length
+        ? Math.round(successReactions.reduce((a, b) => a + b, 0) / successReactions.length)
+        : null;
+
+      const lines = session.results.map((r, i) => {
+        if (r.success) return `> Lần ${i + 1}: ✅ ${r.reactionMs}ms`;
+        if (r.early)   return `> Lần ${i + 1}: ❌ Quá sớm`;
+        return `> Lần ${i + 1}: ❌ Bỏ lỡ`;
+      }).join("\n");
+
+      const summaryColor = successCount === session.rounds ? 0x2ecc71
+        : successCount === 0 ? 0xe74c3c
+        : 0xf39c12;
+
+      await sentMsg.edit({
+        embeds: [{
+          title: `⚔️ Parry Real Time — Kết quả`,
+          description:
+            `${message.author} hoàn thành **${successCount}/${session.rounds}** lần parry!\n` +
+            (avgMs !== null ? `> Phản ứng trung bình (lần thành công): **${avgMs}ms**\n` : "") +
+            `\n${lines}`,
+          color: summaryColor,
+          footer: { text: "Dùng -rtparry [số] để thử lại" },
+        }],
+        components: [buildParryRow(customId, "✓  Hoàn thành", ButtonStyle.Secondary, true)],
+      }).catch(() => {});
+    };
+
+    // ── Sau khi 1 round kết thúc → chuyển round kế hoặc tổng kết ───────────
+    const advanceRound = async () => {
+      if (session.current >= session.rounds) {
+        await finishSession();
+        return;
+      }
+      session.current += 1;
+      session.phase = "waiting";
+      session.responded = false;
+      session.windowStart = null;
+
+      setTimeout(() => startRound(), 900);
+    };
+
+    // ── Chạy 1 round: đếm ngược → cửa sổ parry → hết giờ ───────────────────
+    const startRound = () => {
+      const tickCount = 2 + Math.floor(Math.random() * 3);
+
+      const runTick = async (remaining) => {
+        if (session.responded) return;
+
+        if (remaining > 0) {
+          try {
+            await sentMsg.edit({
+              embeds: [{
+                title: titleFor(session.current),
+                description: `⏳ Đòn đánh đến sau: **${remaining}**...`,
+                color: 0xf39c12,
+                footer: { text: "Bấm đúng lúc đếm ngược kết thúc!" },
+              }],
+              components: [buildParryRow(customId, "⚠️  Chưa phải lúc…", ButtonStyle.Secondary, false)],
+            });
+          } catch {
+            session.responded = true;
+            activeParrySessions.delete(sessionId);
+            return;
+          }
+
+          const tickDelay = 600 + Math.floor(Math.random() * 400);
+          session.windowTimer = setTimeout(() => runTick(remaining - 1), tickDelay);
+          return;
+        }
+
+        // ── Đếm ngược kết thúc → mở cửa sổ parry ──────────────────────────
+        if (session.responded) return;
+
         try {
           await sentMsg.edit({
             embeds: [{
-              title: "⚔️ Parry Real Time",
-              description: `⏳ Đòn đánh đến sau: **${remaining}**...`,
-              color: 0xf39c12,
-              footer: { text: "Bấm đúng lúc đếm ngược kết thúc!" },
+              title: titleFor(session.current),
+              description: "## ⚡ BÂY GIỜ! PARRY!",
+              color: 0x2ecc71,
             }],
-            components: [buildParryRow(customId, "⚠️  Chưa phải lúc…", ButtonStyle.Secondary, false)],
+            components: [buildParryRow(customId, "⚔️  P A R R Y !", ButtonStyle.Success, false)],
           });
+          session.phase = "window";
+          session.windowStart = Date.now();
         } catch {
           session.responded = true;
           activeParrySessions.delete(sessionId);
           return;
         }
 
-        const tickDelay = 600 + Math.floor(Math.random() * 400);
-        session.windowTimer = setTimeout(() => runTick(remaining - 1), tickDelay);
-        return;
-      }
+        // ── Đóng cửa sổ → tự fail nếu chưa ai bấm ──────────────────────────
+        session.expireTimer = setTimeout(async () => {
+          if (session.responded) return;
+          session.phase = "expired";
+          session.responded = true;
+          session.results.push({ success: false });
 
-      // ── Đếm ngược kết thúc → mở cửa sổ parry ──────────────────────────
-      if (session.responded) return;
+          if (session.rounds === 1) {
+            activeParrySessions.delete(sessionId);
+            await sentMsg.edit({
+              embeds: [{
+                title: titleFor(session.current),
+                description:
+                  `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
+                  `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
+                color: 0xe74c3c,
+                footer: { text: "Dùng -rtparry để thử lại" },
+              }],
+              components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
+            }).catch(() => {});
+            return;
+          }
 
-      try {
-        await sentMsg.edit({
-          embeds: [{
-            title: "⚔️ Parry Real Time",
-            description: "## ⚡ BÂY GIỜ! PARRY!",
-            color: 0x2ecc71,
-          }],
-          components: [buildParryRow(customId, "⚔️  P A R R Y !", ButtonStyle.Success, false)],
-        });
-        session.phase = "window";
-        session.windowStart = Date.now();
-      } catch {
-        session.responded = true;
-        activeParrySessions.delete(sessionId);
-        return;
-      }
+          await sentMsg.edit({
+            embeds: [{
+              title: titleFor(session.current),
+              description:
+                `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
+                `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
+              color: 0xe74c3c,
+            }],
+            components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
+          }).catch(() => {});
 
-      // ── Đóng cửa sổ → tự fail nếu chưa ai bấm ──────────────────────────
-      session.expireTimer = setTimeout(async () => {
-        if (session.responded) return;
-        session.phase = "expired";
-        session.responded = true;
-        activeParrySessions.delete(sessionId);
+          await advanceRound();
+        }, windowMs);
+      };
 
-        await sentMsg.edit({
-          embeds: [{
-            title: "⚔️ Parry Real Time",
-            description:
-              `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
-              `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
-            color: 0xe74c3c,
-            footer: { text: "Dùng -rtparry để thử lại" },
-          }],
-          components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
-        }).catch(() => {});
-      }, windowMs);
+      // Tick đầu tiên cũng có delay ngẫu nhiên trước khi edit
+      const firstDelay = 600 + Math.floor(Math.random() * 400);
+      session.windowTimer = setTimeout(() => runTick(tickCount - 1), firstDelay);
     };
 
-    // Tick đầu tiên cũng có delay ngẫu nhiên trước khi edit
-    const firstDelay = 600 + Math.floor(Math.random() * 400);
-    session.windowTimer = setTimeout(() => runTick(tickCount - 1), firstDelay);
+    session.advanceRound = advanceRound;
+    session.titleFor = titleFor;
+
+    // Khởi động round đầu sau khoảng nghỉ ngắn
+    setTimeout(() => startRound(), 900);
 
     return;
   }
@@ -5306,7 +5398,7 @@ client.on("messageCreate", async (message) => {
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
-      { name: "🎯 -rtparry", value: "Parry thời gian thực! Nhấn nút đúng khi đòn đánh đến.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry thay đổi mỗi lần", inline: false },
+      { name: "🎯 -rtparry [số]", value: "Parry thời gian thực! Đếm ngược kết thúc thì bấm.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry: 400ms\n> Thêm số để parry liên tiếp nhiều lần (tối đa 20): `-rtparry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
       { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting <:<:Poise:1513762945715142736>Poise:1513762945715142736><:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
@@ -5483,7 +5575,7 @@ client.on("interactionCreate", async (interaction) => {
         content: session
           ? "⚠️ Chỉ người dùng lệnh mới có thể tương tác với phiên parry này!"
           : "⚠️ Phiên parry này đã kết thúc.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     }
 
@@ -5491,7 +5583,7 @@ client.on("interactionCreate", async (interaction) => {
     if (session.responded) {
       return interaction.reply({
         content: "⚠️ Phiên parry đã kết thúc.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     }
 
@@ -5499,16 +5591,17 @@ client.on("interactionCreate", async (interaction) => {
     session.responded = true;
     clearTimeout(session.windowTimer);
     clearTimeout(session.expireTimer);
-    activeParrySessions.delete(sessionId);
 
     const { customId } = interaction;
+    const title = session.titleFor(session.current);
 
     // ── Bấm quá sớm (trong lúc đếm ngược, trước khi "BÂY GIỜ!") ──────────────
     if (session.phase === "waiting") {
-      clearTimeout(session.windowTimer);
-      return interaction.update({
+      session.results.push({ success: false, early: true });
+
+      await interaction.update({
         embeds: [{
-          title: "⚔️ Parry Real Time",
+          title,
           description:
             `${interaction.user} bấm **quá sớm**! ❌\n` +
             `> Đếm ngược chưa kết thúc — cần kiên nhẫn hơn.`,
@@ -5517,6 +5610,13 @@ client.on("interactionCreate", async (interaction) => {
         }],
         components: [buildParryRow(customId, "✗  Quá sớm!", ButtonStyle.Danger, true)],
       }).catch(() => {});
+
+      if (session.rounds === 1) {
+        activeParrySessions.delete(sessionId);
+      } else {
+        await session.advanceRound();
+      }
+      return;
     }
 
     // ── Bấm trong cửa sổ → PARRY THÀNH CÔNG ────────────────────────────────
@@ -5528,9 +5628,11 @@ client.on("interactionCreate", async (interaction) => {
         reactionMs < 300 ? "✅ **GOOD!** Phản ứng tốt!"          :
                            "😅 **NOT BAD!** Vừa kịp!";
 
-      return interaction.update({
+      session.results.push({ success: true, reactionMs });
+
+      await interaction.update({
         embeds: [{
-          title: "⚔️ Parry Real Time",
+          title,
           description:
             `${interaction.user} **PARRY THÀNH CÔNG!** ✅\n` +
             `> ⚡ Phản ứng: **${reactionMs}ms** — ${rating}\n` +
@@ -5540,12 +5642,19 @@ client.on("interactionCreate", async (interaction) => {
         }],
         components: [buildParryRow(customId, "✓  Parry thành công!", ButtonStyle.Success, true)],
       }).catch(() => {});
+
+      if (session.rounds === 1) {
+        activeParrySessions.delete(sessionId);
+      } else {
+        await session.advanceRound();
+      }
+      return;
     }
 
     // ── Cửa sổ vừa đóng (race condition cực hiếm: expireTimer chạy đúng lúc này) ──
     return interaction.reply({
       content: "⚠️ Cửa sổ parry vừa đóng — chậm mất rồi!",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     }).catch(() => {});
   }
 });
@@ -5557,7 +5666,7 @@ async function replyOnCooldown(interaction, ms) {
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.` });
     } else {
-      await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, ephemeral: true });
+      await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, flags: MessageFlags.Ephemeral });
     }
   } catch {
     // Interaction có thể đã expired — bỏ qua
@@ -5942,7 +6051,7 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     log("error", "interactionCreate", interaction.user?.id ?? "unknown", err.message, { cmd: interaction.commandName });
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   }
 });
