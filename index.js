@@ -4732,7 +4732,7 @@ client.on("messageCreate", async (message) => {
     try {
       sentMsg = await message.reply({
         embeds: [{
-          title: "⚔️ Thử thách Parry",
+          title: "⚔️ Parry Real Time",
           description: "Hãy sẵn sàng… Nhấn nút **đúng khi đòn đánh đến**!\n\n*Bấm sớm hoặc bỏ lỡ đều thất bại.*",
           color: 0xf39c12,
           footer: { text: "Đang chờ đòn đánh..." },
@@ -4763,7 +4763,7 @@ client.on("messageCreate", async (message) => {
       try {
         await sentMsg.edit({
           embeds: [{
-            title: "⚔️ Thử thách Parry",
+            title: "⚔️ Parry Real Time",
             description: "## ⚡ BÂY GIỜ! PARRY!",
             color: 0x2ecc71,
           }],
@@ -4788,7 +4788,7 @@ client.on("messageCreate", async (message) => {
 
         await sentMsg.edit({
           embeds: [{
-            title: "Parry Real Time",
+            title: "⚔️ Parry Real Time",
             description:
               `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
               `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
@@ -5483,7 +5483,7 @@ client.on("interactionCreate", async (interaction) => {
     if (session.phase === "waiting") {
       return interaction.update({
         embeds: [{
-          title: "⚔️ Thử thách Parry",
+          title: "⚔️ Parry Real Time",
           description:
             `${interaction.user} bấm **quá sớm**! ❌\n` +
             `> Đòn đánh chưa đến — cần kiên nhẫn hơn.`,
@@ -5505,7 +5505,7 @@ client.on("interactionCreate", async (interaction) => {
 
       return interaction.update({
         embeds: [{
-          title: "⚔️ Thử thách Parry",
+          title: "⚔️ Parry Real Time",
           description:
             `${interaction.user} **PARRY THÀNH CÔNG!** ✅\n` +
             `> ⚡ Phản ứng: **${reactionMs}ms** — ${rating}\n` +
