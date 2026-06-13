@@ -2,6 +2,7 @@
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID; // Set để deploy guild (nhanh hơn); bỏ trống để deploy global
 
 if (!TOKEN || !CLIENT_ID) {
   console.error("Thiếu DISCORD_TOKEN hoặc CLIENT_ID trong environment variables!");
@@ -166,9 +167,13 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
   try {
-    console.log(`🔄 Đang đăng ký ${commands.length} slash commands...`);
-    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("✅ Đã đăng ký slash commands thành công!");
+    const route = GUILD_ID
+      ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
+      : Routes.applicationCommands(CLIENT_ID);
+    const scope = GUILD_ID ? `guild ${GUILD_ID} (tức thì)` : "global (propagate ~1 giờ)";
+    console.log(`🔄 Đang đăng ký ${commands.length} slash commands (${scope})...`);
+    await rest.put(route, { body: commands });
+    console.log(`✅ Đã đăng ký slash commands thành công! (${scope})`);
     process.exit(0);
   } catch (err) {
     console.error("❌ Lỗi khi đăng ký commands:", err);
