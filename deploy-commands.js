@@ -41,24 +41,6 @@ const commands = [
     .addNumberOption(opt =>
       opt.setName("rupture").setDescription("Rupture counts ban đầu của địch").setMinValue(0).setMaxValue(99).setRequired(false)),
 
-  // ── /huntermath ─────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
-    .setName("huntermath")
-    .setDescription("Tính DMG theo công thức game Hunter")
-    .addNumberOption(opt =>
-      opt.setName("dmgbaseweapon").setDescription("Base DMG của vũ khí").setRequired(true))
-    .addNumberOption(opt =>
-      opt.setName("stat").setDescription("Stat value").setRequired(true))
-    .addNumberOption(opt =>
-      opt.setName("scaleskill").setDescription("Scale Skill % (VD: 150)").setRequired(true))
-    .addNumberOption(opt =>
-      opt.setName("bonus").setDescription("Bonus % (VD: 20)").setRequired(false))
-    .addNumberOption(opt =>
-      opt.setName("dmgnegationboss").setDescription("Boss DMG Negation % (VD: 30)").setRequired(false))
-    .addNumberOption(opt =>
-      opt.setName("vulnerability").setDescription("Vulnerability % (VD: 10)").setRequired(false))
-    .addNumberOption(opt =>
-      opt.setName("buffbonus").setDescription("Buff Bonus value").setRequired(false)),
 
   // ── /parry ──────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
