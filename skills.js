@@ -3354,7 +3354,7 @@ Object.assign(SKILLS, {
   // ── EGO Pages (ZAYIN) ──
   "crow's eye view": {
     name: "Crow's Eye View", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1322102399342481439>Light, 10 Sanity <:Sanity:1376404240859271179>", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(18,24);
       return [
@@ -3366,7 +3366,7 @@ Object.assign(SKILLS, {
   },
   "la sangre de sancho": {
     name: "La Sangre De Sancho", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity <:Sanity:1376404240859271179>", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(14,26);
       return [
@@ -3378,7 +3378,7 @@ Object.assign(SKILLS, {
   },
   "representation emitter": {
     name: "Representation Emitter", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1322102399342481439>Light, 10 Sanity <:Sanity:1376404240859271179>", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(19,23);
       return [
@@ -3390,7 +3390,7 @@ Object.assign(SKILLS, {
   },
   "land of illusion": {
     name: "Land of Illusion", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1322102399342481439>Light, 10 Sanity <:Sanity:1376404240859271179>", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(15,25);
       return [
