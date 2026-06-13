@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const express = require("express");
 const { Redis } = require("@upstash/redis");
 
@@ -31,6 +31,28 @@ const POISE_MAX = 99;
 const POISE_CRIT_DIV_DEFAULT = 2;
 const SINKING_MAX = 99;
 const RUPTURE_MAX = 99;
+
+// ─── REAL-TIME PARRY ──────────────────────────────────────────────────────────
+// Map<sessionId, session> — lưu trạng thái từng phiên parry đang chạy
+const activeParrySessions = new Map();
+
+// Dọn session cũ (>30 giây) mỗi 30 giây để tránh memory leak
+setInterval(() => {
+  const cutoff = Date.now() - 30_000;
+  for (const [id, s] of activeParrySessions)
+    if (s.createdAt < cutoff) activeParrySessions.delete(id);
+}, 30_000);
+
+/** Tạo ActionRow với 1 nút parry duy nhất */
+function buildParryRow(customId, label, style, disabled) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(customId)
+      .setLabel(label)
+      .setStyle(style)
+      .setDisabled(disabled)
+  );
+}
 
 // ─── DAILY REWARDS ────────────────────────────────────────────────────────────
 const DAILY_EXP_REWARD = 5;
@@ -4689,6 +4711,99 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // ── -parryrt  (Parry thời gian thực) ──────────────────────────────────────
+  if (message.content.startsWith("-parryrt")) {
+    if (isOnCooldown(message.author.id, "parryrt", 5000)) {
+      message.reply("⏳ Chờ **5 giây** trước khi thử parry tiếp nhé.");
+      return;
+    }
+
+    // ID phiên duy nhất — dùng làm customId nút để tra lại session khi click
+    const sessionId = `${message.author.id}_${Date.now()}`;
+    const customId  = `parryrt_${sessionId}`;
+
+    // Thời gian chờ random 1.5s – 4.5s → mô phỏng "đòn đang đến"
+    const waitMs   = 1_500 + Math.floor(Math.random() * 3_000);
+    // Cửa sổ parry random 700ms – 1100ms
+    const windowMs = 700   + Math.floor(Math.random() * 400);
+
+    // ── Gửi tin nhắn — Pha 1 (Waiting): nút disabled, màu xám ──
+    let sentMsg;
+    try {
+      sentMsg = await message.reply({
+        embeds: [{
+          title: "⚔️ Thử thách Parry",
+          description: "Hãy sẵn sàng… Nhấn nút **đúng khi đòn đánh đến**!\n\n*Bấm sớm hoặc bỏ lỡ đều thất bại.*",
+          color: 0xf39c12,
+          footer: { text: "Đang chờ đòn đánh..." },
+        }],
+        components: [buildParryRow(customId, "⚠️  Đòn đánh đang đến…", ButtonStyle.Secondary, true)],
+      });
+    } catch (err) {
+      log("error", "parryrt", message.author.id, err.message);
+      return;
+    }
+
+    const session = {
+      userId:      message.author.id,
+      phase:       "waiting",   // "waiting" | "window" | "expired"
+      responded:   false,
+      windowMs,
+      windowStart: null,
+      createdAt:   Date.now(),
+      windowTimer: null,
+      expireTimer: null,
+    };
+    activeParrySessions.set(sessionId, session);
+
+    // ── Pha 2: Mở cửa sổ parry sau waitMs ──────────────────────────────────
+    session.windowTimer = setTimeout(async () => {
+      if (session.responded) return;
+
+      try {
+        await sentMsg.edit({
+          embeds: [{
+            title: "⚔️ Thử thách Parry",
+            description: "## ⚡ BÂY GIỜ! PARRY!",
+            color: 0x2ecc71,
+          }],
+          components: [buildParryRow(customId, "⚔️  P A R R Y !", ButtonStyle.Success, false)],
+        });
+        // windowStart đặt SAU KHI edit thành công → thời gian phản ứng chính xác hơn
+        session.phase = "window";
+        session.windowStart = Date.now();
+      } catch {
+        // Tin nhắn bị xóa hoặc mất quyền edit → huỷ phiên
+        session.responded = true;
+        activeParrySessions.delete(sessionId);
+        return;
+      }
+
+      // ── Pha 3: Đóng cửa sổ → tự fail nếu chưa ai bấm ──────────────────
+      session.expireTimer = setTimeout(async () => {
+        if (session.responded) return;
+        session.phase = "expired";
+        session.responded = true;
+        activeParrySessions.delete(sessionId);
+
+        await sentMsg.edit({
+          embeds: [{
+            title: "⚔️ Thử thách Parry",
+            description:
+              `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
+              `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
+            color: 0xe74c3c,
+            footer: { text: "Dùng -parryrt để thử lại" },
+          }],
+          components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
+        }).catch(() => {});
+      }, windowMs);
+
+    }, waitMs);
+
+    return;
+  }
+
   // ── -daily ──
   if (message.content.startsWith("-daily")) {
     if (isOnCooldown(message.author.id, "daily", 3000)) {
@@ -5165,6 +5280,7 @@ client.on("messageCreate", async (message) => {
       { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
       { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 50 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
+      { name: "🎯 -parryrt", value: "Parry thời gian thực! Nhấn nút đúng khi đòn đánh đến.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry thay đổi mỗi lần — luyện phản xạ!", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
       { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting <:<:Poise:1513762945715142736>Poise:1513762945715142736><:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
@@ -5323,6 +5439,89 @@ client.on("messageCreate", async (message) => {
   } catch (err) {
     console.error("[messageCreate error]", err);
     try { message.reply("❌ Có lỗi không mong muốn xảy ra.").catch(() => {}); } catch {}
+  }
+});
+
+// ─── BUTTON INTERACTIONS ──────────────────────────────────────────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  // ── Nút parry thời gian thực ──
+  if (interaction.customId.startsWith("parryrt_")) {
+    const sessionId = interaction.customId.replace("parryrt_", "");
+    const session   = activeParrySessions.get(sessionId);
+
+    // Người khác cố bấm → ephemeral warning
+    if (!session || interaction.user.id !== session.userId) {
+      return interaction.reply({
+        content: session
+          ? "⚠️ Chỉ người dùng lệnh mới có thể tương tác với phiên parry này!"
+          : "⚠️ Phiên parry này đã kết thúc.",
+        ephemeral: true,
+      }).catch(() => {});
+    }
+
+    // Race condition guard — session đã xử lý xong
+    if (session.responded) {
+      return interaction.reply({
+        content: "⚠️ Phiên parry đã kết thúc.",
+        ephemeral: true,
+      }).catch(() => {});
+    }
+
+    const now = Date.now();
+    session.responded = true;
+    clearTimeout(session.windowTimer);
+    clearTimeout(session.expireTimer);
+    activeParrySessions.delete(sessionId);
+
+    const { customId } = interaction;
+
+    // ── Bấm quá sớm (pha "waiting") ─────────────────────────────────────────
+    // Lưu ý: nút bị disabled ở pha này nên bình thường không click được.
+    // Đây chỉ là safety net cho edge case (client lạ, race condition cực hiếm).
+    if (session.phase === "waiting") {
+      return interaction.update({
+        embeds: [{
+          title: "⚔️ Thử thách Parry",
+          description:
+            `${interaction.user} bấm **quá sớm**! ❌\n` +
+            `> Đòn đánh chưa đến — cần kiên nhẫn hơn.`,
+          color: 0xe74c3c,
+          footer: { text: "Dùng -parryrt để thử lại" },
+        }],
+        components: [buildParryRow(customId, "✗  Quá sớm!", ButtonStyle.Danger, true)],
+      }).catch(() => {});
+    }
+
+    // ── Bấm trong cửa sổ → PARRY THÀNH CÔNG ────────────────────────────────
+    if (session.phase === "window") {
+      const reactionMs = now - session.windowStart;
+      const rating =
+        reactionMs < 200 ? "🏆 Phản ứng SIÊU NHANH!" :
+        reactionMs < 400 ? "⚡ Phản ứng rất nhanh!"   :
+        reactionMs < 650 ? "✅ Phản ứng tốt!"          :
+                           "😅 Vừa kịp!";
+
+      return interaction.update({
+        embeds: [{
+          title: "⚔️ Thử thách Parry",
+          description:
+            `${interaction.user} **PARRY THÀNH CÔNG!** ✅\n` +
+            `> ⚡ Phản ứng: **${reactionMs}ms** — ${rating}\n` +
+            `> Cửa sổ parry: **${session.windowMs}ms**`,
+          color: 0x2ecc71,
+          footer: { text: "Dùng -parryrt để thử lại" },
+        }],
+        components: [buildParryRow(customId, "✓  Parry thành công!", ButtonStyle.Success, true)],
+      }).catch(() => {});
+    }
+
+    // ── Cửa sổ vừa đóng (race condition cực hiếm: expireTimer chạy đúng lúc này) ──
+    return interaction.reply({
+      content: "⚠️ Cửa sổ parry vừa đóng — chậm mất rồi!",
+      ephemeral: true,
+    }).catch(() => {});
   }
 });
 
