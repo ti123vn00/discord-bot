@@ -4725,7 +4725,7 @@ client.on("messageCreate", async (message) => {
     // Thời gian chờ random 1.5s – 4.5s → mô phỏng "đòn đang đến"
     const waitMs   = 1_500 + Math.floor(Math.random() * 3_000);
     // Cửa sổ parry random 700ms – 1100ms
-    const windowMs = 700   + Math.floor(Math.random() * 400);
+    const windowMs = 1000  + Math.floor(Math.random() * 500);
 
     // ── Gửi tin nhắn — Pha 1 (Waiting): nút disabled, màu xám ──
     let sentMsg;
@@ -4761,6 +4761,7 @@ client.on("messageCreate", async (message) => {
       if (session.responded) return;
 
       try {
+        const editT0 = Date.now();
         await sentMsg.edit({
           embeds: [{
             title: "⚔️ Parry Real Time",
@@ -4769,9 +4770,12 @@ client.on("messageCreate", async (message) => {
           }],
           components: [buildParryRow(customId, "⚔️  P A R R Y !", ButtonStyle.Success, false)],
         });
-        // windowStart đặt SAU KHI edit thành công → thời gian phản ứng chính xác hơn
+        // Đo RTT của edit → ước tính user thấy message sau ~½ RTT (server→CDN→client)
+        // Offset windowStart về sau để bù delay, tránh trừ oan thời gian phản ứng
+        const editRtt   = Date.now() - editT0;
+        const propDelay = Math.floor(editRtt * 0.5);
         session.phase = "window";
-        session.windowStart = Date.now();
+        session.windowStart = Date.now() + propDelay;
       } catch {
         // Tin nhắn bị xóa hoặc mất quyền edit → huỷ phiên
         session.responded = true;
