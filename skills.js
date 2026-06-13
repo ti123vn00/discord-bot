@@ -3358,7 +3358,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(18,24);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down, 2 <:Bind:1513768025881317457>Bind và toàn bộ đồng minh nhận 3 <:Haste:1513768004222062632>Haste turn kế [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable]`,
+        `<:Dice1:1508173590078558369> **${d1}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down, 2 <:Bind:1513768025881317457>Bind và toàn bộ đồng minh nhận 3 <:Haste:1513768004222062632>Haste turn kế [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable]`,
         `*[After Use] E.G.O Passive **Silence**: khi bị tấn công turn kế sẽ nhận 3 <:Bind:1513768025881317457>Bind và tăng 20% Dmg Up*`,
         `*__Utter to me what you think the ideal is.__*`,
       ];
@@ -3382,7 +3382,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(19,23);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** — Đập cán chổi xuống mặt đất tạo xung chấn, sau đó hồi 12 Sanity cho 4 đồng minh có Sanity thấp nhất [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [AOE 3 người]`,
+        `<:Dice1:1508173590078558369> **${d1}** — Đập cán chổi xuống mặt đất tạo xung chấn, sau đó hồi 12 Sanity cho 4 đồng minh có Sanity thấp nhất [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [AOE 3 người]`,
         `*[After Use] E.G.O Passive **Ennui**: nếu kẻ địch bị Stagger, 3 đồng minh có Sanity thấp nhất hồi 20 Sanity*`,
         `*__Faust knows all outcomes.__*`,
       ];
@@ -3394,7 +3394,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(15,25);
       return [
-        `<:Dice1:1282932482437546004> **${d1}** — Gây 5 <:Sinking:1513762793436741652>Sinking, bản thân hồi 15 Sanity và đồng đội hồi 5 Sanity [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [AOE 3 người]`,
+        `<:Dice1:1508173590078558369> **${d1}** — Gây 5 <:Sinking:1513762793436741652>Sinking, bản thân hồi 15 Sanity và đồng đội hồi 5 Sanity [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [AOE 3 người]`,
         `*[After Use] E.G.O Passive **Ripple**: mỗi đầu turn, hồi 5 Sanity cho đồng đội ngẫu nhiên có Sanity thấp nhất*`,
         `*__Let's visit the world of wonders.__*`,
       ];
