@@ -161,6 +161,23 @@ const commands = [
     .addStringOption(opt =>
       opt.setName("items").setDescription("Xóa nhiều vật phẩm (VD: Chipboard MK1 x3, Chipboard MK2 x1)").setRequired(false)),
 
+  // ── /profile ─────────────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName("profile")
+    .setDescription("Quản lý các save profile (tối đa 3 profile riêng biệt)")
+    .addSubcommand(sub =>
+      sub.setName("switch")
+        .setDescription("Chuyển sang profile khác (inventory, daily, ahn đều riêng biệt)")
+        .addIntegerOption(opt =>
+          opt.setName("slot")
+            .setDescription("Profile muốn chuyển sang (1, 2 hoặc 3)")
+            .setMinValue(1)
+            .setMaxValue(3)
+            .setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName("info")
+        .setDescription("Xem tổng quan tất cả profile và trạng thái daily của từng cái")),
+
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
