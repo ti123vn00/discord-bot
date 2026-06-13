@@ -65,8 +65,8 @@ const commands = [
     .setName("parry")
     .setDescription("Roll xác suất parry (Attacker d16 vs Defender d20)")
     .addIntegerOption(opt =>
-      opt.setName("rolls").setDescription("Số lần roll (tối đa 50, mặc định 1)")
-        .setMinValue(1).setMaxValue(50).setRequired(false)),
+      opt.setName("rolls").setDescription("Số lần roll (tối đa 30, mặc định 1)")
+        .setMinValue(1).setMaxValue(30).setRequired(false)),
 
   // ── /daily ──────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
