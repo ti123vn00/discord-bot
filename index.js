@@ -4725,7 +4725,7 @@ client.on("messageCreate", async (message) => {
     // Số tick đếm ngược random 2–4
     const tickCount = 2 + Math.floor(Math.random() * 3);
     // Cửa sổ parry random 700ms – 1100ms
-    const windowMs = 350  + Math.floor(Math.random() * 150);
+    const windowMs = 400;
 
     // ── Gửi tin nhắn — Pha 1 (Waiting): nút enabled ngay từ đầu, bấm sớm = quá sớm ──
     let sentMsg;
