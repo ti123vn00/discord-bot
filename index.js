@@ -418,8 +418,37 @@ function isTimeoutError(err) {
   return err && (err.message === "Thao tác Redis quá thời gian, thử lại sau." || err.message === "Lock timeout");
 }
 
+// ─── PROFILE SYSTEM ───────────────────────────────────────────────────────────
+const MAX_PROFILES = 3;
+const PROFILE_LABELS = { 1: "Profile 1", 2: "Profile 2", 3: "Profile 3" };
+const PROFILE_EMOJIS = { 1: "1️⃣", 2: "2️⃣", 3: "3️⃣" };
+
+async function getActiveProfileSlot(userId) {
+  try {
+    const raw = await withTimeout(redis.get(`profile:${userId}`));
+    const slot = parseInt(raw, 10);
+    return (slot >= 1 && slot <= MAX_PROFILES) ? slot : 1;
+  } catch {
+    return 1;
+  }
+}
+
+async function setActiveProfileSlot(userId, slot) {
+  await withTimeout(redis.set(`profile:${userId}`, String(slot)));
+}
+
+function playerKeyForSlot(userId, slot) {
+  return slot === 1 ? `player:${userId}` : `player:${userId}:slot${slot}`;
+}
+
+function dailyKeyForSlot(userId, slot) {
+  return slot === 1 ? `daily:${userId}` : `daily:${userId}:slot${slot}`;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function getPlayerData(userId) {
-  const key = `player:${userId}`;
+  const slot = await getActiveProfileSlot(userId);
+  const key = playerKeyForSlot(userId, slot);
   let lastErr;
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
@@ -439,7 +468,8 @@ async function getPlayerData(userId) {
 }
 
 async function savePlayerData(userId, data) {
-  const key = `player:${userId}`;
+  const slot = await getActiveProfileSlot(userId);
+  const key = playerKeyForSlot(userId, slot);
   const payload = JSON.stringify(data);
   let lastErr;
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
@@ -461,7 +491,8 @@ async function savePlayerData(userId, data) {
 async function saveMultiplePlayerData(entries) {
   const pipeline = redis.pipeline();
   for (const { userId, data } of entries) {
-    pipeline.set(`player:${userId}`, JSON.stringify(data));
+    const slot = await getActiveProfileSlot(userId);
+    pipeline.set(playerKeyForSlot(userId, slot), JSON.stringify(data));
   }
   const results = await withTimeout(pipeline.exec());
   if (Array.isArray(results)) {
@@ -568,8 +599,9 @@ function buildRollDescription({ user, cacheType, results, remainingCount }) {
 // ─── SHARED LOGIC: DAILY ──────────────────────────────────────────────────────
 async function processDailyClaimForUser(userId) {
   return withLock(userId, async () => {
-    const dailyKey = `daily:${userId}`;
-    const playerKey = `player:${userId}`;
+    const slot = await getActiveProfileSlot(userId);
+    const dailyKey = dailyKeyForSlot(userId, slot);
+    const playerKey = playerKeyForSlot(userId, slot);
 
     const rawResults = await withTimeout(
       redis.pipeline().get(dailyKey).get(playerKey).exec()
@@ -5489,6 +5521,78 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // ── -profile ──
+  if (message.content.startsWith("-profile")) {
+    if (isOnCooldown(message.author.id, "profile", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
+    const userId = message.author.id;
+    const args = message.content.replace("-profile", "").trim().split(/\s+/);
+    const sub = (args[0] ?? "").toLowerCase();
+
+    // -profile switch <1|2|3>
+    if (sub === "switch") {
+      const slot = parseInt(args[1], 10);
+      if (!slot || slot < 1 || slot > MAX_PROFILES) {
+        message.reply(`❌ Slot không hợp lệ. Dùng: \`-profile switch 1\`, \`-profile switch 2\` hoặc \`-profile switch 3\``);
+        return;
+      }
+      const currentSlot = await getActiveProfileSlot(userId);
+      if (slot === currentSlot) {
+        message.reply(`ℹ️ Bạn đang ở **${PROFILE_LABELS[slot]}** rồi.`);
+        return;
+      }
+      await setActiveProfileSlot(userId, slot);
+      message.reply(`✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${PROFILE_LABELS[slot]}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`);
+      return;
+    }
+
+    // -profile info
+    if (sub === "info" || sub === "") {
+      const currentSlot = await getActiveProfileSlot(userId);
+      const lines = [];
+      for (let s = 1; s <= MAX_PROFILES; s++) {
+        try {
+          const raw = await withTimeout(redis.get(playerKeyForSlot(userId, s)));
+          const d = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+          const dailyRaw = await withTimeout(redis.get(dailyKeyForSlot(userId, s)));
+          const dd = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
+          const today = getVNDateString();
+          const claimedToday = dd && dd.lastClaim === today;
+          const streak = dd ? (dd.streak ?? 0) : 0;
+          if (d) {
+            const grade = getGradeInfo(d.exp ?? 0);
+            lines.push(
+              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+              `> 🏅 Grade **${grade.grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
+              `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
+            );
+          } else {
+            lines.push(
+              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+              `> *(chưa có dữ liệu)*`
+            );
+          }
+        } catch {
+          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi đọc dữ liệu)*`);
+        }
+      }
+      message.reply({
+        embeds: [{
+          title: `👤 Profiles của ${message.author.displayName ?? message.author.username}`,
+          description: lines.join("\n\n"),
+          color: 0x5865f2,
+          footer: { text: "Dùng -profile switch <1/2/3> để đổi profile" },
+        }],
+      });
+      return;
+    }
+
+    message.reply("❌ Lệnh không hợp lệ. Dùng:\n> `-profile info` — xem tổng quan tất cả profile\n> `-profile switch <1/2/3>` — chuyển sang profile khác");
+    return;
+  }
+
   // ── -math ──
   if (message.content.startsWith("-math")) {
     if (isOnCooldown(message.author.id, "math", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
@@ -6045,6 +6149,74 @@ client.on("interactionCreate", async (interaction) => {
     } catch (err) {
       log("error", "/remove", targetUser.id, err.message, { actor: interaction.user.id });
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}` });
+    }
+    return;
+  }
+
+  // ── /profile ──
+  if (interaction.commandName === "profile") {
+    const userId = interaction.user.id;
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === "switch") {
+      if (await replyOnCooldown(interaction, 2000)) return;
+      const slot = interaction.options.getInteger("slot");
+      const currentSlot = await getActiveProfileSlot(userId);
+      if (slot === currentSlot) {
+        await interaction.reply({
+          content: `ℹ️ Bạn đang ở **${PROFILE_LABELS[slot]}** rồi.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      await setActiveProfileSlot(userId, slot);
+      await interaction.reply({
+        content: `✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${PROFILE_LABELS[slot]}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (sub === "info") {
+      if (await replyOnCooldown(interaction, 2000)) return;
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const currentSlot = await getActiveProfileSlot(userId);
+      const lines = [];
+      for (let s = 1; s <= MAX_PROFILES; s++) {
+        try {
+          const raw = await withTimeout(redis.get(playerKeyForSlot(userId, s)));
+          const d = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+          const dailyRaw = await withTimeout(redis.get(dailyKeyForSlot(userId, s)));
+          const dd = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
+          const today = getVNDateString();
+          const claimedToday = dd && dd.lastClaim === today;
+          const streak = dd ? (dd.streak ?? 0) : 0;
+          if (d) {
+            const grade = getGradeInfo(d.exp ?? 0);
+            lines.push(
+              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+              `> 🏅 Grade **${grade.grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
+              `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
+            );
+          } else {
+            lines.push(
+              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+              `> *(chưa có dữ liệu)*`
+            );
+          }
+        } catch {
+          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi đọc dữ liệu)*`);
+        }
+      }
+      await interaction.editReply({
+        embeds: [{
+          title: `👤 Profiles của ${interaction.user.displayName ?? interaction.user.username}`,
+          description: lines.join("\n\n"),
+          color: 0x5865f2,
+          footer: { text: "Dùng /profile switch để đổi profile" },
+        }],
+      });
+      return;
     }
     return;
   }
