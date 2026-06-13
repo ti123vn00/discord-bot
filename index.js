@@ -4722,22 +4722,22 @@ client.on("messageCreate", async (message) => {
     const sessionId = `${message.author.id}_${Date.now()}`;
     const customId  = `parryrt_${sessionId}`;
 
-    // Thời gian chờ random 1.5s – 4.5s → mô phỏng "đòn đang đến"
-    const waitMs   = 1_500 + Math.floor(Math.random() * 3_000);
+    // Số tick đếm ngược random 2–4
+    const tickCount = 2 + Math.floor(Math.random() * 3);
     // Cửa sổ parry random 700ms – 1100ms
     const windowMs = 1000  + Math.floor(Math.random() * 500);
 
-    // ── Gửi tin nhắn — Pha 1 (Waiting): nút disabled, màu xám ──
+    // ── Gửi tin nhắn — Pha 1 (Waiting): nút enabled ngay từ đầu, bấm sớm = quá sớm ──
     let sentMsg;
     try {
       sentMsg = await message.reply({
         embeds: [{
           title: "⚔️ Parry Real Time",
-          description: "Hãy sẵn sàng… Nhấn nút **đúng khi đòn đánh đến**!\n\n*Bấm sớm hoặc bỏ lỡ đều thất bại.*",
+          description: `Hãy sẵn sàng… Đòn đánh đến sau: **${tickCount}**...`,
           color: 0xf39c12,
-          footer: { text: "Đang chờ đòn đánh..." },
+          footer: { text: "Bấm đúng lúc đếm ngược kết thúc!" },
         }],
-        components: [buildParryRow(customId, "⚠️  Đòn đánh đang đến…", ButtonStyle.Secondary, true)],
+        components: [buildParryRow(customId, "⚠️  Chưa phải lúc…", ButtonStyle.Secondary, false)],
       });
     } catch (err) {
       log("error", "parryrt", message.author.id, err.message);
@@ -4756,12 +4756,36 @@ client.on("messageCreate", async (message) => {
     };
     activeParrySessions.set(sessionId, session);
 
-    // ── Pha 2: Mở cửa sổ parry sau waitMs ──────────────────────────────────
-    session.windowTimer = setTimeout(async () => {
+    // ── Pha đếm ngược: mỗi tick tốc độ ngẫu nhiên 600–1000ms ───────────────
+    const runTick = async (remaining) => {
+      if (session.responded) return;
+
+      if (remaining > 0) {
+        try {
+          await sentMsg.edit({
+            embeds: [{
+              title: "⚔️ Parry Real Time",
+              description: `⏳ Đòn đánh đến sau: **${remaining}**...`,
+              color: 0xf39c12,
+              footer: { text: "Bấm đúng lúc đếm ngược kết thúc!" },
+            }],
+            components: [buildParryRow(customId, "⚠️  Chưa phải lúc…", ButtonStyle.Secondary, false)],
+          });
+        } catch {
+          session.responded = true;
+          activeParrySessions.delete(sessionId);
+          return;
+        }
+
+        const tickDelay = 600 + Math.floor(Math.random() * 400);
+        session.windowTimer = setTimeout(() => runTick(remaining - 1), tickDelay);
+        return;
+      }
+
+      // ── Đếm ngược kết thúc → mở cửa sổ parry ──────────────────────────
       if (session.responded) return;
 
       try {
-        const editT0 = Date.now();
         await sentMsg.edit({
           embeds: [{
             title: "⚔️ Parry Real Time",
@@ -4770,20 +4794,15 @@ client.on("messageCreate", async (message) => {
           }],
           components: [buildParryRow(customId, "⚔️  P A R R Y !", ButtonStyle.Success, false)],
         });
-        // Đo RTT của edit → ước tính user thấy message sau ~½ RTT (server→CDN→client)
-        // Offset windowStart về sau để bù delay, tránh trừ oan thời gian phản ứng
-        const editRtt   = Date.now() - editT0;
-        const propDelay = Math.floor(editRtt * 0.5);
         session.phase = "window";
-        session.windowStart = Date.now() + propDelay;
+        session.windowStart = Date.now();
       } catch {
-        // Tin nhắn bị xóa hoặc mất quyền edit → huỷ phiên
         session.responded = true;
         activeParrySessions.delete(sessionId);
         return;
       }
 
-      // ── Pha 3: Đóng cửa sổ → tự fail nếu chưa ai bấm ──────────────────
+      // ── Đóng cửa sổ → tự fail nếu chưa ai bấm ──────────────────────────
       session.expireTimer = setTimeout(async () => {
         if (session.responded) return;
         session.phase = "expired";
@@ -4802,8 +4821,11 @@ client.on("messageCreate", async (message) => {
           components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
         }).catch(() => {});
       }, windowMs);
+    };
 
-    }, waitMs);
+    // Tick đầu tiên cũng có delay ngẫu nhiên trước khi edit
+    const firstDelay = 600 + Math.floor(Math.random() * 400);
+    session.windowTimer = setTimeout(() => runTick(tickCount - 1), firstDelay);
 
     return;
   }
@@ -5481,16 +5503,15 @@ client.on("interactionCreate", async (interaction) => {
 
     const { customId } = interaction;
 
-    // ── Bấm quá sớm (pha "waiting") ─────────────────────────────────────────
-    // Lưu ý: nút bị disabled ở pha này nên bình thường không click được.
-    // Đây chỉ là safety net cho edge case (client lạ, race condition cực hiếm).
+    // ── Bấm quá sớm (trong lúc đếm ngược, trước khi "BÂY GIỜ!") ──────────────
     if (session.phase === "waiting") {
+      clearTimeout(session.windowTimer);
       return interaction.update({
         embeds: [{
           title: "⚔️ Parry Real Time",
           description:
             `${interaction.user} bấm **quá sớm**! ❌\n` +
-            `> Đòn đánh chưa đến — cần kiên nhẫn hơn.`,
+            `> Đếm ngược chưa kết thúc — cần kiên nhẫn hơn.`,
           color: 0xe74c3c,
           footer: { text: "Dùng -rtparry để thử lại" },
         }],
