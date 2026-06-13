@@ -4788,7 +4788,7 @@ client.on("messageCreate", async (message) => {
 
         await sentMsg.edit({
           embeds: [{
-            title: "⚔️ Thử thách Parry",
+            title: "Parry Real Time",
             description:
               `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
               `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
