@@ -4725,7 +4725,7 @@ client.on("messageCreate", async (message) => {
     // Số tick đếm ngược random 2–4
     const tickCount = 2 + Math.floor(Math.random() * 3);
     // Cửa sổ parry random 700ms – 1100ms
-    const windowMs = 400  + Math.floor(Math.random() * 200);
+    const windowMs = 350  + Math.floor(Math.random() * 150);
 
     // ── Gửi tin nhắn — Pha 1 (Waiting): nút enabled ngay từ đầu, bấm sớm = quá sớm ──
     let sentMsg;
@@ -5523,10 +5523,10 @@ client.on("interactionCreate", async (interaction) => {
     if (session.phase === "window") {
       const reactionMs = now - session.windowStart;
       const rating =
-        reactionMs < 200 ? "🏆 Phản ứng SIÊU NHANH!" :
-        reactionMs < 400 ? "⚡ Phản ứng rất nhanh!"   :
-        reactionMs < 650 ? "✅ Phản ứng tốt!"          :
-                           "😅 Vừa kịp!";
+        reactionMs < 100 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
+        reactionMs < 200 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
+        reactionMs < 300 ? "✅ **GOOD!** Phản ứng tốt!"          :
+                           "😅 **NOT BAD!** Vừa kịp!";
 
       return interaction.update({
         embeds: [{
