@@ -2090,7 +2090,7 @@ const SKILLS = {
     name: "Furūsiyya",
     cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
-      const d1 = r(5,10);
+      const d1 = r(8,10);
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — ngắt 4 đòn đánh thường của địch, nhận 2 Protection`,
       ];
