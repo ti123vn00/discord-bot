@@ -115,7 +115,7 @@ function calcExpForGrade(targetGrade) {
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
 
 const ADMIN_IDS = new Set(
-  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150")
+  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355")
     .split(",").map(s => s.trim()).filter(Boolean)
 );
 
@@ -1316,7 +1316,7 @@ client.on("messageCreate", async (message) => {
     };
     const TYPE_LABELS = { blunt: "Blunt", pierce: "Pierce", slash: "Slash" };
     const TYPE_COLORS = { blunt: 0xe67e22, pierce: 0x3498db, slash: 0xe74c3c };
-    const TYPE_ICONS  = { blunt: "🔨", pierce: "🗡️", slash: "⚔️" };
+    const TYPE_ICONS  = { blunt: "<:Blunt:1513768529718022254>", pierce: "<:Pierce:1513768511179329556>", slash: "<:Slash:1513768633434640517>"};
 
     const arg = message.content.replace(/-caduceus/i, "").trim();
     const tokens = arg.split(/\s+/);
