@@ -1481,21 +1481,29 @@ client.on("messageCreate", async (message) => {
       input = input.slice(0, dullahanMatch.index).trim();
     }
 
-    // -skill list <keyword> — tìm skill theo keyword
+    // -skill list <keyword> [trang] — tìm skill theo keyword, có phân trang
+    // VD: -skill list slash | -skill list slash 2
     if (/^list\s+[^\d]/i.test(input)) {
-      const keyword = input.replace(/^list\s+/i, "").trim();
+      const KW_PAGE_SIZE = 10;
+      // Tách keyword và trang: "slash 2" → keyword="slash", page=2
+      const kwPageMatch = input.replace(/^list\s+/i, "").trim().match(/^(.+?)\s+(\d+)$/);
+      const keyword = kwPageMatch ? kwPageMatch[1].trim() : input.replace(/^list\s+/i, "").trim();
       const found = findByKeyword(keyword);
       if (!found.length) {
         message.reply(`❌ Không tìm thấy skill nào có keyword **${keyword}**.\nDùng \`-skill list\` để xem toàn bộ.`);
         return;
       }
-      const list = found.map(s => `• **${s.name}** — ${s.cost} | CD: ${s.cd}`).join("\n");
+      const totalPages = Math.ceil(found.length / KW_PAGE_SIZE);
+      const page = kwPageMatch ? Math.min(Math.max(parseInt(kwPageMatch[2], 10), 1), totalPages) : 1;
+      const start = (page - 1) * KW_PAGE_SIZE;
+      const pageSkills = found.slice(start, start + KW_PAGE_SIZE);
+      const list = pageSkills.map(s => `• **${s.name}** — ${s.cost} | CD: ${s.cd}`).join("\n");
       message.reply({
         embeds: [{
-          title: `🔍 Skill có keyword "${keyword}" (${found.length} kết quả)`,
+          title: `🔍 Skill có keyword "${keyword}" (${found.length} kết quả) — Trang ${page}/${totalPages}`,
           color: 0x9b59b6,
           description: list,
-          footer: { text: `-skill <tên> để roll skill` },
+          footer: { text: `-skill list ${keyword} <trang> để xem trang khác | -skill <tên> để roll` },
         }],
       });
       return;
