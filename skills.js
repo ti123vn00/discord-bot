@@ -68,6 +68,8 @@ const SKILLS = {
     cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,12);
+      // heal phụ thuộc endpoint của range r(7,12): min=7→10HP, max=12→20HP, giữa→15HP.
+      // Nếu range thay đổi, cần cập nhật cả 3 nhánh này theo.
       let heal = d1 === 7 ? "hồi 10 HP" : d1 === 12 ? "hồi 20 HP" : "hồi 15 HP";
       return [
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — hồi lại 2 <:Light:1513786082502770719>Light (${heal})`,
@@ -3076,7 +3078,9 @@ roll(v = "no") {
   },
 };
 
-// Alias map để tìm skill linh hoạt hơn
+// ─── SKILL_ALIASES ────────────────────────────────────────────────────────────
+// Khai báo trước toàn bộ Object.assign bên dưới — nếu SKILL_ALIASES chưa tồn tại
+// thì Object.assign sẽ throw ReferenceError. Không được dời hay split block này.
 const SKILL_ALIASES = {
   "fare thee well": "fare-thee well",
   "fareewell": "fare-thee well",
@@ -3745,9 +3749,15 @@ Object.assign(SKILL_ALIASES, {
 // ─── findSkill (giữ nguyên logic, chuyển từ index.js sang đây) ───────────────
 function findSkill(raw) {
   const key = raw.toLowerCase().trim();
+  // 1. Tra SKILLS trực tiếp với key gốc (giữ nguyên space/dash)
   if (SKILLS[key]) return SKILLS[key];
-  const aliasKey = SKILL_ALIASES[key.replace(/[\s\-,]/g, "").replace(/\s+/g, " ")];
+  // 2. Tra alias: strip toàn bộ space, dash, dấu phẩy để map về canonical key.
+  //    replace(/[\s\-,]/g) đã xóa hết space rồi nên không cần replace(/\s+/g, " ") thêm
+  //    (thao tác thứ hai đó không bao giờ có tác dụng và chỉ gây hiểu nhầm về intent).
+  const aliasLookup = key.replace(/[\s\-,]/g, "");
+  const aliasKey = SKILL_ALIASES[aliasLookup];
   if (aliasKey && SKILLS[aliasKey]) return SKILLS[aliasKey];
+  // 3. Fallback: tìm partial match trong SKILLS keys
   const keyStripped = key.replace(/\s+\S+$/, "").trim();
   for (const [k, v] of Object.entries(SKILLS)) {
     if (k.includes(key) || (keyStripped && k.includes(keyStripped) && keyStripped.length >= 3)) return v;
