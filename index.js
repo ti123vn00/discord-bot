@@ -59,6 +59,12 @@ const DAILY_EXP_REWARD = 5;
 const DAILY_AHN_REWARD = 100_000;
 const DAILY_STREAK_EXP_BONUS = 25;
 const DAILY_STREAK_AHN_BONUS = 400_000;
+// TTL 2 ngày (thay vì 1 ngày) là có chủ ý:
+// - Nếu user điểm danh ngày 1, skip ngày 2, rồi điểm ngày 3: key vẫn còn nhưng
+//   lastClaim (ngày 1) ≠ yesterdayStr (ngày 2) → streak reset về 1 đúng logic.
+// - TTL 1 ngày sẽ khiến key expire đúng lúc ngày 2 reset, và nếu user điểm danh
+//   ngay tại thời điểm ranh giới có thể mất key sớm hơn dự kiến.
+// → TTL 2 ngày là safety margin, không ảnh hưởng đến tính đúng của streak logic.
 const DAILY_KEY_TTL_SECONDS = 86400 * 2;
 
 // ─── LEVELING ─────────────────────────────────────────────────────────────────
@@ -295,6 +301,19 @@ function isOnCooldown(userId, command, ms) {
   return false;
 }
 
+// Dùng cho slash command — reply ephemeral nếu đang cooldown, trả về true để caller return sớm.
+// Đặt gần isOnCooldown để dễ tìm; được dùng ở slash command handler bên dưới.
+// Lưu ý: luôn gọi TRƯỚC deferReply vì interaction chưa ở trạng thái deferred/replied.
+async function replyOnCooldown(interaction, ms) {
+  if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
+  try {
+    await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, flags: MessageFlags.Ephemeral });
+  } catch {
+    // Interaction có thể đã expired — bỏ qua
+  }
+  return true;
+}
+
 // ─── VN TIME HELPERS ──────────────────────────────────────────────────────────
 const VN_UTC_OFFSET_HOURS = 7;
 // UTC giờ tương đương với VN 00:00 (nửa đêm) = 24 - 7 = 17
@@ -340,12 +359,21 @@ function log(level, command, userId, msg, extra = {}) {
 // ─── REDIS TIMEOUT ────────────────────────────────────────────────────────────
 const REDIS_TIMEOUT_MS = 8000;
 
+// Custom error class để nhận diện timeout qua instanceof thay vì so sánh chuỗi.
+// Tránh bug âm thầm khi message thay đổi mà isTimeoutError không cập nhật theo.
+class RedisTimeoutError extends Error {
+  constructor(msg = "Thao tác Redis quá thời gian, thử lại sau.") {
+    super(msg);
+    this.name = "RedisTimeoutError";
+  }
+}
+
 function withTimeout(promise, ms = REDIS_TIMEOUT_MS, msg = "Thao tác Redis quá thời gian, thử lại sau.") {
   let timer;
   return Promise.race([
     promise,
     new Promise((_, rej) => {
-      timer = setTimeout(() => rej(new Error(msg)), ms);
+      timer = setTimeout(() => rej(new RedisTimeoutError(msg)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -397,9 +425,12 @@ async function withLock(userId, fn, { ttlSeconds = 5, retries = 3, retryDelayMs 
 }
 
 async function withDoubleLock(idA, idB, fn, {
-  innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 3,
+  innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 8,
 } = {}) {
   const [firstId, secondId] = [idA, idB].sort();
+  // outerTtl bao gồm: thời gian chờ retry + buffer.
+  // Lưu ý: công thức này KHÔNG tính thời gian chạy fn() bên trong.
+  // Nếu fn() chạy lâu (nhiều Redis ops), cần truyền bufferSeconds lớn hơn thủ công.
   const outerTtl = innerTtl + Math.ceil((retries * retryDelayMs) / 1000) + bufferSeconds;
   return withLock(firstId, () =>
     withLock(secondId, fn, { ttlSeconds: innerTtl, retries, retryDelayMs }),
@@ -434,7 +465,7 @@ const REDIS_MAX_RETRIES = 2;
 const REDIS_RETRY_BASE_MS = 150;
 
 function isTimeoutError(err) {
-  return err && (err.message === "Thao tác Redis quá thời gian, thử lại sau." || err.message === "Lock timeout");
+  return err instanceof RedisTimeoutError;
 }
 
 // ─── PROFILE SYSTEM ───────────────────────────────────────────────────────────
@@ -486,9 +517,35 @@ async function getPlayerData(userId) {
   throw lastErr;
 }
 
-async function savePlayerData(userId, data) {
+// Giống getPlayerData nhưng trả về cả slot — dùng khi caller cần gọi savePlayerData
+// với cùng slot để tránh gọi getActiveProfileSlot 2 lần (2 Redis round-trips).
+async function getPlayerDataWithSlot(userId) {
   const slot = await getActiveProfileSlot(userId);
   const key = playerKeyForSlot(userId, slot);
+  let lastErr;
+  for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
+    try {
+      const raw = await withTimeout(redis.get(key));
+      const data = raw
+        ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
+        : { exp: 0, ahn: 0, books: {}, items: {} };
+      return { data, slot };
+    } catch (err) {
+      lastErr = err;
+      if (isTimeoutError(err)) break;
+      if (attempt < REDIS_MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, REDIS_RETRY_BASE_MS * (attempt + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function savePlayerData(userId, data, slot = null) {
+  // slot có thể được truyền vào từ caller (VD: handleOpenCache) để tránh thêm 1 Redis
+  // round-trip khi đã biết slot rồi (từ getPlayerDataWithSlot).
+  const resolvedSlot = slot ?? await getActiveProfileSlot(userId);
+  const key = playerKeyForSlot(userId, resolvedSlot);
   const payload = JSON.stringify(data);
   let lastErr;
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
@@ -557,7 +614,9 @@ function parseOpenCount(raw, max = 20) {
 
 async function handleOpenCache(userId, { cacheKey, pool, dataField, count = 1 }) {
   return withLock(userId, async () => {
-    const data = await getPlayerData(userId);
+    // Dùng getPlayerDataWithSlot để lấy slot 1 lần, truyền thẳng vào savePlayerData
+    // — tránh getActiveProfileSlot bị gọi lần 2 bên trong savePlayerData.
+    const { data, slot } = await getPlayerDataWithSlot(userId);
     data.books = data.books ?? {};
     data.items = data.items ?? {};
     const store = data[dataField];
@@ -572,7 +631,7 @@ async function handleOpenCache(userId, { cacheKey, pool, dataField, count = 1 })
       store[result] = (store[result] ?? 0) + 1;
       results.push(result);
     }
-    await savePlayerData(userId, data);
+    await savePlayerData(userId, data, slot);
     return { success: true, data, results };
   });
 }
@@ -586,6 +645,9 @@ function handleOpenSealedBook(userId, count = 1) {
 function handleOpenChipboardCache(userId, count = 1) {
   return handleOpenCache(userId, { cacheKey: "Chipboard Cache", pool: CHIPBOARD_CACHE_POOL, dataField: "items", count });
 }
+
+// Discord giới hạn embed description tối đa 4096 ký tự
+const DISCORD_EMBED_DESCRIPTION_LIMIT = 4096;
 
 function safeTruncate(str, maxChars) {
   const chars = Array.from(str);
@@ -605,7 +667,7 @@ function buildRollDescription({ user, cacheType, results, remainingCount }) {
   const summary = `\n\n**📊 Tổng kết:**\n` + summaryLines.join("\n");
   const header = `${user} đã dùng **${results.length} ${cacheType}** và nhận được:\n\n`;
 
-  const LIMIT = 4096;
+  const LIMIT = DISCORD_EMBED_DESCRIPTION_LIMIT;
   const fixedLen = header.length + summary.length + footer.length;
   let body = lines.join("\n");
   if (fixedLen + body.length > LIMIT) {
@@ -2428,14 +2490,24 @@ client.on("messageCreate", async (message) => {
     // -profile info
     if (sub === "info" || sub === "") {
       const currentSlot = await getActiveProfileSlot(userId);
+
+      // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
+      const pipe = redis.pipeline();
+      for (let s = 1; s <= MAX_PROFILES; s++) {
+        pipe.get(playerKeyForSlot(userId, s));
+        pipe.get(dailyKeyForSlot(userId, s));
+      }
+      const pipeResults = unwrapPipelineResults(await withTimeout(pipe.exec()));
+      // pipeResults layout: [player1, daily1, player2, daily2, player3, daily3]
+
+      const today = getVNDateString();
       const lines = [];
       for (let s = 1; s <= MAX_PROFILES; s++) {
         try {
-          const raw = await withTimeout(redis.get(playerKeyForSlot(userId, s)));
-          const d = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-          const dailyRaw = await withTimeout(redis.get(dailyKeyForSlot(userId, s)));
-          const dd = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
-          const today = getVNDateString();
+          const rawPlayer = pipeResults[(s - 1) * 2];
+          const rawDaily  = pipeResults[(s - 1) * 2 + 1];
+          const d  = rawPlayer ? (typeof rawPlayer === "string" ? JSON.parse(rawPlayer) : rawPlayer) : null;
+          const dd = rawDaily  ? (typeof rawDaily  === "string" ? JSON.parse(rawDaily)  : rawDaily)  : null;
           const claimedToday = dd && dd.lastClaim === today;
           const streak = dd ? (dd.streak ?? 0) : 0;
           if (d) {
@@ -2651,17 +2723,6 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
-async function replyOnCooldown(interaction, ms) {
-  if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
-  try {
-    // replyOnCooldown luôn được gọi trước deferReply nên interaction chưa bao giờ ở trạng thái deferred/replied
-    await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, flags: MessageFlags.Ephemeral });
-  } catch {
-    // Interaction có thể đã expired — bỏ qua
-  }
-  return true;
-}
-
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   try {
@@ -3050,14 +3111,24 @@ client.on("interactionCreate", async (interaction) => {
       if (await replyOnCooldown(interaction, 2000)) return;
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const currentSlot = await getActiveProfileSlot(userId);
+
+      // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
+      const pipe = redis.pipeline();
+      for (let s = 1; s <= MAX_PROFILES; s++) {
+        pipe.get(playerKeyForSlot(userId, s));
+        pipe.get(dailyKeyForSlot(userId, s));
+      }
+      const pipeResults = unwrapPipelineResults(await withTimeout(pipe.exec()));
+      // pipeResults layout: [player1, daily1, player2, daily2, player3, daily3]
+
+      const today = getVNDateString();
       const lines = [];
       for (let s = 1; s <= MAX_PROFILES; s++) {
         try {
-          const raw = await withTimeout(redis.get(playerKeyForSlot(userId, s)));
-          const d = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-          const dailyRaw = await withTimeout(redis.get(dailyKeyForSlot(userId, s)));
-          const dd = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
-          const today = getVNDateString();
+          const rawPlayer = pipeResults[(s - 1) * 2];
+          const rawDaily  = pipeResults[(s - 1) * 2 + 1];
+          const d  = rawPlayer ? (typeof rawPlayer === "string" ? JSON.parse(rawPlayer) : rawPlayer) : null;
+          const dd = rawDaily  ? (typeof rawDaily  === "string" ? JSON.parse(rawDaily)  : rawDaily)  : null;
           const claimedToday = dd && dd.lastClaim === today;
           const streak = dd ? (dd.streak ?? 0) : 0;
           if (d) {
