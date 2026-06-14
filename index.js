@@ -1,4 +1,4 @@
-//  index.js
+// index.js
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const express = require("express");
 const { Redis } = require("@upstash/redis");
