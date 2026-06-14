@@ -2305,6 +2305,7 @@ client.on("messageCreate", async (message) => {
             changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
           }
           await savePlayerData(targetUser.id, data, slot);
+          return changes;
         })
       )
     );
@@ -2312,7 +2313,7 @@ client.on("messageCreate", async (message) => {
     const lines = results.map((r, i) => {
       const user = targetUsers[i];
       if (r.status === "fulfilled") {
-        const { changes } = r.value;
+        const changes = r.value;
         return `✅ **${user.username}**:\n` + changes.map(c => `> ${c}`).join("\n");
       } else {
         log("error", "setplayer", user.id, r.reason?.message, { actor: message.author.id });
