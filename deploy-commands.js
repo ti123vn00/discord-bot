@@ -110,7 +110,7 @@ const commands = [
     .addUserOption(opt =>
       opt.setName("user").setDescription("Người nhận").setRequired(true))
     .addNumberOption(opt =>
-      opt.setName("ahn").setDescription("Số Ahn muốn chuyển").setRequired(false))
+      opt.setName("ahn").setDescription("Số Ahn muốn chuyển").setMinValue(0).setRequired(false))
     .addStringOption(opt =>
       opt.setName("book").setDescription("Tên sách muốn chuyển (VD: Random Book)").setRequired(false))
     .addIntegerOption(opt =>
