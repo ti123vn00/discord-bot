@@ -3006,7 +3006,7 @@ roll(v = "no") {
     },
   },
   "dont let somethin like this break you": {
-    name: "Don't Let Somethin' Like This Break You!", weaponOf: "Lævateinn [Seal 1+]", tags: "Weapon",
+    name: "Don't Let Somethin' Like This Break You!", weaponOf: "Lævateinn", tags: "Weapon",
     cost: "—", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(8,12), d2 = r(12,13), d3 = r(11,15);
@@ -3048,7 +3048,7 @@ roll(v = "no") {
     },
   },
   "complete and total extermination laevateinn": {
-    name: "Complete and Total Extermination [Lævateinn]", weaponOf: "Lævateinn [Seal 3]", tags: "Weapon",
+    name: "Complete and Total Extermination [Lævateinn]", weaponOf: "Lævateinn [Unsealed]", tags: "Weapon",
     cost: "—", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,12), d2 = r(12,13), d3 = r(13,15), d4 = r(18,24), d5 = r(30,35);
@@ -3064,7 +3064,7 @@ roll(v = "no") {
     },
   },
   "good girl your sacrifice for the family wont be forgotten": {
-    name: "Good Girl. Your Sacrifice for the Family Won't Be Forgotten.", weaponOf: "Lævateinn [Seal 3]", tags: "Weapon",
+    name: "Good Girl. Your Sacrifice for the Family Won't Be Forgotten.", weaponOf: "Lævateinn [Unsealed]", tags: "Weapon",
     cost: "Chỉ dùng khi đồng minh dưới 20% HP (50% nếu từ Middle)", cd: "—", diceMul: "1x",
     roll() {
       const d1 = r(18,24);
