@@ -3530,6 +3530,40 @@ Object.assign(SKILLS, {
       ];
     },
   },
+
+  // ── Weapon Criticals ──
+  "for justice": {
+    name: "For Justice!!!",
+    weaponOf: "Sueño Imposible",
+    weaponType: "Medium", weaponDmg: "12 <:Pierce:1513768511179329556>Pierce",
+    passive: "**Big Wound** — Khi kẻ địch trên 10 <:Bleed:1513762688226955285>Bleed: gây x1 cho Res dưới 1; nếu Res trên 1 tăng thêm 0,2 Res",
+    cost: "—", cd: "—", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(6,9), d3 = r(9,12);
+      return [
+        `*Khi full Stamina: toàn bộ Dice của skill nhận được 2 <:DiceUp:1513767795681398894>Dice Up*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Bleed:1513762688226955285>Bleed vào turn kế`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed vào turn kế`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed vào turn kế`,
+      ];
+    },
+  },
+  "ravaging cut": {
+    name: "Ravaging Cut",
+    weaponOf: "Halberd VOGEL",
+    weaponType: "Heavy", weaponDmg: "25",
+    passive: "**Break the Shell** — Sau khi có một đồng minh Stagger hoặc chết: nhận 10% damage (max 3 lần)",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(8,11), d3 = r(11,14);
+      return [
+        `${D1} *Khi skill này clash thắng: nhận được 1 <:DiceUp:1513767795681398894>Dice Up cho toàn bộ Dice*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gắn 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gắn 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gắn 2 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
 });
 
 // ── Aliases mới (thêm vào đây khi có alias mới) ──
@@ -3588,6 +3622,17 @@ Object.assign(SKILL_ALIASES, {
   "mpr": "mounted punch rush",
   "reverseliftupslam": "reverse lift up slam",
   "rlus": "reverse lift up slam",
+  // Sueño Imposible
+  "forjustice": "for justice",
+  "fj": "for justice",
+  "sueñoimposible": "for justice",
+  "suenoimposible": "for justice",
+  "sueno": "for justice",
+  // Halberd VOGEL
+  "ravagingcut": "ravaging cut",
+  "rc": "ravaging cut",
+  "halberdvogel": "ravaging cut",
+  "vogel": "ravaging cut",
 });
 
 // ─── findSkill (giữ nguyên logic, chuyển từ index.js sang đây) ───────────────
