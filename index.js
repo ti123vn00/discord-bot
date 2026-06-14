@@ -243,6 +243,19 @@ function filterZeroFields(fields) {
   });
 }
 
+/**
+ * Bão hòa % Dmg Bonus:
+ *  0–100%   → tỷ lệ 1:1   (đầy đủ)
+ *  100–200% → tỷ lệ 0.5:1 (mỗi 1% chỉ còn 0.5%)
+ *  200%+    → tỷ lệ 0.25:1 (mỗi 1% chỉ còn 0.25%)
+ */
+function saturateBonusPct(raw) {
+  if (raw <= 100) return raw;
+  if (raw <= 200) return 100 + (raw - 100) * 0.5;
+  if (raw <= 300) return 150 + (raw - 200) * 0.25;
+  return 175 + (raw - 300) * 0.125; // 100 + 50 + 25 + (raw-300)*0.125
+}
+
 function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit }) {
   const errors = [];
   if (isNaN(bonusPct))       errors.push("bonus phải là số");
@@ -788,7 +801,9 @@ function calcMath(opts) {
     const didCrit = critChance >= 1 ? true : Math.random() < critChance;
 
     const multiplier = didCrit ? critMul : 1;
-    const bonusFactor = 1 + bonusPct / 100 + (isDice ? sanityBonusPct / 100 : 0) + extraPct / 100;
+    const rawTotalPct = bonusPct + (isDice ? sanityBonusPct : 0) + extraPct;
+    const effTotalPct = saturateBonusPct(rawTotalPct);
+    const bonusFactor = 1 + effTotalPct / 100;
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
 
@@ -895,9 +910,17 @@ function calcMath(opts) {
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
 
+  // Tính effective bonus để hiển thị (dùng worst-case: có cả sanityBonus nếu > 0)
+  const rawBonusDisplay = bonusPct + (sanityBonusPct > 0 ? sanityBonusPct : 0);
+  const effBonusDisplay = saturateBonusPct(rawBonusDisplay);
+  const isSaturated = rawBonusDisplay > 100;
+  const bonusPctDisplay = isSaturated
+    ? `${effBonusDisplay.toFixed(1)}% *(raw: ${rawBonusDisplay.toFixed(1)}%)*`
+    : bonusPct.toFixed(1) + "%";
+
   const allFields = [
     { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
-    { name: "% Dmg Bonus", value: bonusPct.toFixed(1) + "%", inline: true, alwaysShow: true },
+    { name: "% Dmg Bonus", value: bonusPctDisplay, inline: true, alwaysShow: true },
     { name: "Sanity % DMG Bonus", value: sanityBonusPct.toFixed(1) + "%", inline: true, showIf: sanityBonusPct !== 0 },
     { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
     { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
