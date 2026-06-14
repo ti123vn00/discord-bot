@@ -3599,6 +3599,13 @@ Object.assign(SKILLS, {
     },
   },
   // ── Blade Lineage Hwando ──
+  "blade lineage hwando": {
+    name: "Blade Lineage Hwando", tags: "Weapon",
+    weaponType: "Medium", weaponDmg: "13 <:Slash:1513768633434640517>Slash",
+    passive: "**Poised** — Khi <:Poise:1513762945715142736>Poise ≥ 10: tiêu thụ một nửa <:Poise:1513762945715142736>Poise hiện có, cộng vào base dmg của đòn một lượng bằng số <:Poise:1513762945715142736>Poise đã tiêu thụ × 2",
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên skill cụ thể để roll)*`]; },
+  },
   "striker's stance": {
     name: "Striker's Stance",
     weaponOf: "Blade Lineage Hwando",
@@ -3787,7 +3794,10 @@ function findByKeyword(keyword) {
         .replace(/<:([^:]+):\d+>/g, "$1") // <:Sinking:123> → Sinking
         .toLowerCase();
       if (rollText.includes(kw)) { results.push(skill); continue; }
-    } catch (_) { /* bỏ qua skill cần arg đặc biệt */ }
+    } catch (_) {
+      // skill.roll() cần arg đặc biệt (có promptArg) → search errorMsg thay thế
+      if (skill.promptArg?.errorMsg?.toLowerCase().includes(kw)) { results.push(skill); continue; }
+    }
   }
 
   return results;
