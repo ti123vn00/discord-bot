@@ -801,8 +801,8 @@ function calcMath(opts) {
     const didCrit = critChance >= 1 ? true : Math.random() < critChance;
 
     const multiplier = didCrit ? critMul : 1;
-    const rawTotalPct = bonusPct + (isDice ? sanityBonusPct : 0) + extraPct;
-    const effTotalPct = saturateBonusPct(rawTotalPct);
+    const rawTotalPct = bonusPct + extraPct;
+    const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? sanityBonusPct : 0);
     const bonusFactor = 1 + effTotalPct / 100;
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
@@ -911,7 +911,7 @@ function calcMath(opts) {
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
 
   // Tính effective bonus để hiển thị (dùng worst-case: có cả sanityBonus nếu > 0)
-  const rawBonusDisplay = bonusPct + (sanityBonusPct > 0 ? sanityBonusPct : 0);
+  const rawBonusDisplay = bonusPct;
   const effBonusDisplay = saturateBonusPct(rawBonusDisplay);
   const isSaturated = rawBonusDisplay > 100;
   const bonusPctDisplay = isSaturated
