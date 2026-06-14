@@ -3537,7 +3537,7 @@ Object.assign(SKILLS, {
     weaponOf: "Sueño Imposible",
     weaponType: "Medium", weaponDmg: "12 <:Pierce:1513768511179329556>Pierce",
     passive: "**Big Wound** — Khi kẻ địch trên 10 <:Bleed:1513762688226955285>Bleed: gây x1 cho Res dưới 1; nếu Res trên 1 tăng thêm 0,2 Res",
-    cost: "—", cd: "—", diceMul: "1x",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,6), d2 = r(6,9), d3 = r(9,12);
       return [
