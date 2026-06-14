@@ -3552,7 +3552,7 @@ Object.assign(SKILLS, {
   // ── Follow-Up Skills (kích hoạt sau đòn đánh thứ 4 mỗi turn) ──
   "follow-up": {
     name: "Follow-Up",
-    cost: "15 Points", cd: "—", diceMul: "1x",
+    cost: "-", cd: "—", diceMul: "1x",
     incompatibleWith: ["pounce"],
     keywords: ["follow-up", "airborne", "blunt", "4th hit"],
     roll() {
@@ -3565,7 +3565,7 @@ Object.assign(SKILLS, {
   },
   "pounce": {
     name: "Pounce",
-    cost: "5 Points", cd: "—", diceMul: "1x",
+    cost: "-", cd: "—", diceMul: "1x",
     incompatibleWith: ["follow-up"],
     keywords: ["pounce", "blunt", "4th hit"],
     roll() {
