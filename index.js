@@ -425,12 +425,13 @@ async function withLock(userId, fn, { ttlSeconds = 5, retries = 3, retryDelayMs 
 }
 
 async function withDoubleLock(idA, idB, fn, {
-  innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 8,
+  innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 15,
 } = {}) {
   const [firstId, secondId] = [idA, idB].sort();
   // outerTtl bao gồm: thời gian chờ retry + buffer.
   // Lưu ý: công thức này KHÔNG tính thời gian chạy fn() bên trong.
-  // Nếu fn() chạy lâu (nhiều Redis ops), cần truyền bufferSeconds lớn hơn thủ công.
+  // bufferSeconds = 15 để có đủ headroom cho executeGive (2 reads + 1 pipeline save)
+  // trong điều kiện Redis latency cao; tăng thêm thủ công nếu fn() nặng hơn.
   const outerTtl = innerTtl + Math.ceil((retries * retryDelayMs) / 1000) + bufferSeconds;
   return withLock(firstId, () =>
     withLock(secondId, fn, { ttlSeconds: innerTtl, retries, retryDelayMs }),
@@ -566,7 +567,11 @@ async function savePlayerData(userId, data, slot = null) {
 
 async function saveMultiplePlayerData(entries) {
   const pipeline = redis.pipeline();
-  const slots = await Promise.all(entries.map(e => getActiveProfileSlot(e.userId)));
+  // Nếu entry đã có slot (được truyền từ getPlayerDataWithSlot), dùng luôn để tránh
+  // round-trip Redis thứ 2 và ngăn TOCTOU nếu user switch profile giữa chừng.
+  const slots = await Promise.all(entries.map(e =>
+    e.slot != null ? Promise.resolve(e.slot) : getActiveProfileSlot(e.userId)
+  ));
   for (let i = 0; i < entries.length; i++) {
     const { userId, data } = entries[i];
     pipeline.set(playerKeyForSlot(userId, slots[i]), JSON.stringify(data));
@@ -632,7 +637,8 @@ async function handleOpenCache(userId, { cacheKey, pool, dataField, count = 1 })
       results.push(result);
     }
     await savePlayerData(userId, data, slot);
-    return { success: true, data, results };
+    // partial=true khi user yêu cầu nhiều hơn số lượng thực sự có
+    return { success: true, data, results, partial: rolls < count };
   });
 }
 
@@ -1139,8 +1145,15 @@ async function fetchInventoryReply(targetUser, page = 0) {
  * @returns {Promise<string[]>} mảng change strings
  */
 async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName = null, bookCount = 1, itemName = null, itemCount = 1, expGain = 0, gradeTarget = null }) {
-  const senderData = isAdmin ? null : await getPlayerData(senderId);
-  const recipientData = await getPlayerData(targetId);
+  // Dùng getPlayerDataWithSlot để pin slot tại thời điểm đọc — tránh TOCTOU nếu user
+  // switch profile giữa lúc đọc và lưu (saveMultiplePlayerData sẽ dùng slot này luôn).
+  let senderData = null, senderSlot = null;
+  if (!isAdmin) {
+    const r = await getPlayerDataWithSlot(senderId);
+    senderData = r.data;
+    senderSlot = r.slot;
+  }
+  const { data: recipientData, slot: recipientSlot } = await getPlayerDataWithSlot(targetId);
   recipientData.books = recipientData.books ?? {};
   recipientData.items = recipientData.items ?? {};
   if (senderData) {
@@ -1193,8 +1206,8 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
     }
   }
 
-  const saveEntries = [{ userId: targetId, data: recipientData }];
-  if (!isAdmin) saveEntries.push({ userId: senderId, data: senderData });
+  const saveEntries = [{ userId: targetId, data: recipientData, slot: recipientSlot }];
+  if (!isAdmin) saveEntries.push({ userId: senderId, data: senderData, slot: senderSlot });
   await saveMultiplePlayerData(saveEntries);
   return changes;
 }
@@ -1212,7 +1225,7 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
  * @returns {Promise<string[]>} mảng change strings
  */
 async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRemove = 0, bookEntries = [], itemEntries = [] }) {
-  const data = await getPlayerData(targetId);
+  const { data, slot } = await getPlayerDataWithSlot(targetId);
   data.books = data.books ?? {};
   data.items = data.items ?? {};
   const changes = [];
@@ -1244,7 +1257,7 @@ async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRem
     changes.push(`-${removed} 🔩 **${name}** (còn lại: ${data.items[name] ?? 0})`);
   }
 
-  await savePlayerData(targetId, data);
+  await savePlayerData(targetId, data, slot);
   return changes;
 }
 
@@ -1255,7 +1268,7 @@ async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRem
  */
 async function executeCraft(userId, itemName, craftCount) {
   const recipe = CRAFT_RECIPES[itemName];
-  const data = await getPlayerData(userId);
+  const { data, slot } = await getPlayerDataWithSlot(userId);
   const totalCost = {};
   for (const [mat, qty] of Object.entries(recipe.inputs)) totalCost[mat] = qty * craftCount;
   const shortages = [];
@@ -1276,7 +1289,7 @@ async function executeCraft(userId, itemName, craftCount) {
     data.items[out] = (data.items[out] ?? 0) + gained;
     outputLines.push(`**${gained}× ${out}**`);
   }
-  await savePlayerData(userId, data);
+  await savePlayerData(userId, data, slot);
   const costLines = Object.entries(totalCost)
     .map(([mat, qty]) => `• -${qty} **${mat}** (còn lại: ${data.items[mat] ?? 0})`);
   return { outputLines, costLines };
@@ -1690,6 +1703,14 @@ client.on("messageCreate", async (message) => {
     const cooldownMs = 5000 + (rounds - 1) * 1500;
     if (isOnCooldown(message.author.id, "parryrt", cooldownMs)) {
       message.reply(`⏳ Chờ **${Math.ceil(cooldownMs / 1000)} giây** trước khi thử parry tiếp nhé.`);
+      return;
+    }
+
+    // Kiểm tra session đang chạy của user này (cooldown chưa đủ bảo vệ vì thời gian
+    // session dài hơn cooldown khi rounds nhiều). Tránh 2 session cùng edit 1 message.
+    const hasRunningSession = [...activeParrySessions.values()].some(s => s.userId === message.author.id);
+    if (hasRunningSession) {
+      message.reply("⚠️ Bạn đang có phiên **Real Time Parry** đang chạy rồi, hãy hoàn thành hoặc chờ nó kết thúc.");
       return;
     }
 
@@ -2175,7 +2196,7 @@ client.on("messageCreate", async (message) => {
     const results = await Promise.allSettled(
       targetUsers.map(targetUser =>
         withLock(targetUser.id, async () => {
-          const data = await getPlayerData(targetUser.id);
+          const { data, slot } = await getPlayerDataWithSlot(targetUser.id);
           data.books = data.books ?? {};
           data.items = data.items ?? {};
           const changes = [];
@@ -2215,8 +2236,7 @@ client.on("messageCreate", async (message) => {
             }
             changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
           }
-          await savePlayerData(targetUser.id, data);
-          return { targetUser, changes };
+          await savePlayerData(targetUser.id, data, slot);
         })
       )
     );
@@ -2405,10 +2425,10 @@ client.on("messageCreate", async (message) => {
     const { count, error } = parseOpenCount(args[0], 20);
     if (error) { message.reply(error); return; }
     try {
-      const { success, data, results } = await handleOpenChipboardCache(userId, count);
+      const { success, data, results, partial } = await handleOpenChipboardCache(userId, count);
       if (!success) { message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Chipboard Cache", results, remainingCount: data.items["Chipboard Cache"] ?? 0 });
-      message.reply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: desc }] });
+      message.reply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: desc, footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Chipboard Cache nên chỉ mở được ${results.length} lần.` } : undefined }] });
     } catch (err) {
       log("error", "chipboardcache", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
@@ -2427,10 +2447,10 @@ client.on("messageCreate", async (message) => {
     const { count, error } = parseOpenCount(args[0], 20);
     if (error) { message.reply(error); return; }
     try {
-      const { success, data, results } = await handleOpenSealedBook(userId, count);
+      const { success, data, results, partial } = await handleOpenSealedBook(userId, count);
       if (!success) { message.reply("❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Sealed Book Cache", results, remainingCount: data.books["Sealed Book Cache"] ?? 0 });
-      message.reply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: desc }] });
+      message.reply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: desc, footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Sealed Book Cache nên chỉ mở được ${results.length} lần.` } : undefined }] });
     } catch (err) {
       log("error", "randomsealedbook", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
@@ -2449,10 +2469,10 @@ client.on("messageCreate", async (message) => {
     const { count, error } = parseOpenCount(args[0], 20);
     if (error) { message.reply(error); return; }
     try {
-      const { success, data, results } = await handleOpenRandomBook(userId, count);
+      const { success, data, results, partial } = await handleOpenRandomBook(userId, count);
       if (!success) { message.reply("❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng."); return; }
       const desc = buildRollDescription({ user: message.author, cacheType: "Random Book", results, remainingCount: data.books["Random Book"] ?? 0 });
-      message.reply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: desc }] });
+      message.reply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: desc, footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Random Book nên chỉ mở được ${results.length} lần.` } : undefined }] });
     } catch (err) {
       log("error", "randombook", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
@@ -2808,7 +2828,7 @@ client.on("interactionCreate", async (interaction) => {
     const userId = interaction.user.id;
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
-      const { success, data, results } = await handleOpenRandomBook(userId, count);
+      const { success, data, results, partial } = await handleOpenRandomBook(userId, count);
       if (!success) {
         await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng." });
         return;
@@ -2823,6 +2843,7 @@ client.on("interactionCreate", async (interaction) => {
             results,
             remainingCount: data.books["Random Book"] ?? 0,
           }),
+          footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Random Book nên chỉ mở được ${results.length} lần.` } : undefined,
         }],
       });
     } catch (err) {
@@ -2838,7 +2859,7 @@ client.on("interactionCreate", async (interaction) => {
     const userId = interaction.user.id;
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
-      const { success, data, results } = await handleOpenSealedBook(userId, count);
+      const { success, data, results, partial } = await handleOpenSealedBook(userId, count);
       if (!success) {
         await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng." });
         return;
@@ -2853,6 +2874,7 @@ client.on("interactionCreate", async (interaction) => {
             results,
             remainingCount: data.books["Sealed Book Cache"] ?? 0,
           }),
+          footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Sealed Book Cache nên chỉ mở được ${results.length} lần.` } : undefined,
         }],
       });
     } catch (err) {
@@ -2868,7 +2890,7 @@ client.on("interactionCreate", async (interaction) => {
     const userId = interaction.user.id;
     const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
     try {
-      const { success, data, results } = await handleOpenChipboardCache(userId, count);
+      const { success, data, results, partial } = await handleOpenChipboardCache(userId, count);
       if (!success) {
         await interaction.editReply({ content: "❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng." });
         return;
@@ -2883,6 +2905,7 @@ client.on("interactionCreate", async (interaction) => {
             results,
             remainingCount: data.items["Chipboard Cache"] ?? 0,
           }),
+          footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Chipboard Cache nên chỉ mở được ${results.length} lần.` } : undefined,
         }],
       });
     } catch (err) {
