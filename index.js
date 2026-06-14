@@ -24,13 +24,20 @@ const redis = new Redis({
 });
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const SANITY_MIN = -45;
+// Các giới hạn dùng chung với deploy-commands.js (slash command options) được
+// tách sang constants.js để tránh duplicate/lệch giá trị giữa 2 file.
+const {
+  SANITY_MIN,
+  POISE_MAX,
+  SINKING_MAX,
+  RUPTURE_MAX,
+  PARRY_MAX_ROLLS,
+  OPEN_COUNT_MAX,
+  MAX_PROFILES,
+} = require("./constants");
 const POISE_CRIT_BONUS_PER_STACK = 0.05;
 const POISE_RESET_THRESHOLD = 1;
-const POISE_MAX = 99;
 const POISE_CRIT_DIV_DEFAULT = 2;
-const SINKING_MAX = 99;
-const RUPTURE_MAX = 99;
 
 // ─── REAL-TIME PARRY ──────────────────────────────────────────────────────────
 // Map<sessionId, session> — lưu trạng thái từng phiên parry đang chạy
@@ -274,6 +281,9 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, dice
   if (poiseInit < 0 || poiseInit > POISE_MAX) errors.push(`Poise phải từ 0–${POISE_MAX}`);
   if (!isNaN(critMul) && critMul < 1) errors.push("CritMul phải ≥ 1");
   if (!isNaN(diceMul) && diceMul < 0) errors.push("DiceMul phải ≥ 0");
+  if (!isNaN(sinkingInit) && !Number.isInteger(sinkingInit)) errors.push("sinking phải là số nguyên");
+  if (!isNaN(ruptureInit) && !Number.isInteger(ruptureInit)) errors.push("rupture phải là số nguyên");
+  if (!isNaN(sanityInit) && !Number.isInteger(sanityInit)) errors.push("sanity phải là số nguyên");
   if (!isNaN(sinkingInit) && (sinkingInit < 0 || sinkingInit > SINKING_MAX)) errors.push(`Sinking phải từ 0–${SINKING_MAX}`);
   if (!isNaN(ruptureInit) && (ruptureInit < 0 || ruptureInit > RUPTURE_MAX)) errors.push(`Rupture phải từ 0–${RUPTURE_MAX}`);
   if (!isNaN(sanityInit) && sanityInit < SANITY_MIN) errors.push(`Sanity phải ≥ ${SANITY_MIN}`);
@@ -470,7 +480,7 @@ function isTimeoutError(err) {
 }
 
 // ─── PROFILE SYSTEM ───────────────────────────────────────────────────────────
-const MAX_PROFILES = 3;
+// MAX_PROFILES được import từ constants.js (dùng chung với deploy-commands.js)
 const PROFILE_LABELS = { 1: "Profile 1", 2: "Profile 2", 3: "Profile 3" };
 const PROFILE_EMOJIS = { 1: "1️⃣", 2: "2️⃣", 3: "3️⃣" };
 
@@ -494,6 +504,61 @@ function playerKeyForSlot(userId, slot) {
 
 function dailyKeyForSlot(userId, slot) {
   return slot === 1 ? `daily:${userId}` : `daily:${userId}:slot${slot}`;
+}
+
+/**
+ * buildProfileInfoEmbed — logic chung cho cả prefix `-profile info` và slash `/profile info`.
+ * Lấy dữ liệu của tất cả MAX_PROFILES profile (qua 1 pipeline) và build embed tổng quan.
+ * @param {string} userId
+ * @param {string} displayName — tên hiển thị của user (displayName ?? username)
+ * @param {string} footerText  — text gợi ý lệnh đổi profile, khác nhau giữa prefix/slash
+ * @returns {Promise<object>} embed object, dùng trực tiếp trong `embeds: [...]`
+ */
+async function buildProfileInfoEmbed(userId, displayName, footerText) {
+  const currentSlot = await getActiveProfileSlot(userId);
+
+  // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
+  const pipe = redis.pipeline();
+  for (let s = 1; s <= MAX_PROFILES; s++) {
+    pipe.get(playerKeyForSlot(userId, s));
+    pipe.get(dailyKeyForSlot(userId, s));
+  }
+  const pipeResults = unwrapPipelineResults(await withTimeout(pipe.exec()));
+  // pipeResults layout: [player1, daily1, player2, daily2, player3, daily3]
+
+  const today = getVNDateString();
+  const lines = [];
+  for (let s = 1; s <= MAX_PROFILES; s++) {
+    try {
+      const rawPlayer = pipeResults[(s - 1) * 2];
+      const rawDaily  = pipeResults[(s - 1) * 2 + 1];
+      const d  = rawPlayer ? (typeof rawPlayer === "string" ? JSON.parse(rawPlayer) : rawPlayer) : null;
+      const dd = rawDaily  ? (typeof rawDaily  === "string" ? JSON.parse(rawDaily)  : rawDaily)  : null;
+      const claimedToday = dd && dd.lastClaim === today;
+      const streak = dd ? (dd.streak ?? 0) : 0;
+      if (d) {
+        const { grade } = calcGrade(d.exp ?? 0);
+        lines.push(
+          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+          `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
+          `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
+        );
+      } else {
+        lines.push(
+          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+          `> *(chưa có dữ liệu)*`
+        );
+      }
+    } catch (e) {
+      lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi: ${e.message})*`);
+    }
+  }
+  return {
+    title: `👤 Profiles của ${displayName}`,
+    description: lines.join("\n\n"),
+    color: 0x5865f2,
+    footer: { text: footerText },
+  };
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -606,7 +671,7 @@ function formatNumber(n) {
 }
 
 // ─── SHARED LOGIC: OPEN CACHE ─────────────────────────────────────────────────
-function parseOpenCount(raw, max = 20) {
+function parseOpenCount(raw, max = OPEN_COUNT_MAX) {
   // Không nhập arg → default 1
   if (raw === undefined || raw === null || String(raw).trim() === "") return { count: 1 };
   const parsed = parseInt(raw, 10);
@@ -1185,7 +1250,7 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
     changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP → tổng **${recipientData.exp}**/${EXP_MAX}`);
   }
   if (ahnGain !== 0) {
-    recipientData.ahn = (recipientData.ahn ?? 0) + ahnGain;
+    recipientData.ahn = Math.max(0, (recipientData.ahn ?? 0) + ahnGain);
     changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
     if (!isAdmin && ahnGain > 0) senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
   }
@@ -1225,6 +1290,9 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
  * @returns {Promise<string[]>} mảng change strings
  */
 async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRemove = 0, bookEntries = [], itemEntries = [] }) {
+  // ahnRemove âm sẽ khiến Math.max(0, before - ahnRemove) bên dưới "cộng" Ahn ngược lại
+  // (before - (-x) = before + x) — chặn ngay từ đây để /remove không bị dùng như /give.
+  if (ahnRemove < 0) throw new Error("Giá trị `ahn` để xóa không được âm. Dùng `/give` nếu muốn cộng thêm Ahn.");
   const { data, slot } = await getPlayerDataWithSlot(targetId);
   data.books = data.books ?? {};
   data.items = data.items ?? {};
@@ -1672,8 +1740,8 @@ client.on("messageCreate", async (message) => {
       return;
     }
     let rolls = (!isNaN(parsedRolls) && Number.isFinite(parsedRolls) && parsedRolls > 0) ? parsedRolls : 1;
-    if (rolls > 30) {
-      message.reply("❌ Số lần roll tối đa là 30.");
+    if (rolls > PARRY_MAX_ROLLS) {
+      message.reply(`❌ Số lần roll tối đa là ${PARRY_MAX_ROLLS}.`);
       return;
     }
     const { successCount, failCount, lines } = runParryRolls(rolls);
@@ -2391,7 +2459,7 @@ client.on("messageCreate", async (message) => {
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 30 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
       { name: "🎯 -rtparry [số]", value: "Parry thời gian thực! Đếm ngược kết thúc thì bấm.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry: 400ms\n> Thêm số để parry liên tiếp nhiều lần (tối đa 20): `-rtparry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", "> `poise: <stacks>` — Starting <:<:Poise:1513762945715142736>Poise:1513762945715142736><:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa 99)", "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
+      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
     ];
@@ -2422,7 +2490,7 @@ client.on("messageCreate", async (message) => {
     }
     const userId = message.author.id;
     const args = message.content.replace("-chipboardcache", "").trim().split(/\s+/);
-    const { count, error } = parseOpenCount(args[0], 20);
+    const { count, error } = parseOpenCount(args[0], OPEN_COUNT_MAX);
     if (error) { message.reply(error); return; }
     try {
       const { success, data, results, partial } = await handleOpenChipboardCache(userId, count);
@@ -2444,7 +2512,7 @@ client.on("messageCreate", async (message) => {
     }
     const userId = message.author.id;
     const args = message.content.replace("-randomsealedbook", "").trim().split(/\s+/);
-    const { count, error } = parseOpenCount(args[0], 20);
+    const { count, error } = parseOpenCount(args[0], OPEN_COUNT_MAX);
     if (error) { message.reply(error); return; }
     try {
       const { success, data, results, partial } = await handleOpenSealedBook(userId, count);
@@ -2466,7 +2534,7 @@ client.on("messageCreate", async (message) => {
     }
     const userId = message.author.id;
     const args = message.content.replace("-randombook", "").trim().split(/\s+/);
-    const { count, error } = parseOpenCount(args[0], 20);
+    const { count, error } = parseOpenCount(args[0], OPEN_COUNT_MAX);
     if (error) { message.reply(error); return; }
     try {
       const { success, data, results, partial } = await handleOpenRandomBook(userId, count);
@@ -2509,52 +2577,12 @@ client.on("messageCreate", async (message) => {
 
     // -profile info
     if (sub === "info" || sub === "") {
-      const currentSlot = await getActiveProfileSlot(userId);
-
-      // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
-      const pipe = redis.pipeline();
-      for (let s = 1; s <= MAX_PROFILES; s++) {
-        pipe.get(playerKeyForSlot(userId, s));
-        pipe.get(dailyKeyForSlot(userId, s));
-      }
-      const pipeResults = unwrapPipelineResults(await withTimeout(pipe.exec()));
-      // pipeResults layout: [player1, daily1, player2, daily2, player3, daily3]
-
-      const today = getVNDateString();
-      const lines = [];
-      for (let s = 1; s <= MAX_PROFILES; s++) {
-        try {
-          const rawPlayer = pipeResults[(s - 1) * 2];
-          const rawDaily  = pipeResults[(s - 1) * 2 + 1];
-          const d  = rawPlayer ? (typeof rawPlayer === "string" ? JSON.parse(rawPlayer) : rawPlayer) : null;
-          const dd = rawDaily  ? (typeof rawDaily  === "string" ? JSON.parse(rawDaily)  : rawDaily)  : null;
-          const claimedToday = dd && dd.lastClaim === today;
-          const streak = dd ? (dd.streak ?? 0) : 0;
-          if (d) {
-            const { grade } = calcGrade(d.exp ?? 0);
-            lines.push(
-              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-              `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
-              `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
-            );
-          } else {
-            lines.push(
-              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-              `> *(chưa có dữ liệu)*`
-            );
-          }
-        } catch (e) {
-          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi: ${e.message})*`);
-        }
-      }
-      message.reply({
-        embeds: [{
-          title: `👤 Profiles của ${message.author.displayName ?? message.author.username}`,
-          description: lines.join("\n\n"),
-          color: 0x5865f2,
-          footer: { text: "Dùng -profile switch <1/2/3> để đổi profile" },
-        }],
-      });
+      const embed = await buildProfileInfoEmbed(
+        userId,
+        message.author.displayName ?? message.author.username,
+        "Dùng -profile switch <1/2/3> để đổi profile"
+      );
+      message.reply({ embeds: [embed] });
       return;
     }
 
@@ -2626,6 +2654,14 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.customId.startsWith("invpage:")) {
     const [, targetUserId, pageStr] = interaction.customId.split(":");
     const page = parseInt(pageStr, 10);
+    // Chỉ chủ nhân của inventory được bấm Prev/Next — tránh người khác thao túng
+    // trang hiển thị trong embed (dù /inventory là public).
+    if (interaction.user.id !== targetUserId) {
+      return interaction.reply({
+        content: "⚠️ Chỉ chủ nhân của inventory này mới có thể chuyển trang.",
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    }
     try {
       const targetUser = await client.users.fetch(targetUserId).catch(() => null);
       if (!targetUser) {
@@ -2755,16 +2791,16 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.editReply({
         content:
           "⚠️ Bạn chưa nhập `dmg`. Vui lòng nhập công thức damage.\n" +
-          "> VD: `10B`, `5x3B`, `8S+Crit50`, `DiceB`"
+          "> VD: `10B`, `5x3B`, `8S+Crit50`, `1DiceB`"
       });
       return;
     }
     const poiseInit = interaction.options.getInteger("poise") ?? 0;
     const critMul = interaction.options.getNumber("critmul") ?? 1;
     const diceMul = interaction.options.getNumber("dicemul") ?? 1;
-    const sinkingInit = interaction.options.getNumber("sinking") ?? 0;
-    const ruptureInit = interaction.options.getNumber("rupture") ?? 0;
-    const sanityInit = interaction.options.getNumber("sanity") ?? 0;
+    const sinkingInit = interaction.options.getInteger("sinking") ?? 0;
+    const ruptureInit = interaction.options.getInteger("rupture") ?? 0;
+    const sanityInit = interaction.options.getInteger("sanity") ?? 0;
     const bonusPct = interaction.options.getNumber("bonus") ?? 0;
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
@@ -2797,7 +2833,7 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "parry") {
     if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
-    const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, 30);
+    const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, PARRY_MAX_ROLLS);
     const { successCount, failCount, lines } = runParryRolls(rolls);
     let body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
     if (body.length > 2000) body = body.substring(0, 1990) + "\n…(bị cắt bớt)";
@@ -2826,7 +2862,7 @@ client.on("interactionCreate", async (interaction) => {
     if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     const userId = interaction.user.id;
-    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
+    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), OPEN_COUNT_MAX);
     try {
       const { success, data, results, partial } = await handleOpenRandomBook(userId, count);
       if (!success) {
@@ -2857,7 +2893,7 @@ client.on("interactionCreate", async (interaction) => {
     if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     const userId = interaction.user.id;
-    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
+    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), OPEN_COUNT_MAX);
     try {
       const { success, data, results, partial } = await handleOpenSealedBook(userId, count);
       if (!success) {
@@ -2888,7 +2924,7 @@ client.on("interactionCreate", async (interaction) => {
     if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     const userId = interaction.user.id;
-    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), 20);
+    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), OPEN_COUNT_MAX);
     try {
       const { success, data, results, partial } = await handleOpenChipboardCache(userId, count);
       if (!success) {
@@ -3133,52 +3169,12 @@ client.on("interactionCreate", async (interaction) => {
     if (sub === "info") {
       if (await replyOnCooldown(interaction, 2000)) return;
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const currentSlot = await getActiveProfileSlot(userId);
-
-      // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
-      const pipe = redis.pipeline();
-      for (let s = 1; s <= MAX_PROFILES; s++) {
-        pipe.get(playerKeyForSlot(userId, s));
-        pipe.get(dailyKeyForSlot(userId, s));
-      }
-      const pipeResults = unwrapPipelineResults(await withTimeout(pipe.exec()));
-      // pipeResults layout: [player1, daily1, player2, daily2, player3, daily3]
-
-      const today = getVNDateString();
-      const lines = [];
-      for (let s = 1; s <= MAX_PROFILES; s++) {
-        try {
-          const rawPlayer = pipeResults[(s - 1) * 2];
-          const rawDaily  = pipeResults[(s - 1) * 2 + 1];
-          const d  = rawPlayer ? (typeof rawPlayer === "string" ? JSON.parse(rawPlayer) : rawPlayer) : null;
-          const dd = rawDaily  ? (typeof rawDaily  === "string" ? JSON.parse(rawDaily)  : rawDaily)  : null;
-          const claimedToday = dd && dd.lastClaim === today;
-          const streak = dd ? (dd.streak ?? 0) : 0;
-          if (d) {
-            const { grade } = calcGrade(d.exp ?? 0);
-            lines.push(
-              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-              `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
-              `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
-            );
-          } else {
-            lines.push(
-              `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-              `> *(chưa có dữ liệu)*`
-            );
-          }
-        } catch (e) {
-          lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi: ${e.message})*`);
-        }
-      }
-      await interaction.editReply({
-        embeds: [{
-          title: `👤 Profiles của ${interaction.user.displayName ?? interaction.user.username}`,
-          description: lines.join("\n\n"),
-          color: 0x5865f2,
-          footer: { text: "Dùng /profile switch để đổi profile" },
-        }],
-      });
+      const embed = await buildProfileInfoEmbed(
+        userId,
+        interaction.user.displayName ?? interaction.user.username,
+        "Dùng /profile switch để đổi profile"
+      );
+      await interaction.editReply({ embeds: [embed] });
       return;
     }
     return;
