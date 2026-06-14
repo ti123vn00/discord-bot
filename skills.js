@@ -3549,6 +3549,34 @@ Object.assign(SKILLS, {
     },
   },
 
+  // ── Follow-Up Skills (kích hoạt sau đòn đánh thứ 4 mỗi turn) ──
+  "follow-up": {
+    name: "Follow-Up",
+    cost: "15 Points", cd: "—", diceMul: "1x",
+    incompatibleWith: ["pounce"],
+    keywords: ["follow-up", "airborne", "blunt", "4th hit"],
+    roll() {
+      const d1 = r(10, 14);
+      return [
+        `*Kích hoạt sau đòn đánh thứ 4 mỗi turn — Không thể tồn tại chung với **Pounce***`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây [Airborne]`,
+      ];
+    },
+  },
+  "pounce": {
+    name: "Pounce",
+    cost: "5 Points", cd: "—", diceMul: "1x",
+    incompatibleWith: ["follow-up"],
+    keywords: ["pounce", "blunt", "4th hit"],
+    roll() {
+      const d1 = r(8, 30);
+      return [
+        `*Kích hoạt sau đòn đánh thứ 4 mỗi turn — Không thể tồn tại chung với **Follow-Up***`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+      ];
+    },
+  },
+
   // ── Weapon Criticals ──
   "for justice": {
     name: "For Justice!!!",
@@ -3693,6 +3721,9 @@ Object.assign(SKILL_ALIASES, {
   "sueñoimposible": "for justice",
   "suenoimposible": "for justice",
   "sueno": "for justice",
+  // Passive Skills
+  "followup": "follow-up",
+  "fu": "follow-up",
   // Halberd VOGEL
   "ravagingcut": "ravaging cut",
   "rc": "ravaging cut",
@@ -3724,4 +3755,39 @@ function findSkill(raw) {
   return null;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill };
+// ─── findByKeyword — dùng cho lệnh `-skill list <keyword>` ──────────────────
+// Tìm tất cả skill có keyword xuất hiện trong: name, tags, keywords[], passive,
+// hoặc trong nội dung roll() (emoji name được strip để match text thuần).
+function findByKeyword(keyword) {
+  const kw = keyword.toLowerCase().trim();
+  const results = [];
+
+  for (const [, skill] of Object.entries(SKILLS)) {
+    // 1. Kiểm tra name
+    if (skill.name.toLowerCase().includes(kw)) { results.push(skill); continue; }
+
+    // 2. Kiểm tra tags field
+    if (skill.tags && skill.tags.toLowerCase().includes(kw)) { results.push(skill); continue; }
+
+    // 3. Kiểm tra keywords[] (field tùy chọn)
+    if (Array.isArray(skill.keywords) && skill.keywords.some(k => k.toLowerCase().includes(kw))) {
+      results.push(skill); continue;
+    }
+
+    // 4. Kiểm tra passive description
+    if (skill.passive && skill.passive.toLowerCase().includes(kw)) { results.push(skill); continue; }
+
+    // 5. Kiểm tra nội dung roll() — strip Discord emoji code thành tên emoji
+    try {
+      const rollText = skill.roll()
+        .join(" ")
+        .replace(/<:([^:]+):\d+>/g, "$1") // <:Sinking:123> → Sinking
+        .toLowerCase();
+      if (rollText.includes(kw)) { results.push(skill); continue; }
+    } catch (_) { /* bỏ qua skill cần arg đặc biệt */ }
+  }
+
+  return results;
+}
+
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword };
