@@ -1,5 +1,14 @@
 //  deploy-commands.js
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
+const {
+  SANITY_MIN,
+  POISE_MAX,
+  SINKING_MAX,
+  RUPTURE_MAX,
+  PARRY_MAX_ROLLS,
+  OPEN_COUNT_MAX,
+  MAX_PROFILES,
+} = require("./constants");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID; // Set để deploy guild (nhanh hơn); bỏ trống để deploy global
@@ -25,21 +34,21 @@ const commands = [
     .addNumberOption(opt =>
       opt.setName("critmul").setDescription("Crit Multiplier (VD: 1.3)").setMinValue(1).setRequired(false))
     .addIntegerOption(opt =>
-      opt.setName("poise").setDescription("Starting Poise stacks (1 stack = 5% crit, tối đa 99)")
-        .setMinValue(0).setMaxValue(99).setRequired(false))
+      opt.setName("poise").setDescription(`Starting Poise stacks (1 stack = 5% crit, tối đa ${POISE_MAX})`)
+        .setMinValue(0).setMaxValue(POISE_MAX).setRequired(false))
     .addStringOption(opt =>
       opt.setName("critdiv")
         .setDescription("Crit Divide: 'yes'/số (VD: 2, 1.5). Mặc định không dùng.")
         .setRequired(false))
     // sanity: sanity ban đầu của địch (để tính Sinking bonus khi địch đạt -45)
-    .addNumberOption(opt =>
-      opt.setName("sanity").setDescription("Sanity ban đầu của địch để tính Sinking (VD: 0, min -45)").setMinValue(-45).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("sanity").setDescription(`Sanity ban đầu của địch để tính Sinking (VD: 0, min ${SANITY_MIN})`).setMinValue(SANITY_MIN).setRequired(false))
     .addNumberOption(opt =>
       opt.setName("dicemul").setDescription("Dice Multiplier (VD: 1.2)").setMinValue(0).setRequired(false))
-    .addNumberOption(opt =>
-      opt.setName("sinking").setDescription("Sinking counts ban đầu của địch").setMinValue(0).setMaxValue(99).setRequired(false))
-    .addNumberOption(opt =>
-      opt.setName("rupture").setDescription("Rupture counts ban đầu của địch").setMinValue(0).setMaxValue(99).setRequired(false)),
+    .addIntegerOption(opt =>
+      opt.setName("sinking").setDescription("Sinking counts ban đầu của địch (số nguyên)").setMinValue(0).setMaxValue(SINKING_MAX).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("rupture").setDescription("Rupture counts ban đầu của địch (số nguyên)").setMinValue(0).setMaxValue(RUPTURE_MAX).setRequired(false)),
 
 
   // ── /parry ──────────────────────────────────────────────────────────────────
@@ -47,8 +56,8 @@ const commands = [
     .setName("parry")
     .setDescription("Roll xác suất parry (Attacker d16 vs Defender d20)")
     .addIntegerOption(opt =>
-      opt.setName("rolls").setDescription("Số lần roll (tối đa 30, mặc định 1)")
-        .setMinValue(1).setMaxValue(30).setRequired(false)),
+      opt.setName("rolls").setDescription(`Số lần roll (tối đa ${PARRY_MAX_ROLLS}, mặc định 1)`)
+        .setMinValue(1).setMaxValue(PARRY_MAX_ROLLS).setRequired(false)),
 
   // ── /daily ──────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
@@ -60,24 +69,24 @@ const commands = [
     .setName("randombook")
     .setDescription("Mở Random Book để nhận ngẫu nhiên sách thường")
     .addIntegerOption(opt =>
-      opt.setName("count").setDescription("Số lần mở (tối đa 20, mặc định 1)")
-        .setMinValue(1).setMaxValue(20).setRequired(false)),
+      opt.setName("count").setDescription(`Số lần mở (tối đa ${OPEN_COUNT_MAX}, mặc định 1)`)
+        .setMinValue(1).setMaxValue(OPEN_COUNT_MAX).setRequired(false)),
 
   // ── /randomsealedbook ───────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("randomsealedbook")
     .setDescription("Mở Sealed Book Cache để nhận ngẫu nhiên sách hiếm")
     .addIntegerOption(opt =>
-      opt.setName("count").setDescription("Số lần mở (tối đa 20, mặc định 1)")
-        .setMinValue(1).setMaxValue(20).setRequired(false)),
+      opt.setName("count").setDescription(`Số lần mở (tối đa ${OPEN_COUNT_MAX}, mặc định 1)`)
+        .setMinValue(1).setMaxValue(OPEN_COUNT_MAX).setRequired(false)),
 
   // ── /chipboardcache ─────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("chipboardcache")
     .setDescription("Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên")
     .addIntegerOption(opt =>
-      opt.setName("count").setDescription("Số lần mở (tối đa 20, mặc định 1)")
-        .setMinValue(1).setMaxValue(20).setRequired(false)),
+      opt.setName("count").setDescription(`Số lần mở (tối đa ${OPEN_COUNT_MAX}, mặc định 1)`)
+        .setMinValue(1).setMaxValue(OPEN_COUNT_MAX).setRequired(false)),
 
   // ── /balance ────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
@@ -137,7 +146,7 @@ const commands = [
     .addIntegerOption(opt =>
       opt.setName("exp").setDescription("Số EXP muốn xóa (admin only)").setMinValue(1).setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("ahn").setDescription("Số Ahn muốn xóa (admin only)").setRequired(false))
+      opt.setName("ahn").setDescription("Số Ahn muốn xóa (admin only)").setMinValue(0).setRequired(false))
     .addStringOption(opt =>
       opt.setName("books").setDescription("Xóa nhiều sách (VD: Random Book x2, N Corp Book x1)").setRequired(false))
     .addStringOption(opt =>
@@ -152,9 +161,9 @@ const commands = [
         .setDescription("Chuyển sang profile khác (inventory, daily, ahn đều riêng biệt)")
         .addIntegerOption(opt =>
           opt.setName("slot")
-            .setDescription("Profile muốn chuyển sang (1, 2 hoặc 3)")
+            .setDescription(`Profile muốn chuyển sang (1–${MAX_PROFILES})`)
             .setMinValue(1)
-            .setMaxValue(3)
+            .setMaxValue(MAX_PROFILES)
             .setRequired(true)))
     .addSubcommand(sub =>
       sub.setName("info")
