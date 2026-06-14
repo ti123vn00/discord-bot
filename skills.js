@@ -3006,7 +3006,7 @@ roll(v = "no") {
     },
   },
   "dont let somethin like this break you": {
-    name: "Don't Let Somethin' Like This Break You!", weaponOf: "Lævateinn", tags: "Weapon",
+    name: "Don't Let Somethin' Like This Break You!", weaponOf: "Lævateinn [Seal 1+]", tags: "Weapon",
     cost: "—", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(8,12), d2 = r(12,13), d3 = r(11,15);
@@ -3048,7 +3048,7 @@ roll(v = "no") {
     },
   },
   "complete and total extermination laevateinn": {
-    name: "Complete and Total Extermination [Lævateinn]", weaponOf: "Lævateinn [Unsealed]", tags: "Weapon",
+    name: "Complete and Total Extermination [Lævateinn]", weaponOf: "Lævateinn [Seal 3]", tags: "Weapon",
     cost: "—", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,12), d2 = r(12,13), d3 = r(13,15), d4 = r(18,24), d5 = r(30,35);
@@ -3064,7 +3064,7 @@ roll(v = "no") {
     },
   },
   "good girl your sacrifice for the family wont be forgotten": {
-    name: "Good Girl. Your Sacrifice for the Family Won't Be Forgotten.", weaponOf: "Lævateinn [Unsealed]", tags: "Weapon",
+    name: "Good Girl. Your Sacrifice for the Family Won't Be Forgotten.", weaponOf: "Lævateinn [Seal 3]", tags: "Weapon",
     cost: "Chỉ dùng khi đồng minh dưới 20% HP (50% nếu từ Middle)", cd: "—", diceMul: "1x",
     roll() {
       const d1 = r(18,24);
@@ -3566,6 +3566,53 @@ Object.assign(SKILLS, {
       ];
     },
   },
+  // ── Blade Lineage Hwando ──
+  "blade lineage hwando": {
+    name: "Blade Lineage Hwando", tags: "Weapon",
+    weaponType: "Medium", weaponDmg: "13 <:Slash:1513768633434640517>Slash",
+    passive: "**Poised** — Khi <:Poise:1513762945715142736>Poise ≥ 10: tiêu thụ một nửa <:Poise:1513762945715142736>Poise hiện có, cộng vào base dmg của đòn một lượng bằng số <:Poise:1513762945715142736>Poise đã tiêu thụ × 2",
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên skill cụ thể để roll)*`]; },
+  },
+  "striker's stance": {
+    name: "Striker's Stance",
+    weaponOf: "Blade Lineage Hwando",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6, 13);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Nhận 5 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "heel turn": {
+    name: "Heel Turn",
+    weaponOf: "Blade Lineage Hwando",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7, 9), d2 = r(9, 11);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Nhận 3 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "flank thrust": {
+    name: "Flank Thrust",
+    weaponOf: "Blade Lineage Hwando",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8, 10), d2 = r(10, 12), d3 = r(12, 14);
+      return [
+        `*3 Dice của đòn này được tăng thêm 0.7x Crit Mul*`,
+        `${D1} **${d1}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+
+  // Halberd VOGEL
   "ravaging cut": {
     name: "Ravaging Cut",
     weaponOf: "Halberd VOGEL",
@@ -3651,6 +3698,17 @@ Object.assign(SKILL_ALIASES, {
   "rc": "ravaging cut",
   "halberdvogel": "ravaging cut",
   "vogel": "ravaging cut",
+  // Blade Lineage Hwando
+  "strikersstance": "striker's stance",
+  "ss2": "striker's stance",
+  "hwandoss": "striker's stance",
+  "heelturn": "heel turn",
+  "ht2": "heel turn",
+  "hwandoht": "heel turn",
+  "flankthrust": "flank thrust",
+  "ft2": "flank thrust",
+  "hwandoft": "flank thrust",
+  "hwando": "striker's stance",
 });
 
 // ─── findSkill (giữ nguyên logic, chuyển từ index.js sang đây) ───────────────
