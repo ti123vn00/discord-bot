@@ -1345,11 +1345,12 @@ client.on("messageCreate", async (message) => {
       }
 
       const results = Array.from({ length: times }, () => {
-        const hitType = Math.random() * 100 < chance;
-        const pool    = hitType ? typePool : PRESCRIPT_TABLE;
-        const entry   = pool[Math.floor(Math.random() * pool.length)];
-        // Đánh dấu nếu ra đúng type
-        const hitMark = hitType ? " ✅" : " ❌";
+        const useTypePool = Math.random() * 100 < chance;
+        const pool        = useTypePool ? typePool : PRESCRIPT_TABLE;
+        const entry       = pool[Math.floor(Math.random() * pool.length)];
+        // Đánh dấu dựa trên nội dung entry thực tế, không phải pool đã chọn
+        const isCorrectType = entry.includes(TYPE_LABELS[typeKey]);
+        const hitMark = isCorrectType ? " ✅" : " ❌";
         return entry + hitMark;
       });
 
