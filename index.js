@@ -951,41 +951,90 @@ async function buildBalanceEmbed(targetUser) {
   };
 }
 
-async function buildInventoryEmbed(targetUser) {
-  const data = await getPlayerData(targetUser.id);
+// Số entry tối đa mỗi trang inventory
+const INV_PAGE_SIZE = 15;
+
+/**
+ * Tách toàn bộ books + items thành mảng pages (mỗi page là mảng fields).
+ * Trả về null nếu kho trống.
+ */
+function buildInventoryPages(targetUser, data) {
   const books = data.books ?? {};
   const items = data.items ?? {};
   const bookEntries = Object.entries(books).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
   const itemEntries = Object.entries(items).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
-  if (bookEntries.length === 0 && itemEntries.length === 0) {
-    return null;
+  if (bookEntries.length === 0 && itemEntries.length === 0) return null;
+
+  const totalBooks = bookEntries.reduce((s, [, c]) => s + c, 0);
+  const totalItems = itemEntries.reduce((s, [, c]) => s + c, 0);
+  const pages = [];
+
+  // ── Sách ──
+  for (let i = 0; i < bookEntries.length; i += INV_PAGE_SIZE) {
+    const chunk = bookEntries.slice(i, i + INV_PAGE_SIZE);
+    const isLast = i + INV_PAGE_SIZE >= bookEntries.length;
+    const from = i + 1, to = Math.min(i + INV_PAGE_SIZE, bookEntries.length);
+    const fields = [{
+      name: `📚 Sách (${from}–${to} / ${bookEntries.length})`,
+      value: chunk.map(([name, count]) => `• **${name}** × ${count}`).join("\n"),
+      inline: false,
+    }];
+    if (isLast) fields.push({ name: "📊 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true });
+    pages.push(fields);
   }
-  const fields = [];
-  if (bookEntries.length > 0) {
-    const lines = bookEntries.map(([name, count]) => `• **${name}** × ${count}`);
-    const totalBooks = bookEntries.reduce((s, [, c]) => s + c, 0);
-    const CHUNK = 20;
-    for (let i = 0; i < lines.length; i += CHUNK) {
-      fields.push({ name: i === 0 ? "📚 Sách" : "​", value: lines.slice(i, i + CHUNK).join("\n"), inline: false });
-    }
-    fields.push({ name: "📊 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true });
+
+  // ── Vật phẩm ──
+  for (let i = 0; i < itemEntries.length; i += INV_PAGE_SIZE) {
+    const chunk = itemEntries.slice(i, i + INV_PAGE_SIZE);
+    const isLast = i + INV_PAGE_SIZE >= itemEntries.length;
+    const from = i + 1, to = Math.min(i + INV_PAGE_SIZE, itemEntries.length);
+    const fields = [{
+      name: `🔩 Vật phẩm (${from}–${to} / ${itemEntries.length})`,
+      value: chunk.map(([name, count]) => `• **${name}** × ${count}`).join("\n"),
+      inline: false,
+    }];
+    if (isLast) fields.push({ name: "📊 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true });
+    pages.push(fields);
   }
-  if (itemEntries.length > 0) {
-    const lines = itemEntries.map(([name, count]) => `• **${name}** × ${count}`);
-    const totalItems = itemEntries.reduce((s, [, c]) => s + c, 0);
-    const CHUNK = 20;
-    for (let i = 0; i < lines.length; i += CHUNK) {
-      fields.push({ name: i === 0 ? "🔩 Vật phẩm" : "​", value: lines.slice(i, i + CHUNK).join("\n"), inline: false });
-    }
-    fields.push({ name: "📊 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true });
-  }
+
+  return pages;
+}
+
+/** Build embed object cho trang `page` (0-indexed). */
+function buildInvEmbed(targetUser, pages, page) {
   return {
-    embeds: [{
-      title: `🎒 Inventory của ${targetUser.displayName ?? targetUser.username}`,
-      color: 0xf0a500,
-      fields,
-    }],
+    title: `🎒 Inventory của ${targetUser.displayName ?? targetUser.username}`,
+    color: 0xf0a500,
+    fields: pages[page],
+    footer: pages.length > 1 ? { text: `Trang ${page + 1} / ${pages.length}` } : undefined,
   };
+}
+
+/** Build ActionRow nút Prev/Next. */
+function buildInvRow(targetUserId, page, totalPages) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`invpage:${targetUserId}:${page - 1}`)
+      .setLabel("◀ Trước")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === 0),
+    new ButtonBuilder()
+      .setCustomId(`invpage:${targetUserId}:${page + 1}`)
+      .setLabel("Sau ▶")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === totalPages - 1),
+  );
+}
+
+/** Wrapper async dùng chung cho prefix và slash command. */
+async function fetchInventoryReply(targetUser, page = 0) {
+  const data = await getPlayerData(targetUser.id);
+  const pages = buildInventoryPages(targetUser, data);
+  if (!pages) return null;
+  const clampedPage = Math.max(0, Math.min(page, pages.length - 1));
+  const embed = buildInvEmbed(targetUser, pages, clampedPage);
+  const components = pages.length > 1 ? [buildInvRow(targetUser.id, clampedPage, pages.length)] : [];
+  return { embeds: [embed], components };
 }
 
 // ─── SHARED BUSINESS LOGIC: GIVE / REMOVE ────────────────────────────────────
@@ -1765,12 +1814,12 @@ client.on("messageCreate", async (message) => {
     if (isOnCooldown(message.author.id, "inventory", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
     const targetUser = message.mentions.users.first() ?? message.author;
     try {
-      const embed = await buildInventoryEmbed(targetUser);
-      if (!embed) {
+      const reply = await fetchInventoryReply(targetUser);
+      if (!reply) {
         message.reply(`📦 ${targetUser} không có gì trong kho.`);
         return;
       }
-      message.reply(embed);
+      message.reply(reply);
     } catch (err) {
       log("error", "inventory", targetUser.id, err.message);
       message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
@@ -2430,6 +2479,27 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   try {
 
+  // ── Nút phân trang inventory ──
+  if (interaction.customId.startsWith("invpage:")) {
+    const [, targetUserId, pageStr] = interaction.customId.split(":");
+    const page = parseInt(pageStr, 10);
+    try {
+      const targetUser = await client.users.fetch(targetUserId).catch(() => null);
+      if (!targetUser) {
+        return interaction.reply({ content: "❌ Không tìm thấy người dùng.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      const reply = await fetchInventoryReply(targetUser, page);
+      if (!reply) {
+        return interaction.reply({ content: "📦 Kho hiện đã trống.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      await interaction.update(reply);
+    } catch (err) {
+      log("error", "invpage button", interaction.user?.id ?? "unknown", err.message);
+      interaction.reply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
   // ── Nút parry thời gian thực ──
   if (interaction.customId.startsWith("parryrt_")) {
     const sessionId = interaction.customId.replace("parryrt_", "");
@@ -2728,12 +2798,12 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.deferReply();
     const targetUser = interaction.options.getUser("user") ?? interaction.user;
     try {
-      const embed = await buildInventoryEmbed(targetUser);
-      if (!embed) {
+      const reply = await fetchInventoryReply(targetUser);
+      if (!reply) {
         await interaction.editReply({ content: `📦 ${targetUser} không có gì trong kho.` });
         return;
       }
-      await interaction.editReply(embed);
+      await interaction.editReply(reply);
     } catch (err) {
       log("error", "/inventory", targetUser.id, err.message);
       await interaction.editReply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu." });
