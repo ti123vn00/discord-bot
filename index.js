@@ -1252,7 +1252,7 @@ function parseBatchEntries(raw, findFn, entityLabel) {
 
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
-const { SKILLS, SKILL_ALIASES, findSkill } = require("./skills");
+const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword } = require("./skills");
 
 
 // ─── PRESCRIPT TABLE ──────────────────────────────────────────────────────────
@@ -1479,6 +1479,26 @@ client.on("messageCreate", async (message) => {
     if (dullahanMatch) {
       forceDullahan = true;
       input = input.slice(0, dullahanMatch.index).trim();
+    }
+
+    // -skill list <keyword> — tìm skill theo keyword
+    if (/^list\s+[^\d]/i.test(input)) {
+      const keyword = input.replace(/^list\s+/i, "").trim();
+      const found = findByKeyword(keyword);
+      if (!found.length) {
+        message.reply(`❌ Không tìm thấy skill nào có keyword **${keyword}**.\nDùng \`-skill list\` để xem toàn bộ.`);
+        return;
+      }
+      const list = found.map(s => `• **${s.name}** — ${s.cost} | CD: ${s.cd}`).join("\n");
+      message.reply({
+        embeds: [{
+          title: `🔍 Skill có keyword "${keyword}" (${found.length} kết quả)`,
+          color: 0x9b59b6,
+          description: list,
+          footer: { text: `-skill <tên> để roll skill` },
+        }],
+      });
+      return;
     }
 
     // -skill list [trang]
