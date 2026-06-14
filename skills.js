@@ -2965,6 +2965,21 @@ roll(v = "no") {
   },
 
   // ── Lævateinn ──
+  "laevateinn": {
+    name: "Lævateinn", tags: "Weapon",
+    weaponType: "??? → Heavy → Medium → Light",
+    weaponDmg: "??? → 30 [Blunt] → 35 [Blunt] → 20 [Slash] → 13 [Slash]",
+    passive: [
+      `**Rule Violation** — Mỗi 1 Turn: hai đòn tấn công đầu tiên bạn chịu từ kẻ thù phản 1/2 Dmg về cho chúng (Type: <:Blunt:1513768529718022254>Blunt; <:Slash:1513768633434640517>Slash từ Seal 2+). Mỗi đòn gây cho chúng 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. +10 Minimum Dice từ Follow Up Attack [Follow Up / Pounce]`,
+      `**Sealed Sword [Lævateinn]** — Khởi đầu là Heavy Weapon với 30 Base Dmg [<:Blunt:1513768529718022254>Blunt]. Mỗi khi dùng 1 Page của **Middle Syndicate**: nhận 1 Stack **Rising Fever**. Mọi Bonus Dmg <:Blunt:1513768529718022254>Blunt % chuyển sang Dmg Type tương ứng với đòn gây ra. Mỗi khi mở khoá một lớp phong ấn: thi triển ngay 1 đòn tấn công với số Dice bằng tổng lượng stack **Rising Fever** hiện có. Khi mở khoá phong ấn cuối: nhận hiệu ứng **Ridiculous Grit** duy trì đến hết Encounter.\n` +
+      `> — **10 Rising Fever** → Seal 1: Base Dmg 35 [<:Blunt:1513768529718022254>Blunt], +50% Dmg. Mọi đòn đánh áp 1 <:Bleed:1513762688226955285>Bleed + 1 <:Burn:1513762753691652177>Burn\n` +
+      `> — **20 Rising Fever** → Seal 2: Medium Weapon, Base Dmg 20 [<:Slash:1513768633434640517>Slash], +100% Dmg. Mọi đòn đánh áp 2 <:Bleed:1513762688226955285>Bleed + 2 <:Burn:1513762753691652177>Burn\n` +
+      `> — **30 Rising Fever** → Seal 3: Light Weapon, Base Dmg 13 [<:Slash:1513768633434640517>Slash], +200% Dmg. Mọi đòn đánh áp 4 <:Bleed:1513762688226955285>Bleed + 4 <:Burn:1513762753691652177>Burn. Toàn bộ đồng minh lẫn kẻ thù chịu 20 <:Burn:1513762753691652177>Burn vào đầu mỗi turn`,
+      `**Time to Revenge** — Nếu mục tiêu có từ 3 / 6 / 9 <:VengeanceMark:1513768136023740436>Vengeance Mark: tăng số lượng stack **Rising Fever** có thể nhận thêm 1 / 2 / 3. (Tối đa 2 lần mỗi turn)`,
+    ].join("\n"),
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên skill cụ thể để roll)*`]; },
+  },
   "stomping": {
     name: "Stomping", weaponOf: "Lævateinn", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "1x",
@@ -2972,8 +2987,8 @@ roll(v = "no") {
       const d1 = r(9,13), d2 = r(10,15);
       return [
         `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Dặm đất, gây 5 Fragile`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Đá vào kẻ địch, gây 5 Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Dặm đất, gây 5 <:Fragile:1513763336167100536>Fragile`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Đá vào kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 1 Stack **Rising Fever**`,
       ];
     },
   },
@@ -2984,9 +2999,9 @@ roll(v = "no") {
       const d1 = r(5,7), d2 = r(12,13), d3 = r(11,12);
       return [
         `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đá kẻ địch lên trời, gây 5 Fragile`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Chém chúng bằng thanh kiếm, gây 5 Fragile`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Cắt ngay lập tức, gây 5 Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đá kẻ địch lên trời, gây 5 <:Fragile:1513763336167100536>Fragile`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Chém chúng bằng thanh kiếm, gây 5 <:Fragile:1513763336167100536>Fragile`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Cắt ngay lập tức, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 1 Stack **Rising Fever**`,
       ];
     },
   },
@@ -2999,7 +3014,7 @@ roll(v = "no") {
         `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Bổ cự kiếm vào kẻ địch`,
         `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Quẹt ngang ngay lập tức`,
-        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Vung lên, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Vung lên, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 2 Stack **Rising Fever**`,
       ];
     },
   },
@@ -3014,7 +3029,7 @@ roll(v = "no") {
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Quẹt ngang ngay lập tức`,
         `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Đâm thanh kiếm vào kẻ địch`,
         `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tiếp tục đâm liên tục`,
-        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Rút ra rồi kết thúc bằng một đòn đâm, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Rút ra rồi kết thúc bằng một đòn đâm, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 2 Stack **Rising Fever**`,
       ];
     },
   },
@@ -3028,7 +3043,7 @@ roll(v = "no") {
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Đá kẻ địch`,
         `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Ngay sau đó là một cú đá lên`,
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Lấy đà thêm một cú nữa`,
-        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Nhảy lên trời rồi chốt hạ bằng một đòn chẻ bằng chân. Cho bản thân **2 Stack Rising Fever**`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Nhảy lên trời rồi chốt hạ bằng một đòn chẻ bằng chân. Cho bản thân **3 Stack Rising Fever**`,
       ];
     },
   },
@@ -3055,7 +3070,7 @@ roll(v = "no") {
       const d1 = r(18,24);
       return [
         `*+10% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unclashable] [Undodgeable] [Unparriable] [Unblockable] — Khi đồng đội chuẩn bị chết, cắt cả hai ra, giết chết đồng minh và gây sát thương lên kẻ địch`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unclashable] [Undodgeable] [Unparriable] [Unblockable] — Khi đồng đội chuẩn bị chết, cắt cả hai ra, giết chết đồng minh và gây sát thương lên kẻ địch. Nhận 1 hiệu ứng **Revenge For My Family** duy trì 2 turn; nếu kích hoạt đủ 3 lần sẽ duy trì đến hết Encounter. Nếu đồng minh thuộc Middle Syndicate: kích hoạt vĩnh viễn`,
       ];
     },
   },
@@ -3236,6 +3251,9 @@ const SKILL_ALIASES = {
   "mbdf": "magic bullet df",
   "magicbulletdf": "magic bullet df",
   // Lævateinn
+  "lævateinn": "laevateinn",
+  "la": "laevateinn",
+  "lapassive": "laevateinn",
   "stomping": "stomping",
   "illgutyoulikeafish": "ill gut you like a fish",
   "ilgutfish": "ill gut you like a fish",
