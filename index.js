@@ -1297,17 +1297,82 @@ client.on("messageCreate", async (message) => {
   }
 
   // ── -Caduceus ──
-  // Cú pháp: -Caduceus [số lần] — roll Prescript nhiều lần
+  // Cú pháp:
+  //   -Caduceus [số lần]                              — roll ngẫu nhiên hoàn toàn
+  //   -Caduceus <Blunt|Pierce|Slash> [số lần] [karmic] — 75% ra đúng type (giảm theo Karmic Consequence)
+  // Công thức Karmic: chance = max(0, 75 - karmic / 2) %
   if (message.content.toLowerCase().startsWith("-caduceus")) {
     if (isOnCooldown(message.author.id, "caduceus", 2000)) {
       message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
       return;
     }
     const CADUCEUS_MAX = 20;
-    // dùng PRESCRIPT_TABLE global
+
+    // Tách pool theo type dựa vào nội dung string trong PRESCRIPT_TABLE
+    const TYPED_POOLS = {
+      blunt:  PRESCRIPT_TABLE.filter(e => e.includes("Blunt")),
+      pierce: PRESCRIPT_TABLE.filter(e => e.includes("Pierce")),
+      slash:  PRESCRIPT_TABLE.filter(e => e.includes("Slash")),
+    };
+    const TYPE_LABELS = { blunt: "Blunt", pierce: "Pierce", slash: "Slash" };
+    const TYPE_COLORS = { blunt: 0xe67e22, pierce: 0x3498db, slash: 0xe74c3c };
+    const TYPE_ICONS  = { blunt: "🔨", pierce: "🗡️", slash: "⚔️" };
+
     const arg = message.content.replace(/-caduceus/i, "").trim();
-    const timesRaw = parseInt(arg, 10);
-    const times = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
+    const tokens = arg.split(/\s+/);
+
+    // Kiểm tra token đầu có phải type không
+    const firstLower = (tokens[0] ?? "").toLowerCase();
+    const isTyped = firstLower in TYPED_POOLS;
+
+    if (isTyped) {
+      // -Caduceus <type> [times] [karmic]
+      const typeKey  = firstLower;
+      const timesRaw = parseInt(tokens[1], 10);
+      const times    = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
+      if (times > CADUCEUS_MAX) {
+        message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`);
+        return;
+      }
+      const karmicRaw = parseFloat(tokens[2]);
+      const karmic    = (!isNaN(karmicRaw) && karmicRaw >= 0) ? karmicRaw : 0;
+      const chance    = Math.max(0, 75 - karmic / 2); // % ra đúng type
+
+      const typePool = TYPED_POOLS[typeKey];
+      if (typePool.length === 0) {
+        message.reply(`❌ Không tìm thấy entry nào với type **${TYPE_LABELS[typeKey]}** trong Prescript Table.`);
+        return;
+      }
+
+      const results = Array.from({ length: times }, () => {
+        const hitType = Math.random() * 100 < chance;
+        const pool    = hitType ? typePool : PRESCRIPT_TABLE;
+        const entry   = pool[Math.floor(Math.random() * pool.length)];
+        // Đánh dấu nếu ra đúng type
+        const hitMark = hitType ? " ✅" : " ❌";
+        return entry + hitMark;
+      });
+
+      // Đếm số lần ra đúng type
+      const hits = results.filter(r => r.endsWith("✅")).length;
+
+      message.reply({
+        embeds: [{
+          title: `${TYPE_ICONS[typeKey]} Prescript — ${TYPE_LABELS[typeKey]}${times > 1 ? ` × ${times}` : ""}`,
+          color: TYPE_COLORS[typeKey],
+          description:
+            `> **Tỷ lệ ra ${TYPE_LABELS[typeKey]}:** ${chance.toFixed(1)}%` +
+            (karmic > 0 ? ` *(Karmic Consequence: ${karmic} → −${(karmic / 2).toFixed(1)}%)*` : "") +
+            `\n> **Kết quả đúng type:** ${hits}/${times}\n\n` +
+            results.join("\n"),
+        }],
+      });
+      return;
+    }
+
+    // Mặc định: -Caduceus [số lần] (không typed)
+    const timesRaw = parseInt(tokens[0], 10);
+    const times    = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
     if (times > CADUCEUS_MAX) {
       message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`);
       return;
