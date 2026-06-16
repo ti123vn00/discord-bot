@@ -1864,7 +1864,7 @@ roll(v = "no") {
       if (hits.length > SHOW) {
         const restStamina = hits.slice(SHOW).reduce((s, h) => s + h.staminaDmg, 0);
         const restDmg = hits.slice(SHOW).reduce((s, h) => s + h.val, 0);
-        lines.push(`*↩️ Reuse ${SHOW}–${MAX_REUSE}: [${hits.slice(SHOW).map(h => h.val).join("")}] — tổng ${restDmg} DMG, giảm ${restStamina} Stamina *(hết Reuse)**`);
+        lines.push(`*↩️ Reuse ${SHOW}–${MAX_REUSE}: [${hits.slice(SHOW).map(h => h.val).join(", ")}] — tổng ${restDmg} DMG, giảm ${restStamina} Stamina (hết Reuse)*`);
       }
 
       // Summary
@@ -2515,7 +2515,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(10,19);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit và nhận 1 <:Light:1513786082502770719>Light`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit và nhận 1 <:Light:1513786082502770719>Light và gây 4 <:Rupture:1513762812722155682>Rupture Có thể bỏ ra thêm 1 <:Light:1513786082502770719>Light để reuse đòn này, max 2 lần và sẽ mất hiệu ứng nhận <:Light:1513786082502770719>Light ở những lần Reuse`,
       ];
     },
   },
