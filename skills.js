@@ -1815,6 +1815,15 @@ roll(v = "no") {
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
     cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
     needsReuse: true,
+
+    promptArg: {
+    parse: (s) => parseInt(s, 10),
+    validate: (n) => Number.isInteger(n) && n >= 0,
+    errorMsg: "❌ Nhập số người đã chết (≥ 0).\n> VD: `-skill solemn lament 3`",
+    buildHeader: (deadCount, skill) =>
+      `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}] — **${deadCount} người đã chết**`,
+  },
+
     roll(deadCount = 0) {
       const MAX_REUSE = deadCount * 8;
       const DICE_EMOJIS = [
