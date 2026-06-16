@@ -1875,7 +1875,7 @@ client.on("messageCreate", async (message) => {
 
     // ── Chạy 1 round: đếm ngược → cửa sổ parry → hết giờ ───────────────────
     const startRound = () => {
-      const tickCount = 2 + Math.floor(Math.random() * 3);
+      const tickCount = 3 + Math.floor(Math.random() * 5);
 
       const runTick = async (remaining) => {
         if (session.responded) return;
