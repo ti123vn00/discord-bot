@@ -5,7 +5,7 @@
 // Mục đích: tránh duplicate magic numbers ở 2 file — nếu sau này cần đổi 1
 // giới hạn (VD: tăng SINKING_MAX, tăng số lần mở cache tối đa, thêm profile...)
 // thì chỉ cần sửa ở đây, cả slash command validation (Discord) và logic xử lý
-// (index.js) sẽ tự động đồng bộ.
+// (index.js) sẽ tự động đồng bộ, alr.
 
 module.exports = {
   // /math: Sanity ban đầu của địch tối thiểu (dùng để tính Sinking khi địch đạt -45)
