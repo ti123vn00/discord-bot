@@ -58,7 +58,7 @@ const commands = [
         .setMinValue(0).setMaxValue(BUTTERFLY_LIVING_MAX).setRequired(false))
     .addIntegerOption(opt =>
       opt.setName("departed")
-        .setDescription(`<:Butterfly:1516679919399338074>The Departed: bonus dmg = Sinking÷2+count/ mỗi hit, cap 15/30 (tối đa 15 Count)`)
+        .setDescription(`<:Butterfly:1516679919399338074>The Departed: bonus dmg = Sinking÷2+count/ mỗi hit (tối đa 15 Count)`)
         .setMinValue(0).setMaxValue(BUTTERFLY_DEPARTED_MAX).setRequired(false)),
 
 
