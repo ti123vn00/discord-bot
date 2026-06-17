@@ -1233,7 +1233,7 @@ function buildInventoryPages(targetUser, data) {
   return pages;
 }
 
-/** Build embed object cho trang `page` (0-indexed). */
+/** Build embed object cho trang `page` (0-indexed).*/
 function buildInvEmbed(targetUser, pages, page) {
   return {
     title: `🎒 Inventory của ${targetUser.displayName ?? targetUser.username}`,
