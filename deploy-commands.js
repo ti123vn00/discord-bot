@@ -54,11 +54,11 @@ const commands = [
       opt.setName("rupture").setDescription("Rupture counts ban đầu của địch (số nguyên)").setMinValue(0).setMaxValue(RUPTURE_MAX).setRequired(false))
     .addIntegerOption(opt =>
       opt.setName("living")
-        .setDescription(`🦋 Butterfly — The Living: count ban đầu (hồi Sanity người dùng = count÷4 mỗi hit, tối đa ${BUTTERFLY_LIVING_MAX})`)
+        .setDescription(`🦋 The Living: hồi Sanity người dùng = count÷4 mỗi hit (tối đa ${BUTTERFLY_LIVING_MAX})`)
         .setMinValue(0).setMaxValue(BUTTERFLY_LIVING_MAX).setRequired(false))
     .addIntegerOption(opt =>
       opt.setName("departed")
-        .setDescription(`🦋 Butterfly — The Departed: count ban đầu (bonus dmg = Sinking÷2 + count mỗi hit, cap 15/30, tối đa ${BUTTERFLY_DEPARTED_MAX})`)
+        .setDescription(`🦋 The Departed: bonus dmg = Sinking÷2 + count/hit, cap 15~30 (tối đa ${BUTTERFLY_DEPARTED_MAX})`)
         .setMinValue(0).setMaxValue(BUTTERFLY_DEPARTED_MAX).setRequired(false)),
 
 
