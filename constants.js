@@ -28,4 +28,11 @@ module.exports = {
 
   // /profile: số lượng save profile tối đa cho mỗi user
   MAX_PROFILES: 3,
+
+  // /profile rename: độ dài tên profile tối đa
+  PROFILE_NAME_MAX_LENGTH: 20,
+
+  // /math: Butterfly status — The Living và The Departed max stacks
+  BUTTERFLY_LIVING_MAX: 15,
+  BUTTERFLY_DEPARTED_MAX: 15,
 };
