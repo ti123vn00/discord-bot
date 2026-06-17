@@ -1518,7 +1518,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(14,23);
       return [
-        `*Né 1 đòn thường của địch, đánh dấu trúng, hồi 1 <:Light:1513786082502770719>Light; turn sau kích hoạt lại 1 lần*`,
+        `*Né 1 đòn của địch, đánh dấu chúng, hồi 1 <:Light:1513786082502770719>Light; turn sau kích hoạt lại 1 lần*`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — đâm sau lưng địch, gây 3 <:Bleed:1513762688226955285>Bleed cho turn sau`,
       ];
     },
