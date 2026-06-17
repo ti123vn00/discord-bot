@@ -1019,7 +1019,7 @@ function calcMath(opts) {
     let departedBonus = 0;
     if (theDeparted > 0) {
       const departedRaw = Math.floor(sinkingBeforeProc / 2) + theDeparted;
-      const departedCap = sanity > 0 ? 15 : 30;
+      const departedCap = sanity > SANITY_MIN ? 15 : 30;
       departedBonus = Math.min(departedRaw, departedCap);
       instanceDmg += departedBonus;
       totalDepartedDmg += departedBonus;
@@ -1134,7 +1134,7 @@ function calcMath(opts) {
     { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
     { name: "🦋 The Living", value: `${theLiving} count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`, inline: true, showIf: theLiving > 0 },
-    { name: "🦋 The Departed", value: `${theDeparted} count (cap: ${sanity > 0 ? "15 (địch còn Sanity)" : "30"})`, inline: true, showIf: theDeparted > 0 },
+    { name: "🦋 The Departed", value: `${theDeparted} count (cap: ${sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)"})`, inline: true, showIf: theDeparted > 0 },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
     { name: "💙 Tổng Sanity hồi (Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
     { name: "💥 Tổng Departed DMG", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
