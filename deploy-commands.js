@@ -31,7 +31,7 @@ const commands = [
     .addStringOption(opt =>
       opt.setName("res").setDescription("Resistance Multiplier. VD: 2xS 2xB 2xP hoặc 0.5B 1.3P").setRequired(false))
     .addStringOption(opt =>
-      opt.setName("dr").setDescription("% Damage Reduction flat (bão hòa). VD: 90").setRequired(false))
+      opt.setName("dr").setDescription("% Damage Reduction flat (bão hòa). VD: 90%").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("bonus").setDescription("% DMG Bonus (VD: 20)").setRequired(false))
     .addNumberOption(opt =>
