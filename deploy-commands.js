@@ -33,7 +33,7 @@ const commands = [
     .addNumberOption(opt =>
       opt.setName("bonus").setDescription("% DMG Bonus (VD: 20)").setRequired(false))
     .addNumberOption(opt =>
-      opt.setName("sanitybonus").setDescription("Sanity của bản thân để tính % DMG Bonus thêm (VD: 15)").setRequired(false))
+      opt.setName("sanitybonus").setDescription("Sanity của bản thân (VD: 15 = 15 Sanity → +15% DMG Bonus cho Dice)").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("critmul").setDescription("Crit Multiplier (VD: 1.3)").setMinValue(1).setRequired(false))
     .addIntegerOption(opt =>
