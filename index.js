@@ -940,7 +940,7 @@ function calcMath(opts) {
 
   const dmgValues = [];
   const damageRegex =
-    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+Crit\d+)*)/gi;
+    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
   while ((match = damageRegex.exec(dmgStr)) !== null) {
     const base = parseFloat(match[1]);
     const multiplier = match[2] ? parseInt(match[2]) : 1;
@@ -951,15 +951,19 @@ function calcMath(opts) {
     const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
     const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
     const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
+    const livingMatch = effectsStr.match(/\+(\d+)?Living/i);
+    const departedMatch = effectsStr.match(/\+(\d+)?Departed/i);
     const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
     const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
     const poiseToApply = poiseMatch ? parseInt(poiseMatch[1] || "0") : 0;
+    const livingToApply = livingMatch ? parseInt(livingMatch[1] || "1") : 0;
+    const departedToApply = departedMatch ? parseInt(departedMatch[1] || "1") : 0;
     for (let i = 0; i < multiplier; i++) {
-      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, effectsStr });
+      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, livingToApply, departedToApply, effectsStr });
     }
   }
   if (dmgValues.length === 0) {
-    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseToApply: 0, effectsStr: "" });
+    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseToApply: 0, livingToApply: 0, departedToApply: 0, effectsStr: "" });
   }
 
   let sanity = sanityInit;
@@ -967,12 +971,14 @@ function calcMath(opts) {
   let totalPoise = poiseInit;
   let enemySinking = Math.min(sinkingInit, SINKING_MAX);
   let enemyRupture = Math.min(ruptureInit, RUPTURE_MAX);
+  let livingStacks = Math.min(theLiving, BUTTERFLY_LIVING_MAX);     // Count The Living hiện tại, có thể tăng qua +Living trong dmg
+  let departedStacks = Math.min(theDeparted, BUTTERFLY_DEPARTED_MAX); // Count The Departed hiện tại, có thể tăng qua +Departed trong dmg
   let totalSanityHeal = 0;   // tích lũy từ The Living qua các hit
   let totalDepartedDmg = 0;  // tích lũy bonus dmg từ The Departed
   const instanceResults = [];
 
   for (const dmgObj of dmgValues) {
-    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, effectsStr } = dmgObj;
+    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, livingToApply, departedToApply, effectsStr } = dmgObj;
     const currentRes = resValues[dmgType] ?? 1.0;
 
     const critFromPoise = totalPoise * POISE_CRIT_BONUS_PER_STACK;
@@ -1014,11 +1020,11 @@ function calcMath(opts) {
     }
 
     // ── Butterfly: The Departed ───────────────────────────────────────────────
-    // Bonus dmg = floor(Sinking hiện tại / 2) + The Departed count.
+    // Bonus dmg = floor(Sinking hiện tại / 2) + The Departed count hiện tại (trước khi cộng stack của đòn này).
     // Cap 15 nếu địch còn Sanity (> 0), cap 30 nếu không.
     let departedBonus = 0;
-    if (theDeparted > 0) {
-      const departedRaw = Math.floor(sinkingBeforeProc / 2) + theDeparted;
+    if (departedStacks > 0) {
+      const departedRaw = Math.floor(sinkingBeforeProc / 2) + departedStacks;
       const departedCap = sanity > SANITY_MIN ? 15 : 30;
       departedBonus = Math.min(departedRaw, departedCap);
       instanceDmg += departedBonus;
@@ -1026,8 +1032,8 @@ function calcMath(opts) {
     }
 
     // ── Butterfly: The Living ────────────────────────────────────────────────
-    // Hồi Sanity người dùng = floor(The Living / 4) mỗi hit.
-    const livingHeal = theLiving > 0 ? Math.floor(theLiving / 4) : 0;
+    // Hồi Sanity người dùng = floor(The Living / 4) mỗi hit, dùng Count hiện tại (trước khi cộng stack của đòn này).
+    const livingHeal = livingStacks > 0 ? Math.floor(livingStacks / 4) : 0;
     totalSanityHeal += livingHeal;
 
     totalDmg += instanceDmg;
@@ -1036,6 +1042,8 @@ function calcMath(opts) {
     if (poiseToApply > 0) totalPoise = Math.min(totalPoise + poiseToApply, POISE_MAX);
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
+    if (livingToApply > 0) livingStacks = Math.min(livingStacks + livingToApply, BUTTERFLY_LIVING_MAX);
+    if (departedToApply > 0) departedStacks = Math.min(departedStacks + departedToApply, BUTTERFLY_DEPARTED_MAX);
 
     // Ghi lại poise sau gain nhưng trước critDiv để hiển thị trong breakdown
     const poiseAfterGain = totalPoise;
@@ -1055,6 +1063,10 @@ function calcMath(opts) {
       poiseApplied: poiseToApply,
       effectsStr, isDice,
       departedBonus, livingHeal,
+      livingApplied: livingToApply,
+      departedApplied: departedToApply,
+      livingStacksAfter: livingStacks,
+      departedStacksAfter: departedStacks,
     });
   }
 
@@ -1086,7 +1098,9 @@ function calcMath(opts) {
     }
     if (r.isDice && diceMul !== 1) extraInfo += ` | DiceMul ${diceMul}x`;
     if (r.departedBonus > 0) extraInfo += ` | +${r.departedBonus} dmg <:Butterfly:1516679919399338074>Departed`;
+    if (r.departedApplied > 0) extraInfo += ` | áp +${r.departedApplied} <:Butterfly:1516679919399338074>Departed (${r.departedStacksAfter} Count)`;
     if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi <:Butterfly:1516679919399338074>Living`;
+    if (r.livingApplied > 0) extraInfo += ` | áp +${r.livingApplied} <:Butterfly:1516679919399338074>Living (${r.livingStacksAfter} Count)`;
     return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
 
@@ -1116,6 +1130,16 @@ function calcMath(opts) {
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
 
+  const finalLivingStacks = livingStacks;
+  const finalDepartedStacks = departedStacks;
+  const livingDisplay = theLiving !== finalLivingStacks
+    ? `${theLiving} → ${finalLivingStacks} Count (hồi **${Math.floor(finalLivingStacks / 4)}** Sanity/hit ở cuối)`
+    : `${theLiving} Count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`;
+  const departedCapLabel = sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)";
+  const departedDisplay = theDeparted !== finalDepartedStacks
+    ? `${theDeparted} → ${finalDepartedStacks} Count (cap: ${departedCapLabel})`
+    : `${theDeparted} Count (cap: ${departedCapLabel})`;
+
   // Tính effective bonus để hiển thị (dùng worst-case: có cả sanityBonus nếu > 0)
   const rawBonusDisplay = bonusPct;
   const effBonusDisplay = saturateBonusPct(rawBonusDisplay);
@@ -1133,8 +1157,8 @@ function calcMath(opts) {
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
     { name: "<:Poise:1513762945715142736>Poise Counts", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
-    { name: "<:Butterfly:1516679919399338074>The Living", value: `${theLiving} Count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`, inline: true, showIf: theLiving > 0 },
-    { name: "<:Butterfly:1516679919399338074>The Departed", value: `${theDeparted} Count (cap: ${sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)"})`, inline: true, showIf: theDeparted > 0 },
+    { name: "<:Butterfly:1516679919399338074>The Living", value: livingDisplay, inline: true, showIf: finalLivingStacks > 0 },
+    { name: "<:Butterfly:1516679919399338074>The Departed", value: departedDisplay, inline: true, showIf: finalDepartedStacks > 0 },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
     { name: "<:Butterfly:1516679919399338074>Tổng Sanity hồi (The Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
     { name: "<:Butterfly:1516679919399338074>Tổng DMG Bonus (The Departed)", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
@@ -2697,7 +2721,8 @@ client.on("messageCreate", async (message) => {
       message.reply(
         "⚠️ Bạn chưa nhập `dmg:`. Vui lòng nhập công thức damage.\n" +
         "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`\n" +
-        "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+<:Sinking:1513762793436741652>Sinking][+<:Rupture:1513762812722155682>Rupture][+<:Poise:1513762945715142736>Poise][+Crit<n>]`"
+        "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+<:Sinking:1513762793436741652>Sinking][+<:Rupture:1513762812722155682>Rupture][+<:Poise:1513762945715142736>Poise][+<:Butterfly:1516679919399338074>Living][+<:Butterfly:1516679919399338074>Departed][+Crit<n>]`\n" +
+        "> VD: `10x12P+1Living` — mỗi hit cộng 1 Count The Living, áp dụng từ hit kế tiếp"
       );
       return;
     }
