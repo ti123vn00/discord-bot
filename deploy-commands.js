@@ -8,6 +8,9 @@ const {
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
+  PROFILE_NAME_MAX_LENGTH,
+  BUTTERFLY_LIVING_MAX,
+  BUTTERFLY_DEPARTED_MAX,
 } = require("./constants");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -48,7 +51,15 @@ const commands = [
     .addIntegerOption(opt =>
       opt.setName("sinking").setDescription("Sinking counts ban đầu của địch (số nguyên)").setMinValue(0).setMaxValue(SINKING_MAX).setRequired(false))
     .addIntegerOption(opt =>
-      opt.setName("rupture").setDescription("Rupture counts ban đầu của địch (số nguyên)").setMinValue(0).setMaxValue(RUPTURE_MAX).setRequired(false)),
+      opt.setName("rupture").setDescription("Rupture counts ban đầu của địch (số nguyên)").setMinValue(0).setMaxValue(RUPTURE_MAX).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("living")
+        .setDescription(`🦋 Butterfly — The Living: count ban đầu (hồi Sanity người dùng = count÷4 mỗi hit, tối đa ${BUTTERFLY_LIVING_MAX})`)
+        .setMinValue(0).setMaxValue(BUTTERFLY_LIVING_MAX).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("departed")
+        .setDescription(`🦋 Butterfly — The Departed: count ban đầu (bonus dmg = Sinking÷2 + count mỗi hit, cap 15/30, tối đa ${BUTTERFLY_DEPARTED_MAX})`)
+        .setMinValue(0).setMaxValue(BUTTERFLY_DEPARTED_MAX).setRequired(false)),
 
 
   // ── /parry ──────────────────────────────────────────────────────────────────
@@ -167,7 +178,15 @@ const commands = [
             .setRequired(true)))
     .addSubcommand(sub =>
       sub.setName("info")
-        .setDescription("Xem tổng quan tất cả profile và trạng thái daily của từng cái")),
+        .setDescription("Xem tổng quan tất cả profile và trạng thái daily của từng cái"))
+    .addSubcommand(sub =>
+      sub.setName("rename")
+        .setDescription("Đặt tên tuỳ chỉnh cho profile hiện tại (bỏ trống để reset về mặc định)")
+        .addStringOption(opt =>
+          opt.setName("name")
+            .setDescription(`Tên mới (tối đa ${PROFILE_NAME_MAX_LENGTH} ký tự). Bỏ trống = reset về mặc định.`)
+            .setMaxLength(PROFILE_NAME_MAX_LENGTH)
+            .setRequired(false))),
 
 ].map(cmd => cmd.toJSON());
 
