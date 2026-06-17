@@ -221,7 +221,7 @@ function findItemAdmin(input) {
 // ─── parseKeyValues ───────────────────────────────────────────────────────────
 const KNOWN_KEYS = new Set([
   "book", "count", "item", "itemcount", "ahn", "exp", "grade",
-  "dmg", "res", "bonus", "critmul", "critdiv",
+  "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
   "poise",
   "living", "departed",
@@ -271,6 +271,23 @@ function saturateBonusPct(raw) {
   if (raw <= 200) return 100 + (raw - 100) * 0.5;
   if (raw <= 300) return 150 + (raw - 200) * 0.25;
   return 175 + (raw - 300) * 0.125; // 100 + 50 + 25 + (raw-300)*0.125
+}
+
+/**
+ * Bão hòa % Damage Reduction (res < 1x):
+ *  DR 0–25%  → tỷ lệ 1:1
+ *  DR 25–50% → tỷ lệ 0.5:1
+ *  DR 50%+   → tỷ lệ 0.05:1
+ * Res >= 1x (vulnerability hoặc neutral) không bị ảnh hưởng.
+ */
+function saturateRes(mult) {
+  if (mult >= 1) return mult;
+  const drRaw = (1 - mult) * 100;
+  let drEff;
+  if (drRaw <= 25)       drEff = drRaw;
+  else if (drRaw <= 50)  drEff = 25 + (drRaw - 25) * 0.5;
+  else                   drEff = 37.5 + (drRaw - 50) * 0.05;
+  return 1 - drEff / 100;
 }
 
 function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving = 0, theDeparted = 0 }) {
@@ -918,6 +935,7 @@ function calcMath(opts) {
   const {
     dmgStr = "",
     resStr = "",
+    drStr = "",
     bonusPct = 0,
     sanityBonusPct = 0,
     critMul = 1,
@@ -937,6 +955,15 @@ function calcMath(opts) {
   while ((match = resRegex.exec(resStr)) !== null) {
     resValues[match[2].toUpperCase()] = parseFloat(match[1]);
   }
+  // Lưu raw res để hiển thị, bão hòa res riêng
+  const resRaw = { ...resValues };
+  for (const k of ["B", "P", "S"]) resValues[k] = saturateRes(resValues[k]);
+
+  // DR: flat, áp lên tất cả damage type, độc lập với res
+  // Final DMG = (DMG × bonusFactor) × res × dr
+  const drRawPct = drStr ? parseFloat(drStr) : 0;
+  const hasDR = !isNaN(drRawPct) && drRawPct !== 0;
+  const drMult = hasDR ? saturateRes(1 - drRawPct / 100) : 1;
 
   const dmgValues = [];
   const damageRegex =
@@ -983,6 +1010,7 @@ function calcMath(opts) {
   for (const dmgObj of dmgValues) {
     const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, livingToApply, departedToApply, effectsStr } = dmgObj;
     const currentRes = resValues[dmgType] ?? 1.0;
+    const currentDR  = drMult;
 
     const critFromPoise = totalPoise * POISE_CRIT_BONUS_PER_STACK;
     const critMatch = effectsStr ? effectsStr.match(/\+Crit(\d+)/i) : null;
@@ -997,7 +1025,7 @@ function calcMath(opts) {
     const rawTotalPct = bonusPct + extraPct;
     const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0);
     const bonusFactor = 1 + effTotalPct / 100;
-    let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
+    let instanceDmg = dmg * bonusFactor * multiplier * currentRes * currentDR;
     if (isDice) instanceDmg *= diceMul;
 
     // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).
@@ -1137,7 +1165,16 @@ function calcMath(opts) {
     poiseDisplay = `${poiseInit} Counts (${(startingCritRate * 100).toFixed(0)}% crit)`;
   }
 
-  const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
+  const resDisplay = ["B", "P", "S"].map(k => {
+    const raw = resRaw[k], eff = resValues[k];
+    return raw !== eff
+      ? `${k}: ${raw}x → **${eff.toFixed(3)}x** *(bão hòa)*`
+      : `${k}: ${raw}x`;
+  }).join(" | ");
+  const drEffPct = hasDR ? ((1 - drMult) * 100).toFixed(2) : null;
+  const drDisplay = hasDR
+    ? `${drRawPct}% raw → **${drEffPct}%** effective *(${drMult.toFixed(3)}x)*`
+    : null;
 
   const finalLivingStacks = livingStacks;
   const finalDepartedStacks = departedStacks;
@@ -1166,6 +1203,7 @@ function calcMath(opts) {
       inline: true, showIf: effectiveSanityBonus !== 0 || sanityBonusPct !== 0 },
     { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
     { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
+    { name: "Damage Reduction", value: drDisplay ?? "", inline: true, showIf: hasDR },
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
     { name: "<:Poise:1513762945715142736>Poise Counts", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
@@ -2573,7 +2611,7 @@ client.on("messageCreate", async (message) => {
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 30 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
       { name: "🎯 -rtparry [số]", value: "Parry thời gian thực! Đếm ngược kết thúc thì bấm.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry: 400ms\n> Thêm số để parry liên tiếp nhiều lần (tối đa 20): `-rtparry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus: <Sanity của bản thân>` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise Count (1 Count = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
+      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `dr: <% DR, VD: 90B 50P>` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus: <Sanity của bản thân>` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise Count (1 Count = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
     ];
@@ -2762,6 +2800,7 @@ client.on("messageCreate", async (message) => {
     message.reply(calcMath({
       dmgStr,
       resStr: kv["res"] ?? "",
+      drStr: kv["dr"] ?? "",
       bonusPct,
       sanityBonusPct,
       critMul,
@@ -2957,6 +2996,7 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply(calcMath({
       dmgStr,
       resStr: interaction.options.getString("res") ?? "",
+      drStr: interaction.options.getString("dr") ?? "",
       bonusPct,
       sanityBonusPct,
       critMul,
