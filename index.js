@@ -975,6 +975,9 @@ function calcMath(opts) {
   let departedStacks = Math.min(theDeparted, BUTTERFLY_DEPARTED_MAX); // Count The Departed hiện tại, có thể tăng qua +Departed trong dmg
   let totalSanityHeal = 0;   // tích lũy từ The Living qua các hit
   let totalDepartedDmg = 0;  // tích lũy bonus dmg từ The Departed
+  // Sanity Bonus hiệu dụng tích lũy: bắt đầu từ sanityBonusPct (input),
+  // cộng thêm livingHeal sau mỗi hit — áp dụng cho Dice hit tiếp theo.
+  let effectiveSanityBonus = sanityBonusPct;
   const instanceResults = [];
 
   for (const dmgObj of dmgValues) {
@@ -992,7 +995,7 @@ function calcMath(opts) {
 
     const multiplier = didCrit ? critMul : 1;
     const rawTotalPct = bonusPct + extraPct;
-    const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? sanityBonusPct : 0);
+    const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0);
     const bonusFactor = 1 + effTotalPct / 100;
     let instanceDmg = dmg * bonusFactor * multiplier * currentRes;
     if (isDice) instanceDmg *= diceMul;
@@ -1033,8 +1036,11 @@ function calcMath(opts) {
 
     // ── Butterfly: The Living ────────────────────────────────────────────────
     // Hồi Sanity người dùng = floor(The Living / 4) mỗi hit, dùng Count hiện tại (trước khi cộng stack của đòn này).
+    // Sanity hồi được cộng vào effectiveSanityBonus để Dice hit TIẾP THEO hưởng bonus (không áp dụng cho hit hiện tại).
     const livingHeal = livingStacks > 0 ? Math.floor(livingStacks / 4) : 0;
+    const sanityBonusUsed = effectiveSanityBonus; // snapshot dùng cho hit này (trước khi cộng heal)
     totalSanityHeal += livingHeal;
+    effectiveSanityBonus += livingHeal;
 
     totalDmg += instanceDmg;
 
@@ -1067,6 +1073,7 @@ function calcMath(opts) {
       departedApplied: departedToApply,
       livingStacksAfter: livingStacks,
       departedStacksAfter: departedStacks,
+      sanityBonusUsed, // Sanity Bonus hiệu dụng đã dùng cho hit này
     });
   }
 
@@ -1101,6 +1108,8 @@ function calcMath(opts) {
     if (r.departedApplied > 0) extraInfo += ` | áp +${r.departedApplied} <:Butterfly:1516679919399338074>Departed (${r.departedStacksAfter} Count)`;
     if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi <:Butterfly:1516679919399338074>Living`;
     if (r.livingApplied > 0) extraInfo += ` | áp +${r.livingApplied} <:Butterfly:1516679919399338074>Living (${r.livingStacksAfter} Count)`;
+    if (r.isDice && r.sanityBonusUsed > 0 && r.sanityBonusUsed !== sanityBonusPct)
+      extraInfo += ` | Sanity Bonus: +${r.sanityBonusUsed.toFixed(1)}%`;
     return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
 
@@ -1151,7 +1160,10 @@ function calcMath(opts) {
   const allFields = [
     { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
     { name: "% Dmg Bonus", value: bonusPctDisplay, inline: true, alwaysShow: true },
-    { name: "Sanity % DMG Bonus", value: sanityBonusPct.toFixed(1) + "%", inline: true, showIf: sanityBonusPct !== 0 },
+    { name: "Sanity % DMG Bonus", value: effectiveSanityBonus !== sanityBonusPct
+        ? `${sanityBonusPct.toFixed(1)}% → ${effectiveSanityBonus.toFixed(1)}% (+${(effectiveSanityBonus - sanityBonusPct).toFixed(1)} Living)`
+        : sanityBonusPct.toFixed(1) + "%",
+      inline: true, showIf: effectiveSanityBonus !== 0 || sanityBonusPct !== 0 },
     { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
     { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
@@ -1162,6 +1174,10 @@ function calcMath(opts) {
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
     { name: "<:Butterfly:1516679919399338074>Tổng Sanity hồi (The Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
     { name: "<:Butterfly:1516679919399338074>Tổng DMG Bonus (The Departed)", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
+    { name: "Player's Sanity", value: totalSanityHeal > 0
+        ? `${sanityBonusPct} → ${sanityBonusPct + totalSanityHeal}`
+        : sanityBonusPct.toString(),
+      inline: true, showIf: sanityBonusPct !== 0 || totalSanityHeal > 0 },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
