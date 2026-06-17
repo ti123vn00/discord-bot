@@ -34,6 +34,9 @@ const {
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
+  PROFILE_NAME_MAX_LENGTH,
+  BUTTERFLY_LIVING_MAX,
+  BUTTERFLY_DEPARTED_MAX,
 } = require("./constants");
 const POISE_CRIT_BONUS_PER_STACK = 0.05;
 const POISE_RESET_THRESHOLD = 1;
@@ -221,6 +224,7 @@ const KNOWN_KEYS = new Set([
   "dmg", "res", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
   "poise",
+  "living", "departed",
   "books", "items",
 ]);
 
@@ -269,7 +273,7 @@ function saturateBonusPct(raw) {
   return 175 + (raw - 300) * 0.125; // 100 + 50 + 25 + (raw-300)*0.125
 }
 
-function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit }) {
+function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving = 0, theDeparted = 0 }) {
   const errors = [];
   if (isNaN(bonusPct))       errors.push("bonus phải là số");
   if (isNaN(sanityBonusPct)) errors.push("sanitybonus phải là số");
@@ -287,6 +291,8 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, dice
   if (!isNaN(sinkingInit) && (sinkingInit < 0 || sinkingInit > SINKING_MAX)) errors.push(`Sinking phải từ 0–${SINKING_MAX}`);
   if (!isNaN(ruptureInit) && (ruptureInit < 0 || ruptureInit > RUPTURE_MAX)) errors.push(`Rupture phải từ 0–${RUPTURE_MAX}`);
   if (!isNaN(sanityInit) && sanityInit < SANITY_MIN) errors.push(`Sanity phải ≥ ${SANITY_MIN}`);
+  if (!Number.isInteger(theLiving) || theLiving < 0 || theLiving > BUTTERFLY_LIVING_MAX) errors.push(`The Living phải từ 0–${BUTTERFLY_LIVING_MAX}`);
+  if (!Number.isInteger(theDeparted) || theDeparted < 0 || theDeparted > BUTTERFLY_DEPARTED_MAX) errors.push(`The Departed phải từ 0–${BUTTERFLY_DEPARTED_MAX}`);
   return errors;
 }
 
@@ -484,6 +490,43 @@ function isTimeoutError(err) {
 const PROFILE_LABELS = { 1: "Profile 1", 2: "Profile 2", 3: "Profile 3" };
 const PROFILE_EMOJIS = { 1: "1️⃣", 2: "2️⃣", 3: "3️⃣" };
 
+// ─── PROFILE NAME HELPERS ─────────────────────────────────────────────────────
+// Tên tuỳ chỉnh lưu vào 1 key duy nhất per-user để giảm Redis round-trip.
+// Cấu trúc: { "1": "Tên A", "2": "Tên B", "3": "Tên C" }
+function profileNamesKey(userId) {
+  return `profilenames:${userId}`;
+}
+
+async function getProfileNames(userId) {
+  try {
+    const raw = await withTimeout(redis.get(profileNamesKey(userId)));
+    if (!raw) return {};
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch {
+    return {};
+  }
+}
+
+async function setProfileName(userId, slot, name) {
+  const names = await getProfileNames(userId);
+  if (name) {
+    names[String(slot)] = name;
+  } else {
+    delete names[String(slot)];
+  }
+  if (Object.keys(names).length === 0) {
+    await withTimeout(redis.del(profileNamesKey(userId)));
+  } else {
+    await withTimeout(redis.set(profileNamesKey(userId), JSON.stringify(names)));
+  }
+}
+
+/** Trả về tên hiển thị của profile: tên tuỳ chỉnh nếu có, mặc định nếu không. */
+function resolveProfileLabel(names, slot) {
+  return names[String(slot)] ?? PROFILE_LABELS[slot];
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function getActiveProfileSlot(userId) {
   try {
     const raw = await withTimeout(redis.get(`profile:${userId}`));
@@ -523,12 +566,16 @@ async function buildProfileInfoEmbed(userId, displayName, footerText) {
     pipe.get(playerKeyForSlot(userId, s));
     pipe.get(dailyKeyForSlot(userId, s));
   }
-  const pipeResults = unwrapPipelineResults(await withTimeout(pipe.exec()));
+  const [pipeResults, profileNames] = await Promise.all([
+    withTimeout(pipe.exec()).then(unwrapPipelineResults),
+    getProfileNames(userId),
+  ]);
   // pipeResults layout: [player1, daily1, player2, daily2, player3, daily3]
 
   const today = getVNDateString();
   const lines = [];
   for (let s = 1; s <= MAX_PROFILES; s++) {
+    const label = resolveProfileLabel(profileNames, s);
     try {
       const rawPlayer = pipeResults[(s - 1) * 2];
       const rawDaily  = pipeResults[(s - 1) * 2 + 1];
@@ -539,18 +586,18 @@ async function buildProfileInfoEmbed(userId, displayName, footerText) {
       if (d) {
         const { grade } = calcGrade(d.exp ?? 0);
         lines.push(
-          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${label}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
           `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
           `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
         );
       } else {
         lines.push(
-          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
+          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${label}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
           `> *(chưa có dữ liệu)*`
         );
       }
     } catch (e) {
-      lines.push(`${PROFILE_EMOJIS[s]} **${PROFILE_LABELS[s]}**: *(lỗi: ${e.message})*`);
+      lines.push(`${PROFILE_EMOJIS[s]} **${label}**: *(lỗi: ${e.message})*`);
     }
   }
   return {
@@ -880,6 +927,8 @@ function calcMath(opts) {
     diceMul = 1,
     sinkingInit = 0,
     ruptureInit = 0,
+    theLiving = 0,
+    theDeparted = 0,
   } = opts;
 
   const resValues = { B: 1, P: 1, S: 1 };
@@ -918,6 +967,8 @@ function calcMath(opts) {
   let totalPoise = poiseInit;
   let enemySinking = Math.min(sinkingInit, SINKING_MAX);
   let enemyRupture = Math.min(ruptureInit, RUPTURE_MAX);
+  let totalSanityHeal = 0;   // tích lũy từ The Living qua các hit
+  let totalDepartedDmg = 0;  // tích lũy bonus dmg từ The Departed
   const instanceResults = [];
 
   for (const dmgObj of dmgValues) {
@@ -942,6 +993,8 @@ function calcMath(opts) {
 
     // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).
     // Mỗi hit tiêu thụ 1 stack và trừ 1 sanity; cộng bonus dmg khi sanity địch ở SANITY_MIN.
+    // sinkingBeforeProc được lưu trước khi drain, để The Departed dùng đúng giá trị hiện tại.
+    const sinkingBeforeProc = enemySinking;
     let sinkingBonus = 0;
     if (enemySinking > 0) {
       const sanityBefore = sanity;
@@ -959,6 +1012,23 @@ function calcMath(opts) {
       instanceDmg += ruptureBonus;
       enemyRupture = Math.max(enemyRupture - 1, 0);
     }
+
+    // ── Butterfly: The Departed ───────────────────────────────────────────────
+    // Bonus dmg = floor(Sinking hiện tại / 2) + The Departed count.
+    // Cap 15 nếu địch còn Sanity (> 0), cap 30 nếu không.
+    let departedBonus = 0;
+    if (theDeparted > 0) {
+      const departedRaw = Math.floor(sinkingBeforeProc / 2) + theDeparted;
+      const departedCap = sanity > 0 ? 15 : 30;
+      departedBonus = Math.min(departedRaw, departedCap);
+      instanceDmg += departedBonus;
+      totalDepartedDmg += departedBonus;
+    }
+
+    // ── Butterfly: The Living ────────────────────────────────────────────────
+    // Hồi Sanity người dùng = floor(The Living / 4) mỗi hit.
+    const livingHeal = theLiving > 0 ? Math.floor(theLiving / 4) : 0;
+    totalSanityHeal += livingHeal;
 
     totalDmg += instanceDmg;
 
@@ -984,6 +1054,7 @@ function calcMath(opts) {
       ruptureApplied: ruptureToApply,
       poiseApplied: poiseToApply,
       effectsStr, isDice,
+      departedBonus, livingHeal,
     });
   }
 
@@ -1014,6 +1085,8 @@ function calcMath(opts) {
       extraInfo += ` | +Crit${critVal}%`;
     }
     if (r.isDice && diceMul !== 1) extraInfo += ` | DiceMul ${diceMul}x`;
+    if (r.departedBonus > 0) extraInfo += ` | +${r.departedBonus} dmg 🦋Departed`;
+    if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi 🦋Living`;
     return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
 
@@ -1060,7 +1133,11 @@ function calcMath(opts) {
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
     { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
+    { name: "🦋 The Living", value: `${theLiving} count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`, inline: true, showIf: theLiving > 0 },
+    { name: "🦋 The Departed", value: `${theDeparted} count (cap: ${sanity > 0 ? "15 (địch còn Sanity)" : "30"})`, inline: true, showIf: theDeparted > 0 },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
+    { name: "💙 Tổng Sanity hồi (Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
+    { name: "💥 Tổng Departed DMG", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
@@ -2568,11 +2645,30 @@ client.on("messageCreate", async (message) => {
       }
       const currentSlot = await getActiveProfileSlot(userId);
       if (slot === currentSlot) {
-        message.reply(`ℹ️ Bạn đang ở **${PROFILE_LABELS[slot]}** rồi.`);
+        const names = await getProfileNames(userId);
+        message.reply(`ℹ️ Bạn đang ở **${resolveProfileLabel(names, slot)}** rồi.`);
         return;
       }
       await setActiveProfileSlot(userId, slot);
-      message.reply(`✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${PROFILE_LABELS[slot]}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`);
+      const names = await getProfileNames(userId);
+      message.reply(`✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${resolveProfileLabel(names, slot)}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`);
+      return;
+    }
+
+    // -profile rename <tên>
+    if (sub === "rename") {
+      const rawName = args.slice(1).join(" ").trim();
+      if (rawName.length > PROFILE_NAME_MAX_LENGTH) {
+        message.reply(`❌ Tên profile tối đa ${PROFILE_NAME_MAX_LENGTH} ký tự.`);
+        return;
+      }
+      const currentSlot = await getActiveProfileSlot(userId);
+      await setProfileName(userId, currentSlot, rawName || null);
+      const newLabel = rawName || PROFILE_LABELS[currentSlot];
+      message.reply(rawName
+        ? `✅ Đã đặt tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** thành **"${newLabel}"**!`
+        : `✅ Đã reset tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** về mặc định **"${newLabel}"**.`
+      );
       return;
     }
 
@@ -2587,7 +2683,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    message.reply("❌ Lệnh không hợp lệ. Dùng:\n> `-profile info` — xem tổng quan tất cả profile\n> `-profile switch <1/2/3>` — chuyển sang profile khác");
+    message.reply("❌ Lệnh không hợp lệ. Dùng:\n> `-profile info` — xem tổng quan tất cả profile\n> `-profile switch <1/2/3>` — chuyển sang profile khác\n> `-profile rename <tên>` — đặt tên cho profile hiện tại");
     return;
   }
 
@@ -2613,7 +2709,9 @@ client.on("messageCreate", async (message) => {
     const sinkingInit = parseInt(kv["sinking"] ?? "0", 10);
     const ruptureInit = parseInt(kv["rupture"] ?? "0", 10);
     const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
+    const theLiving = parseInt(kv["living"] ?? "0", 10) || 0;
+    const theDeparted = parseInt(kv["departed"] ?? "0", 10) || 0;
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
     const critDivStr = (kv["critdiv"] ?? "").trim().toLowerCase();
     let critDiv = 0;
@@ -2636,6 +2734,8 @@ client.on("messageCreate", async (message) => {
       diceMul,
       sinkingInit,
       ruptureInit,
+      theLiving,
+      theDeparted,
     }));
     return;
   }
@@ -2802,9 +2902,11 @@ client.on("interactionCreate", async (interaction) => {
     const sinkingInit = interaction.options.getInteger("sinking") ?? 0;
     const ruptureInit = interaction.options.getInteger("rupture") ?? 0;
     const sanityInit = interaction.options.getInteger("sanity") ?? 0;
+    const theLiving = interaction.options.getInteger("living") ?? 0;
+    const theDeparted = interaction.options.getInteger("departed") ?? 0;
     const bonusPct = interaction.options.getNumber("bonus") ?? 0;
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit });
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
     const critDivOption = (interaction.options.getString("critdiv") ?? "").trim().toLowerCase() || null;
     let critDivSlash = 0;
@@ -2827,6 +2929,8 @@ client.on("interactionCreate", async (interaction) => {
       diceMul,
       sinkingInit,
       ruptureInit,
+      theLiving,
+      theDeparted,
     }));
     return;
   }
@@ -3153,15 +3257,18 @@ client.on("interactionCreate", async (interaction) => {
       const slot = interaction.options.getInteger("slot");
       const currentSlot = await getActiveProfileSlot(userId);
       if (slot === currentSlot) {
+        const names = await getProfileNames(userId);
         await interaction.reply({
-          content: `ℹ️ Bạn đang ở **${PROFILE_LABELS[slot]}** rồi.`,
+          content: `ℹ️ Bạn đang ở **${resolveProfileLabel(names, slot)}** rồi.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
       await setActiveProfileSlot(userId, slot);
+      const names = await getProfileNames(userId);
+      const label = resolveProfileLabel(names, slot);
       await interaction.reply({
-        content: `✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${PROFILE_LABELS[slot]}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`,
+        content: `✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${label}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -3176,6 +3283,31 @@ client.on("interactionCreate", async (interaction) => {
         "Dùng /profile switch để đổi profile"
       );
       await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    if (sub === "rename") {
+      if (await replyOnCooldown(interaction, 2000)) return;
+      const currentSlot = await getActiveProfileSlot(userId);
+      const rawName = (interaction.options.getString("name") ?? "").trim();
+
+      // Validate
+      if (rawName.length > PROFILE_NAME_MAX_LENGTH) {
+        await interaction.reply({
+          content: `❌ Tên profile tối đa ${PROFILE_NAME_MAX_LENGTH} ký tự.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await setProfileName(userId, currentSlot, rawName || null);
+      const newLabel = rawName || PROFILE_LABELS[currentSlot];
+      await interaction.reply({
+        content: rawName
+          ? `✅ Đã đặt tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** thành **"${newLabel}"**!`
+          : `✅ Đã reset tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** về mặc định **"${newLabel}"**.`,
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
     return;
