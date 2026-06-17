@@ -1025,7 +1025,7 @@ function calcMath(opts) {
     let departedBonus = 0;
     if (departedStacks > 0) {
       const departedRaw = Math.floor(sinkingBeforeProc / 2) + departedStacks;
-      const departedCap = sanity > SANITY_MIN ? 15 : 30;
+      const departedCap = sanity > SANITY_MIN ? 30 : 15;
       departedBonus = Math.min(departedRaw, departedCap);
       instanceDmg += departedBonus;
       totalDepartedDmg += departedBonus;
@@ -1135,7 +1135,7 @@ function calcMath(opts) {
   const livingDisplay = theLiving !== finalLivingStacks
     ? `${theLiving} → ${finalLivingStacks} Count (hồi **${Math.floor(finalLivingStacks / 4)}** Sanity/hit ở cuối)`
     : `${theLiving} Count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`;
-  const departedCapLabel = sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)";
+  const departedCapLabel = sanity > SANITY_MIN ? "30 (địch còn Sanity)" : "15 (địch hết Sanity)";
   const departedDisplay = theDeparted !== finalDepartedStacks
     ? `${theDeparted} → ${finalDepartedStacks} Count (cap: ${departedCapLabel})`
     : `${theDeparted} Count (cap: ${departedCapLabel})`;
