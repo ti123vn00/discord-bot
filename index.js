@@ -1075,9 +1075,9 @@ function calcMath(opts) {
     if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} <:Rupture:1513762812722155682>Rupture`;
     if (r.poiseApplied > 0) {
       if (critDiv > 1 && r.didCrit && r.poiseAfterGain !== r.poiseStacksAfter) {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} Count`;
+        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} Counts`;
       } else {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} Count`;
+        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} Counts`;
       }
     }
     if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
@@ -1107,11 +1107,11 @@ function calcMath(opts) {
   const finalCritRate = finalPoiseStacks * POISE_CRIT_BONUS_PER_STACK;
   let poiseDisplay;
   if (critDiv > 1 && critCount > 0) {
-    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Count (${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`;
+    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Counts (${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`;
   } else if (poiseInit !== finalPoiseStacks) {
-    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Count (${(startingCritRate * 100).toFixed(0)}% → ${(finalCritRate * 100).toFixed(0)}% crit)`;
+    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Counts (${(startingCritRate * 100).toFixed(0)}% → ${(finalCritRate * 100).toFixed(0)}% crit)`;
   } else {
-    poiseDisplay = `${poiseInit} Count (${(startingCritRate * 100).toFixed(0)}% crit)`;
+    poiseDisplay = `${poiseInit} Counts (${(startingCritRate * 100).toFixed(0)}% crit)`;
   }
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
@@ -1131,10 +1131,10 @@ function calcMath(opts) {
     { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
     { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
-    { name: "<:Poise:1513762945715142736>Poise Count", value: poiseDisplay, inline: true, alwaysShow: true },
+    { name: "<:Poise:1513762945715142736>Poise Counts", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
-    { name: "<:Butterfly:1516679919399338074>The Living", value: `${theLiving} count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`, inline: true, showIf: theLiving > 0 },
-    { name: "<:Butterfly:1516679919399338074>The Departed", value: `${theDeparted} count (cap: ${sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)"})`, inline: true, showIf: theDeparted > 0 },
+    { name: "<:Butterfly:1516679919399338074>The Living", value: `${theLiving} Count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`, inline: true, showIf: theLiving > 0 },
+    { name: "<:Butterfly:1516679919399338074>The Departed", value: `${theDeparted} Count (cap: ${sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)"})`, inline: true, showIf: theDeparted > 0 },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
     { name: "<:Butterfly:1516679919399338074>Tổng Sanity hồi (The Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
     { name: "<:Butterfly:1516679919399338074>Tổng DMG Bonus (The Departed)", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
