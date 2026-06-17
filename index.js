@@ -1075,9 +1075,9 @@ function calcMath(opts) {
     if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} <:Rupture:1513762812722155682>Rupture`;
     if (r.poiseApplied > 0) {
       if (critDiv > 1 && r.didCrit && r.poiseAfterGain !== r.poiseStacksAfter) {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} stacks`;
+        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} Count`;
       } else {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} stacks`;
+        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} Count`;
       }
     }
     if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
@@ -1107,11 +1107,11 @@ function calcMath(opts) {
   const finalCritRate = finalPoiseStacks * POISE_CRIT_BONUS_PER_STACK;
   let poiseDisplay;
   if (critDiv > 1 && critCount > 0) {
-    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} stacks (${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`;
+    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Count (${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`;
   } else if (poiseInit !== finalPoiseStacks) {
-    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} stacks (${(startingCritRate * 100).toFixed(0)}% → ${(finalCritRate * 100).toFixed(0)}% crit)`;
+    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Count (${(startingCritRate * 100).toFixed(0)}% → ${(finalCritRate * 100).toFixed(0)}% crit)`;
   } else {
-    poiseDisplay = `${poiseInit} stacks (${(startingCritRate * 100).toFixed(0)}% crit)`;
+    poiseDisplay = `${poiseInit} Count (${(startingCritRate * 100).toFixed(0)}% crit)`;
   }
 
   const resDisplay = `B: ${resValues.B}x | P: ${resValues.P}x | S: ${resValues.S}x`;
@@ -1131,13 +1131,13 @@ function calcMath(opts) {
     { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
     { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
-    { name: "Poise Stacks", value: poiseDisplay, inline: true, alwaysShow: true },
+    { name: "<:Poise:1513762945715142736>Poise Count", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
-    { name: "🦋 The Living", value: `${theLiving} count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`, inline: true, showIf: theLiving > 0 },
-    { name: "🦋 The Departed", value: `${theDeparted} count (cap: ${sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)"})`, inline: true, showIf: theDeparted > 0 },
+    { name: "<:Butterfly:1516679919399338074>The Living", value: `${theLiving} count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`, inline: true, showIf: theLiving > 0 },
+    { name: "<:Butterfly:1516679919399338074>The Departed", value: `${theDeparted} count (cap: ${sanity > SANITY_MIN ? "15 (địch còn Sanity)" : "30 (địch hết Sanity)"})`, inline: true, showIf: theDeparted > 0 },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
-    { name: "💙 Tổng Sanity hồi (Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
-    { name: "💥 Tổng Departed DMG", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
+    { name: "<:Butterfly:1516679919399338074>Tổng Sanity hồi (The Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
+    { name: "<:Butterfly:1516679919399338074>Tổng DMG Bonus (The Departed)", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
@@ -2537,7 +2537,7 @@ client.on("messageCreate", async (message) => {
       { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 30 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
       { name: "🎯 -rtparry [số]", value: "Parry thời gian thực! Đếm ngược kết thúc thì bấm.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry: 400ms\n> Thêm số để parry liên tiếp nhiều lần (tối đa 20): `-rtparry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise stacks (1 stack = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
+      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus:` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise Count (1 Count = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
     ];
