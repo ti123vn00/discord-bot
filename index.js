@@ -1085,8 +1085,8 @@ function calcMath(opts) {
       extraInfo += ` | +Crit${critVal}%`;
     }
     if (r.isDice && diceMul !== 1) extraInfo += ` | DiceMul ${diceMul}x`;
-    if (r.departedBonus > 0) extraInfo += ` | +${r.departedBonus} dmg 🦋Departed`;
-    if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi 🦋Living`;
+    if (r.departedBonus > 0) extraInfo += ` | +${r.departedBonus} dmg <:Butterfly:1516679919399338074>Departed`;
+    if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi <:Butterfly:1516679919399338074>Living`;
     return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
 
