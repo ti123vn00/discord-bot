@@ -175,7 +175,7 @@ const commands = [
   // ── /profile ─────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("profile")
-    .setDescription("Quản lý các save profile (tối đa 3 profile riêng biệt)")
+    .setDescription(`Quản lý các save profile (tối đa ${MAX_PROFILES} profile riêng biệt)`)
     .addSubcommand(sub =>
       sub.setName("switch")
         .setDescription("Chuyển sang profile khác (inventory, daily, ahn đều riêng biệt)")
