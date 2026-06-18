@@ -274,13 +274,14 @@ function saturateBonusPct(raw) {
 }
 
 /**
- * Bão hòa % Damage Reduction (res < 1x):
+ * Bão hòa % Damage Reduction (dr < 1x):
  *  DR 0–25%  → tỷ lệ 1:1
  *  DR 25–50% → tỷ lệ 0.5:1
  *  DR 50%+   → tỷ lệ 0.05:1
- * Res >= 1x (vulnerability hoặc neutral) không bị ảnh hưởng.
+ * DR >= 1x (vulnerability hoặc neutral) không bị ảnh hưởng.
+ * CHỈ áp dụng cho Damage Reduction (dr) — Res (B/P/S) không còn bị bão hòa.
  */
-function saturateRes(mult) {
+function saturateDR(mult) {
   if (mult >= 1) return mult;
   const drRaw = (1 - mult) * 100;
   let drEff;
@@ -955,15 +956,14 @@ function calcMath(opts) {
   while ((match = resRegex.exec(resStr)) !== null) {
     resValues[match[2].toUpperCase()] = parseFloat(match[1]);
   }
-  // Lưu raw res để hiển thị, bão hòa res riêng
+  // Res (B/P/S) không bị bão hòa nữa — chỉ DR mới bị bão hòa.
   const resRaw = { ...resValues };
-  for (const k of ["B", "P", "S"]) resValues[k] = saturateRes(resValues[k]);
 
   // DR: flat, áp lên tất cả damage type, độc lập với res
   // Final DMG = (DMG × bonusFactor) × res × dr
   const drRawPct = drStr ? parseFloat(drStr) : 0;
   const hasDR = !isNaN(drRawPct) && drRawPct !== 0;
-  const drMult = hasDR ? saturateRes(1 - drRawPct / 100) : 1;
+  const drMult = hasDR ? saturateDR(1 - drRawPct / 100) : 1;
 
   const dmgValues = [];
   const damageRegex =
@@ -2612,6 +2612,8 @@ client.on("messageCreate", async (message) => {
       { name: "🎯 -rtparry [số]", value: "Parry thời gian thực! Đếm ngược kết thúc thì bấm.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ = ❌ thất bại | Đúng lúc = ✅ thành công\n> Cửa sổ parry: 400ms\n> Thêm số để parry liên tiếp nhiều lần (tối đa 20): `-rtparry 10`", inline: false },
       { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
       { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `dr: <% DR, VD: 90%>` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus: <Sanity của bản thân>` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise Count (1 Count = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
+      { name: "✨ -dmgbonus <số>", value: "Cho biết % Dmg Bonus thực tế sau khi bị bão hòa.\n> VD: `-dmgbonus 1000`", inline: false },
+      { name: "🛡️ -dr <số>", value: "Cho biết % Damage Reduction thực tế sau khi bị bão hòa.\n> VD: `-dr 1000`", inline: false },
       { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
       { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
     ];
@@ -2813,6 +2815,59 @@ client.on("messageCreate", async (message) => {
       theLiving,
       theDeparted,
     }));
+    return;
+  }
+
+  // ── -dmgbonus ──
+  // Cú pháp: -dmgbonus <số>  (hoặc -dmgbonus: <số>)
+  // Cho biết % Dmg Bonus thực tế (sau bão hòa) ứng với 1 số % raw.
+  if (message.content.startsWith("-dmgbonus")) {
+    if (isOnCooldown(message.author.id, "dmgbonus", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
+    const raw = message.content.replace("-dmgbonus", "").trim().replace(/^:/, "").trim();
+    const value = parseFloat(raw.replace("%", ""));
+    if (!raw || isNaN(value)) {
+      message.reply(
+        "❌ Cú pháp: `-dmgbonus <số>`\n" +
+        "> VD: `-dmgbonus 1000` → cho biết % Dmg Bonus thực tế sau khi bị bão hòa."
+      );
+      return;
+    }
+    const eff = saturateBonusPct(value);
+    const isSaturated = value > 100;
+    const display = isSaturated
+      ? `**${eff.toFixed(2)}%** effective *(raw: ${value.toFixed(2)}%)*`
+      : `${value.toFixed(2)}% *(chưa bị bão hòa)*`;
+    message.reply(`✨ **% Dmg Bonus:** ${display}`);
+    return;
+  }
+
+  // ── -dr ──
+  // Cú pháp: -dr <số>  (hoặc -dr: <số>)
+  // Cho biết % Damage Reduction thực tế (sau bão hòa) ứng với 1 số % raw.
+  if (message.content.startsWith("-dr")) {
+    if (isOnCooldown(message.author.id, "dr", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
+    const raw = message.content.replace("-dr", "").trim().replace(/^:/, "").trim();
+    const value = parseFloat(raw.replace("%", ""));
+    if (!raw || isNaN(value)) {
+      message.reply(
+        "❌ Cú pháp: `-dr <% DR>`\n" +
+        "> VD: `-dr 1000` → cho biết % Damage Reduction thực tế sau khi bị bão hòa."
+      );
+      return;
+    }
+    const drMult = saturateDR(1 - value / 100);
+    const effPct = (1 - drMult) * 100;
+    const isSaturated = effPct.toFixed(2) !== value.toFixed(2);
+    const display = isSaturated
+      ? `${value.toFixed(2)}% raw → **${effPct.toFixed(2)}%** effective *(${drMult.toFixed(3)}x)*`
+      : `${value.toFixed(2)}% *(chưa bị bão hòa)*`;
+    message.reply(`🛡️ **Damage Reduction:** ${display}`);
     return;
   }
 
