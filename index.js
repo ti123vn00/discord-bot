@@ -1,3 +1,4 @@
+
 // index.js
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const express = require("express");
@@ -2081,10 +2082,6 @@ client.on("messageCreate", async (message) => {
         if (session.responded) return;
 
         try {
-          // windowStart phải set TRƯỚC await để tránh số âm:
-          // nếu set sau, user có thể bấm trong lúc API round-trip đang chờ →
-          // interaction.createdTimestamp < windowStart → reactionMs âm.
-          session.windowStart = Date.now();
           await sentMsg.edit({
             embeds: [{
               title: titleFor(session.current),
@@ -2094,6 +2091,7 @@ client.on("messageCreate", async (message) => {
             components: [buildParryRow(customId, "⚔️  P A R R Y !", ButtonStyle.Success, false)],
           });
           session.phase = "window";
+          session.windowStart = Date.now();
           session.lastActivityAt = Date.now();
         } catch {
           session.responded = true;
@@ -3002,9 +3000,7 @@ client.on("interactionCreate", async (interaction) => {
 
     // ── Bấm trong cửa sổ → PARRY THÀNH CÔNG ────────────────────────────────
     if (session.phase === "window") {
-      // interaction.createdTimestamp = thời điểm Discord ghi nhận user bấm nút
-      // (chính xác hơn Date.now() vốn bao gồm thêm cả độ trễ Discord → bot)
-      const reactionMs = interaction.createdTimestamp - session.windowStart;
+      const reactionMs = now - session.windowStart;
       const rating =
         reactionMs < 100 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
         reactionMs < 200 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
