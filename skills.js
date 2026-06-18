@@ -2707,13 +2707,12 @@ roll(v = "no") {
     },
   },
   "thrust": {
-    name: "Thrust", weaponOf: "Dagger", tags: "Weapon",
-    cost: "—", cd: "2 Turn", diceMul: "1x",
+    name: "Thrust",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
-      const d1 = r(5,8), d2 = r(6,8);
+      const d1 = r(3,5);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đâm vào bụng kẻ địch, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau)`,
-        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm tiếp, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Bạn đâm thẳng vào kẻ địch nhận 1 <:Light:1513786082502770719>Light. Nếu có trên hoặc bằng 2 <:Light:1513786082502770719>Light, bạn có thể Reuse tiếp đòn này liên tục, mỗi lần Reuse thì Page sẽ được +5 <:DiceUp:1513767795681398894>Dice Up (Có thể Reuse vô hạn miễn đủ <:Light:1513786082502770719>Light và <:DiceUp:1513767795681398894>Dice Up cũng sẽ tăng theo ứng với số lần Reuse) 
       ];
     },
   },
