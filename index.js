@@ -2047,37 +2047,37 @@ client.on("messageCreate", async (message) => {
       setTimeout(() => startRound(), 900);
     };
 
-    // ── Chạy 1 round: đếm ngược (Discord timestamp) → cửa sổ parry → hết giờ ──
-    // Thay vì edit nhiều lần để hiện số đếm ngược (gây rate-limit và làm trễ edit
-    // "BÂY GIỜ!"), dùng <t:UNIX:R> để Discord client tự cập nhật countdown —
-    // chỉ cần 2 lần edit mỗi round: 1 khi bắt đầu đếm ngược, 1 khi mở cửa sổ.
+    // ── Chạy 1 round: đếm ngược → cửa sổ parry → hết giờ ───────────────────
     const startRound = () => {
-      if (session.responded) return;
+      const tickCount = 3 + Math.floor(Math.random() * 5);
 
-      // Tổng thời gian đếm ngược ngẫu nhiên — giữ độ bất ngờ tương đương tick cũ
-      // (3–7 tick × 600–1000ms mỗi tick → 1800ms–7000ms)
-      const tickCount    = 3 + Math.floor(Math.random() * 5);
-      const countdownMs  = tickCount * (600 + Math.floor(Math.random() * 400));
-      const openAtSec    = Math.floor((Date.now() + countdownMs) / 1000);
+      const runTick = async (remaining) => {
+        if (session.responded) return;
 
-      // Edit 1: hiển thị countdown — Discord client tự render "trong X giây"
-      sentMsg.edit({
-        embeds: [{
-          title: titleFor(session.current),
-          description: `⏳ Đòn đánh đến <t:${openAtSec}:R> — hãy sẵn sàng!`,
-          color: 0xf39c12,
-          footer: { text: "Bấm đúng lúc đếm ngược kết thúc!" },
-        }],
-        components: [buildParryRow(customId, "⚠️  Chưa phải lúc…", ButtonStyle.Secondary, false)],
-      }).then(() => {
-        session.lastActivityAt = Date.now();
-      }).catch(() => {
-        session.responded = true;
-        activeParrySessions.delete(sessionId);
-      });
+        if (remaining > 0) {
+          try {
+            await sentMsg.edit({
+              embeds: [{
+                title: titleFor(session.current),
+                description: `⏳ Đòn đánh đến sau: **${remaining}**...`,
+                color: 0xf39c12,
+                footer: { text: "Bấm đúng lúc đếm ngược kết thúc!" },
+              }],
+              components: [buildParryRow(customId, "⚠️  Chưa phải lúc…", ButtonStyle.Secondary, false)],
+            });
+          } catch {
+            session.responded = true;
+            activeParrySessions.delete(sessionId);
+            return;
+          }
+          session.lastActivityAt = Date.now();
 
-      // Edit 2: mở cửa sổ parry đúng lúc countdown kết thúc
-      session.windowTimer = setTimeout(async () => {
+          const tickDelay = 600 + Math.floor(Math.random() * 400);
+          session.windowTimer = setTimeout(() => runTick(remaining - 1), tickDelay);
+          return;
+        }
+
+        // ── Đếm ngược kết thúc → mở cửa sổ parry ──────────────────────────
         if (session.responded) return;
 
         try {
@@ -2089,7 +2089,6 @@ client.on("messageCreate", async (message) => {
             }],
             components: [buildParryRow(customId, "⚔️  P A R R Y !", ButtonStyle.Success, false)],
           });
-          // windowStart đặt SAU khi edit resolve — đã loại bỏ outbound latency
           session.phase = "window";
           session.windowStart = Date.now();
           session.lastActivityAt = Date.now();
@@ -2099,7 +2098,7 @@ client.on("messageCreate", async (message) => {
           return;
         }
 
-        // ── Đóng cửa sổ → tự fail nếu chưa ai bấm ────────────────────────
+        // ── Đóng cửa sổ → tự fail nếu chưa ai bấm ──────────────────────────
         session.expireTimer = setTimeout(async () => {
           if (session.responded) return;
           session.phase = "expired";
@@ -2136,7 +2135,11 @@ client.on("messageCreate", async (message) => {
 
           await advanceRound();
         }, windowMs + 1);
-      }, countdownMs);
+      };
+
+      // Tick đầu tiên cũng có delay ngẫu nhiên trước khi edit
+      const firstDelay = 600 + Math.floor(Math.random() * 400);
+      session.windowTimer = setTimeout(() => runTick(tickCount - 1), firstDelay);
     };
 
     session.advanceRound = advanceRound;
