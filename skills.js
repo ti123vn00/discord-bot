@@ -3331,6 +3331,18 @@ roll(v = "no") {
       ];
     },
   },
+    "the solemn lament for the living": {
+    name: "Solemn Lament for the Living", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "Tối thiểu 2 đạn", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(10,16);
+      return [
+        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 3 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+      ];
+    },
+  },
   "goodbye now a sorrow in you": {
     name: "Goodbye Now, a Sorrow In You", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
     cost: "Tối thiểu 4 đạn", cd: "3 Turn", diceMul: "1x",
