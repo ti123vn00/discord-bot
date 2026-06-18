@@ -3085,6 +3085,391 @@ roll(v = "no") {
       ];
     },
   },
+
+  // ══════════════ Poise / Slash ══════════════
+  "draw of the sword": {
+    name: "Draw of The Sword",
+    tags: "Poise",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,3), d2 = r(2,4);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise; tiêu thụ 6 <:Poise:1513762945715142736>Poise để nhận 2 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "acupuncture": {
+    name: "Acupuncture",
+    tags: "Poise",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,3), d2 = r(6,12), d3 = r(2,6);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 3 <:Poise:1513762945715142736>Poise và gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise; nếu bạn có ≥8 <:Poise:1513762945715142736>Poise nhận thêm 1 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "deep cuts": {
+    name: "Deep Cuts",
+    tags: "Poise/Haste",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(8,10), d3 = r(9,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — chém ngang cắt kẻ địch, nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — chém ngang cắt kẻ địch, nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — sau đó đâm sâu, nhận 4 <:Haste:1513768004222062632>Haste`,
+      ];
+    },
+  },
+  "preemptive strike": {
+    name: "Preemptive Strike",
+    tags: "Rupture",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1.1x",
+    roll() {
+      const d1 = r(7,10);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — chém dọc xuống, gây 4 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "opportunistic slash": {
+    name: "Opportunistic Slash",
+    tags: "Haste",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(5,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — lướt qua người kẻ địch rồi chém, nhận 3 <:Haste:1513768004222062632>Haste và gây 3 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "focused strikes": {
+    name: "Focused Strikes",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(5,8), d3 = r(8,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — chém ngang kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — chém ngang một lần nữa`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Guard Break] — kết thúc bằng một cú đâm tới`,
+      ];
+    },
+  },
+  "mutilate": {
+    name: "Mutilate",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "3x",
+    roll() {
+      const isProc = Math.random() < 0.2;
+      const d1 = isProc ? 30 : r(1,5);
+      return [
+        isProc
+          ? `*🔥 20% kích hoạt — Dice 1 trở thành [30~30]! [AOE 3 người]*`
+          : `*20% cơ hội đổi Dice 1 thành [30~30] [AOE 3 người]*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — lao tới chém kẻ địch liên tục${isProc ? " [AOE 3 người]" : ""}`,
+      ];
+    },
+  },
+
+  // ══════════════ Haste / Movement ══════════════
+  "fleet footsteps": {
+    name: "Fleet Footsteps",
+    tags: "Haste",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,10);
+      return [
+        `${D1} **${d1}** — dịch chuyển lại gần kẻ địch, né 1 đòn tấn công (không thể né Undodgeable), sau đó nhận 2 <:Haste:1513768004222062632>Haste`,
+      ];
+    },
+  },
+  "charge and cover": {
+    name: "Charge and Cover",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,7);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] — nhảy vụt lên đâm kẻ địch rồi lùi lại, né 1 đòn tấn công (không thể né Undodgeable) trong lúc gây Dmg`,
+      ];
+    },
+  },
+
+  // ══════════════ Blunt / Fragile / Tremor ══════════════
+  "alleyway counter": {
+    name: "Alleyway Counter",
+    tags: "Fragile",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,15);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — ngắt và counter một đòn của kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "right hook": {
+    name: "Right Hook",
+    tags: "Tremor",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — tung một cú móc hàm bằng tay phải, gây 4 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+  "sky kick": {
+    name: "Sky Kick",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,8);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đá kẻ địch lên trời gây **[Airborne]**`,
+      ];
+    },
+  },
+  "drop kick": {
+    name: "Drop Kick",
+    tags: "Fragile",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,15);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — lao vào Drop Kick kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "backstreets scramble": {
+    name: "Backstreets Scramble",
+    tags: "Fragile",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(6,10), d3 = r(7,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — móc hàm kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — móc hàm một lần nữa, đánh bay kẻ địch lên trời`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — nhảy lên đập chúng xuống, gây 5 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "stylish sweeps": {
+    name: "Stylish Sweeps",
+    tags: "Sinking",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,6), d2 = r(6,7), d3 = r(7,8);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — đá kẻ địch, gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — đá kẻ địch, gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đá kẻ địch, gây 3 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "shocking blow": {
+    name: "Shocking Blow",
+    tags: "Fragile",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đấm móc kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+
+  // ══════════════ Support / Pierce ══════════════
+  "onslaught command": {
+    name: "Onslaught Command",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,16);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gia tăng 4 <:DiceUp:1513767795681398894>Dice Up trong 2 Turn cho toàn bộ đồng đội`,
+      ];
+    },
+  },
+
+  // ══════════════ Paint Over ══════════════
+  "paint over": {
+    name: "Paint Over",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10), d2 = r(5,10);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gắn 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gắn 2 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+
+  // ══════════════ Mighty Attack ══════════════
+  "mighty attack": {
+    name: "Mighty Attack",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,8), d2 = r(6,8);
+      return [
+        `*Khi sử dụng: nhận 2 <:Attack_Power_Up:1375189059978133676>Attack Power Up và 2 <:Unopposed_Attack_Boost:1375796883351666738>Unopposed Attack Boost cho đến hết turn*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — lao vào đá kẻ địch, gây 2 <:Smoke:1513778039610282015>Smoke`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — kết thúc bằng một cú đấm, gây 2 <:Smoke:1513778039610282015>Smoke`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — Solemn Lament Pistols ══════════════
+  "celebration for the departed": {
+    name: "Celebration for the Departed", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "Tối thiểu 2 đạn", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8), d2 = r(8,12);
+      return [
+        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 2 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+      ];
+    },
+  },
+  "goodbye now a sorrow in you": {
+    name: "Goodbye Now, a Sorrow In You", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "Tối thiểu 4 đạn", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(7,10), d3 = r(10,13), d4 = r(13,16);
+      return [
+        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 5 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây **Butterfly**`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây **Butterfly**`,
+        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — +4% Dmg với mỗi 1 Count **Butterfly** kẻ địch có; xả toàn bộ đạn ở Dice này`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — Devil Sword Dante ══════════════
+  "overdrive": {
+    name: "Overdrive", weaponOf: "Devil Sword Dante", tags: "Weapon",
+    cost: "—", cd: "1 Turn sau khi tích xong", diceMul: "1.5x",
+    roll() {
+      const chargeturns = 1; // default 1 turn charge
+      const d1 = r(10,16);
+      return [
+        `*Tích tụ tối đa 3 Turn — mỗi turn tích thêm 1 Reuse; CD bắt đầu sau khi phóng*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — phóng kiếm khí từ năng lượng quỷ tích tụ`,
+      ];
+    },
+  },
+  "judgement": {
+    name: "Judgement", weaponOf: "Devil Sword Dante", tags: "Weapon",
+    cost: "— [Chỉ khi ở Sin Devil Trigger]", cd: "—", diceMul: "10x",
+    roll() {
+      return [
+        `*Chỉ khả dụng khi đang ở trạng thái **Sin Devil Trigger** [AOE tất cả]*`,
+        `${D1} **30** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] [Unparriable] [Unclashable] — tích tụ năng lượng rồi chém kẻ địch liên tục, kết thúc bằng một vụ nổ`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — Ebony & Ivory ══════════════
+  "charge shot": {
+    name: "Charge Shot", weaponOf: "Ebony & Ivory", tags: "Weapon",
+    cost: "—", cd: "1 Turn sau khi tích xong", diceMul: "1x",
+    roll() {
+      const chargeBonus = 0; // +10 Dice per extra turn charged, shown as note
+      const d1 = r(20,23);
+      return [
+        `*Tích tối thiểu 1 Turn, tối đa 3 Turn — mỗi turn tích thêm +10 Dice*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — bắn viên đạn chứa năng lượng quỷ tích tụ`,
+      ];
+    },
+  },
+  "jackpot": {
+    name: "Jackpot", weaponOf: "Ebony & Ivory", tags: "Weapon",
+    cost: "— [Chỉ khi dùng Charge Shot với Gunslinger Style]", cd: "—", diceMul: "2x",
+    roll() {
+      const isInstakill = Math.random() < 0.0777;
+      return [
+        `*Tích tụ 7 Turn — 7.77% cơ hội insta-kill kẻ địch*`,
+        isInstakill
+          ? `*💀 7.77% kích hoạt — INSTA-KILL!*`
+          : ``,
+        `${D1} **77** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Undodgeable] [Unparriable] [Unclashable] — bắn viên đạn quỷ tích tụ 7 turn${isInstakill ? " — **INSTA-KILL**" : ""}`,
+      ].filter(Boolean);
+    },
+  },
+
+  // ══════════════ EGO Pages — Manifested E.G.O ══════════════
+  "crescent divinity": {
+    name: "Crescent Divinity", weaponOf: "Manifested E.G.O", tags: "EGO Page",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — lướt xuyên qua người kẻ địch trong khi trên không, nhận 25 Forte`,
+      ];
+    },
+  },
+  "purge of light": {
+    name: "Purge of Light", weaponOf: "Manifested E.G.O", tags: "EGO Page",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(21,30);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE tất cả] [Unevadeable] [Guard Break] — tạo trường năng lượng cộng hưởng gây sát thương toàn bộ kẻ địch; đòn **Illuminous Epiphany** kế tiếp nhận 90% Dmg Up`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — N Corp. E.G.O Gear: Soft Goldcasted Heart ══════════════
+  "contemptuous thing": {
+    name: "Contemptuous Thing", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,7), d2 = r(7,11);
+      return [
+        `*+1 Clash Power với mỗi Gaze/Contempt trên kẻ địch; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 10 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor cộng lại*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Tremor:1513762737388257380>Tremor và 1 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 1 **Gaze**`,
+      ];
+    },
+  },
+  "be awed": {
+    name: "Be Awed", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(10,16);
+      return [
+        `*+1 Clash Power với mỗi Gaze/Contempt trên kẻ địch; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 10 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor cộng lại*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Tremor:1513762737388257380>Tremor và 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 2 **Gaze**, 1 <:Tremor:1513762737388257380>Tremor và 1 <:Bleed:1513762688226955285>Bleed; nếu địch có ≥3 <:Tremor:1513762737388257380>Tremor thì <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "awe, contempt": {
+    name: "Awe, Contempt", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,9), d2 = r(9,13), d3 = r(13,17);
+      return [
+        `*+1 Clash Power với mỗi Gaze/Contempt; +1 <:DiceUp:1513767795681398894>Dice Up và 5% Dmg Up với mỗi 8 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor cộng lại; nếu địch có Gaze: +2 <:Bleed:1513762688226955285>Bleed và <:Tremor:1513762737388257380>Tremor mỗi Dice*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây 2 <:Tremor:1513762737388257380>Tremor và 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây 1 <:Tremor:1513762737388257380>Tremor và 1 <:Bleed:1513762688226955285>Bleed`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây thêm 10% Dmg với mỗi 1 Gaze trên kẻ địch, áp **Tremor-Hemorrhage** rồi <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "cascading gaze of awe underneath contempt": {
+    name: "Cascading Gaze of Awe Underneath Contempt", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "— [Dùng Awe, Contempt khi tất cả địch có 7 Gaze hoặc 1 Contempt]", cd: "—", diceMul: "1x",
+    roll() {
+      const d1 = r(14,28);
+      return [
+        `*[AOE 3 người] +1 Clash Power với mỗi Gaze/Contempt; +1 <:DiceUp:1513767795681398894>Dice Up và 5% Dmg Up với mỗi 8 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor; nếu địch có Gaze: +10% Dmg với mỗi 1 Gaze; +200% Dmg Up nếu chỉ có 1 mục tiêu*`,
+        `${D1} Sau khi đòn kết thúc: tiêu thụ toàn bộ **Gaze** và **Contempt** trên kẻ địch trúng phải`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] [Undodgeable] — gây thêm 235% Dmg nếu địch có **Contempt**; gây 4 <:Tremor:1513762737388257380>Tremor và 4 <:Bleed:1513762688226955285>Bleed; áp **Tremor-Hemorrhage** rồi <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
 };
 
 // ─── SKILL_ALIASES ────────────────────────────────────────────────────────────
