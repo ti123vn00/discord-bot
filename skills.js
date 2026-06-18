@@ -2712,7 +2712,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(3,5);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Bạn đâm thẳng vào kẻ địch nhận 1 <:Light:1513786082502770719>Light. Nếu có trên hoặc bằng 2 <:Light:1513786082502770719>Light, bạn có thể Reuse tiếp đòn này liên tục, mỗi lần Reuse thì Page sẽ được +5 <:DiceUp:1513767795681398894>Dice Up (Có thể Reuse vô hạn miễn đủ <:Light:1513786082502770719>Light và <:DiceUp:1513767795681398894>Dice Up cũng sẽ tăng theo ứng với số lần Reuse) 
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Bạn đâm thẳng vào kẻ địch nhận 1 <:Light:1513786082502770719>Light. Nếu có trên hoặc bằng 2 <:Light:1513786082502770719>Light, bạn có thể Reuse tiếp đòn này liên tục, mỗi lần Reuse thì Page sẽ được +5 <:DiceUp:1513767795681398894>Dice Up (Có thể Reuse vô hạn miễn đủ <:Light:1513786082502770719>Light và <:DiceUp:1513767795681398894>Dice Up cũng sẽ tăng theo ứng với số lần Reuse)` 
       ];
     },
   },
