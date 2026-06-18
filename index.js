@@ -1,4 +1,3 @@
-
 // index.js
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const express = require("express");
@@ -598,7 +597,7 @@ function dailyKeyForSlot(userId, slot) {
 async function buildProfileInfoEmbed(userId, displayName, footerText) {
   const currentSlot = await getActiveProfileSlot(userId);
 
-  // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
+  // Lấy tất cả dữ liệu MAX_PROFILES profile trong 1 pipeline (MAX_PROFILES*2 keys) thay vì gọi tuần tự
   const pipe = redis.pipeline();
   for (let s = 1; s <= MAX_PROFILES; s++) {
     pipe.get(playerKeyForSlot(userId, s));
