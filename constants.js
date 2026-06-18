@@ -35,4 +35,8 @@ module.exports = {
   // /math: Butterfly status — The Living và The Departed max stacks
   BUTTERFLY_LIVING_MAX: 15,
   BUTTERFLY_DEPARTED_MAX: 15,
+
+  // /give, /remove, /setplayer (admin): Grade hợp lệ — 1 = MAX (tốt nhất), 9 = MIN
+  GRADE_MAX: 1,
+  GRADE_MIN: 9,
 };
