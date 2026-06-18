@@ -597,7 +597,7 @@ function dailyKeyForSlot(userId, slot) {
 async function buildProfileInfoEmbed(userId, displayName, footerText) {
   const currentSlot = await getActiveProfileSlot(userId);
 
-  // Lấy tất cả dữ liệu MAX_PROFILES profile trong 1 pipeline (MAX_PROFILES*2 keys) thay vì gọi tuần tự
+  // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
   const pipe = redis.pipeline();
   for (let s = 1; s <= MAX_PROFILES; s++) {
     pipe.get(playerKeyForSlot(userId, s));
@@ -1340,14 +1340,19 @@ function buildInvEmbed(targetUser, pages, page) {
 
 /** Build ActionRow nút Prev/Next. */
 function buildInvRow(targetUserId, page, totalPages) {
+  // Dùng Math.max/min để đảm bảo customId không chứa page âm (-1) hoặc vượt bound
+  // khi button bị disabled. Không ảnh hưởng đến logic vì button disabled không click được,
+  // nhưng tránh trường hợp Discord reject customId không hợp lệ.
+  const prevPage = Math.max(0, page - 1);
+  const nextPage = Math.min(totalPages - 1, page + 1);
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`invpage:${targetUserId}:${page - 1}`)
+      .setCustomId(`invpage:${targetUserId}:${prevPage}`)
       .setLabel("◀ Trước")
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page === 0),
     new ButtonBuilder()
-      .setCustomId(`invpage:${targetUserId}:${page + 1}`)
+      .setCustomId(`invpage:${targetUserId}:${nextPage}`)
       .setLabel("Sau ▶")
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page === totalPages - 1),
@@ -1413,6 +1418,12 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
 
   const changes = [];
 
+  // Không cho phép dùng cả grade lẫn exp cùng lúc — grade overwrite exp về giá trị
+  // cố định, khiến expGain bị nuốt hoàn toàn mà không báo lỗi (do else-if ẩn đi).
+  if (gradeTarget !== null && expGain !== 0) {
+    throw new Error("Không thể dùng `grade` và `exp` cùng lúc. Chọn một trong hai.");
+  }
+
   if (gradeTarget !== null) {
     const expNeeded = calcExpForGrade(gradeTarget);
     recipientData.exp = expNeeded;
@@ -1422,8 +1433,12 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
     changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP → tổng **${recipientData.exp}**/${EXP_MAX}`);
   }
   if (ahnGain !== 0) {
-    recipientData.ahn = Math.max(0, (recipientData.ahn ?? 0) + ahnGain);
-    changes.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
+    const ahnBefore = recipientData.ahn ?? 0;
+    recipientData.ahn = Math.max(0, ahnBefore + ahnGain);
+    // Dùng actualAhnChange thay vì ahnGain để log đúng số tiền thực sự thay đổi
+    // (VD: admin give ahn: -50000 cho user chỉ có 10000 → actualChange = -10000, không phải -50000)
+    const actualAhnChange = recipientData.ahn - ahnBefore;
+    changes.push(`${actualAhnChange >= 0 ? "+" : ""}${formatNumber(actualAhnChange)} Ahn`);
     if (!isAdmin && ahnGain > 0) senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
   }
   if (bookName) {
@@ -2224,8 +2239,20 @@ client.on("messageCreate", async (message) => {
     }
     const rawInput = message.content.replace("-give", "").replace(/<@!?\d+>/, "").trim();
     const kv = parseKeyValues(rawInput);
-    const expGain = parseInt(kv["exp"] ?? "0", 10) || 0;
-    const ahnGain = parseInt(kv["ahn"] ?? "0", 10) || 0;
+    // Dùng hàm helper để phân biệt "không nhập" (undefined→0) với "nhập sai" (NaN→error)
+    // tránh bug parseInt("abc") || 0 nuốt giá trị không hợp lệ thành 0 không báo lỗi.
+    function parseIntOrError(raw, fieldName) {
+      if (raw == null) return { value: 0, error: null };
+      const n = parseInt(raw, 10);
+      if (isNaN(n)) return { value: null, error: `❌ \`${fieldName}\` phải là số nguyên, nhận được: \`${raw}\`` };
+      return { value: n, error: null };
+    }
+    const expParsed  = parseIntOrError(kv["exp"],  "exp");
+    const ahnParsed  = parseIntOrError(kv["ahn"],  "ahn");
+    if (expParsed.error)  { message.reply(expParsed.error);  return; }
+    if (ahnParsed.error)  { message.reply(ahnParsed.error);  return; }
+    const expGain = expParsed.value;
+    const ahnGain = ahnParsed.value;
     const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
@@ -2310,8 +2337,19 @@ client.on("messageCreate", async (message) => {
     }
     const rawInput = message.content.replace("-remove", "").replace(/<@!?\d+>/, "").trim();
     const kv = parseKeyValues(rawInput);
-    const expRemove = parseInt(kv["exp"] ?? "0", 10) || 0;
-    const ahnRemove = parseInt(kv["ahn"] ?? "0", 10) || 0;
+    // parseInt || 0 nuốt NaN — validate trước để báo lỗi rõ ràng cho admin
+    function parseRemoveInt(raw, fieldName) {
+      if (raw == null) return { value: 0, error: null };
+      const n = parseInt(raw, 10);
+      if (isNaN(n)) return { value: null, error: `❌ \`${fieldName}\` phải là số nguyên, nhận được: \`${raw}\`` };
+      return { value: n, error: null };
+    }
+    const expParsed = parseRemoveInt(kv["exp"], "exp");
+    const ahnParsed = parseRemoveInt(kv["ahn"], "ahn");
+    if (expParsed.error) { message.reply(expParsed.error); return; }
+    if (ahnParsed.error) { message.reply(ahnParsed.error); return; }
+    const expRemove = expParsed.value;
+    const ahnRemove = ahnParsed.value;
     const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
@@ -2555,15 +2593,18 @@ client.on("messageCreate", async (message) => {
       return;
     }
     try {
-      await withLock(userId, async () => {
-        const { outputLines, costLines } = await executeCraft(userId, itemName, craftCount);
-        message.reply(
-          `⚒️ ${message.author} đã craft thành công!\n` +
-          `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
-          `> 📦 Nguyên liệu đã dùng:\n` +
-          costLines.map(l => `> ${l}`).join("\n")
-        );
-      });
+      // Tách Discord API call ra ngoài withLock: nếu message.reply chậm (network lag,
+      // rate limit), lock TTL có thể hết hạn trong khi vẫn đang giữ lock, cho phép
+      // concurrent operation trên cùng userId. executeCraft chỉ cần Redis — giữ trong lock.
+      const { outputLines, costLines } = await withLock(userId, () =>
+        executeCraft(userId, itemName, craftCount)
+      );
+      message.reply(
+        `⚒️ ${message.author} đã craft thành công!\n` +
+        `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
+        `> 📦 Nguyên liệu đã dùng:\n` +
+        costLines.map(l => `> ${l}`).join("\n")
+      );
     } catch (err) {
       log("error", "use", userId, err.message);
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
@@ -3267,15 +3308,18 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     try {
-      await withLock(userId, async () => {
-        const { outputLines, costLines } = await executeCraft(userId, itemName, craftCount);
-        await interaction.editReply({
-          content:
-            `⚒️ ${interaction.user} đã craft thành công!\n` +
-            `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
-            `> 📦 Nguyên liệu đã dùng:\n` +
-            costLines.map(l => `> ${l}`).join("\n"),
-        });
+      // Tách interaction.editReply ra ngoài withLock: nếu Discord API chậm (network lag,
+      // rate limit), lock TTL có thể hết hạn trong khi vẫn đang giữ lock, cho phép
+      // concurrent operation trên cùng userId. executeCraft chỉ cần Redis — giữ trong lock.
+      const { outputLines, costLines } = await withLock(userId, () =>
+        executeCraft(userId, itemName, craftCount)
+      );
+      await interaction.editReply({
+        content:
+          `⚒️ ${interaction.user} đã craft thành công!\n` +
+          `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
+          `> 📦 Nguyên liệu đã dùng:\n` +
+          costLines.map(l => `> ${l}`).join("\n"),
       });
     } catch (err) {
       log("error", "/use", userId, err.message);
