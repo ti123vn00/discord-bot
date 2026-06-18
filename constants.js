@@ -27,7 +27,7 @@ module.exports = {
   OPEN_COUNT_MAX: 20,
 
   // /profile: số lượng save profile tối đa cho mỗi user
-  MAX_PROFILES: 3,
+  MAX_PROFILES: 5,
 
   // /profile rename: độ dài tên profile tối đa
   PROFILE_NAME_MAX_LENGTH: 20,
