@@ -37,6 +37,8 @@ const {
   PROFILE_NAME_MAX_LENGTH,
   BUTTERFLY_LIVING_MAX,
   BUTTERFLY_DEPARTED_MAX,
+  GRADE_MAX,
+  GRADE_MIN,
 } = require("./constants");
 const POISE_CRIT_BONUS_PER_STACK = 0.05;
 const POISE_RESET_THRESHOLD = 1;
@@ -46,11 +48,16 @@ const POISE_CRIT_DIV_DEFAULT = 2;
 // Map<sessionId, session> — lưu trạng thái từng phiên parry đang chạy
 const activeParrySessions = new Map();
 
-// Dọn session cũ (>30 giây) mỗi 30 giây để tránh memory leak
+// Dọn session "chết" (không có hoạt động gì trong 5 phút) mỗi 30 giây để tránh
+// memory leak. Dùng lastActivityAt (cập nhật mỗi lần tick/đổi round/bấm nút) thay
+// vì createdAt — vì 1 session nhiều round (-rtparry 20) có thể chạy lâu hơn 30s
+// dù vẫn còn sống; nếu dùng createdAt thì session sẽ bị xóa khỏi map giữa lúc
+// đang chạy, khiến người chơi bấm nút parry bị báo "phiên đã kết thúc" sai.
+const PARRY_SESSION_STALE_MS = 5 * 60_000;
 const parrySessionCleanupTimer = setInterval(() => {
-  const cutoff = Date.now() - 30_000;
+  const cutoff = Date.now() - PARRY_SESSION_STALE_MS;
   for (const [id, s] of activeParrySessions)
-    if (s.createdAt < cutoff) activeParrySessions.delete(id);
+    if ((s.lastActivityAt ?? s.createdAt) < cutoff) activeParrySessions.delete(id);
 }, 30_000);
 
 /** Tạo ActionRow với 1 nút parry duy nhất */
@@ -88,8 +95,7 @@ const GRADE_EXP_REQUIRED = {
   3: 320,
   2: 640,
 };
-const GRADE_MAX = 1;
-const GRADE_MIN = 9;
+// GRADE_MAX / GRADE_MIN được import từ constants.js (dùng chung với deploy-commands.js)
 
 const EXP_MAX = Object.values(GRADE_EXP_REQUIRED).reduce((a, b) => a + b, 0); // 1275
 
@@ -505,8 +511,21 @@ function isTimeoutError(err) {
 
 // ─── PROFILE SYSTEM ───────────────────────────────────────────────────────────
 // MAX_PROFILES được import từ constants.js (dùng chung với deploy-commands.js)
-const PROFILE_LABELS = { 1: "Profile 1", 2: "Profile 2", 3: "Profile 3" };
-const PROFILE_EMOJIS = { 1: "1️⃣", 2: "2️⃣", 3: "3️⃣" };
+// Sinh PROFILE_LABELS/PROFILE_EMOJIS tự động theo MAX_PROFILES — tránh tình trạng
+// hard-code chỉ tới slot 3 rồi quên cập nhật khi MAX_PROFILES đổi (gây hiển thị
+// "undefined" cho slot mới), đúng với chủ đích "đổi 1 chỗ trong constants.js,
+// chỗ khác tự đồng bộ".
+function numberEmoji(n) {
+  if (n === 10) return "🔟";
+  if (n >= 0 && n <= 9) return `${n}\u{FE0F}\u{20E3}`; // keycap digit emoji (0️⃣-9️⃣)
+  return `${n}.`; // fallback cho n > 10 (không có keycap emoji chuẩn)
+}
+const PROFILE_LABELS = {};
+const PROFILE_EMOJIS = {};
+for (let s = 1; s <= MAX_PROFILES; s++) {
+  PROFILE_LABELS[s] = `Profile ${s}`;
+  PROFILE_EMOJIS[s] = numberEmoji(s);
+}
 
 // ─── PROFILE NAME HELPERS ─────────────────────────────────────────────────────
 // Tên tuỳ chỉnh lưu vào 1 key duy nhất per-user để giảm Redis round-trip.
@@ -696,31 +715,33 @@ async function savePlayerData(userId, data, slot = null) {
 }
 
 async function saveMultiplePlayerData(entries) {
-  const pipeline = redis.pipeline();
   // Nếu entry đã có slot (được truyền từ getPlayerDataWithSlot), dùng luôn để tránh
   // round-trip Redis thứ 2 và ngăn TOCTOU nếu user switch profile giữa chừng.
   const slots = await Promise.all(entries.map(e =>
     e.slot != null ? Promise.resolve(e.slot) : getActiveProfileSlot(e.userId)
   ));
-  for (let i = 0; i < entries.length; i++) {
-    const { userId, data } = entries[i];
-    pipeline.set(playerKeyForSlot(userId, slots[i]), JSON.stringify(data));
-  }
-  const results = await withTimeout(pipeline.exec());
-  if (Array.isArray(results)) {
-    const failures = results
-      .map((r, i) => {
-        const err = r && typeof r === "object" && "error" in r ? r.error : null;
-        return err ? { index: i, userId: entries[i]?.userId, err } : null;
-      })
-      .filter(Boolean);
-    if (failures.length > 0) {
-      const detail = failures.map(f => `[${f.userId}]: ${f.err}`).join(", ");
-      for (const f of failures) {
-        log("error", "saveMultiplePlayerData", f.userId ?? "unknown", f.err);
-      }
-      throw new Error(`Pipeline save thất bại một phần: ${detail}`);
+  const keys = entries.map((e, i) => playerKeyForSlot(e.userId, slots[i]));
+  const values = entries.map(e => JSON.stringify(e.data));
+
+  // Dùng 1 lệnh EVAL (Lua script) để SET toàn bộ key cùng lúc — Redis chạy Lua
+  // script atomic (đơn luồng), nên đảm bảo TẤT CẢ key cùng thành công hoặc TẤT
+  // CẢ cùng thất bại. Trước đây dùng pipeline: mỗi SET trong pipeline thực thi
+  // độc lập, nên nếu 1 lệnh lỗi giữa đường (VD: lưu cho recipient lỗi nhưng lưu
+  // cho sender vẫn thành công), /give có thể làm mất Ahn/sách của người gửi mà
+  // người nhận lại không được cộng — Lua script tránh được rủi ro nửa-nửa này.
+  const setAllScript = `
+    for i = 1, #KEYS do
+      redis.call("set", KEYS[i], ARGV[i])
+    end
+    return "OK"
+  `;
+  try {
+    await withTimeout(redis.eval(setAllScript, keys, values));
+  } catch (err) {
+    for (const e of entries) {
+      log("error", "saveMultiplePlayerData", e.userId ?? "unknown", err.message);
     }
+    throw new Error(`Lưu dữ liệu thất bại, không ai bị trừ/mất dữ liệu (atomic): ${err.message}`);
   }
 }
 
@@ -1052,7 +1073,7 @@ function calcMath(opts) {
 
     // ── Butterfly: The Departed ───────────────────────────────────────────────
     // Bonus dmg = floor(Sinking hiện tại / 2) + The Departed count hiện tại (trước khi cộng stack của đòn này).
-    // Cap 15 nếu địch còn Sanity (> 0), cap 30 nếu không.
+    // Cap 30 nếu địch còn Sanity (> SANITY_MIN, chưa chạm đáy), cap 15 nếu địch đã hết Sanity (== SANITY_MIN).
     let departedBonus = 0;
     if (departedStacks > 0) {
       const departedRaw = Math.floor(sinkingBeforeProc / 2) + departedStacks;
@@ -1962,6 +1983,7 @@ client.on("messageCreate", async (message) => {
       windowMs,
       windowStart: null,
       createdAt:   Date.now(),
+      lastActivityAt: Date.now(), // cập nhật mỗi tick/round/click — dùng để cleanup không xóa nhầm session còn sống
       windowTimer: null,
       expireTimer: null,
       rounds,
@@ -2012,6 +2034,7 @@ client.on("messageCreate", async (message) => {
 
     // ── Sau khi 1 round kết thúc → chuyển round kế hoặc tổng kết ───────────
     const advanceRound = async () => {
+      session.lastActivityAt = Date.now();
       if (session.current >= session.rounds) {
         await finishSession();
         return;
@@ -2047,6 +2070,7 @@ client.on("messageCreate", async (message) => {
             activeParrySessions.delete(sessionId);
             return;
           }
+          session.lastActivityAt = Date.now();
 
           const tickDelay = 600 + Math.floor(Math.random() * 400);
           session.windowTimer = setTimeout(() => runTick(remaining - 1), tickDelay);
@@ -2067,6 +2091,7 @@ client.on("messageCreate", async (message) => {
           });
           session.phase = "window";
           session.windowStart = Date.now();
+          session.lastActivityAt = Date.now();
         } catch {
           session.responded = true;
           activeParrySessions.delete(sessionId);
@@ -2078,6 +2103,7 @@ client.on("messageCreate", async (message) => {
           if (session.responded) return;
           session.phase = "expired";
           session.responded = true;
+          session.lastActivityAt = Date.now();
           session.results.push({ success: false });
 
           if (session.rounds === 1) {
@@ -2199,7 +2225,7 @@ client.on("messageCreate", async (message) => {
     const rawInput = message.content.replace("-give", "").replace(/<@!?\d+>/, "").trim();
     const kv = parseKeyValues(rawInput);
     const expGain = parseInt(kv["exp"] ?? "0", 10) || 0;
-    const ahnGain = parseFloat(kv["ahn"] ?? "0") || 0;
+    const ahnGain = parseInt(kv["ahn"] ?? "0", 10) || 0;
     const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
@@ -2285,7 +2311,7 @@ client.on("messageCreate", async (message) => {
     const rawInput = message.content.replace("-remove", "").replace(/<@!?\d+>/, "").trim();
     const kv = parseKeyValues(rawInput);
     const expRemove = parseInt(kv["exp"] ?? "0", 10) || 0;
-    const ahnRemove = parseFloat(kv["ahn"] ?? "0") || 0;
+    const ahnRemove = parseInt(kv["ahn"] ?? "0", 10) || 0;
     const bookRaw = kv["book"] ?? null;
     const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
     const itemRaw = kv["item"] ?? null;
@@ -2401,7 +2427,7 @@ client.on("messageCreate", async (message) => {
     const expIsAdd = expAddRaw && expAddRaw.startsWith("+");
     const ahnIsAdd = ahnAddRaw && ahnAddRaw.startsWith("+");
     const expValue = expAddRaw ? parseInt(expAddRaw.replace("+", ""), 10) || 0 : null;
-    const ahnValue = ahnAddRaw ? parseFloat(ahnAddRaw.replace("+", "")) || 0 : null;
+    const ahnValue = ahnAddRaw ? parseInt(ahnAddRaw.replace("+", ""), 10) || 0 : null;
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
     if (gradeTarget !== null && (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN)) {
       message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
@@ -2497,6 +2523,10 @@ client.on("messageCreate", async (message) => {
 
   // ── -use ──
   if (message.content.startsWith("-use")) {
+    if (isOnCooldown(message.author.id, "use", 2000)) {
+      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
+      return;
+    }
     const userId = message.author.id;
     const rawInput = message.content.replace("-use", "").trim();
     if (!rawInput) {
@@ -2936,6 +2966,7 @@ client.on("interactionCreate", async (interaction) => {
 
     const now = Date.now();
     session.responded = true;
+    session.lastActivityAt = now;
     clearTimeout(session.windowTimer);
     clearTimeout(session.expireTimer);
 
@@ -3261,12 +3292,18 @@ client.on("interactionCreate", async (interaction) => {
     if (!targetUser) { await interaction.editReply({ content: "❌ Không tìm thấy người nhận." }); return; }
     if (targetUser.id === interaction.user.id) { await interaction.editReply({ content: "❌ Không thể tặng cho chính mình." }); return; }
 
-    const ahnGain = interaction.options.getNumber("ahn") ?? 0;
+    const ahnGain = interaction.options.getInteger("ahn") ?? 0;
     const bookRaw = interaction.options.getString("book") ?? null;
     const bookCount = Math.max(1, interaction.options.getInteger("bookcount") ?? 1);
     const itemRaw = interaction.options.getString("item") ?? null;
     const itemCount = Math.max(1, interaction.options.getInteger("itemcount") ?? 1);
+    const expGain = interaction.options.getInteger("exp") ?? 0;
+    const gradeTarget = interaction.options.getInteger("grade") ?? null;
 
+    if (!isAdmin && (expGain !== 0 || gradeTarget !== null)) {
+      await interaction.editReply({ content: "❌ Bạn không thể tặng EXP cho người khác." });
+      return;
+    }
     if (!isAdmin && ahnGain < 0) { await interaction.editReply({ content: "❌ Không thể chuyển số Ahn âm." }); return; }
 
     let bookName = null;
@@ -3279,8 +3316,8 @@ client.on("interactionCreate", async (interaction) => {
       itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
       if (!itemName) { await interaction.editReply({ content: `❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`` }); return; }
     }
-    if (ahnGain === 0 && !bookName && !itemName) {
-      await interaction.editReply({ content: "❌ Cần chỉ định ít nhất một trong: `ahn`, `book`, `item`." });
+    if (ahnGain === 0 && !bookName && !itemName && expGain === 0 && gradeTarget === null) {
+      await interaction.editReply({ content: "❌ Cần chỉ định ít nhất một trong: `ahn`, `book`, `item`" + (isAdmin ? ", `exp`, `grade`." : ".") });
       return;
     }
 
@@ -3289,7 +3326,7 @@ client.on("interactionCreate", async (interaction) => {
       const runGive = () => executeGive({
         senderId: interaction.user.id,
         targetId: targetUser.id,
-        isAdmin, ahnGain, bookName, bookCount, itemName, itemCount,
+        isAdmin, ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
       });
       const changes = await withDoubleLock(interaction.user.id, targetUser.id, runGive);
       await interaction.editReply({
@@ -3320,7 +3357,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     const expRemove = interaction.options.getInteger("exp") ?? 0;
-    const ahnRemove = interaction.options.getNumber("ahn") ?? 0;
+    const ahnRemove = interaction.options.getInteger("ahn") ?? 0;
     const bookRaw = interaction.options.getString("book") ?? null;
     const bookCount = Math.max(1, interaction.options.getInteger("bookcount") ?? 1);
     const itemRaw = interaction.options.getString("item") ?? null;
