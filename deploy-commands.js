@@ -11,6 +11,8 @@ const {
   PROFILE_NAME_MAX_LENGTH,
   BUTTERFLY_LIVING_MAX,
   BUTTERFLY_DEPARTED_MAX,
+  GRADE_MAX,
+  GRADE_MIN,
 } = require("./constants");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -131,7 +133,7 @@ const commands = [
     .setDescription("Chuyển Ahn, sách hoặc vật phẩm cho người khác")
     .addUserOption(opt =>
       opt.setName("user").setDescription("Người nhận").setRequired(true))
-    .addNumberOption(opt =>
+    .addIntegerOption(opt =>
       opt.setName("ahn").setDescription("Số Ahn muốn chuyển").setMinValue(0).setRequired(false))
     .addStringOption(opt =>
       opt.setName("book").setDescription("Tên sách muốn chuyển (VD: Random Book)").setRequired(false))
@@ -140,7 +142,12 @@ const commands = [
     .addStringOption(opt =>
       opt.setName("item").setDescription("Tên vật phẩm muốn chuyển (VD: Chipboard MK1)").setRequired(false))
     .addIntegerOption(opt =>
-      opt.setName("itemcount").setDescription("Số lượng vật phẩm (mặc định 1)").setMinValue(1).setRequired(false)),
+      opt.setName("itemcount").setDescription("Số lượng vật phẩm (mặc định 1)").setMinValue(1).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("exp").setDescription("Số EXP muốn tặng (admin only, có thể nhập số âm để trừ)").setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("grade").setDescription(`Set Grade trực tiếp cho người nhận (admin only, ${GRADE_MAX}–${GRADE_MIN})`)
+        .setMinValue(GRADE_MAX).setMaxValue(GRADE_MIN).setRequired(false)),
 
   // ── /remove ─────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
@@ -158,7 +165,7 @@ const commands = [
       opt.setName("itemcount").setDescription("Số lượng vật phẩm (mặc định 1)").setMinValue(1).setRequired(false))
     .addIntegerOption(opt =>
       opt.setName("exp").setDescription("Số EXP muốn xóa (admin only)").setMinValue(1).setRequired(false))
-    .addNumberOption(opt =>
+    .addIntegerOption(opt =>
       opt.setName("ahn").setDescription("Số Ahn muốn xóa (admin only)").setMinValue(0).setRequired(false))
     .addStringOption(opt =>
       opt.setName("books").setDescription("Xóa nhiều sách (VD: Random Book x2, N Corp Book x1)").setRequired(false))
