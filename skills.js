@@ -2512,10 +2512,17 @@ roll(v = "no") {
   "mook workshop": {
     name: "Mook Workshop", weaponOf: "Mook Workshop", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "1x",
-    roll() {
+    // maxUses: 3 = 1 lần gốc + tối đa 2 lần reuse (đúng theo mô tả "max 2 lần").
+    // Lệnh -skill sẽ tự clamp số lần roll theo field này thay vì SKILL_MAX_ROLLS chung.
+    maxUses: 3,
+    // isReuse = true cho lần roll thứ 2 trở đi (do -skill mook workshop <n> gọi).
+    // Theo mô tả: reuse mất hiệu ứng "nhận 1 Light" nhưng vẫn gây dmg 2 hit + Rupture như cũ.
+    roll(isReuse = false) {
       const d1 = r(10,19);
+      const lightText = isReuse ? "" : " và nhận 1 <:Light:1513786082502770719>Light";
+      const reuseTag = isReuse ? " *(Reuse — tốn 1 <:Light:1513786082502770719>Light, không nhận Light)*" : "";
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit và nhận 1 <:Light:1513786082502770719>Light và gây 4 <:Rupture:1513762812722155682>Rupture Có thể bỏ ra thêm 1 <:Light:1513786082502770719>Light để reuse đòn này, max 2 lần và sẽ mất hiệu ứng nhận <:Light:1513786082502770719>Light ở những lần Reuse`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit${lightText} và gây 4 <:Rupture:1513762812722155682>Rupture${reuseTag}`,
       ];
     },
   },
@@ -2717,18 +2724,21 @@ roll(v = "no") {
       errorMsg:
         "❓ **Thrust** cần nhập số Light hiện tại (tối thiểu 2).\n" +
         "> Cú pháp: `-skill thrust <light>`\n" +
-        "> VD: `-skill thrust 4` → tự tính được Reuse tối đa\n" +
-        "> *Mỗi lần dùng net −1 <:Light:1513786082502770719>Light. Reuse được khi còn ≥2*",
+        "> VD: `-skill thrust 4` → tự tính được Reuse tối đa (cap **9 lần**)\n" +
+        "> *Mỗi lần dùng net −1 <:Light:1513786082502770719>Light. Reuse được khi còn ≥2, tối đa 9 lần dù dư Light*",
       buildHeader: (v, s) => {
-        const reuseTimes = Math.max(0, v - 2); // light - 2 = số lần reuse tối đa
+        // Cap 9 lần Reuse theo spec gốc ("Có thể Reuse tối đa tới 9 lần") — trước đây
+        // không có cap, light dư bao nhiêu là reuse hết bấy nhiêu (sai so với mô tả).
+        const reuseTimes = Math.min(9, Math.max(0, v - 2));
         const finalLight = v - (reuseTimes + 1);
         return reuseTimes === 0
           ? `[Light: ${v}→${finalLight}] [Không đủ để Reuse] [CD: ${s.cd}]`
-          : `[Reuse: ${reuseTimes} lần] [Light: ${v}→${finalLight}] [Dice Up lần cuối: +${reuseTimes * 5} <:DiceUp:1513767795681398894>] [CD: ${s.cd}]`;
+          : `[Reuse: ${reuseTimes} lần${reuseTimes === 9 ? " (đã chạm cap)" : ""}] [Light: ${v}→${finalLight}] [Dice Up lần cuối: +${reuseTimes * 5} <:DiceUp:1513767795681398894>] [CD: ${s.cd}]`;
       },
     },
     roll(light = 4) {
-      const reuseTimes = Math.max(0, light - 2); // tự tính từ light
+      // Cap 9 lần Reuse theo spec gốc, dù light dư nhiều hơn mức cần cho 9 lần.
+      const reuseTimes = Math.min(9, Math.max(0, light - 2));
       const DICE_EMOJIS = [D1, D2, D3, D4, D5];
       const getEmoji = (i) => DICE_EMOJIS[Math.min(i, DICE_EMOJIS.length - 1)];
       const L = "<:Light:1513786082502770719>Light";
