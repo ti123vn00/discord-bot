@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require("discord.js");
 const express = require("express");
 const { Redis } = require("@upstash/redis");
 
@@ -478,6 +478,19 @@ async function withDoubleLock(idA, idB, fn, {
   { ttlSeconds: outerTtl, retries, retryDelayMs });
 }
 
+// ─── GIVE CONFIRM FLOW ────────────────────────────────────────────────────────
+// Map<giveId, { senderId, targetId, isAdmin, params, expiresAt }> — lưu giao dịch
+// /give đang chờ xác nhận qua nút bấm. Không lưu Redis vì chỉ cần sống tối đa 60s
+// và không cần persist qua restart.
+const pendingGives = new Map();
+const GIVE_PENDING_TTL_MS = 60_000;
+const givePendingCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [id, g] of pendingGives)
+    if (g.expiresAt < now) pendingGives.delete(id);
+}, 30_000);
+
+
 // ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
 function migratePlayerData(data) {
   if (data.books !== undefined || data.items !== undefined) {
@@ -592,12 +605,12 @@ function dailyKeyForSlot(userId, slot) {
  * @param {string} userId
  * @param {string} displayName — tên hiển thị của user (displayName ?? username)
  * @param {string} footerText  — text gợi ý lệnh đổi profile, khác nhau giữa prefix/slash
- * @returns {Promise<object>} embed object, dùng trực tiếp trong `embeds: [...]`
+ * @returns {Promise<{embed: object, components: ActionRowBuilder[]}>} embed + nút chuyển profile
  */
 async function buildProfileInfoEmbed(userId, displayName, footerText) {
   const currentSlot = await getActiveProfileSlot(userId);
 
-  // Lấy tất cả dữ liệu 3 profile trong 1 pipeline (6 keys) thay vì 6 lần gọi tuần tự
+  // Lấy tất cả dữ liệu MAX_PROFILES profile trong 1 pipeline thay vì N lần gọi tuần tự
   const pipe = redis.pipeline();
   for (let s = 1; s <= MAX_PROFILES; s++) {
     pipe.get(playerKeyForSlot(userId, s));
@@ -607,7 +620,7 @@ async function buildProfileInfoEmbed(userId, displayName, footerText) {
     withTimeout(pipe.exec()).then(unwrapPipelineResults),
     getProfileNames(userId),
   ]);
-  // pipeResults layout: [player1, daily1, player2, daily2, player3, daily3]
+  // pipeResults layout: [player1, daily1, player2, daily2, ...]
 
   const today = getVNDateString();
   const lines = [];
@@ -637,11 +650,34 @@ async function buildProfileInfoEmbed(userId, displayName, footerText) {
       lines.push(`${PROFILE_EMOJIS[s]} **${label}**: *(lỗi: ${e.message})*`);
     }
   }
+
+  // Nút chuyển profile — disable nút của slot đang dùng để tránh switch vào chính nó.
+  const switchButtons = [];
+  for (let s = 1; s <= MAX_PROFILES; s++) {
+    const label = resolveProfileLabel(profileNames, s);
+    switchButtons.push(
+      new ButtonBuilder()
+        .setCustomId(`profswitch:${userId}:${s}`)
+        .setLabel(`${PROFILE_EMOJIS[s]} ${label}`)
+        .setStyle(s === currentSlot ? ButtonStyle.Primary : ButtonStyle.Secondary)
+        .setDisabled(s === currentSlot)
+    );
+  }
+  // Discord giới hạn tối đa 5 button/row — MAX_PROFILES = 5 vẫn vừa 1 row,
+  // nhưng chia sẵn theo nhóm 5 để an toàn nếu sau này tăng thêm.
+  const components = [];
+  for (let i = 0; i < switchButtons.length; i += 5) {
+    components.push(new ActionRowBuilder().addComponents(...switchButtons.slice(i, i + 5)));
+  }
+
   return {
-    title: `👤 Profiles của ${displayName}`,
-    description: lines.join("\n\n"),
-    color: 0x5865f2,
-    footer: { text: footerText },
+    embed: {
+      title: `👤 Profiles của ${displayName}`,
+      description: lines.join("\n\n"),
+      color: 0x5865f2,
+      footer: { text: footerText },
+    },
+    components,
   };
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1359,6 +1395,47 @@ function buildInvRow(targetUserId, page, totalPages) {
   );
 }
 
+/**
+ * Build StringSelectMenu chứa các item trên ĐÚNG trang đang hiển thị.
+ * QUAN TRỌNG: buildInventoryPages sinh trang sách TRƯỚC (1..bookPageCount),
+ * rồi trang item SAU — không gộp chung. Hàm này phải dùng đúng công thức
+ * bookPageCount = Math.ceil(books.length / INV_PAGE_SIZE) để xác định trang
+ * hiện tại đang ở phía "sách" hay phía "item", nếu không select menu sẽ liệt
+ * kê sai item so với embed đang hiển thị.
+ */
+function buildInvSelectMenu(targetUserId, data, page) {
+  const books = Object.entries(data.books ?? {}).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
+  const items = Object.entries(data.items ?? {}).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
+
+  const bookPageCount = Math.ceil(books.length / INV_PAGE_SIZE); // = 0 nếu không có sách
+
+  let chunk, type;
+  if (page < bookPageCount) {
+    chunk = books.slice(page * INV_PAGE_SIZE, (page + 1) * INV_PAGE_SIZE);
+    type = "book";
+  } else {
+    const itemPage = page - bookPageCount;
+    chunk = items.slice(itemPage * INV_PAGE_SIZE, (itemPage + 1) * INV_PAGE_SIZE);
+    type = "item";
+  }
+  if (chunk.length === 0) return null;
+
+  const options = chunk.map(([name, count]) =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(`${name} ×${count}`)
+      .setDescription(type === "book" ? "📚 Sách" : "🔩 Vật phẩm")
+      .setValue(`${type}:${name}`)
+      .setEmoji(type === "book" ? "📖" : "🔩")
+  );
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`invsel:${targetUserId}:${page}`)
+      .setPlaceholder("📋 Chọn item để thao tác...")
+      .addOptions(options)
+  );
+}
+
 /** Wrapper async dùng chung cho prefix và slash command. */
 async function fetchInventoryReply(targetUser, page = 0) {
   const data = await getPlayerData(targetUser.id);
@@ -1366,7 +1443,12 @@ async function fetchInventoryReply(targetUser, page = 0) {
   if (!pages) return null;
   const clampedPage = Math.max(0, Math.min(page, pages.length - 1));
   const embed = buildInvEmbed(targetUser, pages, clampedPage);
-  const components = pages.length > 1 ? [buildInvRow(targetUser.id, clampedPage, pages.length)] : [];
+
+  const components = [];
+  if (pages.length > 1) components.push(buildInvRow(targetUser.id, clampedPage, pages.length));
+  const selectMenu = buildInvSelectMenu(targetUser.id, data, clampedPage);
+  if (selectMenu) components.push(selectMenu);
+
   return { embeds: [embed], components };
 }
 
@@ -1463,6 +1545,34 @@ async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName 
   await saveMultiplePlayerData(saveEntries);
   return changes;
 }
+
+// ─── GIVE CONFIRM FLOW HELPERS ────────────────────────────────────────────────
+/** Build các dòng preview hiển thị trong embed xác nhận, dùng chung prefix + slash. */
+function buildGivePreviewLines({ ahnGain = 0, bookName = null, bookCount = 1, itemName = null, itemCount = 1, expGain = 0, gradeTarget = null }) {
+  const lines = [];
+  if (ahnGain !== 0)        lines.push(`💰 **${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn**`);
+  if (bookName)             lines.push(`📚 **${bookCount}× ${bookName}**`);
+  if (itemName)             lines.push(`🔩 **${itemCount}× ${itemName}**`);
+  if (expGain !== 0)        lines.push(`✨ **${expGain > 0 ? "+" : ""}${expGain} EXP**`);
+  if (gradeTarget !== null) lines.push(`🏅 **Set Grade ${gradeTarget}**`);
+  return lines;
+}
+
+/** Tạo ActionRow Xác nhận/Hủy gắn với 1 giveId cụ thể. */
+function buildGiveConfirmRow(giveId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`giveconfirm:${giveId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`givecancel:${giveId}`).setLabel("❌ Hủy").setStyle(ButtonStyle.Danger),
+  );
+}
+
+/** Đăng ký 1 giao dịch /give vào pendingGives, trả về giveId vừa tạo. */
+function registerPendingGive(senderId, targetId, isAdmin, params) {
+  const giveId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  pendingGives.set(giveId, { senderId, targetId, isAdmin, params, expiresAt: Date.now() + GIVE_PENDING_TTL_MS });
+  return giveId;
+}
+
 
 /**
  * executeRemove — logic chung cho cả prefix -remove và slash /remove
@@ -2296,24 +2406,23 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    try {
-      // Dùng withDoubleLock cho cả admin lẫn non-admin để tránh race condition
-      // khi admin vô tình chạy 2 lệnh give cho cùng target cùng lúc.
-      const runGive = () => executeGive({
-        senderId: message.author.id,
-        targetId: targetUser.id,
-        isAdmin, ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
-      });
-      const changes = await withDoubleLock(message.author.id, targetUser.id, runGive);
-      const verb = isAdmin ? "tặng" : "chuyển";
-      message.reply(
-        `✅ ${message.author} đã ${verb} cho ${targetUser}:\n` +
-        changes.map(c => `> ${c}`).join("\n")
-      );
-    } catch (err) {
-      log("error", "give", message.author.id, err.message, { target: targetUser.id });
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
-    }
+    // Thay vì thực hiện ngay, hiển thị preview + nút Xác nhận/Hủy để tránh
+    // chuyển nhầm người/nhầm số lượng (đặc biệt nguy hiểm với admin give exp/grade/ahn).
+    const previewLines = buildGivePreviewLines({ ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget });
+    const giveId = registerPendingGive(message.author.id, targetUser.id, isAdmin, {
+      ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
+    });
+    message.reply({
+      embeds: [{
+        title: "📦 Xác nhận chuyển đồ",
+        description:
+          `${message.author} muốn ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
+          previewLines.map(l => `> ${l}`).join("\n"),
+        color: 0xf0a500,
+        footer: { text: "Hết hạn sau 60 giây" },
+      }],
+      components: [buildGiveConfirmRow(giveId)],
+    });
     return;
   }
 
@@ -2787,7 +2896,7 @@ client.on("messageCreate", async (message) => {
     if (sub === "switch") {
       const slot = parseInt(args[1], 10);
       if (!slot || slot < 1 || slot > MAX_PROFILES) {
-        message.reply(`❌ Slot không hợp lệ. Dùng: \`-profile switch 1\`, \`-profile switch 2\` hoặc \`-profile switch 3\``);
+        message.reply(`❌ Slot không hợp lệ. Dùng \`-profile switch <1-${MAX_PROFILES}>\` (VD: \`-profile switch 1\`).`);
         return;
       }
       const currentSlot = await getActiveProfileSlot(userId);
@@ -2821,16 +2930,16 @@ client.on("messageCreate", async (message) => {
 
     // -profile info
     if (sub === "info" || sub === "") {
-      const embed = await buildProfileInfoEmbed(
+      const { embed, components } = await buildProfileInfoEmbed(
         userId,
         message.author.displayName ?? message.author.username,
-        "Dùng -profile switch <1/2/3> để đổi profile"
+        `Dùng -profile switch <1-${MAX_PROFILES}> hoặc bấm nút bên dưới để đổi profile`
       );
-      message.reply({ embeds: [embed] });
+      message.reply({ embeds: [embed], components });
       return;
     }
 
-    message.reply("❌ Lệnh không hợp lệ. Dùng:\n> `-profile info` — xem tổng quan tất cả profile\n> `-profile switch <1/2/3>` — chuyển sang profile khác\n> `-profile rename <tên>` — đặt tên cho profile hiện tại");
+    message.reply(`❌ Lệnh không hợp lệ. Dùng:\n> \`-profile info\` — xem tổng quan tất cả profile\n> \`-profile switch <1-${MAX_PROFILES}>\` — chuyển sang profile khác\n> \`-profile rename <tên>\` — đặt tên cho profile hiện tại`);
     return;
   }
 
@@ -2982,6 +3091,162 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  // ── Nút xem thông tin item (từ select menu inventory) ──
+  if (interaction.customId.startsWith("invinfo:")) {
+    const parts = interaction.customId.split(":");
+    const targetUserId = parts[1];
+    const itemType = parts[2];
+    const itemName = parts.slice(3).join(":");
+    try {
+      const infoMap = {
+        "Random Book": "Mở ra 1 sách ngẫu nhiên từ pool thường.",
+        "Sealed Book Cache": "Mở ra 1 sách hiếm ngẫu nhiên từ pool sealed.",
+        "Chipboard Cache": "Mở ra Chipboard MK1–MK3 ngẫu nhiên.",
+      };
+      const recipe = CRAFT_RECIPES[itemName];
+      let desc = infoMap[itemName] ?? `${itemType === "book" ? "📚 Sách" : "🔩 Vật phẩm"}: **${itemName}**`;
+      if (recipe) {
+        const inputs = Object.entries(recipe.inputs).map(([k, v]) => `${v}× ${k}`).join(", ");
+        const outputs = Object.entries(recipe.output).map(([k, v]) => `${v}× ${k}`).join(", ");
+        desc += `\n> 🔨 Craft: ${inputs} → ${outputs}`;
+      }
+      const data = await getPlayerData(targetUserId);
+      const store = itemType === "book" ? (data.books ?? {}) : (data.items ?? {});
+      const count = store[itemName] ?? 0;
+      await interaction.reply({
+        embeds: [{ title: itemName, description: desc, color: 0x5865f2, footer: { text: `Số lượng trong kho: ${count}` } }],
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (err) {
+      log("error", "invinfo button", interaction.user?.id ?? "unknown", err.message);
+      interaction.reply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  // ── Nút Mở (sách) / Craft (item) — từ select menu inventory ──
+  if (interaction.customId.startsWith("invact:")) {
+    const parts = interaction.customId.split(":");
+    const targetUserId = parts[1];
+    const itemType = parts[2];
+    const itemName = parts.slice(3).join(":");
+    if (interaction.user.id !== targetUserId) {
+      return interaction.reply({ content: "⚠️ Đây không phải inventory của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      if (itemType === "book") {
+        const handlerMap = {
+          "Random Book": () => handleOpenRandomBook(targetUserId, 1),
+          "Sealed Book Cache": () => handleOpenSealedBook(targetUserId, 1),
+          "Chipboard Cache": () => handleOpenChipboardCache(targetUserId, 1),
+        };
+        const handler = handlerMap[itemName];
+        if (!handler) { await interaction.editReply({ content: "❌ Không thể mở loại sách này." }); return; }
+        const { success, data, results } = await handler();
+        if (!success) { await interaction.editReply({ content: `❌ Không có **${itemName}** trong kho.` }); return; }
+        await interaction.editReply({ content: `✅ Mở **${itemName}** → nhận được **${results[0]}**!\n> Còn lại: ${data.books[itemName] ?? 0}` });
+      } else {
+        if (!CRAFT_RECIPES[itemName]) { await interaction.editReply({ content: "❌ Vật phẩm này không thể craft." }); return; }
+        // Tách interaction.editReply ra ngoài withLock — nếu Discord API chậm, lock
+        // TTL có thể hết hạn trong khi vẫn đang giữ lock. executeCraft chỉ cần Redis.
+        const { outputLines, costLines } = await withLock(targetUserId, () =>
+          executeCraft(targetUserId, itemName, 1)
+        );
+        await interaction.editReply({ content: `✅ Craft thành công!\n${costLines.join("\n")}\n→ ${outputLines.join(", ")}` });
+      }
+    } catch (err) {
+      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra."}` });
+    }
+    return;
+  }
+
+  // ── Nút Xóa 1 — từ select menu inventory ──
+  if (interaction.customId.startsWith("invdel:")) {
+    const parts = interaction.customId.split(":");
+    const targetUserId = parts[1];
+    const itemType = parts[2];
+    const itemName = parts.slice(3).join(":");
+    if (interaction.user.id !== targetUserId) {
+      return interaction.reply({ content: "⚠️ Đây không phải inventory của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const bookEntries = itemType === "book" ? [{ name: itemName, count: 1 }] : [];
+      const itemEntries = itemType === "item" ? [{ name: itemName, count: 1 }] : [];
+      await withLock(targetUserId, () => executeRemove({
+        actorId: targetUserId, targetId: targetUserId,
+        isAdmin: false, expRemove: 0, ahnRemove: 0, bookEntries, itemEntries,
+      }));
+      await interaction.editReply({ content: `🗑️ Đã xóa **1× ${itemName}** khỏi kho.` });
+    } catch (err) {
+      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra."}` });
+    }
+    return;
+  }
+
+  // ── Nút chuyển profile (từ /profile info hoặc -profile info) ──
+  if (interaction.customId.startsWith("profswitch:")) {
+    const [, targetUserId, slotStr] = interaction.customId.split(":");
+    const slot = parseInt(slotStr, 10);
+    if (interaction.user.id !== targetUserId) {
+      return interaction.reply({ content: "⚠️ Chỉ chủ nhân mới có thể đổi profile.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      await setActiveProfileSlot(targetUserId, slot);
+      // Rebuild embed để nút của slot mới được disable đúng (đang dùng) và phản ánh data mới.
+      const { embed, components } = await buildProfileInfoEmbed(
+        targetUserId,
+        interaction.user.displayName ?? interaction.user.username,
+        `Dùng -profile switch <1-${MAX_PROFILES}> hoặc bấm nút bên dưới để đổi profile`
+      );
+      await interaction.update({ embeds: [embed], components });
+    } catch (err) {
+      log("error", "profswitch button", interaction.user?.id ?? "unknown", err.message);
+      interaction.reply({ content: "❌ Có lỗi xảy ra khi chuyển profile.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  // ── Nút Xác nhận /give ──
+  if (interaction.customId.startsWith("giveconfirm:")) {
+    const giveId = interaction.customId.slice("giveconfirm:".length);
+    const pending = pendingGives.get(giveId);
+    if (!pending) {
+      return interaction.update({ content: "⚠️ Giao dịch đã hết hạn hoặc đã được xử lý.", embeds: [], components: [] }).catch(() => {});
+    }
+    if (interaction.user.id !== pending.senderId) {
+      return interaction.reply({ content: "⚠️ Chỉ người tạo lệnh /give mới được xác nhận.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    pendingGives.delete(giveId);
+    await interaction.deferUpdate();
+    try {
+      const { senderId, targetId, isAdmin, params } = pending;
+      const runGive = () => executeGive({ senderId, targetId, isAdmin, ...params });
+      const changes = await withDoubleLock(senderId, targetId, runGive);
+      await interaction.editReply({
+        content: `✅ <@${senderId}> đã ${isAdmin ? "tặng" : "chuyển"} cho <@${targetId}>:\n` + changes.map(c => `> ${c}`).join("\n"),
+        embeds: [], components: [],
+      });
+    } catch (err) {
+      log("error", "giveconfirm button", interaction.user?.id ?? "unknown", err.message);
+      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`, embeds: [], components: [] }).catch(() => {});
+    }
+    return;
+  }
+
+  // ── Nút Hủy /give ──
+  if (interaction.customId.startsWith("givecancel:")) {
+    const giveId = interaction.customId.slice("givecancel:".length);
+    const pending = pendingGives.get(giveId);
+    if (pending && interaction.user.id !== pending.senderId) {
+      return interaction.reply({ content: "⚠️ Chỉ người tạo lệnh /give mới được hủy.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    pendingGives.delete(giveId);
+    await interaction.update({ content: "❌ Đã hủy giao dịch.", embeds: [], components: [] }).catch(() => {});
+    return;
+  }
+
   // ── Nút parry thời gian thực ──
   if (interaction.customId.startsWith("parryrt_")) {
     const sessionId = interaction.customId.replace("parryrt_", "");
@@ -3079,6 +3344,61 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     log("error", "buttonInteraction", interaction.user?.id ?? "unknown", err.message);
     interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (inventory) ────────────────────────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("invsel:")) return;
+  try {
+    const [, targetUserId] = interaction.customId.split(":");
+    // Chỉ chủ nhân inventory mới được chọn — tránh người khác thao túng select menu
+    // trên 1 message public (dù /inventory hiển thị công khai).
+    if (interaction.user.id !== targetUserId) {
+      return interaction.reply({
+        content: "⚠️ Chỉ chủ nhân inventory này mới có thể chọn.",
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    }
+
+    const value = interaction.values[0]; // "book:Random Book" hoặc "item:Chipboard MK1"
+    const colonIdx = value.indexOf(":");
+    const itemType = value.slice(0, colonIdx);
+    const itemName = value.slice(colonIdx + 1);
+
+    const data = await getPlayerData(targetUserId);
+    const store = itemType === "book" ? (data.books ?? {}) : (data.items ?? {});
+    const currentCount = store[itemName] ?? 0;
+
+    const canOpen = itemType === "book" && ["Random Book", "Sealed Book Cache", "Chipboard Cache"].includes(itemName);
+    const canCraft = itemType === "item" && !!CRAFT_RECIPES[itemName];
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`invinfo:${targetUserId}:${itemType}:${itemName}`)
+        .setLabel("ℹ️ Xem info")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`invact:${targetUserId}:${itemType}:${itemName}`)
+        .setLabel(itemType === "book" ? "📖 Mở" : "⚙️ Craft")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(!canOpen && !canCraft),
+      new ButtonBuilder()
+        .setCustomId(`invdel:${targetUserId}:${itemType}:${itemName}`)
+        .setLabel("🗑️ Xóa 1")
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(currentCount === 0),
+    );
+
+    await interaction.reply({
+      content: `**${itemName}** × ${currentCount}\nChọn hành động:`,
+      components: [row],
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (err) {
+    log("error", "invsel select", interaction.user?.id ?? "unknown", err.message);
+    interaction.reply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu.", flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
 
@@ -3365,22 +3685,23 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    try {
-      // Dùng withDoubleLock nhất quán cho cả admin lẫn non-admin
-      const runGive = () => executeGive({
-        senderId: interaction.user.id,
-        targetId: targetUser.id,
-        isAdmin, ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
-      });
-      const changes = await withDoubleLock(interaction.user.id, targetUser.id, runGive);
-      await interaction.editReply({
-        content: `✅ ${interaction.user} đã ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
-          changes.map(c => `> ${c}`).join("\n"),
-      });
-    } catch (err) {
-      log("error", "/give", interaction.user.id, err.message, { target: targetUser.id });
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}` });
-    }
+    // Thay vì thực hiện ngay, hiển thị preview + nút Xác nhận/Hủy — nhất quán với
+    // prefix -give, tránh chuyển nhầm người/nhầm số lượng.
+    const previewLines = buildGivePreviewLines({ ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget });
+    const giveId = registerPendingGive(interaction.user.id, targetUser.id, isAdmin, {
+      ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
+    });
+    await interaction.editReply({
+      embeds: [{
+        title: "📦 Xác nhận chuyển đồ",
+        description:
+          `${interaction.user} muốn ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
+          previewLines.map(l => `> ${l}`).join("\n"),
+        color: 0xf0a500,
+        footer: { text: "Hết hạn sau 60 giây" },
+      }],
+      components: [buildGiveConfirmRow(giveId)],
+    });
     return;
   }
 
@@ -3490,12 +3811,12 @@ client.on("interactionCreate", async (interaction) => {
     if (sub === "info") {
       if (await replyOnCooldown(interaction, 2000)) return;
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const embed = await buildProfileInfoEmbed(
+      const { embed, components } = await buildProfileInfoEmbed(
         userId,
         interaction.user.displayName ?? interaction.user.username,
-        "Dùng /profile switch để đổi profile"
+        "Bấm nút bên dưới để đổi profile"
       );
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embed], components });
       return;
     }
 
