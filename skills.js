@@ -2711,26 +2711,24 @@ roll(v = "no") {
     cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     needsReuse: true,
     promptArg: {
-      label: "Light hiện tại + Số lần Reuse",
-      // parse nhận cả chuỗi "4 3" → { light: 4, reuse: 3 }
-      parse: (s) => {
-        const parts = s.trim().split(/\s+/);
-        return { light: parseInt(parts[0], 10), reuse: parseInt(parts[1] ?? "0", 10) };
-      },
-      validate: (v) => !isNaN(v.light) && v.light >= 2 && !isNaN(v.reuse) && v.reuse >= 0,
+      label: "Light hiện tại",
+      parse: (s) => parseInt(s.trim(), 10),
+      validate: (v) => !isNaN(v) && v >= 2,
       errorMsg:
-        "❓ **Thrust** cần nhập Light hiện tại và số lần Reuse.\n" +
-        "> Cú pháp: `-skill thrust <light> <số lần reuse>`\n" +
-        "> VD: `-skill thrust 4 2` (có 4 Light, Reuse 2 lần)\n" +
-        "> *Mỗi lần dùng tốn 2 <:Light:1513786082502770719>Light nhận về 1 <:Light:1513786082502770719>Light (net −1). Cần ≥2 Light để Reuse*",
+        "❓ **Thrust** cần nhập số Light hiện tại (tối thiểu 2).\n" +
+        "> Cú pháp: `-skill thrust <light>`\n" +
+        "> VD: `-skill thrust 4` → tự tính được Reuse tối đa\n" +
+        "> *Mỗi lần dùng net −1 <:Light:1513786082502770719>Light. Reuse được khi còn ≥2*",
       buildHeader: (v, s) => {
-        const finalLight = v.light - (v.reuse + 1); // net -1 mỗi lần dùng
-        return v.reuse === 0
-          ? `[Light: ${v.light}→${v.light - 1}] [CD: ${s.cd}] [Dice Mul: ${s.diceMul}]`
-          : `[Reuse: ${v.reuse} lần] [Light: ${v.light}→${finalLight}] [Dice Up lần cuối: +${v.reuse * 5} <:DiceUp:1513767795681398894>] [CD: ${s.cd}]`;
+        const reuseTimes = Math.max(0, v - 2); // light - 2 = số lần reuse tối đa
+        const finalLight = v - (reuseTimes + 1);
+        return reuseTimes === 0
+          ? `[Light: ${v}→${finalLight}] [Không đủ để Reuse] [CD: ${s.cd}]`
+          : `[Reuse: ${reuseTimes} lần] [Light: ${v}→${finalLight}] [Dice Up lần cuối: +${reuseTimes * 5} <:DiceUp:1513767795681398894>] [CD: ${s.cd}]`;
       },
     },
-    roll({ light = 4, reuse: reuseTimes = 0 } = {}) {
+    roll(light = 4) {
+      const reuseTimes = Math.max(0, light - 2); // tự tính từ light
       const DICE_EMOJIS = [D1, D2, D3, D4, D5];
       const getEmoji = (i) => DICE_EMOJIS[Math.min(i, DICE_EMOJIS.length - 1)];
       const L = "<:Light:1513786082502770719>Light";
@@ -2755,7 +2753,7 @@ roll(v = "no") {
         const total = base + diceUp;
         const emoji = getEmoji(i);
         const isLast = i === reuseTimes;
-        curLight = curLight - 2 + 1; // net -1 mỗi lần
+        curLight = curLight - 2 + 1;
 
         lines.push(
           `${emoji} ↩️ **Reuse ${i}** — **${total}** (${base} +${diceUp} ${DU}) ${PIERCE} [Guard Break] — Nhận 1 ${L} *(còn **${curLight}** ${L})*` +
@@ -2764,11 +2762,9 @@ roll(v = "no") {
       }
 
       // ── Tổng kết ─────────────────────────────────────────────────────────────
-      const canReuse = curLight >= 2;
       lines.push(
         `📊 *Light còn lại: **${curLight}** ${L}` +
         (reuseTimes > 0 ? ` | Dice Up lần cuối: **+${reuseTimes * 5}**` : "") +
-        (canReuse ? ` | ✅ Vẫn còn thể Reuse tiếp` : ` | ❌ Không đủ Light để Reuse`) +
         `*`
       );
 
