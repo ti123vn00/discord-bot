@@ -39,6 +39,7 @@ const {
   BUTTERFLY_DEPARTED_MAX,
   GRADE_MAX,
   GRADE_MIN,
+  SKILL_MAX_ROLLS,
 } = require("./constants");
 const POISE_CRIT_BONUS_PER_STACK = 0.05;
 const POISE_RESET_THRESHOLD = 1;
@@ -1966,6 +1967,7 @@ client.on("messageCreate", async (message) => {
         if (s.needsBlackFlash) tags.push("nhập %");
         if (s.needsReuse) tags.push("nhập %reuse");
         if (s.hasDullahanRoll) tags.push("mặc định bản thường, nhập dullahan để ra bản Dullahan");
+        if (s.maxUses) tags.push(`reuse tối đa ${s.maxUses}x`);
         const tagStr = tags.length ? ` *(${tags.join(", ")})*` : "";
         return `\`${num}.\` **${s.name}**${tagStr} — ${s.cost} | CD: ${s.cd} | ${s.diceMul}`;
       });
@@ -1974,13 +1976,30 @@ client.on("messageCreate", async (message) => {
           title: `📖 Danh sách Skill (Trang ${page}/${totalPages})`,
           color: 0x9b59b6,
           description: skillLines.join("\n"),
-          footer: { text: `Tổng ${skillEntries.length} skill | -skill list <trang> để xem trang khác | -skill <tên> để roll` },
+          footer: { text: `Tổng ${skillEntries.length} skill | -skill list <trang> | -skill <tên> [số lần] để roll (VD: -skill durandal 2)` },
         }],
       });
       return;
     }
 
-    const skill = findSkill(input);
+    // -skill <tên> <số lần> — roll skill đó nhiều lần liên tiếp trong 1 lệnh
+    // (VD: -skill durandal 2). CHỈ áp dụng cho skill KHÔNG có promptArg — vì những
+    // skill này (VD: sanguine pointilism) đã dùng số cuối cùng làm % reuse riêng,
+    // không được hiểu lầm thành count. Thử tách trước; nếu tên không khớp hoặc
+    // skill khớp lại có promptArg, fallback dùng input gốc (giữ hành vi cũ).
+    let rollCount = 1;
+    let skill = null;
+    const countMatch = input.match(/^(.+?)\s+(\d+)$/);
+    if (countMatch) {
+      const candidate = findSkill(countMatch[1].trim());
+      if (candidate && !candidate.promptArg) {
+        skill = candidate;
+        rollCount = parseInt(countMatch[2], 10);
+      }
+    }
+    if (!skill) {
+      skill = findSkill(input);
+    }
     if (!skill) {
       message.reply(`❌ Không tìm thấy skill: \`${input}\`\nDùng \`-skill list\` để xem danh sách.`);
       return;
@@ -2008,17 +2027,46 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan) : skill.roll();
+    // Clamp rollCount: ưu tiên skill.maxUses riêng (VD: Mook Workshop = 3, do reuse
+    // chỉ cho phép tối đa 2 lần) nếu có, không thì dùng SKILL_MAX_ROLLS chung.
+    const maxAllowed = skill.maxUses ?? SKILL_MAX_ROLLS;
+    if (rollCount < 1) {
+      message.reply("❌ Số lần roll phải lớn hơn 0.");
+      return;
+    }
+    if (rollCount > maxAllowed) {
+      message.reply(`❌ **${skill.name}** chỉ cho roll tối đa **${maxAllowed}** lần mỗi lệnh.`);
+      return;
+    }
+
     const header = skill.weaponOf
       ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
       : skill.cost !== "—"
         ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
         : `[CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
+
+    // Roll rollCount lần độc lập — mỗi lần dice riêng. Truyền reuseIndex (0 = lần
+    // gốc, 1 = reuse lần 1, 2 = reuse lần 2, ...) thay vì boolean đơn thuần, để skill
+    // nào cần tính hiệu ứng cộng dồn theo số lần reuse (VD: Thrust +5 Dice Up/lần)
+    // có đủ thông tin. Vẫn tương thích ngược với skill cũ dùng `isReuse ? x : y`
+    // (VD: Mook Workshop) vì reuseIndex=0 falsy, ≥1 truthy — hành vi y nguyên.
+    const blocks = [];
+    for (let i = 0; i < rollCount; i++) {
+      const reuseIndex = i;
+      const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan, reuseIndex) : skill.roll(reuseIndex);
+      blocks.push(rollCount > 1 ? `**Lần ${i + 1}:**\n${lines.join("\n")}` : lines.join("\n"));
+    }
+    let description = header + "\n\n" + blocks.join("\n\n");
+    // Embed description giới hạn 4096 ký tự — cắt an toàn nếu roll nhiều lần dồn quá dài.
+    if (description.length > 4090) {
+      description = description.slice(0, 4080) + "\n…(bị cắt bớt, giảm số lần roll để xem đầy đủ)";
+    }
+
     message.reply({
       embeds: [{
-        title: `🎲 ${skill.name}`,
+        title: rollCount > 1 ? `🎲 ${skill.name} ×${rollCount}` : `🎲 ${skill.name}`,
         color: 0x5865f2,
-        description: header + "\n\n" + lines.join("\n"),
+        description,
       }],
     });
     return;
