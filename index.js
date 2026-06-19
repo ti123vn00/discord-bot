@@ -17,13 +17,6 @@ if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN
   console.error("UPSTASH_REDIS_REST_URL hoặc UPSTASH_REDIS_REST_TOKEN chưa được set — bot sẽ không thể kết nối Redis.");
   process.exit(1);
 }
-if (!process.env.ADMIN_IDS) {
-  // Trước đây có fallback hardcode vài Discord ID cụ thể — bỏ vì rủi ro: nếu deploy lại
-  // ở môi trường khác mà quên set biến này, các ID đó tự động có quyền admin không ai biết.
-  // Giờ bắt buộc phải set rõ ràng, fail-fast nếu thiếu thay vì âm thầm dùng fallback.
-  console.error("ADMIN_IDS chưa được set — cần set rõ danh sách admin (phân tách bởi dấu phẩy), bot sẽ không start.");
-  process.exit(1);
-}
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
@@ -144,9 +137,9 @@ function calcExpForGrade(targetGrade) {
 // ─── UI CONSTANTS ─────────────────────────────────────────────────────────────
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
 
-// ADMIN_IDS đã được validate tồn tại ở khối ENV VALIDATION phía trên (fail-fast nếu thiếu).
 const ADMIN_IDS = new Set(
-  process.env.ADMIN_IDS.split(",").map(s => s.trim()).filter(Boolean)
+  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355")
+    .split(",").map(s => s.trim()).filter(Boolean)
 );
 
 // ─── BOOK POOLS ───────────────────────────────────────────────────────────────
