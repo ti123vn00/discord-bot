@@ -39,4 +39,8 @@ module.exports = {
   // /give, /remove, /setplayer (admin): Grade hợp lệ — 1 = MAX (tốt nhất), 9 = MIN
   GRADE_MAX: 1,
   GRADE_MIN: 9,
+
+  // -skill <tên> <số lần>: số lần roll tối đa mỗi lệnh (trừ khi skill tự định nghĩa
+  // maxUses riêng thấp hơn, VD: Mook Workshop chỉ cho reuse tối đa 2 lần → maxUses: 3)
+  SKILL_MAX_ROLLS: 5,
 };
