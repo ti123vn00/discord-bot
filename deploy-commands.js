@@ -13,6 +13,7 @@ const {
   BUTTERFLY_DEPARTED_MAX,
   GRADE_MAX,
   GRADE_MIN,
+  SKILL_MAX_ROLLS,
 } = require("./constants");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -24,6 +25,35 @@ if (!TOKEN || !CLIENT_ID) {
 }
 
 const commands = [
+  // ── /skill ─────────────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName("skill")
+    .setDescription("Roll skill hoặc xem danh sách skill")
+    .addSubcommand(sub =>
+      sub.setName("roll")
+        .setDescription("Roll 1 skill (có thể roll nhiều lần)")
+        .addStringOption(opt =>
+          opt.setName("name").setDescription("Tên skill (VD: Durandal)").setRequired(true))
+        .addIntegerOption(opt =>
+          opt.setName("count")
+            .setDescription(`Số lần roll (tối đa ${SKILL_MAX_ROLLS}, mặc định 1 — 1 số skill có cap riêng thấp hơn)`)
+            .setMinValue(1).setRequired(false))
+        .addStringOption(opt =>
+          opt.setName("arg")
+            .setDescription("Giá trị đặc biệt cho skill cần nhập thêm (VD: Light hiện tại cho Thrust)")
+            .setRequired(false))
+        .addBooleanOption(opt =>
+          opt.setName("dullahan")
+            .setDescription("Roll bản Dullahan thay vì bản thường (chỉ áp dụng cho skill có 2 bản)")
+            .setRequired(false)))
+    .addSubcommand(sub =>
+      sub.setName("list")
+        .setDescription("Xem danh sách skill, có thể tìm theo keyword")
+        .addStringOption(opt =>
+          opt.setName("keyword").setDescription("Lọc skill theo keyword (VD: slash)").setRequired(false))
+        .addIntegerOption(opt =>
+          opt.setName("page").setDescription("Trang muốn xem").setMinValue(1).setRequired(false))),
+
   // ── /math ──────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("math")
