@@ -4132,8 +4132,8 @@ Object.assign(SKILLS, {
       ];
     },
   },
-  "tiantui savage tigerslayer flurry": {
-    name: "Tiantui Star's Blade [天退星刀] — Savage Tigerslayer's Perfected Flurry of Blades [超絕猛虎殺擊亂斬]",
+  "savage tigerslayer flurry": {
+    name: "Savage Tigerslayer's Perfected Flurry of Blades [超絕猛虎殺擊亂斬]",
     weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "2.25x",
     roll() {
