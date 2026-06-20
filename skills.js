@@ -4132,7 +4132,7 @@ Object.assign(SKILLS, {
       return [
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng 5 <:DiceUp:1513767795681398894>Dice Up`,
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [Unparriable] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst. Tiêu toàn bộ Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **Scorch Propellant Round** được xả`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst *(nếu có trên hoặc bằng 15 Stack **Scorch Propellant Round**)*. Tiêu toàn bộ Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **Scorch Propellant Round** được xả`,
       ];
     },
   },
@@ -4152,7 +4152,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(10,15);
       return [
-        `${D1} *Tiêu thụ toàn bộ **Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng*`,
+        `${D1} *Tiêu thụ toàn bộ **Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng. Nếu có trên hoặc bằng 6 **Tigermark Round**: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch`,
       ];
     },
