@@ -4114,7 +4114,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
       await msg.edit({
         embeds: [{
           title: "⚔️ Parry Real Time — Web",
-          description: `<@${session.userId}> đã **bấm sớm quá** trên trang test! ❌\n> *(Đo 100% chính xác — không lẫn latency mạng)*`,
+          description: `<@${session.userId}> đã **bấm sớm quá** trên trang test! ❌`,
           color: 0xe74c3c,
           footer: { text: "Dùng -rtparry web để thử lại" },
         }],
@@ -4133,7 +4133,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
           description:
             `<@${session.userId}> **PARRY THÀNH CÔNG!** ✅\n` +
             `> ⚡ Phản ứng: **${ms}ms** — ${rating}\n` +
-            `> *(Đo 100% chính xác trên trình duyệt — không lẫn latency mạng như bản Discord thường)*`,
+            `> *(Đo 100% chính xác trên trình duyệt — không lẫn latency mạng)*`,
           color: 0x2ecc71,
           footer: { text: "Dùng -rtparry web để thử lại" },
         }],
