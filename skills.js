@@ -4164,7 +4164,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(5,7), d2 = r(5,7), d3 = r(10,13), d4 = r(8,9), d5 = r(5,7), d6 = r(20,21);
       return [
-        `*Điều kiện: dùng ngay sau **Triple Slash Blast [爆]** và có ít nhất 1 **Savage Tigermark Round** trên người*`,
+        `*Điều kiện: dùng ngay sau **Triple Slash Blast [爆]** và có ít nhất 10 **Savage Tigermark Round** trên người*`,
         `${D1} *Tiêu thụ toàn bộ **Savage Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn, 1 <:Tremor:1513762737388257380>Tremor tương ứng vào Dice cuối*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó tiếp tục chém, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
