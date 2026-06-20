@@ -2050,8 +2050,7 @@ client.on("messageCreate", async (message) => {
           embeds: [{
             title: "⚔️ Parry Real Time — Web",
             description:
-              "Bấm nút dưới để mở trang test phản xạ — đo **trực tiếp trên máy bạn**, " +
-              "không lẫn latency mạng như bản trong Discord.\n" +
+              "Bấm nút dưới để mở trang parry — đo **trực tiếp trên máy bạn**, " +
               "> Link chỉ dùng được **1 lần**, hết hạn sau 90 giây.",
             color: 0xf39c12,
             footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi bạn làm xong trên web" },
