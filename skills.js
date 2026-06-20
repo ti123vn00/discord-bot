@@ -1034,8 +1034,8 @@ const SKILLS = {
     roll() {
       const d1 = r(18,27);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] — lao vào địch, gây sát thương cùng 5 <:Tremor:1513762737388257380>Tremor`,
-        `→ Sau đó gây <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] — lao vào địch, gây 4 lần sát thương cùng 5 <:Tremor:1513762737388257380>Tremor mỗi lần (không re-roll)`,
+        `→ Đòn cuối gây <:TremorBurst:1513802464632246352>Tremor Burst`,
       ];
     },
   },
@@ -2167,8 +2167,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(32,43);
       return [
-        `**[<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable]**`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Vung Mimicry theo chiều ngang cắt đôi kẻ địch`,
+        `**[<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] [AOE 4 người]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [AOE 4 người] — Vung Mimicry theo chiều ngang cắt đôi kẻ địch`,
       ];
     },
   },
