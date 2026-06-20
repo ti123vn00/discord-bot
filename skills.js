@@ -50,19 +50,6 @@ const SKILLS = {
       ];
     },
   },
-  "just a vengeance": {
-    name: "Just A Vengeance",
-    cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
-    roll() {
-      const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
-      return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bind:1513768025881317457>Bind`,
-        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [AOE 2 người] — gây 3 <:Paralyze:1513763316479295548>Paralyze`,
-      ];
-    },
-  },
   "extract fuel": {
     name: "Extract Fuel",
     cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
@@ -388,18 +375,6 @@ const SKILLS = {
       ];
     },
   },
-  "excruciating study": {
-    name: "Excruciating Study", cost: "—", cd: "2 Turn", diceMul: "0.5x",
-    roll() {
-      const d1=r(4,7),d2=r(4,7),d3=r(7,10),d4=r(10,13);
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Sinking:1513762793436741652>Sinking`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt]`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt]`,
-        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
-      ];
-    },
-  },
 
   // ── <:Bleed:1513762688226955285>Bleed skills ──
   "sanguine painting": {
@@ -563,27 +538,6 @@ const SKILLS = {
       ];
     },
   },
-  "violent flame": {
-    name: "Violent Flame", cost: "—", cd: "2 Turn", diceMul: "1x",
-    weaponOf: "Liu Martial Arts",
-    roll() {
-      const d1=r(5,8),d2=r(6,16);
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 6 <:Burn:1513762753691652177>Burn`,
-      ];
-    },
-  },
-  "forming storm": {
-    name: "Forming Storm", cost: "—", cd: "2 Turn", diceMul: "1x",
-    weaponOf: "Liu Guan Dao",
-    roll() {
-      const d1=r(12,20);
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Guard Break] [Đánh lan 3 mục tiêu] — gắn 5 <:Burn:1513762753691652177>Burn`,
-      ];
-    },
-  },
 
   // ── <:Poise:1513762945715142736>Poise / <:Bleed:1513762688226955285>Bleed mixed ──
   "extreme edge": {
@@ -627,16 +581,6 @@ const SKILLS = {
           `*(Roll đúng 4 để kích hoạt dạng mạnh)*`,
         ];
       }
-    },
-  },
-  "overbreath": {
-    name: "Overbreath", cost: "—", cd: "2 Turn", diceMul: "1x",
-    weaponOf: "Shi Association Katana",
-    roll() {
-      const d1=r(12,28);
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 6 <:Poise:1513762945715142736>Poise`,
-      ];
     },
   },
 
@@ -705,39 +649,6 @@ const SKILLS = {
   },
 
   // ── Weapon criticals ──
-  "upstanding slash": {
-    name: "Upstanding Slash", cost: "—", cd: "2 Turn", diceMul: "1x",
-    weaponOf: "Mimicry Blade",
-    roll() {
-      const d1=r(6,10),d2=r(9,15);
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế và nhận 1 <:Imitation:1513769425063514173>Imitation`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế và nhận 1 <:Imitation:1513769425063514173>Imitation`,
-      ];
-    },
-  },
-  "great split vertical": {
-    name: "Great Split: Vertical", cost: "5 <:Imitation:1513769425063514173>Imitation", cd: "—", diceMul: "2x",
-    weaponOf: "Mimicry Blade",
-    roll() {
-      const d1=r(15,26);
-      return [
-        `*Tiêu thụ 5 <:Imitation:1513769425063514173>Imitation*`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable]`,
-      ];
-    },
-  },
-  "great split horizontal": {
-    name: "Great Split: Horizontal", cost: "5 <:Imitation:1513769425063514173>Imitation + dưới 30% HP", cd: "—", diceMul: "3x",
-    weaponOf: "Mimicry Blade",
-    roll() {
-      const d1=r(32,43);
-      return [
-        `*Tiêu thụ 5 <:Imitation:1513769425063514173>Imitation | Yêu cầu dưới 30% HP*`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable]`,
-      ];
-    },
-  },
   "dimensional rift dagger": {
     name: "Dimensional Rift", cost: "—", cd: "2 Turn", diceMul: "1x",
     weaponOf: "WARP Corp. Dagger",
@@ -747,28 +658,6 @@ const SKILLS = {
       return [
         `*Tiêu thụ 15 <:Charge:1513762867558613033>Charge nếu đủ → đổi Dice 1 thành [16~24] và gây 6 <:Rupture:1513762812722155682>Rupture*`,
         `<:Dice1:1508173590078558369> **${dNormal}** [<:Pierce:1513768511179329556>Pierce] *(thường)* / **${dCharged}** [<:Pierce:1513768511179329556>Pierce] *(có 15 Charge)* — gây 3 <:Rupture:1513762812722155682>Rupture và nhận 4 <:Charge:1513762867558613033>Charge`,
-      ];
-    },
-  },
-  "dimensional rift gauntlets": {
-    name: "Dimensional Rift", cost: "—", cd: "2 Turn", diceMul: "1x",
-    weaponOf: "WARP Corp. Gauntlets",
-    roll() {
-      const d1=r(12,16);
-      return [
-        `*Khi ≥15 <:Charge:1513762867558613033>Charge: +5 <:DiceUp:1513767795681398894>Dice Up*`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Rupture:1513762812722155682>Rupture và nhận 3 <:Charge:1513762867558613033>Charge`,
-      ];
-    },
-  },
-  "sharp cuts": {
-    name: "Sharp Cuts", cost: "—", cd: "2 Turn", diceMul: "1x",
-    weaponOf: "Blade Lineage Hwando",
-    roll() {
-      const d1=r(4,8),d2=r(4,8);
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
       ];
     },
   },
@@ -1038,7 +927,7 @@ const SKILLS = {
       const d1 = r(5,9), d2 = r(18,26);
       const hasDiceUp = d2 > 20;
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — đá địch lên trời, gây 8 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — đá địch lên trời, gây 14 <:Tremor:1513762737388257380>Tremor`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable] [Undodgeable] — đá xuống, gây <:TremorBurst:1513802464632246352>Tremor Burst`,
         hasDiceUp ? `✨ Trên 20 Tremor: nhận 2 <:DiceUp:1513767795681398894>Dice Up cho 2 Turn kế tiếp` : `*(Cần trên 20 <:Tremor:1513762737388257380>Tremor để nhận <:DiceUp:1513767795681398894>Dice Up)*`,
       ];
