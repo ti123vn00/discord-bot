@@ -4062,6 +4062,106 @@ Object.assign(SKILLS, {
       ];
     },
   },
+
+  // ── Scorch Propellant Round line (Savage Double/Triple Slash, Blasting Shatterslash, Tanglecleaver Flurry) ──
+  "savage double slash": {
+    name: "Savage Double Slash", tags: "Burn/Tremor",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,4), d2 = r(3,5);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **Scorch Propellant Round** sau khi sử dụng`,
+      ];
+    },
+  },
+  "savage triple slash": {
+    name: "Savage Triple Slash", tags: "Burn/Tremor",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(1,5), d2 = r(3,8), d3 = r(3,9);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Gây 2 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn, <:Tremor:1513762737388257380>Tremor và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **Scorch Propellant Round** sau khi sử dụng`,
+      ];
+    },
+  },
+  "blasting shatterslash": {
+    name: "Blasting Shatterslash", tags: "Burn/Tremor",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(4,8), d3 = r(8,11);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Tiêu 1 Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+      ];
+    },
+  },
+  "tanglecleaver flurry": {
+    name: "Tanglecleaver Flurry", tags: "Burn/Tremor",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(5,7), d3 = r(5,5);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [Unparriable] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst. Tiêu toàn bộ Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **Scorch Propellant Round** được xả`,
+      ];
+    },
+  },
+
+  // ── Tiantui Star's Blade [天退星刀] ──
+  "tiantui star's blade": {
+    name: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    weaponType: "Medium", weaponDmg: "14 [<:Slash:1513768633434640517>Slash]",
+    passive: "**Reloading Tiantui Star's Blade** — Khi sử dụng <:Shin:1507591140180754588>Shin và dùng **Tiantui Star's Blade Reload**, bạn nhận được và chuyển hóa toàn bộ **Tigermark Round** hiện có qua **Savage Tigermark Round**",
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "tiantui triple slash blast" hoặc "tiantui savage tigerslayer flurry")*`]; },
+  },
+  "tiantui triple slash blast": {
+    name: "Tiantui Star's Blade [天退星刀] — Triple Slash Blast [爆]",
+    weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1.75x",
+    roll() {
+      const d1 = r(10,15);
+      return [
+        `${D1} *Tiêu thụ toàn bộ **Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch`,
+      ];
+    },
+  },
+  "tiantui savage tigerslayer flurry": {
+    name: "Tiantui Star's Blade [天退星刀] — Savage Tigerslayer's Perfected Flurry of Blades [超絕猛虎殺擊亂斬]",
+    weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "2.25x",
+    roll() {
+      const d1 = r(5,7), d2 = r(5,7), d3 = r(10,13), d4 = r(8,9), d5 = r(5,7), d6 = r(20,21);
+      return [
+        `*Điều kiện: dùng ngay sau **Triple Slash Blast [爆]** và có ít nhất 1 **Savage Tigermark Round** trên người*`,
+        `${D1} *Tiêu thụ toàn bộ **Savage Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn, 1 <:Tremor:1513762737388257380>Tremor tương ứng vào Dice cuối*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó tiếp tục chém, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Vận lực lấy đà lùi phía sau một chút rồi chém ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó bổ dọc xuống, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D5} **${d5}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Rồi vung ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `Dice 6: **${d6}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [AOE 4 người] — Khuỵu gối xuống vận lực, nổ ga lần cuối nữa rồi nhảy bổ lên bổ thanh kiếm xuống kẻ địch, gây 6 <:Tremor:1513762737388257380>Tremor, <:Burn:1513762753691652177>Burn và <:TremorBurst:1513802464632246352>Tremor Burst 2 lần`,
+      ];
+    },
+  },
+  "tanglecleaver reload": {
+    name: "Tanglecleaver Reload",
+    weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,10);
+      return [
+        `*Chỉ sử dụng được khi dùng vũ khí **Tiantui Star's Blade [天退星刀]** và Outfit **The Thumb Capo IIII** (Page này không tốn slot)*`,
+        `${D1} **${d1}** — Nạp **Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra`,
+      ];
+    },
+  },
 });
 
 // ── Aliases mới (thêm vào đây khi có alias mới) ──
