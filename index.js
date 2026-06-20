@@ -2183,12 +2183,17 @@ client.on("messageCreate", async (message) => {
 
           if (session.rounds === 1) {
             activeParrySessions.delete(sessionId);
+            const ping = client.ws.ping;
+            const pingNote = (Number.isFinite(ping) && ping > 100)
+              ? `\n> *(Ping hiện tại: ~${Math.round(ping)}ms — có thể bạn đã bấm kịp nhưng click đến server muộn do mạng)*`
+              : "";
             await sentMsg.edit({
               embeds: [{
                 title: titleFor(session.current),
                 description:
                   `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
-                  `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
+                  `> Cửa sổ parry: **${windowMs}ms** — chậm quá!` +
+                  pingNote,
                 color: 0xe74c3c,
                 footer: { text: "Dùng -rtparry để thử lại" },
               }],
@@ -2197,16 +2202,23 @@ client.on("messageCreate", async (message) => {
             return;
           }
 
-          await sentMsg.edit({
-            embeds: [{
-              title: titleFor(session.current),
-              description:
-                `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
-                `> Cửa sổ parry: **${windowMs}ms** — chậm quá!`,
-              color: 0xe74c3c,
-            }],
-            components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
-          }).catch(() => {});
+          {
+            const ping = client.ws.ping;
+            const pingNote = (Number.isFinite(ping) && ping > 100)
+              ? `\n> *(Ping hiện tại: ~${Math.round(ping)}ms — có thể bạn đã bấm kịp nhưng click đến server muộn do mạng)*`
+              : "";
+            await sentMsg.edit({
+              embeds: [{
+                title: titleFor(session.current),
+                description:
+                  `${message.author} đã **bỏ lỡ** đòn! ❌\n` +
+                  `> Cửa sổ parry: **${windowMs}ms** — chậm quá!` +
+                  pingNote,
+                color: 0xe74c3c,
+              }],
+              components: [buildParryRow(customId, "✗  Bỏ lỡ!", ButtonStyle.Danger, true)],
+            }).catch(() => {});
+          }
 
           await advanceRound();
         }, windowMs + 1);
@@ -3220,7 +3232,14 @@ client.on("interactionCreate", async (interaction) => {
           ? "⚠️ Chỉ người dùng lệnh mới có thể tương tác với phiên parry này!"
           : "⚠️ Phiên parry này đã kết thúc.",
         flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
+      }).catch(err => {
+        // Log lại — nghi vấn case "This interaction failed" trên Discord: user bấm
+        // ĐÚNG LÚC expireTimer vừa xoá session (race condition), reply ephemeral này
+        // lẽ ra phải xử lý sạch, nhưng nếu interaction token đã hết hạn lúc reply tới
+        // (VD: event loop bị nghẽn) thì reply sẽ throw — log lại để biết CHÍNH XÁC lý
+        // do nếu tái diễn, thay vì catch câm như trước.
+        log("error", "parryrt_session_missing", interaction.user?.id ?? "unknown", err.message, { sessionId });
+      });
     }
 
     // Race condition guard — session đã xử lý xong
@@ -3228,7 +3247,9 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({
         content: "⚠️ Phiên parry đã kết thúc.",
         flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
+      }).catch(err => {
+        log("error", "parryrt_already_responded", interaction.user?.id ?? "unknown", err.message, { sessionId });
+      });
     }
 
     const now = Date.now();
@@ -3266,12 +3287,14 @@ client.on("interactionCreate", async (interaction) => {
 
     // ── Bấm trong cửa sổ → PARRY THÀNH CÔNG ────────────────────────────────
     if (session.phase === "window") {
-      // Dùng interaction.createdTimestamp (lúc Discord NHẬN click từ user) thay vì
-      // Date.now() ở trên — Date.now() đã cộng thêm thời gian gateway gửi event tới
-      // bot + thời gian code chạy tới đây, dù nhỏ vẫn là latency không liên quan tới
-      // phản xạ thật. Vẫn KHÔNG loại bỏ được latency edit-message→client thấy (Discord
-      // không expose timestamp đó cho bot) — đây là giới hạn cấu trúc, không phải bug.
-      const reactionMs = Math.max(0, interaction.createdTimestamp - session.windowStart);
+      // QUAN TRỌNG: dùng `now` (Date.now() phía bot) — KHÔNG dùng interaction.createdTimestamp
+      // (giờ của Discord) để trừ với windowStart (cũng Date.now() phía bot). Đã từng đổi sang
+      // createdTimestamp tưởng chính xác hơn, nhưng 2 đầu phép trừ phải CÙNG NGUỒN ĐỒNG HỒ —
+      // trộn giờ bot với giờ Discord tạo ra clock skew, ra kết quả âm (bị Math.max kẹp về 0,
+      // hiện "Phản ứng: 0ms" giả dù ping cao) chứ không phải đo chính xác hơn. Method luôn
+      // chính xác hơn là tự đo trên CÙNG 1 đồng hồ — chấp nhận cộng thêm 1 chút latency xử lý
+      // của bot, còn hơn lệch hẳn do 2 đồng hồ khác nhau.
+      const reactionMs = Math.max(0, now - session.windowStart);
       const rating =
         reactionMs < 100 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
         reactionMs < 200 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
