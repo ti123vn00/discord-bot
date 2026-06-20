@@ -2057,7 +2057,7 @@ client.on("messageCreate", async (message) => {
           }],
           components: [new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setLabel("🔗 Mở test phản xạ")
+              .setLabel("🔗 Mở trang parry")
               .setStyle(ButtonStyle.Link)
               .setURL(`${baseUrl}/rtparry/${token}`)
           )],
