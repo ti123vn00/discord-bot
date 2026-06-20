@@ -2381,8 +2381,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,12), d2 = r(12,18);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Gây 2 <:Sinking:1513762793436741652>Sinking`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Gây 5 <:Sinking:1513762793436741652>Sinking, nhận 1 Coffin. +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi Coffin (Max 10) và +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi <:Sinking:1513762793436741652>Sinking trên địch (Max 8)`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — Gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — Gây 5 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi Coffin (Max 10) và +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi <:Sinking:1513762793436741652>Sinking trên địch (Max 8)`,
       ];
     },
   },
@@ -2392,8 +2392,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,24), d2 = r(24,27);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Gây 1 <:Sinking:1513762793436741652>Sinking, nhận 1 Coffin. +1 <:DiceUp:1513767795681398894>Dice Up/Coffin (Max 10), +1 <:DiceUp:1513767795681398894>Dice Up/<:Sinking:1513762793436741652>Sinking trên địch (Max 8), +3 <:DiceUp:1513767795681398894>Dice Up/Dullahan (Max 9)`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Gây 1 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up/Coffin (Max 10), +1 <:DiceUp:1513767795681398894>Dice Up/<:Sinking:1513762793436741652>Sinking trên địch (Max 8), +3 <:DiceUp:1513767795681398894>Dice Up/Dullahan (Max 9)`,
         `*[Turn End sau khi dùng] mất hết stack Dullahan*`,
       ];
     },
@@ -4134,7 +4134,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(10,15);
       return [
-        `${D1} *Tiêu thụ toàn bộ **Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng. Nếu có trên hoặc bằng 6 **Tigermark Round** thì sẽ <:Fix_TremorBurst:1513802464632246352>Tremor Burst *`,
+        `${D1} *Tiêu thụ toàn bộ **Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch`,
       ];
     },
@@ -4193,6 +4193,19 @@ Object.assign(SKILLS, {
     ].join("\n"),
     cost: "—", cd: "—", diceMul: "—",
     roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "trailing blade")*`]; },
+  },
+
+  // ── Fused Blade of Ruined Mirror Worlds ──
+  // Weapon entry cho passive "Dullahan" — đã được nhiều skill khác (Beheading, Smackdown,
+  // v.v.) tham chiếu qua flavor text "Nếu đang dùng Fused Blade: nhận X Coffin" từ trước,
+  // nhưng chưa từng có entry chính thức. Critical thật (Requiem, Lament Mourn and Despair)
+  // đã tồn tại sẵn — chỉ update thêm tag [Unblockable]/[Undodgeable]/[Guard Break] còn thiếu.
+  "fused blade of ruined mirror worlds": {
+    name: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
+    weaponType: "Heavy", weaponDmg: "28 [<:Slash:1513768633434640517>Slash]",
+    passive: `**Dullahan** — Parry thành công khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan**. Khi có **Dullahan**: nhận 30% Dmg gây ra và nhận thêm 15% Dmg; mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "requiem" hoặc "lament mourn and despair")*`]; },
   },
 });
 
