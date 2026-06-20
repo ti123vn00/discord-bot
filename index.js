@@ -2050,7 +2050,8 @@ client.on("messageCreate", async (message) => {
           embeds: [{
             title: "⚔️ Parry Real Time — Web",
             description:
-              "Bấm nút dưới để mở trang parry — đo **trực tiếp trên máy bạn**, " +
+              "Bấm nút dưới để mở trang test phản xạ — đo **trực tiếp trên máy bạn**, " +
+              "không lẫn latency mạng như bản trong Discord.\n" +
               "> Link chỉ dùng được **1 lần**, hết hạn sau 90 giây.",
             color: 0xf39c12,
             footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi bạn làm xong trên web" },
@@ -3975,7 +3976,7 @@ function renderParryWebPage(token) {
 <title>Parry Real Time — Web Test</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
   #stage {
     height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; padding: 24px; transition: background 0.15s ease; user-select: none;
@@ -3986,9 +3987,9 @@ function renderParryWebPage(token) {
   #stage.go      { background: #27ae60; }
   #stage.early   { background: #8e44ad; }
   #stage.done    { background: #2c2f33; cursor: default; }
-  h1 { font-size: 7vw; max-font-size: 42px; margin: 0 0 12px; }
-  p  { font-size: 4vw; max-width: 480px; opacity: 0.9; }
-  .big { font-size: 12vw; font-weight: 800; margin: 8px 0; }
+  h1 { font-size: clamp(22px, 7vw, 42px); margin: 0 0 12px; }
+  p  { font-size: clamp(15px, 4vw, 20px); max-width: 480px; opacity: 0.9; }
+  .big { font-size: clamp(36px, 12vw, 90px); font-weight: 800; margin: 8px 0; }
   button.start {
     margin-top: 16px; padding: 16px 32px; font-size: 18px; border: none; border-radius: 12px;
     background: #5865f2; color: #fff; cursor: pointer;
