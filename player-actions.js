@@ -33,6 +33,33 @@ module.exports = function createPlayerActions(deps) {
     PROFILE_EMOJIS,
   } = deps;
 
+  // Validate NGAY lúc gọi factory (= lúc index.js load, tức bot startup) — nếu thiếu
+  // hoặc gõ sai tên 1 dependency, destructuring phía trên chỉ cho ra `undefined` âm
+  // thầm, không lỗi gì cả. Lỗi chỉ lộ ra lần ĐẦU TIÊN code path đó thực sự được gọi
+  // (VD: 1 player nào đó dùng /give grade — có thể vài ngày sau mới có ai trigger),
+  // lúc đó stack trace sẽ trỏ vào executeGive/executeRemove/buildProfileInfoEmbed
+  // chứ không trỏ rõ "thiếu dependency gì" — khó debug hơn nhiều so với fail ngay
+  // lúc khởi động với tên dependency thiếu rõ ràng.
+  const requiredFunctions = {
+    getPlayerDataWithSlot, saveMultiplePlayerData, savePlayerData, calcExpForGrade,
+    clampExp, calcGrade, getActiveProfileSlot, getProfileNames, resolveProfileLabel,
+    getVNDateString, playerKeyForSlot, dailyKeyForSlot, withTimeout,
+    unwrapPipelineResults, formatNumber, auditLog,
+  };
+  const missing = Object.entries(requiredFunctions)
+    .filter(([, fn]) => typeof fn !== "function")
+    .map(([name]) => name);
+  if (!redis || typeof redis.pipeline !== "function") missing.push("redis (thiếu hoặc không có .pipeline())");
+  if (typeof EXP_MAX !== "number") missing.push("EXP_MAX (phải là number)");
+  if (typeof MAX_PROFILES !== "number") missing.push("MAX_PROFILES (phải là number)");
+  if (!PROFILE_EMOJIS || typeof PROFILE_EMOJIS !== "object") missing.push("PROFILE_EMOJIS (phải là object)");
+  if (missing.length > 0) {
+    throw new Error(
+      `createPlayerActions() thiếu/sai dependency: ${missing.join(", ")}. ` +
+      `Check lại object truyền vào require("./player-actions")({...}) trong index.js.`
+    );
+  }
+
   /**
    * executeGive — logic chung cho cả prefix -give và slash /give
    * @param {object} opts
