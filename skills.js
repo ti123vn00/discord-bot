@@ -6,6 +6,11 @@ const D2 = "<:Dice2:1508173623691710625>";
 const D3 = "<:Dice3:1508173643518050395>";
 const D4 = "<:Dice4:1508176464367845600>";
 const D5 = "<:Dice5:1508176500438990968>";
+const D6 = "<:Dice6:1517712655106838638>";
+const D7 = "<:Dice7:1517712721796403272>";
+const D8 = "<:Dice8:1517712757053591642>";
+const D9 = "<:Dice9:1517712785612603462>";
+const D10 = "<:Dice10:1517712814314225704>";
 
 // ─── EMOTION COIN TRACKING ──────────────────────────────────────────────────
 // Cơ chế game: roll ra đúng MAX của dice → +1 Emotion Coin; roll ra đúng MIN → -1.
@@ -358,10 +363,10 @@ const SKILLS = {
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 2 <:Tremor:1513762737388257380>Tremor`,
         `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture`,
         `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `Dice 6: **${d6}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:TremorBurst:1513802464632246352>Tremor Burst`,
-        `Dice 7: **${d7}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 <:Tremor:1513762737388257380>Tremor`,
-        `Dice 8: **${d8}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
-        `Dice 9: **${d9}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture *trước* khi gây Dmg`,
+        `${D6} **${d6}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D7} **${d7}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 <:Tremor:1513762737388257380>Tremor`,
+        `${D8} **${d8}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `${D9} **${d9}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture *trước* khi gây Dmg`,
       ];
     },
   },
@@ -969,7 +974,7 @@ const SKILLS = {
       const d1 = r(5,9), d2 = r(18,26);
       const hasDiceUp = d2 > 20;
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — đá địch lên trời, gây 14 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — đá địch lên trời, gây 8 <:Tremor:1513762737388257380>Tremor`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable] [Undodgeable] — đá xuống, gây <:TremorBurst:1513802464632246352>Tremor Burst`,
         hasDiceUp ? `✨ Trên 20 Tremor: nhận 2 <:DiceUp:1513767795681398894>Dice Up cho 2 Turn kế tiếp` : `*(Cần trên 20 <:Tremor:1513762737388257380>Tremor để nhận <:DiceUp:1513767795681398894>Dice Up)*`,
       ];
@@ -4120,8 +4125,8 @@ Object.assign(SKILLS, {
     cost: "—", cd: "—", diceMul: "—",
     roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "tiantui triple slash blast" hoặc "tiantui savage tigerslayer flurry")*`]; },
   },
-  "tiantui triple slash blast": {
-    name: "Tiantui Star's Blade [天退星刀] — Triple Slash Blast [爆]",
+  "triple slash blast": {
+    name: "Triple Slash Blast [爆]",
     weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "1.75x",
     roll() {
@@ -4146,7 +4151,7 @@ Object.assign(SKILLS, {
         `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Vận lực lấy đà lùi phía sau một chút rồi chém ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
         `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó bổ dọc xuống, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
         `${D5} **${d5}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Rồi vung ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
-        `Dice 6: **${d6}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [AOE 4 người] — Khuỵu gối xuống vận lực, nổ ga lần cuối nữa rồi nhảy bổ lên bổ thanh kiếm xuống kẻ địch, gây 6 <:Tremor:1513762737388257380>Tremor, <:Burn:1513762753691652177>Burn và <:TremorBurst:1513802464632246352>Tremor Burst 2 lần`,
+        `${D6} **${d6}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [AOE 4 người] — Khuỵu gối xuống vận lực, nổ ga lần cuối nữa rồi nhảy bổ lên bổ thanh kiếm xuống kẻ địch, gây 6 <:Tremor:1513762737388257380>Tremor, <:Burn:1513762753691652177>Burn và <:TremorBurst:1513802464632246352>Tremor Burst 2 lần`,
       ];
     },
   },
