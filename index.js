@@ -1,9 +1,11 @@
 // index.js
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require("discord.js");
 const express = require("express");
+const crypto = require("crypto");
 const { Redis } = require("@upstash/redis");
 
 const app = express();
+app.use(express.json()); // cần cho POST /rtparry/:token/result nhận JSON body
 
 // ─── ENV VALIDATION ───────────────────────────────────────────────────────────
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -60,6 +62,27 @@ const parrySessionCleanupTimer = setInterval(() => {
   for (const [id, s] of activeParrySessions)
     if ((s.lastActivityAt ?? s.createdAt) < cutoff) activeParrySessions.delete(id);
 }, 30_000);
+
+// ─── REAL-TIME PARRY (WEB — đo chính xác 100%, không lẫn latency Discord) ────
+// `-rtparry web` mở 1 link ra trang test phản xạ độc lập (route Express bên dưới),
+// performance.now() chạy NGAY trên máy user — không qua round-trip Discord nào lúc
+// đo, nên không có vấn đề clock-skew/latency như bản message-edit thông thường.
+// Map<token, session> — token sống NGẮN (chỉ vài chục giây) nên dùng RAM, không cần
+// Upstash: nếu bot restart giữa lúc user đang làm test thì coi như hỏng phiên, chấp
+// nhận được vì tỉ lệ xảy ra cực thấp và đây chỉ là minigame, không phải economy.
+const webParrySessions = new Map();
+const WEB_PARRY_TTL_MS = 90_000; // đủ thời gian user mở tab, đọc hướng dẫn, rồi mới bấm
+const webParrySessionCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [token, s] of webParrySessions)
+    if (s.expiresAt < now) webParrySessions.delete(token);
+}, 30_000);
+
+/** Lấy base URL public của bot — Render tự set RENDER_EXTERNAL_URL, fallback PUBLIC_URL
+ *  cho môi trường khác (VD: chạy local hoặc host khác không tự set biến này). */
+function getPublicBaseUrl() {
+  return process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || null;
+}
 
 /** Tạo ActionRow với 1 nút parry duy nhất */
 function buildParryRow(customId, label, style, disabled) {
@@ -138,7 +161,7 @@ function calcExpForGrade(targetGrade) {
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
 
 const ADMIN_IDS = new Set(
-  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355,1405147450498486332")
+  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355")
     .split(",").map(s => s.trim()).filter(Boolean)
 );
 
@@ -2005,11 +2028,59 @@ client.on("messageCreate", async (message) => {
   // ── -rtparry  (Parry thời gian thực, hỗ trợ nhiều lần liên tiếp) ───────────
   if (message.content.startsWith("-rtparry")) {
     const argStr = message.content.replace("-rtparry", "").trim();
+
+    // ── -rtparry web — đo phản xạ chính xác 100% qua trang web riêng ──────────
+    if (argStr.toLowerCase() === "web") {
+      if (isOnCooldown(message.author.id, "parryrt_web", 5000)) {
+        message.reply("⏳ Chờ vài giây trước khi thử lại nhé.");
+        return;
+      }
+      const baseUrl = getPublicBaseUrl();
+      if (!baseUrl) {
+        message.reply(
+          "⚠️ Bot chưa biết URL public của mình (thiếu env var `RENDER_EXTERNAL_URL` hoặc `PUBLIC_URL`).\n" +
+          "> Báo admin set 1 trong 2 biến này thì `-rtparry web` mới hoạt động được."
+        );
+        return;
+      }
+      const token = crypto.randomBytes(16).toString("hex");
+      let sentMsg;
+      try {
+        sentMsg = await message.reply({
+          embeds: [{
+            title: "⚔️ Parry Real Time — Web",
+            description:
+              "Bấm nút dưới để mở trang test phản xạ — đo **trực tiếp trên máy bạn**, " +
+              "không lẫn latency mạng như bản trong Discord.\n" +
+              "> Link chỉ dùng được **1 lần**, hết hạn sau 90 giây.",
+            color: 0xf39c12,
+            footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi bạn làm xong trên web" },
+          }],
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setLabel("🔗 Mở test phản xạ")
+              .setStyle(ButtonStyle.Link)
+              .setURL(`${baseUrl}/rtparry/${token}`)
+          )],
+        });
+      } catch (err) {
+        log("error", "parryrt_web", message.author.id, err.message);
+        return;
+      }
+      webParrySessions.set(token, {
+        userId: message.author.id,
+        channelId: message.channel.id,
+        messageId: sentMsg.id,
+        expiresAt: Date.now() + WEB_PARRY_TTL_MS,
+      });
+      return;
+    }
+
     let rounds = 1;
     if (argStr) {
       const n = parseInt(argStr, 10);
       if (!Number.isInteger(n) || n < 1 || n > 20) {
-        message.reply("⚠️ Số lần parry phải là số nguyên từ **1** đến **20**.\n> VD: `-rtparry` hoặc `-rtparry 10`");
+        message.reply("⚠️ Số lần parry phải là số nguyên từ **1** đến **20**.\n> VD: `-rtparry` hoặc `-rtparry 10` hoặc `-rtparry web`");
         return;
       }
       rounds = n;
@@ -3892,8 +3963,193 @@ client.on("interactionCreate", async (interaction) => {
 
 client.login(TOKEN);
 
+// ─── RTPARRY WEB PAGE ───────────────────────────────────────────────────────
+/** Render trang test phản xạ — HTML/CSS/JS thuần, không phụ thuộc gì bên ngoài.
+ *  performance.now() chạy hoàn toàn trên máy user, không qua round-trip server
+ *  lúc đo — đây là điểm khác biệt cốt lõi so với bản -rtparry trong Discord. */
+function renderParryWebPage(token) {
+  return `<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Parry Real Time — Web Test</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #stage {
+    height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; transition: background 0.15s ease; user-select: none;
+    background: #2c2f33; color: #fff; cursor: pointer;
+  }
+  #stage.idle    { background: #2c2f33; }
+  #stage.waiting { background: #c0392b; }
+  #stage.go      { background: #27ae60; }
+  #stage.early   { background: #8e44ad; }
+  #stage.done    { background: #2c2f33; cursor: default; }
+  h1 { font-size: 7vw; max-font-size: 42px; margin: 0 0 12px; }
+  p  { font-size: 4vw; max-width: 480px; opacity: 0.9; }
+  .big { font-size: 12vw; font-weight: 800; margin: 8px 0; }
+  button.start {
+    margin-top: 16px; padding: 16px 32px; font-size: 18px; border: none; border-radius: 12px;
+    background: #5865f2; color: #fff; cursor: pointer;
+  }
+  .footer { position: fixed; bottom: 12px; font-size: 12px; opacity: 0.5; }
+</style>
+</head>
+<body>
+<div id="stage" class="idle">
+  <h1>⚔️ Parry Real Time — Web</h1>
+  <p>Đo phản xạ trực tiếp trên máy bạn — không lẫn latency mạng.<br>Bấm "Bắt đầu", chờ màn hình chuyển <b>XANH</b>, rồi bấm/chạm NGAY.</p>
+  <button class="start" id="startBtn">Bắt đầu</button>
+</div>
+<div class="footer">Token: ${token.slice(0, 8)}… · Kết quả sẽ tự gửi vào Discord</div>
+<script>
+const TOKEN = ${JSON.stringify(token)};
+const stage = document.getElementById("stage");
+const startBtn = document.getElementById("startBtn");
+let phase = "idle"; // idle | waiting | go | done
+let t0 = null;
+let timer = null;
+
+function setPhase(p, html) {
+  phase = p;
+  stage.className = p;
+  stage.innerHTML = html;
+}
+
+function startRound() {
+  setPhase("waiting", "<h1>Chờ…</h1><p>ĐỪNG bấm vội — chờ màn hình chuyển XANH</p>");
+  const delay = 1200 + Math.random() * 2800; // 1.2s~4s, random để không đoán được nhịp
+  timer = setTimeout(() => {
+    t0 = performance.now();
+    setPhase("go", "<div class='big'>BẤM NGAY!</div>");
+  }, delay);
+}
+
+async function submitResult(reactionMs, early) {
+  setPhase("done", "<h1>⏳ Đang gửi kết quả…</h1>");
+  try {
+    const res = await fetch("/rtparry/" + TOKEN + "/result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reactionMs, early }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setPhase("done",
+        early
+          ? "<h1>❌ Bấm sớm quá!</h1><p>Kết quả đã gửi vào Discord. Có thể đóng tab này.</p>"
+          : "<h1>✅ " + Math.round(reactionMs) + "ms</h1><p>Kết quả đã gửi vào Discord. Có thể đóng tab này.</p>"
+      );
+    } else {
+      setPhase("done", "<h1>⚠️ " + (data.error || "Có lỗi xảy ra") + "</h1><p>Link có thể đã hết hạn — quay lại Discord dùng <code>-rtparry web</code> lại.</p>");
+    }
+  } catch (e) {
+    setPhase("done", "<h1>⚠️ Lỗi kết nối</h1><p>Không gửi được kết quả — kiểm tra mạng rồi thử lại.</p>");
+  }
+}
+
+startBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  startRound();
+});
+
+stage.addEventListener("click", () => {
+  if (phase === "waiting") {
+    // Bấm sớm — clear timer, KHÔNG tốn lượt gửi server, cho thử lại ngay tại chỗ.
+    clearTimeout(timer);
+    setPhase("early", "<h1>❌ Sớm quá!</h1><p>Đang thử lại…</p>");
+    setTimeout(startRound, 1200);
+  } else if (phase === "go") {
+    const reactionMs = performance.now() - t0;
+    submitResult(reactionMs, false);
+  }
+});
+</script>
+</body>
+</html>`;
+}
+
+
 // ─── EXPRESS SERVER ────────────────────────────────────────────────────────────
 app.get("/", (req, res) => botReady ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
+
+// GET /rtparry/:token — serve trang test phản xạ (chỉ nếu token còn hợp lệ).
+app.get("/rtparry/:token", (req, res) => {
+  const session = webParrySessions.get(req.params.token);
+  if (!session || session.expiresAt < Date.now()) {
+    return res.status(404).send(
+      "<!DOCTYPE html><html><body style='font-family:sans-serif;text-align:center;padding:40px;background:#2c2f33;color:#fff'>" +
+      "<h2>⚠️ Link đã hết hạn hoặc không hợp lệ</h2><p>Quay lại Discord và dùng <code>-rtparry web</code> để lấy link mới.</p>" +
+      "</body></html>"
+    );
+  }
+  res.send(renderParryWebPage(req.params.token));
+});
+
+// POST /rtparry/:token/result — nhận kết quả đo được TỪ TRÌNH DUYỆT user (đã tính
+// xong reactionMs bằng performance.now() phía client), rồi edit lại message Discord
+// gốc với kết quả thật, không lẫn latency.
+app.post("/rtparry/:token/result", async (req, res) => {
+  const session = webParrySessions.get(req.params.token);
+  if (!session || session.expiresAt < Date.now()) {
+    return res.status(404).json({ ok: false, error: "Link đã hết hạn hoặc đã được dùng." });
+  }
+  webParrySessions.delete(req.params.token); // single-use — dùng 1 lần là xoá ngay
+
+  const { reactionMs, early } = req.body ?? {};
+  // Validate input — đây là endpoint public, ai có token cũ (đã hết hạn nhưng đoán
+  // được) hoặc tự curl cũng gọi được, nên không tin tưởng giá trị gửi lên vô điều
+  // kiện. reactionMs hợp lệ phải là number, không âm, không vô lý lớn (>10s là bug
+  // phía client hoặc cố tình gửi rác, không phải phản xạ thật).
+  const isValidMs = typeof reactionMs === "number" && Number.isFinite(reactionMs) && reactionMs >= 0 && reactionMs < 10_000;
+  if (!early && !isValidMs) {
+    return res.status(400).json({ ok: false, error: "Dữ liệu không hợp lệ." });
+  }
+
+  try {
+    const channel = await client.channels.fetch(session.channelId);
+    const msg = await channel.messages.fetch(session.messageId);
+    if (early) {
+      await msg.edit({
+        embeds: [{
+          title: "⚔️ Parry Real Time — Web",
+          description: `<@${session.userId}> đã **bấm sớm quá** trên trang test! ❌\n> *(Đo 100% chính xác — không lẫn latency mạng)*`,
+          color: 0xe74c3c,
+          footer: { text: "Dùng -rtparry web để thử lại" },
+        }],
+        components: [],
+      });
+    } else {
+      const ms = Math.round(reactionMs);
+      const rating =
+        ms < 100 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
+        ms < 200 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
+        ms < 300 ? "✅ **GOOD!** Phản ứng tốt!"          :
+                   "😅 **NOT BAD!** Vừa kịp!";
+      await msg.edit({
+        embeds: [{
+          title: "⚔️ Parry Real Time — Web",
+          description:
+            `<@${session.userId}> **PARRY THÀNH CÔNG!** ✅\n` +
+            `> ⚡ Phản ứng: **${ms}ms** — ${rating}\n` +
+            `> *(Đo 100% chính xác trên trình duyệt — không lẫn latency mạng như bản Discord thường)*`,
+          color: 0x2ecc71,
+          footer: { text: "Dùng -rtparry web để thử lại" },
+        }],
+        components: [],
+      });
+    }
+  } catch (err) {
+    log("error", "parryrt_web_result", session.userId, err.message);
+    // Vẫn trả ok cho client — họ đã đo xong, lỗi edit message Discord không phải
+    // lỗi của họ, không cần báo lỗi lên trang web.
+  }
+
+  res.json({ ok: true });
+});
+
 app.use((req, res) => res.status(404).send("Not found."));
 app.use((err, req, res, next) => { console.error("[Express error]", err); res.status(500).send("Internal server error."); });
 
