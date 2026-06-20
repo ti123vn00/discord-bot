@@ -2815,14 +2815,16 @@ roll(v = "no") {
     },
   },
   "trailing blade": {
-    name: "Trailing Blade", weaponOf: "Ages of Harvest", tags: "Weapon",
+    // Bản cập nhật mới nhất theo spec người dùng cung cấp — đè lên bản cũ (cũ chỉ có
+    // flavor "cắt mọi thứ"/"tiếp tục xoay", không có hiệu ứng Poise/Spectro Frazzle).
+    name: "Trailing Blade", weaponOf: "Ages of Harvest [Peach Blossom]", tags: "Weapon",
     cost: "—", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,10), d2 = r(3,12), d3 = r(8,11);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Điều khiển kiếm xoay vòng quanh bản thân, cắt mọi thứ`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Điều khiển thanh kiếm xoay một vòng tròn xung quanh bản thân, cắt mọi thứ, nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay, nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay, nhận 3 <:Poise:1513762945715142736>Poise và gây 2 **Spectro Frazzle**`,
       ];
     },
   },
@@ -4166,6 +4168,31 @@ Object.assign(SKILLS, {
         `${D1} **${d1}** — Nạp **Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra`,
       ];
     },
+  },
+
+  // ── Serum K (Singularity) ──
+  "serum k": {
+    name: "Serum K", tags: "Singularity",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,16);
+      const heal = d1 * 2 + 25;
+      return [
+        `${D1} **${d1}** — Hồi phục **${heal} HP** (= số dice × 2 + 25) và giải 3 Debuff bất kỳ của bản thân`,
+      ];
+    },
+  },
+
+  // ── Ages of Harvest [Peach Blossom] ──
+  "ages of harvest": {
+    name: "Ages of Harvest [Peach Blossom]", tags: "Weapon",
+    weaponType: "Light", weaponDmg: "1.7 [<:Slash:1513768633434640517>Slash]",
+    passive: [
+      `**Phi kiếm** — Đòn đánh thường chỉ tốn 1 Stamina thay vì 5 *(cần đánh thường trúng 20 lần để được 1 <:Light:1513786082502770719>Light)*`,
+      `**Divine Blessing** — Khi sử dụng kỹ năng từ Tacet Mark, đòn khạc luôn gây 1x Res lên kẻ địch nếu nó đang dưới 1x Res`,
+    ].join("\n"),
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "trailing blade")*`]; },
   },
 });
 
