@@ -2032,7 +2032,7 @@ client.on("messageCreate", async (message) => {
     // ID phiên duy nhất — dùng làm customId nút để tra lại session khi click vào button
     const sessionId = `${message.author.id}_${Date.now()}`;
     const customId  = `parryrt_${sessionId}`;
-    const windowMs  = 550;
+    const windowMs  = 400;
 
     // ── Gửi tin nhắn ban đầu ──
     let sentMsg;
@@ -3266,7 +3266,12 @@ client.on("interactionCreate", async (interaction) => {
 
     // ── Bấm trong cửa sổ → PARRY THÀNH CÔNG ────────────────────────────────
     if (session.phase === "window") {
-      const reactionMs = now - session.windowStart;
+      // Dùng interaction.createdTimestamp (lúc Discord NHẬN click từ user) thay vì
+      // Date.now() ở trên — Date.now() đã cộng thêm thời gian gateway gửi event tới
+      // bot + thời gian code chạy tới đây, dù nhỏ vẫn là latency không liên quan tới
+      // phản xạ thật. Vẫn KHÔNG loại bỏ được latency edit-message→client thấy (Discord
+      // không expose timestamp đó cho bot) — đây là giới hạn cấu trúc, không phải bug.
+      const reactionMs = Math.max(0, interaction.createdTimestamp - session.windowStart);
       const rating =
         reactionMs < 100 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
         reactionMs < 200 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
@@ -3275,13 +3280,22 @@ client.on("interactionCreate", async (interaction) => {
 
       session.results.push({ success: true, reactionMs });
 
+      // Disclaimer ping — chỉ hiện khi ping đáng kể, để người chơi hiểu số ms này có
+      // gồm cả latency mạng, không phải phản xạ thuần. ws.ping có thể là NaN lúc mới
+      // start (chưa có heartbeat nào) — fallback bỏ qua disclaimer trong case đó.
+      const ping = client.ws.ping;
+      const pingNote = (Number.isFinite(ping) && ping > 100)
+        ? `\n> *(Ping hiện tại: ~${Math.round(ping)}ms — số trên gồm cả latency mạng, không chỉ phản xạ thuần)*`
+        : "";
+
       await interaction.update({
         embeds: [{
           title,
           description:
             `${interaction.user} **PARRY THÀNH CÔNG!** ✅\n` +
             `> ⚡ Phản ứng: **${reactionMs}ms** — ${rating}\n` +
-            `> Cửa sổ parry: **${session.windowMs}ms**`,
+            `> Cửa sổ parry: **${session.windowMs}ms**` +
+            pingNote,
           color: 0x2ecc71,
           footer: { text: "Dùng -rtparry để thử lại" },
         }],
