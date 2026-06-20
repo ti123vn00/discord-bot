@@ -1599,7 +1599,7 @@ function formatEmotionSummary(tracked) {
 
 // Khớp dòng dice bằng emoji <:Dice1:...> đến <:Dice5:...> ở ĐẦU dòng — không phụ thuộc
 // việc skill dùng biến D1..D5 hay hardcode literal, vì cả 2 đều match cùng pattern.
-const DICE_LINE_RE = /^<:Dice([1-5]):\d+>/;
+const DICE_LINE_RE = /^<:Dice(10|[1-9]):\d+>/;
 
 /**
  * annotateLinesWithEmotion — gắn "<:EmotionCoin:...> +1/-1" NGAY CUỐI từng dòng dice
@@ -2032,7 +2032,7 @@ client.on("messageCreate", async (message) => {
     // ID phiên duy nhất — dùng làm customId nút để tra lại session khi click vào button
     const sessionId = `${message.author.id}_${Date.now()}`;
     const customId  = `parryrt_${sessionId}`;
-    const windowMs  = 550;
+    const windowMs  = 400;
 
     // ── Gửi tin nhắn ban đầu ──
     let sentMsg;
