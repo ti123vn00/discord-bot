@@ -613,19 +613,20 @@ const SKILLS = {
     },
   },
   "boundary of death": {
-    name: "Boundary of Death", cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    name: "Boundary of Death", tags: "Poise",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const roll4 = r(1,4);
       if (roll4 === 4) {
         const dmg = r(47,57);
         return [
-          `🎯 Roll: **4** → Dice chuyển thành **[47~57]**!`,
-          `**${dmg}** True Damage — nhận lại 4 <:Light:1513786082502770719>Light`,
+          `*Page độc quyền của **Shi Association** — chỉ sử dụng được khi dùng Outfit **Shi Association** và đang ở trong **Shi Association***`,
+          `${D1} **${roll4}→${dmg}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] — Roll đúng 4: đổi dice thành **[47~57]**, gây **${dmg} True Damage** và nhận lại 4 <:Light:1513786082502770719>Light`,
         ];
       } else {
         return [
-          `Roll: **${roll4}** → **${roll4}** True Damage`,
-          `*(Roll đúng 4 để kích hoạt dạng mạnh)*`,
+          `*Page độc quyền của **Shi Association** — chỉ sử dụng được khi dùng Outfit **Shi Association** và đang ở trong **Shi Association***`,
+          `${D1} **${roll4}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] — Gây **${roll4} True Damage** *(Roll đúng 4 để kích hoạt dạng mạnh: đổi dice thành [47~57])*`,
         ];
       }
     },
@@ -2080,6 +2081,23 @@ roll(v = "no") {
       ];
     },
   },
+  // Alias "ds"/"degradedshockwave" đã có sẵn từ trước nhưng key này chưa tồn tại —
+  // trước đây bị fuzzy-match nhầm sang "degraded fairy". Giờ điền đúng skill thật.
+  "degraded shockwave": {
+    name: "Degraded Shockwave",
+    tags: "Fairy <:Fairy:1513782007602216960>",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "0.66x",
+    roll() {
+      const d1 = r(5,10), d2 = r(10,20), d3 = r(15,30);
+      return [
+        `**[<:Blunt:1513768529718022254>Blunt] [AOE] [Uncancellable] [Guard Break]**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Giật điện, gây 6 <:Tremor:1513762737388257380>Tremor`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Giật điện, gây 6 <:Tremor:1513762737388257380>Tremor`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — Giật điện, gây 6 <:Tremor:1513762737388257380>Tremor, sau đó gây <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D3} *Nếu trước khi gây <:TremorBurst:1513802464632246352>Tremor Burst, kẻ địch có trên 10 <:Tremor:1513762737388257380>Tremor: gắn 6 <:Fairy:1513782007602216960>Fairy và gây 4 <:DiceDown:1513767826257874964>Dice Down cho kẻ địch*`,
+      ];
+    },
+  },
 
   // ══════════════ Weapon Criticals ══════════════
   "patrolling": {
@@ -3490,7 +3508,7 @@ roll(v = "no") {
 // Khai báo trước toàn bộ Object.assign bên dưới — nếu SKILL_ALIASES chưa tồn tại
 // thì Object.assign sẽ throw ReferenceError. Không được dời hay split block này.
 const SKILL_ALIASES = {
-  "fare thee well": "fare-thee well",
+  "faretheewell": "fare-thee well",
   "fareewell": "fare-thee well",
   "farewell": "fare-thee well",
   "justagvengeance": "just a vengeance",
@@ -4160,12 +4178,12 @@ Object.assign(SKILLS, {
   "tanglecleaver reload": {
     name: "Tanglecleaver Reload",
     weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,10);
       return [
         `*Chỉ sử dụng được khi dùng vũ khí **Tiantui Star's Blade [天退星刀]** và Outfit **The Thumb Capo IIII** (Page này không tốn slot)*`,
-        `${D1} **${d1}** — Nạp **Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra`,
+        `${D1} **${d1}** — Ngắt một đòn của kẻ địch thông qua \`-rtparry\`, sau đó nạp **Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra *(nếu \`-rtparry\` thất bại thì vẫn nạp đạn được)*`,
       ];
     },
   },
