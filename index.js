@@ -397,6 +397,23 @@ function log(level, command, userId, msg, extra = {}) {
   }
 }
 
+// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
+// Ghi log riêng cho hành động ADMIN-ONLY thành công (set grade, cộng/trừ exp/ahn của
+// người khác, setplayer, v.v.) — khác với log("error", ...) chỉ ghi khi có lỗi.
+// Mục đích: có trail truy vết nếu sau này có tranh chấp ("admin X có thật sự set grade
+// cho user Y hay không, lúc nào, giá trị gì"). Luôn console.log (không phải console.error)
+// vì đây không phải lỗi — chỉ là việc cần ghi nhận lại.
+function auditLog(action, actorId, targetId, details = {}) {
+  console.log(JSON.stringify({
+    ts: new Date().toISOString(),
+    level: "audit",
+    action,
+    actorId,
+    targetId,
+    ...details,
+  }));
+}
+
 // ─── REDIS TIMEOUT ────────────────────────────────────────────────────────────
 const REDIS_TIMEOUT_MS = 8000;
 
@@ -600,87 +617,7 @@ function dailyKeyForSlot(userId, slot) {
   return slot === 1 ? `daily:${userId}` : `daily:${userId}:slot${slot}`;
 }
 
-/**
- * buildProfileInfoEmbed — logic chung cho cả prefix `-profile info` và slash `/profile info`.
- * Lấy dữ liệu của tất cả MAX_PROFILES profile (qua 1 pipeline) và build embed tổng quan.
- * @param {string} userId
- * @param {string} displayName — tên hiển thị của user (displayName ?? username)
- * @param {string} footerText  — text gợi ý lệnh đổi profile, khác nhau giữa prefix/slash
- * @returns {Promise<{embed: object, components: ActionRowBuilder[]}>} embed + nút chuyển profile
- */
-async function buildProfileInfoEmbed(userId, displayName, footerText) {
-  const currentSlot = await getActiveProfileSlot(userId);
-
-  // Lấy tất cả dữ liệu MAX_PROFILES profile trong 1 pipeline thay vì N lần gọi tuần tự
-  const pipe = redis.pipeline();
-  for (let s = 1; s <= MAX_PROFILES; s++) {
-    pipe.get(playerKeyForSlot(userId, s));
-    pipe.get(dailyKeyForSlot(userId, s));
-  }
-  const [pipeResults, profileNames] = await Promise.all([
-    withTimeout(pipe.exec()).then(unwrapPipelineResults),
-    getProfileNames(userId),
-  ]);
-  // pipeResults layout: [player1, daily1, player2, daily2, ...]
-
-  const today = getVNDateString();
-  const lines = [];
-  for (let s = 1; s <= MAX_PROFILES; s++) {
-    const label = resolveProfileLabel(profileNames, s);
-    try {
-      const rawPlayer = pipeResults[(s - 1) * 2];
-      const rawDaily  = pipeResults[(s - 1) * 2 + 1];
-      const d  = rawPlayer ? (typeof rawPlayer === "string" ? JSON.parse(rawPlayer) : rawPlayer) : null;
-      const dd = rawDaily  ? (typeof rawDaily  === "string" ? JSON.parse(rawDaily)  : rawDaily)  : null;
-      const claimedToday = dd && dd.lastClaim === today;
-      const streak = dd ? (dd.streak ?? 0) : 0;
-      if (d) {
-        const { grade } = calcGrade(d.exp ?? 0);
-        lines.push(
-          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${label}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-          `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()}\n` +
-          `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
-        );
-      } else {
-        lines.push(
-          `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${label}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-          `> *(chưa có dữ liệu)*`
-        );
-      }
-    } catch (e) {
-      lines.push(`${PROFILE_EMOJIS[s]} **${label}**: *(lỗi: ${e.message})*`);
-    }
-  }
-
-  // Nút chuyển profile — disable nút của slot đang dùng để tránh switch vào chính nó.
-  const switchButtons = [];
-  for (let s = 1; s <= MAX_PROFILES; s++) {
-    const label = resolveProfileLabel(profileNames, s);
-    switchButtons.push(
-      new ButtonBuilder()
-        .setCustomId(`profswitch:${userId}:${s}`)
-        .setLabel(`${PROFILE_EMOJIS[s]} ${label}`)
-        .setStyle(s === currentSlot ? ButtonStyle.Primary : ButtonStyle.Secondary)
-        .setDisabled(s === currentSlot)
-    );
-  }
-  // Discord giới hạn tối đa 5 button/row — MAX_PROFILES = 5 vẫn vừa 1 row,
-  // nhưng chia sẵn theo nhóm 5 để an toàn nếu sau này tăng thêm.
-  const components = [];
-  for (let i = 0; i < switchButtons.length; i += 5) {
-    components.push(new ActionRowBuilder().addComponents(...switchButtons.slice(i, i + 5)));
-  }
-
-  return {
-    embed: {
-      title: `👤 Profiles của ${displayName}`,
-      description: lines.join("\n\n"),
-      color: 0x5865f2,
-      footer: { text: footerText },
-    },
-    components,
-  };
-}
+// buildProfileInfoEmbed đã chuyển sang player-actions.js (xem phần require + wiring bên dưới)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function getPlayerData(userId) {
@@ -1455,177 +1392,35 @@ async function fetchInventoryReply(targetUser, page = 0) {
 
 // ─── SHARED BUSINESS LOGIC: GIVE / REMOVE ────────────────────────────────────
 /**
- * executeGive — logic chung cho cả prefix -give và slash /give
- * @param {object} opts
- * @param {string}  opts.senderId   — userId người gửi (null nếu admin bypass)
- * @param {string}  opts.targetId   — userId người nhận
- * @param {boolean} opts.isAdmin
- * @param {number}  opts.ahnGain    — 0 nếu không chuyển Ahn
- * @param {string|null} opts.bookName
- * @param {number}  opts.bookCount
- * @param {string|null} opts.itemName
- * @param {number}  opts.itemCount
- * @param {number|null} opts.expGain   — admin only
- * @param {number|null} opts.gradeTarget — admin only
- * @returns {Promise<string[]>} mảng change strings
+ * executeGive / executeRemove / buildProfileInfoEmbed đã tách sang player-actions.js
+ * (file riêng, dùng dependency-injection để không phải tạo redis client thứ 2 — xem
+ * comment đầu file đó để biết lý do chọn pattern này). Inject toàn bộ helper cần thiết
+ * vào đây 1 lần duy nhất; vị trí đặt require này PHẢI sau khi các const (redis, EXP_MAX,
+ * MAX_PROFILES, PROFILE_EMOJIS) đã được khai báo phía trên — các hàm helper khác là
+ * function declaration nên được hoisted, không bị ảnh hưởng bởi vị trí.
  */
-async function executeGive({ senderId, targetId, isAdmin, ahnGain = 0, bookName = null, bookCount = 1, itemName = null, itemCount = 1, expGain = 0, gradeTarget = null }) {
-  // Dùng getPlayerDataWithSlot để pin slot tại thời điểm đọc — tránh TOCTOU nếu user
-  // switch profile giữa lúc đọc và lưu (saveMultiplePlayerData sẽ dùng slot này luôn).
-  let senderData = null, senderSlot = null;
-  if (!isAdmin) {
-    const r = await getPlayerDataWithSlot(senderId);
-    senderData = r.data;
-    senderSlot = r.slot;
-  }
-  const { data: recipientData, slot: recipientSlot } = await getPlayerDataWithSlot(targetId);
-  recipientData.books = recipientData.books ?? {};
-  recipientData.items = recipientData.items ?? {};
-  if (senderData) {
-    senderData.books = senderData.books ?? {};
-    senderData.items = senderData.items ?? {};
-  }
-
-  if (!isAdmin && ahnGain > 0) {
-    const senderAhn = senderData.ahn ?? 0;
-    if (senderAhn < ahnGain) throw new Error(`Bạn không đủ Ahn. Bạn có **${formatNumber(senderAhn)} Ahn**, cần **${formatNumber(ahnGain)} Ahn**.`);
-  }
-  if (!isAdmin && bookName) {
-    const owned = senderData.books?.[bookName] ?? 0;
-    if (owned < bookCount) throw new Error(`Bạn không đủ sách. Bạn có **${owned}** **${bookName}**, cần **${bookCount}**.`);
-  }
-  if (!isAdmin && itemName) {
-    const owned = senderData.items?.[itemName] ?? 0;
-    if (owned < itemCount) throw new Error(`Bạn không đủ vật phẩm. Bạn có **${owned}** **${itemName}**, cần **${itemCount}**.`);
-  }
-
-  const changes = [];
-
-  // Không cho phép dùng cả grade lẫn exp cùng lúc — grade overwrite exp về giá trị
-  // cố định, khiến expGain bị nuốt hoàn toàn mà không báo lỗi (do else-if ẩn đi).
-  if (gradeTarget !== null && expGain !== 0) {
-    throw new Error("Không thể dùng `grade` và `exp` cùng lúc. Chọn một trong hai.");
-  }
-
-  if (gradeTarget !== null) {
-    const expNeeded = calcExpForGrade(gradeTarget);
-    recipientData.exp = expNeeded;
-    changes.push(`Grade set → **Grade ${gradeTarget}** (EXP set thành **${expNeeded}**)`);
-  } else if (expGain !== 0) {
-    recipientData.exp = clampExp((recipientData.exp ?? 0) + expGain);
-    changes.push(`${expGain > 0 ? "+" : ""}${expGain} EXP → tổng **${recipientData.exp}**/${EXP_MAX}`);
-  }
-  if (ahnGain !== 0) {
-    const ahnBefore = recipientData.ahn ?? 0;
-    recipientData.ahn = Math.max(0, ahnBefore + ahnGain);
-    // Dùng actualAhnChange thay vì ahnGain để log đúng số tiền thực sự thay đổi
-    // (VD: admin give ahn: -50000 cho user chỉ có 10000 → actualChange = -10000, không phải -50000)
-    const actualAhnChange = recipientData.ahn - ahnBefore;
-    changes.push(`${actualAhnChange >= 0 ? "+" : ""}${formatNumber(actualAhnChange)} Ahn`);
-    if (!isAdmin && ahnGain > 0) senderData.ahn = (senderData.ahn ?? 0) - ahnGain;
-  }
-  if (bookName) {
-    recipientData.books[bookName] = Math.max(0, (recipientData.books[bookName] ?? 0) + bookCount);
-    changes.push(`+${bookCount} 📚 **${bookName}**`);
-    if (!isAdmin) {
-      senderData.books[bookName] -= bookCount;
-      if (senderData.books[bookName] <= 0) delete senderData.books[bookName];
-    }
-  }
-  if (itemName) {
-    recipientData.items[itemName] = Math.max(0, (recipientData.items[itemName] ?? 0) + itemCount);
-    changes.push(`+${itemCount} 🔩 **${itemName}**`);
-    if (!isAdmin) {
-      senderData.items[itemName] -= itemCount;
-      if (senderData.items[itemName] <= 0) delete senderData.items[itemName];
-    }
-  }
-
-  const saveEntries = [{ userId: targetId, data: recipientData, slot: recipientSlot }];
-  if (!isAdmin) saveEntries.push({ userId: senderId, data: senderData, slot: senderSlot });
-  await saveMultiplePlayerData(saveEntries);
-  return changes;
-}
-
-// ─── GIVE CONFIRM FLOW HELPERS ────────────────────────────────────────────────
-/** Build các dòng preview hiển thị trong embed xác nhận, dùng chung prefix + slash. */
-function buildGivePreviewLines({ ahnGain = 0, bookName = null, bookCount = 1, itemName = null, itemCount = 1, expGain = 0, gradeTarget = null }) {
-  const lines = [];
-  if (ahnGain !== 0)        lines.push(`💰 **${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn**`);
-  if (bookName)             lines.push(`📚 **${bookCount}× ${bookName}**`);
-  if (itemName)             lines.push(`🔩 **${itemCount}× ${itemName}**`);
-  if (expGain !== 0)        lines.push(`✨ **${expGain > 0 ? "+" : ""}${expGain} EXP**`);
-  if (gradeTarget !== null) lines.push(`🏅 **Set Grade ${gradeTarget}**`);
-  return lines;
-}
-
-/** Tạo ActionRow Xác nhận/Hủy gắn với 1 giveId cụ thể. */
-function buildGiveConfirmRow(giveId) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`giveconfirm:${giveId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`givecancel:${giveId}`).setLabel("❌ Hủy").setStyle(ButtonStyle.Danger),
-  );
-}
-
-/** Đăng ký 1 giao dịch /give vào pendingGives, trả về giveId vừa tạo. */
-function registerPendingGive(senderId, targetId, isAdmin, params) {
-  const giveId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  pendingGives.set(giveId, { senderId, targetId, isAdmin, params, expiresAt: Date.now() + GIVE_PENDING_TTL_MS });
-  return giveId;
-}
-
-
-/**
- * executeRemove — logic chung cho cả prefix -remove và slash /remove
- * @param {object} opts
- * @param {string}  opts.actorId    — userId người thực hiện lệnh
- * @param {string}  opts.targetId   — userId bị xóa
- * @param {boolean} opts.isAdmin
- * @param {number}  opts.expRemove
- * @param {number}  opts.ahnRemove
- * @param {Array<{name:string,count:number}>} opts.bookEntries  — có thể rỗng
- * @param {Array<{name:string,count:number}>} opts.itemEntries  — có thể rỗng
- * @returns {Promise<string[]>} mảng change strings
- */
-async function executeRemove({ actorId, targetId, isAdmin, expRemove = 0, ahnRemove = 0, bookEntries = [], itemEntries = [] }) {
-  // ahnRemove âm sẽ khiến Math.max(0, before - ahnRemove) bên dưới "cộng" Ahn ngược lại
-  // (before - (-x) = before + x) — chặn ngay từ đây để /remove không bị dùng như /give.
-  if (ahnRemove < 0) throw new Error("Giá trị `ahn` để xóa không được âm. Dùng `/give` nếu muốn cộng thêm Ahn.");
-  const { data, slot } = await getPlayerDataWithSlot(targetId);
-  data.books = data.books ?? {};
-  data.items = data.items ?? {};
-  const changes = [];
-
-  if (expRemove !== 0) {
-    const before = data.exp ?? 0;
-    data.exp = Math.max(0, before - expRemove);
-    changes.push(`-${expRemove} EXP (${before} → ${data.exp})`);
-  }
-  if (ahnRemove !== 0) {
-    const before = data.ahn ?? 0;
-    data.ahn = Math.max(0, before - ahnRemove);
-    changes.push(`-${formatNumber(ahnRemove)} Ahn (${formatNumber(before)} → ${formatNumber(data.ahn)})`);
-  }
-  for (const { name, count } of bookEntries) {
-    const owned = data.books[name] ?? 0;
-    if (owned < count && !isAdmin) throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
-    const removed = Math.min(owned, count);
-    data.books[name] = owned - removed;
-    if (data.books[name] <= 0) delete data.books[name];
-    changes.push(`-${removed} 📚 **${name}** (còn lại: ${data.books[name] ?? 0})`);
-  }
-  for (const { name, count } of itemEntries) {
-    const owned = data.items[name] ?? 0;
-    if (owned < count && !isAdmin) throw new Error(`Bạn chỉ có **${owned}** **${name}**, không đủ để xóa **${count}**.`);
-    const removed = Math.min(owned, count);
-    data.items[name] = owned - removed;
-    if (data.items[name] <= 0) delete data.items[name];
-    changes.push(`-${removed} 🔩 **${name}** (còn lại: ${data.items[name] ?? 0})`);
-  }
-
-  await savePlayerData(targetId, data, slot);
-  return changes;
-}
+const { executeGive, executeRemove, buildProfileInfoEmbed } = require("./player-actions")({
+  redis,
+  getPlayerDataWithSlot,
+  saveMultiplePlayerData,
+  savePlayerData,
+  calcExpForGrade,
+  clampExp,
+  calcGrade,
+  getActiveProfileSlot,
+  getProfileNames,
+  resolveProfileLabel,
+  getVNDateString,
+  playerKeyForSlot,
+  dailyKeyForSlot,
+  withTimeout,
+  unwrapPipelineResults,
+  formatNumber,
+  auditLog,
+  EXP_MAX,
+  MAX_PROFILES,
+  PROFILE_EMOJIS,
+});
 
 /**
  * executeCraft — logic craft dùng chung cho prefix -use và slash /use
@@ -1725,6 +1520,127 @@ client.once("ready", () => {
 });
 
 // ─── PREFIX COMMANDS ──────────────────────────────────────────────────────────
+// ─── SHARED CORE: SKILL LIST / ROLL ─────────────────────────────────────────
+// Tách riêng phần "tính toán + build embed" ra khỏi phần "parse input theo từng
+// loại lệnh" — để /skill (slash, structured options) và -skill (prefix, tự parse
+// chuỗi) dùng CHUNG logic này, tránh lệch hành vi giữa 2 dạng lệnh (như đã từng xảy
+// ra với /profile info trước đây).
+
+/**
+ * buildSkillListResult — build embed danh sách skill, có/không kèm keyword filter.
+ * @returns {{ error: string } | { embed: object }}
+ */
+function buildSkillListResult({ keyword = null, page = 1 } = {}) {
+  if (keyword) {
+    const KW_PAGE_SIZE = 10;
+    const found = findByKeyword(keyword);
+    if (!found.length) {
+      return { error: `❌ Không tìm thấy skill nào có keyword **${keyword}**.\nDùng \`-skill list\` để xem toàn bộ.` };
+    }
+    const totalPages = Math.ceil(found.length / KW_PAGE_SIZE);
+    const clampedPage = Math.min(Math.max(page, 1), totalPages);
+    const start = (clampedPage - 1) * KW_PAGE_SIZE;
+    const pageSkills = found.slice(start, start + KW_PAGE_SIZE);
+    const list = pageSkills.map(s => `• **${s.name}** — ${s.cost} | CD: ${s.cd}`).join("\n");
+    return {
+      embed: {
+        title: `🔍 Skill có keyword "${keyword}" (${found.length} kết quả) — Trang ${clampedPage}/${totalPages}`,
+        color: 0x9b59b6,
+        description: list,
+        footer: { text: `-skill list ${keyword} <trang> để xem trang khác | -skill <tên> để roll` },
+      },
+    };
+  }
+
+  const PAGE_SIZE = 15;
+  const skillEntries = Object.values(SKILLS);
+  const totalPages = Math.ceil(skillEntries.length / PAGE_SIZE);
+  const clampedPage = Math.min(Math.max(page, 1), totalPages);
+  const start = (clampedPage - 1) * PAGE_SIZE;
+  const pageSkills = skillEntries.slice(start, start + PAGE_SIZE);
+  const skillLines = pageSkills.map((s, i) => {
+    const num = start + i + 1;
+    const tags = [];
+    if (s.weaponOf) tags.push(`⚔️ ${s.weaponOf}`);
+    if (s.needsBlackFlash) tags.push("nhập %");
+    if (s.needsReuse) tags.push("nhập %reuse");
+    if (s.hasDullahanRoll) tags.push("mặc định bản thường, nhập dullahan để ra bản Dullahan");
+    if (s.maxUses) tags.push(`reuse tối đa ${s.maxUses}x`);
+    const tagStr = tags.length ? ` *(${tags.join(", ")})*` : "";
+    return `\`${num}.\` **${s.name}**${tagStr} — ${s.cost} | CD: ${s.cd} | ${s.diceMul}`;
+  });
+  return {
+    embed: {
+      title: `📖 Danh sách Skill (Trang ${clampedPage}/${totalPages})`,
+      color: 0x9b59b6,
+      description: skillLines.join("\n"),
+      footer: { text: `Tổng ${skillEntries.length} skill | -skill list <trang> | -skill <tên> [số lần] để roll (VD: -skill durandal 2)` },
+    },
+  };
+}
+
+/**
+ * buildSkillRollResult — roll 1 skill (1 hoặc nhiều lần) và build embed kết quả.
+ * Input đã được resolve sẵn (skill object, rollCount số, promptArgRaw chuỗi thô) —
+ * hàm này KHÔNG tự parse chuỗi lệnh, để prefix/slash tự lo phần đó theo cách riêng.
+ * @returns {{ error: string } | { embed: object }}
+ */
+function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, forceDullahan = false }) {
+  // Skill đặc biệt cần arg — dùng promptArg nếu có (VD: Thrust cần nhập Light hiện tại)
+  if (skill.promptArg) {
+    const { parse, validate, errorMsg, buildHeader } = skill.promptArg;
+    const parsed = parse(promptArgRaw ?? "");
+    if (!validate(parsed)) return { error: errorMsg };
+    const lines = skill.roll(parsed);
+    const header = buildHeader(parsed, skill);
+    return {
+      embed: {
+        title: `🎲 ${skill.name}`,
+        color: skill.embedColor ?? 0x5865f2,
+        description: header + "\n\n" + lines.join("\n"),
+      },
+    };
+  }
+
+  // Clamp rollCount: ưu tiên skill.maxUses riêng (VD: Mook Workshop = 3, do reuse
+  // chỉ cho phép tối đa 2 lần) nếu có, không thì dùng SKILL_MAX_ROLLS chung.
+  const maxAllowed = skill.maxUses ?? SKILL_MAX_ROLLS;
+  if (rollCount < 1) return { error: "❌ Số lần roll phải lớn hơn 0." };
+  if (rollCount > maxAllowed) return { error: `❌ **${skill.name}** chỉ cho roll tối đa **${maxAllowed}** lần mỗi lệnh.` };
+
+  const header = skill.weaponOf
+    ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
+    : skill.cost !== "—"
+      ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
+      : `[CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
+
+  // Roll rollCount lần độc lập — mỗi lần dice riêng. Truyền reuseIndex (0 = lần
+  // gốc, 1 = reuse lần 1, 2 = reuse lần 2, ...) thay vì boolean đơn thuần, để skill
+  // nào cần tính hiệu ứng cộng dồn theo số lần reuse (VD: Thrust +5 Dice Up/lần)
+  // có đủ thông tin. Vẫn tương thích ngược với skill cũ dùng `isReuse ? x : y`
+  // (VD: Mook Workshop) vì reuseIndex=0 falsy, ≥1 truthy — hành vi y nguyên.
+  const blocks = [];
+  for (let i = 0; i < rollCount; i++) {
+    const reuseIndex = i;
+    const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan, reuseIndex) : skill.roll(reuseIndex);
+    blocks.push(rollCount > 1 ? `**Lần ${i + 1}:**\n${lines.join("\n")}` : lines.join("\n"));
+  }
+  let description = header + "\n\n" + blocks.join("\n\n");
+  // Embed description giới hạn 4096 ký tự — cắt an toàn nếu roll nhiều lần dồn quá dài.
+  if (description.length > 4090) {
+    description = description.slice(0, 4080) + "\n…(bị cắt bớt, giảm số lần roll để xem đầy đủ)";
+  }
+
+  return {
+    embed: {
+      title: rollCount > 1 ? `🎲 ${skill.name} ×${rollCount}` : `🎲 ${skill.name}`,
+      color: 0x5865f2,
+      description,
+    },
+  };
+}
+
+
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   try {
@@ -1925,60 +1841,22 @@ client.on("messageCreate", async (message) => {
     // -skill list <keyword> [trang] — tìm skill theo keyword, có phân trang
     // VD: -skill list slash | -skill list slash 2
     if (/^list\s+[^\d]/i.test(input)) {
-      const KW_PAGE_SIZE = 10;
-      // Tách keyword và trang: "slash 2" → keyword="slash", page=2
       const kwPageMatch = input.replace(/^list\s+/i, "").trim().match(/^(.+?)\s+(\d+)$/);
       const keyword = kwPageMatch ? kwPageMatch[1].trim() : input.replace(/^list\s+/i, "").trim();
-      const found = findByKeyword(keyword);
-      if (!found.length) {
-        message.reply(`❌ Không tìm thấy skill nào có keyword **${keyword}**.\nDùng \`-skill list\` để xem toàn bộ.`);
-        return;
-      }
-      const totalPages = Math.ceil(found.length / KW_PAGE_SIZE);
-      const page = kwPageMatch ? Math.min(Math.max(parseInt(kwPageMatch[2], 10), 1), totalPages) : 1;
-      const start = (page - 1) * KW_PAGE_SIZE;
-      const pageSkills = found.slice(start, start + KW_PAGE_SIZE);
-      const list = pageSkills.map(s => `• **${s.name}** — ${s.cost} | CD: ${s.cd}`).join("\n");
-      message.reply({
-        embeds: [{
-          title: `🔍 Skill có keyword "${keyword}" (${found.length} kết quả) — Trang ${page}/${totalPages}`,
-          color: 0x9b59b6,
-          description: list,
-          footer: { text: `-skill list ${keyword} <trang> để xem trang khác | -skill <tên> để roll` },
-        }],
-      });
+      const page = kwPageMatch ? parseInt(kwPageMatch[2], 10) : 1;
+      const result = buildSkillListResult({ keyword, page });
+      if (result.error) { message.reply(result.error); return; }
+      message.reply({ embeds: [result.embed] });
       return;
     }
 
     // -skill list [trang]
     // Cú pháp: -skill list | -skill list 2 | -skill list 3
     if (!input || input.toLowerCase() === "list" || /^list\s+\d+$/i.test(input)) {
-      const PAGE_SIZE = 15;
-      const skillEntries = Object.values(SKILLS);
-      const totalPages = Math.ceil(skillEntries.length / PAGE_SIZE);
       const pageMatch = input.match(/list\s+(\d+)/i);
-      const page = pageMatch ? Math.min(Math.max(parseInt(pageMatch[1], 10), 1), totalPages) : 1;
-      const start = (page - 1) * PAGE_SIZE;
-      const pageSkills = skillEntries.slice(start, start + PAGE_SIZE);
-      const skillLines = pageSkills.map((s, i) => {
-        const num = start + i + 1;
-        const tags = [];
-        if (s.weaponOf) tags.push(`⚔️ ${s.weaponOf}`);
-        if (s.needsBlackFlash) tags.push("nhập %");
-        if (s.needsReuse) tags.push("nhập %reuse");
-        if (s.hasDullahanRoll) tags.push("mặc định bản thường, nhập dullahan để ra bản Dullahan");
-        if (s.maxUses) tags.push(`reuse tối đa ${s.maxUses}x`);
-        const tagStr = tags.length ? ` *(${tags.join(", ")})*` : "";
-        return `\`${num}.\` **${s.name}**${tagStr} — ${s.cost} | CD: ${s.cd} | ${s.diceMul}`;
-      });
-      message.reply({
-        embeds: [{
-          title: `📖 Danh sách Skill (Trang ${page}/${totalPages})`,
-          color: 0x9b59b6,
-          description: skillLines.join("\n"),
-          footer: { text: `Tổng ${skillEntries.length} skill | -skill list <trang> | -skill <tên> [số lần] để roll (VD: -skill durandal 2)` },
-        }],
-      });
+      const page = pageMatch ? parseInt(pageMatch[1], 10) : 1;
+      const result = buildSkillListResult({ page });
+      message.reply({ embeds: [result.embed] });
       return;
     }
 
@@ -2005,70 +1883,13 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Skill đặc biệt cần arg — dùng promptArg nếu có
-    if (skill.promptArg) {
-      const { parse, validate, errorMsg, buildHeader } = skill.promptArg;
-      const parts = input.trim().split(/\s+/);
-      const lastPart = parts[parts.length - 1];
-      const parsed = parse(lastPart);
-      if (!validate(parsed)) {
-        message.reply(errorMsg);
-        return;
-      }
-      const lines = skill.roll(parsed);
-      const header = buildHeader(parsed, skill);
-      message.reply({
-        embeds: [{
-          title: `🎲 ${skill.name}`,
-          color: skill.embedColor ?? 0x5865f2,
-          description: header + "\n\n" + lines.join("\n"),
-        }],
-      });
-      return;
-    }
+    // promptArg skill dùng từ cuối cùng trong input làm arg (VD: "-skill thrust 4" → "4")
+    const parts = input.trim().split(/\s+/);
+    const promptArgRaw = parts[parts.length - 1];
 
-    // Clamp rollCount: ưu tiên skill.maxUses riêng (VD: Mook Workshop = 3, do reuse
-    // chỉ cho phép tối đa 2 lần) nếu có, không thì dùng SKILL_MAX_ROLLS chung.
-    const maxAllowed = skill.maxUses ?? SKILL_MAX_ROLLS;
-    if (rollCount < 1) {
-      message.reply("❌ Số lần roll phải lớn hơn 0.");
-      return;
-    }
-    if (rollCount > maxAllowed) {
-      message.reply(`❌ **${skill.name}** chỉ cho roll tối đa **${maxAllowed}** lần mỗi lệnh.`);
-      return;
-    }
-
-    const header = skill.weaponOf
-      ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
-      : skill.cost !== "—"
-        ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
-        : `[CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
-
-    // Roll rollCount lần độc lập — mỗi lần dice riêng. Truyền reuseIndex (0 = lần
-    // gốc, 1 = reuse lần 1, 2 = reuse lần 2, ...) thay vì boolean đơn thuần, để skill
-    // nào cần tính hiệu ứng cộng dồn theo số lần reuse (VD: Thrust +5 Dice Up/lần)
-    // có đủ thông tin. Vẫn tương thích ngược với skill cũ dùng `isReuse ? x : y`
-    // (VD: Mook Workshop) vì reuseIndex=0 falsy, ≥1 truthy — hành vi y nguyên.
-    const blocks = [];
-    for (let i = 0; i < rollCount; i++) {
-      const reuseIndex = i;
-      const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan, reuseIndex) : skill.roll(reuseIndex);
-      blocks.push(rollCount > 1 ? `**Lần ${i + 1}:**\n${lines.join("\n")}` : lines.join("\n"));
-    }
-    let description = header + "\n\n" + blocks.join("\n\n");
-    // Embed description giới hạn 4096 ký tự — cắt an toàn nếu roll nhiều lần dồn quá dài.
-    if (description.length > 4090) {
-      description = description.slice(0, 4080) + "\n…(bị cắt bớt, giảm số lần roll để xem đầy đủ)";
-    }
-
-    message.reply({
-      embeds: [{
-        title: rollCount > 1 ? `🎲 ${skill.name} ×${rollCount}` : `🎲 ${skill.name}`,
-        color: 0x5865f2,
-        description,
-      }],
-    });
+    const result = buildSkillRollResult({ skill, rollCount, promptArgRaw, forceDullahan });
+    if (result.error) { message.reply(result.error); return; }
+    message.reply({ embeds: [result.embed] });
     return;
   }
 
@@ -3465,6 +3286,44 @@ client.on("interactionCreate", async (interaction) => {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   try {
+
+  // ── /skill ── (tương đương -skill, dùng CHUNG buildSkillListResult/buildSkillRollResult
+  // để đảm bảo hành vi giống prefix 100% — không tự viết lại logic riêng ở đây)
+  if (interaction.commandName === "skill") {
+    if (await replyOnCooldown(interaction, 2000)) return;
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === "list") {
+      await interaction.deferReply();
+      const keyword = interaction.options.getString("keyword");
+      const page = interaction.options.getInteger("page") ?? 1;
+      const result = buildSkillListResult({ keyword, page });
+      if (result.error) { await interaction.editReply({ content: result.error }); return; }
+      await interaction.editReply({ embeds: [result.embed] });
+      return;
+    }
+
+    if (sub === "roll") {
+      await interaction.deferReply();
+      const nameInput = interaction.options.getString("name") ?? "";
+      const rollCount = interaction.options.getInteger("count") ?? 1;
+      // "arg" dùng cho skill có promptArg (VD: Thrust cần nhập Light hiện tại qua arg).
+      const argInput = interaction.options.getString("arg");
+      const forceDullahan = interaction.options.getBoolean("dullahan") ?? false;
+
+      const skill = findSkill(nameInput);
+      if (!skill) {
+        await interaction.editReply({ content: `❌ Không tìm thấy skill: \`${nameInput}\`\nDùng \`/skill list\` để xem danh sách.` });
+        return;
+      }
+
+      const result = buildSkillRollResult({ skill, rollCount, promptArgRaw: argInput, forceDullahan });
+      if (result.error) { await interaction.editReply({ content: result.error }); return; }
+      await interaction.editReply({ embeds: [result.embed] });
+      return;
+    }
+    return;
+  }
 
   if (interaction.commandName === "math") {
     if (await replyOnCooldown(interaction, 2000)) return;
