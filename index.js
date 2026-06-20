@@ -1580,12 +1580,6 @@ function buildSkillListResult({ keyword = null, page = 1 } = {}) {
 }
 
 /**
- * buildSkillRollResult — roll 1 skill (1 hoặc nhiều lần) và build embed kết quả.
- * Input đã được resolve sẵn (skill object, rollCount số, promptArgRaw chuỗi thô) —
- * hàm này KHÔNG tự parse chuỗi lệnh, để prefix/slash tự lo phần đó theo cách riêng.
- * @returns {{ error: string } | { embed: object }}
- */
-/**
  * formatEmotionSummary — build dòng tổng kết Emotion Coin từ mảng tracked rolls.
  * CHỈ hiển thị cho người chơi tự cộng/trừ tay — không lưu lại ở đâu cả.
  */
@@ -1594,15 +1588,68 @@ function formatEmotionSummary(tracked) {
   const maxHits = tracked.filter(t => t.delta > 0).length;
   const minHits = tracked.filter(t => t.delta < 0).length;
   if (maxHits === 0 && minHits === 0) {
-    return `📊 Emotion Coin: 0 *(không có Max/Min Dice)*`;
+    return `<:EmotionCoin:1517705929989033994> Emotion Coin: 0 *(không có Max/Min Dice)*`;
   }
   const parts = [];
   if (maxHits > 0) parts.push(`${maxHits}× Max`);
   if (minHits > 0) parts.push(`${minHits}× Min`);
   const sign = total > 0 ? "+" : "";
-  return `📊 Emotion Coin: **${sign}${total}** *(${parts.join(", ")})*`;
+  return `<:EmotionCoin:1517705929989033994> Emotion Coin: **${sign}${total}** *(${parts.join(", ")})*`;
 }
 
+// Khớp dòng dice bằng emoji <:Dice1:...> đến <:Dice5:...> ở ĐẦU dòng — không phụ thuộc
+// việc skill dùng biến D1..D5 hay hardcode literal, vì cả 2 đều match cùng pattern.
+const DICE_LINE_RE = /^<:Dice([1-5]):\d+>/;
+
+/**
+ * annotateLinesWithEmotion — gắn "<:EmotionCoin:...> +1/-1" NGAY CUỐI từng dòng dice
+ * tương ứng, AN TOÀN chỉ khi số dòng có emoji Dice khớp CHÍNH XÁC với số lần roll thật
+ * VÀ không có dice-number nào bị lặp lại (xem giải thích case lặp bên dưới).
+ *
+ * TẠI SAO CẦN CHECK SỐ LƯỢNG: đã quét thực tế cả 290 skill — nếu chỉ zip theo index thô
+ * (dòng thứ N ↔ roll thứ N) thì 111/285 skill (39%) bị lệch, vì nhiều skill có dòng
+ * "flavor text" không gắn với dice nào (VD: "*+5% Dmg cho skill này...*"). Lọc theo dòng
+ * CÓ emoji Dice giảm lệch xuống còn ~32/285 (11%).
+ *
+ * TẠI SAO CẦN CHECK KHÔNG LẶP DICE-NUMBER: một số skill (VD: "Tiantui Savage Tigerslayer
+ * Flurry") có dòng flavor DÙNG LẠI emoji Dice1 (để chỉ rõ "đây là hiệu ứng phụ của Dice 1")
+ * NGAY TRƯỚC dòng Dice1 thật — y hệt style "Fare-Thee Well"/"Gut Stab Laevateinn". Nếu
+ * skill đó CÓ ĐỦ SỐ DICE để tổng count vẫn khớp tình cờ (VD: 6 dice thật + 1 dòng flavor
+ * dùng lại D1 - 1 dòng "Dice 6" không có emoji = vẫn ra 6 = 6), check số lượng đơn thuần
+ * SẼ PASS NHẦM — gắn lệch delta sang dòng kế bên, dòng dice thật cuối cùng (có thể là Max
+ * roll) bị mất tag hoàn toàn. Đã tự bắt được case này khi test "Tiantui Savage Tigerslayer
+ * Flurry" — số lượng khớp (6=6) nhưng vị trí lệch hết 1 dòng. Check thêm: nếu có dice-number
+ * nào xuất hiện ≥2 lần trong các dòng matched, coi như không an toàn, fallback luôn.
+ */
+function annotateLinesWithEmotion(lines, tracked) {
+  const diceLineIndices = [];
+  const diceNumbersSeen = [];
+  lines.forEach((l, i) => {
+    const m = l.match(DICE_LINE_RE);
+    if (m) { diceLineIndices.push(i); diceNumbersSeen.push(m[1]); }
+  });
+  const hasDuplicateDiceNumber = new Set(diceNumbersSeen).size !== diceNumbersSeen.length;
+
+  if (!hasDuplicateDiceNumber && diceLineIndices.length === tracked.length) {
+    const result = [...lines];
+    diceLineIndices.forEach((lineIdx, i) => {
+      const { delta } = tracked[i];
+      if (delta !== 0) result[lineIdx] += ` <:EmotionCoin:1517705929989033994> ${delta > 0 ? "+1" : "-1"}`;
+    });
+    return result.join("\n");
+  }
+
+  // Không khớp 1:1 (hoặc có dice-number lặp, nghi vấn flavor line) — fallback an toàn:
+  // giữ nguyên dòng gốc, thêm 1 dòng tổng kết riêng thay vì liều gắn nhầm.
+  return lines.join("\n") + "\n" + formatEmotionSummary(tracked);
+}
+
+/**
+ * buildSkillRollResult — roll 1 skill (1 hoặc nhiều lần) và build embed kết quả.
+ * Input đã được resolve sẵn (skill object, rollCount số, promptArgRaw chuỗi thô) —
+ * hàm này KHÔNG tự parse chuỗi lệnh, để prefix/slash tự lo phần đó theo cách riêng.
+ * @returns {{ error: string } | { embed: object }}
+ */
 function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, forceDullahan = false }) {
   // Skill đặc biệt cần arg — dùng promptArg nếu có (VD: Thrust cần nhập Light hiện tại)
   if (skill.promptArg) {
@@ -1617,7 +1664,7 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
       embed: {
         title: `🎲 ${skill.name}`,
         color: skill.embedColor ?? 0x5865f2,
-        description: header + "\n\n" + lines.join("\n") + "\n" + formatEmotionSummary(tracked),
+        description: header + "\n\n" + annotateLinesWithEmotion(lines, tracked),
       },
     };
   }
@@ -1649,7 +1696,7 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
     const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan, reuseIndex) : skill.roll(reuseIndex);
     const tracked = stopEmotionTracking();
     allTracked.push(...tracked);
-    const block = `${lines.join("\n")}\n${formatEmotionSummary(tracked)}`;
+    const block = annotateLinesWithEmotion(lines, tracked);
     blocks.push(rollCount > 1 ? `**Lần ${i + 1}:**\n${block}` : block);
   }
   let description = header + "\n\n" + blocks.join("\n\n");
