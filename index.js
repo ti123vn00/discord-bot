@@ -2050,8 +2050,7 @@ client.on("messageCreate", async (message) => {
           embeds: [{
             title: "⚔️ Parry Real Time — Web",
             description:
-              "Bấm nút dưới để mở trang test phản xạ — đo **trực tiếp trên máy bạn**, " +
-              "không lẫn latency mạng như bản trong Discord.\n" +
+              "Bấm nút dưới để mở trang parry" +
               "> Link chỉ dùng được **1 lần**, hết hạn sau 90 giây.",
             color: 0xf39c12,
             footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi bạn làm xong trên web" },
@@ -4000,7 +3999,7 @@ function renderParryWebPage(token) {
 <body>
 <div id="stage" class="idle">
   <h1>⚔️ Parry Real Time — Web</h1>
-  <p>Đo phản xạ trực tiếp trên máy bạn — không lẫn latency mạng.<br>Bấm "Bắt đầu", chờ màn hình chuyển <b>XANH</b>, rồi bấm/chạm NGAY.</p>
+  <p>Thực hiện parry.<br>Bấm "Bắt đầu", chờ màn hình chuyển <b>XANH</b>, rồi bấm/chạm NGAY.</p>
   <button class="start" id="startBtn">Bắt đầu</button>
 </div>
 <div class="footer">Token: ${token.slice(0, 8)}… · Kết quả sẽ tự gửi vào Discord</div>
