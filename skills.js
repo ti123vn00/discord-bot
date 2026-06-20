@@ -7,8 +7,50 @@ const D3 = "<:Dice3:1508173643518050395>";
 const D4 = "<:Dice4:1508176464367845600>";
 const D5 = "<:Dice5:1508176500438990968>";
 
+// ─── EMOTION COIN TRACKING ──────────────────────────────────────────────────
+// Cơ chế game: roll ra đúng MAX của dice → +1 Emotion Coin; roll ra đúng MIN → -1.
+// Nếu min === max (dice cố định 1 giá trị, VD: [5~5]) thì không tính (không thể biết
+// nên coi là "max" hay "min"). CHỈ hiển thị cho người chơi tự cộng/trừ tay — bot KHÔNG
+// lưu lại Emotion Coin ở đâu cả.
+//
+// VẤN ĐỀ: mỗi skill's roll() tự gọi r(min, max) nhiều lần với range KHÁC NHAU cho từng
+// dice, rồi tự build string mô tả riêng — không có chỗ nào "biết" min/max ban đầu sau
+// khi đã roll xong để mà annotate. Thay vì sửa tay ~290 skill (rủi ro cực cao, dễ sót/sai),
+// dùng side-channel: r() tự ghi lại {min, max, result, delta} vào 1 mảng module-level mỗi
+// khi được gọi, NẾU đang ở chế độ tracking. index.js gọi startEmotionTracking() ngay
+// trước skill.roll(...) và stopEmotionTracking() ngay sau, lấy lại toàn bộ các lần roll
+// đã xảy ra TRONG khoảng đó để build dòng tổng kết Emotion Coin.
+//
+// AN TOÀN VỚI CONCURRENT REQUEST: biến module-level dùng chung cho mọi user, nhưng vì
+// toàn bộ chuỗi start→roll()→stop chạy ĐỒNG BỘ (không có await ở giữa, do mọi roll()
+// hiện tại đều là hàm sync thuần), Node.js không thể context-switch sang xử lý request
+// của user khác giữa lúc đó — không có race condition.
+let emotionTracker = null; // null = không track; Array nếu đang track
+
+function computeEmotionDelta(min, max, result) {
+  if (min === max) return 0; // dice cố định 1 giá trị — không tính
+  if (result === max) return 1;
+  if (result === min) return -1;
+  return 0;
+}
+
+function startEmotionTracking() {
+  emotionTracker = [];
+}
+
+/** @returns {Array<{min:number,max:number,result:number,delta:number}>} */
+function stopEmotionTracking() {
+  const rolls = emotionTracker ?? [];
+  emotionTracker = null;
+  return rolls;
+}
+
 function r(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  const result = Math.floor(Math.random() * (max - min + 1)) + min;
+  if (emotionTracker) {
+    emotionTracker.push({ min, max, result, delta: computeEmotionDelta(min, max, result) });
+  }
+  return result;
 }
 
 const SKILLS = {
@@ -4162,4 +4204,4 @@ function findByKeyword(keyword) {
   return results;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword };
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking };
