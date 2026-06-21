@@ -229,7 +229,7 @@ function calcExpForGrade(targetGrade) {
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
 
 const ADMIN_IDS = new Set(
-  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355")
+  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355,928618780735705138")
     .split(",").map(s => s.trim()).filter(Boolean)
 );
 
@@ -3878,17 +3878,33 @@ function startRound() {
     setPhase("yellow", "<h1>⚠️ Sắp tới!</h1>");
     playSound(yellowAudio);
     yellowTimer = setTimeout(() => {
-      t0 = performance.now();
+      // QUAN TRỌNG: setPhase() TRƯỚC, ghi t0 SAU — và không ghi ngay mà đợi qua
+      // double requestAnimationFrame. Trước đây ghi t0 = performance.now() NGAY
+      // LẬP TỨC rồi MỚI gọi setPhase() — nghĩa là t0 đo "lúc code bắt đầu chạy",
+      // không phải "lúc màn hình THẬT SỰ chuyển xanh". Giữa lúc yêu cầu đổi DOM
+      // (className + innerHTML) và lúc trình duyệt thực sự PAINT thay đổi đó lên
+      // màn hình luôn có 1 khoảng trễ (đợi tới vsync/frame kế tiếp, vài ms tới hơn
+      // chục ms tùy máy). requestAnimationFrame lồng đôi là kỹ thuật chuẩn để chờ
+      // tới khi chắc chắn frame chứa thay đổi đó ĐÃ được vẽ — rAF đầu tiên chạy
+      // ngay TRƯỚC frame kế tiếp (đổi màu vừa apply nhưng có thể chưa lên màn
+      // hình), rAF thứ hai (lồng trong rAF đầu) chạy ở frame SAU đó — lúc này chắc
+      // chắn frame xanh đã vẽ xong. t0 ghi ở đây mới đúng là "lúc xanh thật sự".
       setPhase("go", "<div class='big'>BẤM NGAY!</div>");
       playSound(goAudio);
-      // Sau WINDOW_MS mà chưa bấm — chuyển sang "late" nhưng VẪN cho bấm để biết chính
-      // xác trễ bao nhiêu ms (vẫn tính fail, chỉ là có số liệu thật để hiển thị).
-      goTimeoutTimer = setTimeout(() => {
-        setPhase("late", "<h1>⌛ Trễ rồi!</h1><p>Vẫn bấm để xem bạn trễ bao nhiêu</p>");
-        // Failsafe: nếu sau đó vẫn không bấm luôn, tự submit "missed" thật (không số)
-        // sau 1 khoảng đủ dài — không để phiên treo vô hạn.
-        noClickTimer = setTimeout(() => submitResult(null, "missed"), 5000);
-      }, WINDOW_MS);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          t0 = performance.now();
+          // Đếm ngược WINDOW_MS cũng neo theo CHÍNH XÁC mốc t0 này — không phải
+          // mốc setTimeout fire — để 2 con số (thời điểm "xanh thật" và thời điểm
+          // "hết giờ") luôn khớp nhau, không lệch theo độ trễ rAF kể trên.
+          goTimeoutTimer = setTimeout(() => {
+            setPhase("late", "<h1>⌛ Trễ rồi!</h1><p>Vẫn bấm để xem bạn trễ bao nhiêu</p>");
+            // Failsafe: nếu sau đó vẫn không bấm luôn, tự submit "missed" thật (không
+            // số) sau 1 khoảng đủ dài — không để phiên treo vô hạn.
+            noClickTimer = setTimeout(() => submitResult(null, "missed"), 5000);
+          }, WINDOW_MS);
+        });
+      });
     }, YELLOW_MS);
   }, delay);
 }
@@ -3935,11 +3951,17 @@ stage.addEventListener("click", () => {
     clearTimeout(timer);
     clearTimeout(yellowTimer);
     submitResult(null, "early");
-  } else if (phase === "go" || phase === "late") {
+  } else if ((phase === "go" || phase === "late") && t0 !== null) {
     // "late" vẫn submit như "success" — server tự ép thành "missed" nếu reactionMs
     // vượt windowMs (xem route POST), nhưng giờ có SỐ THẬT để hiển thị khi báo bỏ lỡ.
     const reactionMs = performance.now() - t0;
     submitResult(reactionMs, "success");
+  } else if (phase === "go") {
+    // Edge case cực hiếm: phase đã là "go" nhưng t0 chưa kịp set (đang chờ qua double
+    // rAF xác nhận đã paint xong, xem comment ở startRound). Click rơi đúng vào khe vài
+    // ms này thực tế gần như không thể xảy ra với phản xạ người thật — coi như bấm
+    // sớm để an toàn, tránh tính ra reactionMs vô nghĩa (performance.now() - null).
+    submitResult(null, "early");
   }
 });
 </script>
