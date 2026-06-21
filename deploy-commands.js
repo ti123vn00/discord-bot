@@ -28,7 +28,11 @@ const commands = [
   // ── /rtparry ───────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("rtparry")
-    .setDescription("Parry phản xạ thời gian thực — bot DM link, đo chính xác 100% trên trình duyệt"),
+    .setDescription("Parry phản xạ thời gian thực — đo chính xác 100% trên trình duyệt, link gửi ephemeral riêng")
+    .addStringOption(opt =>
+      opt.setName("name")
+        .setDescription("Tên Page muốn luyện tốc độ (VD: Durandal). Bỏ trống để random.")
+        .setRequired(false)),
 
   // ── /skill ─────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
