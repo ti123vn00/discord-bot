@@ -3734,14 +3734,15 @@ const TOKEN = ${JSON.stringify(token)};
 const WINDOW_MS = ${windowMs};
 const stage = document.getElementById("stage");
 const startBtn = document.getElementById("startBtn");
-let phase = "idle"; // idle | waiting | go | done
+let phase = "idle"; // idle | waiting | go | late | done
 let t0 = null;
 let timer = null;
 let goTimeoutTimer = null;
+let noClickTimer = null;
 
 function setPhase(p, html) {
   phase = p;
-  stage.className = p;
+  stage.className = p === "late" ? "missed" : p; // dùng lại màu "missed" cho "late"
   stage.innerHTML = html;
 }
 
@@ -3751,18 +3752,22 @@ function startRound() {
   timer = setTimeout(() => {
     t0 = performance.now();
     setPhase("go", "<div class='big'>BẤM NGAY!</div>");
-    // Nếu không bấm trong WINDOW_MS kể từ lúc xanh — coi như BỎ LỠ, tự submit.
-    // Đây chính là phần còn thiếu trước đây: trang web không hề có giới hạn thời
-    // gian nào, bấm trễ bao lâu cũng tính "thành công" với số ms y như vậy.
+    // Sau WINDOW_MS mà chưa bấm — chuyển sang "late" nhưng VẪN cho bấm để biết chính
+    // xác trễ bao nhiêu ms. Trước đây tự submit ngay với reactionMs=null lúc này, nên
+    // không có số thật nào để hiển thị khi báo "bỏ lỡ" — giờ vẫn tính fail (server tự
+    // ép theo windowMs) nhưng có số liệu thật để hiện cho người chơi biết họ trễ bao nhiêu.
     goTimeoutTimer = setTimeout(() => {
-      setPhase("missed", "<h1>⌛ Bỏ lỡ!</h1><p>Quá " + WINDOW_MS + "ms không bấm kịp.</p>");
-      submitResult(null, "missed");
+      setPhase("late", "<h1>⌛ Trễ rồi!</h1><p>Vẫn bấm để xem bạn trễ bao nhiêu</p>");
+      // Failsafe: nếu sau đó vẫn không bấm luôn (bỏ đi, đóng tab giữa chừng), tự submit
+      // "missed" thật (không có số) sau 1 khoảng đủ dài — không để phiên treo vô hạn.
+      noClickTimer = setTimeout(() => submitResult(null, "missed"), 5000);
     }, WINDOW_MS);
   }, delay);
 }
 
 async function submitResult(reactionMs, resultType) {
   clearTimeout(goTimeoutTimer);
+  clearTimeout(noClickTimer);
   setPhase("done", "<h1>⏳ Đang gửi kết quả…</h1>");
   try {
     const res = await fetch("/rtparry/" + TOKEN + "/result", {
@@ -3801,7 +3806,9 @@ stage.addEventListener("click", () => {
     // lượt mới, không còn "free retry".
     clearTimeout(timer);
     submitResult(null, "early");
-  } else if (phase === "go") {
+  } else if (phase === "go" || phase === "late") {
+    // "late" vẫn submit như "success" — server tự ép thành "missed" nếu reactionMs
+    // vượt windowMs (xem route POST), nhưng giờ có SỐ THẬT để hiển thị khi báo bỏ lỡ.
     const reactionMs = performance.now() - t0;
     submitResult(reactionMs, "success");
   }
@@ -3880,19 +3887,24 @@ app.post("/rtparry/:token/result", async (req, res) => {
       await msg.edit({
         embeds: [{
           title: "⚔️ Parry Real Time — Web",
-          description: `<@${session.userId}> đã **bấm sớm quá**! ❌\n> *(Đo 100% chính xác — không lẫn latency mạng)*`,
+          description: `<@${session.userId}> đã **bấm sớm quá**! ❌`,
           color: 0xe74c3c,
           footer: { text: "Dùng -rtparry để thử lại" },
         }],
       });
     } else if (finalType === "missed") {
+      // reactionMs có giá trị thật khi user CÓ bấm nhưng trễ (server tự ép success→missed
+      // vì vượt windowMs) — hiển thị số đó để họ biết chính xác trễ bao nhiêu. Chỉ khi
+      // reactionMs null (failsafe client tự submit vì không bấm luôn) mới hiện chung chung.
+      const lateMs = (typeof reactionMs === "number" && Number.isFinite(reactionMs)) ? Math.round(reactionMs) : null;
       await msg.edit({
         embeds: [{
           title: "⚔️ Parry Real Time — Web",
           description:
             `<@${session.userId}> đã **bỏ lỡ** đòn! ❌\n` +
-            `> Cửa sổ parry: **${session.windowMs}ms** — chậm quá!\n` +
-            `> *(Đo 100% chính xác — không lẫn latency mạng)*`,
+            (lateMs !== null
+              ? `> Phản ứng: **${lateMs}ms** — chậm hơn cửa sổ **${session.windowMs}ms**`
+              : `> Cửa sổ parry: **${session.windowMs}ms** — không bấm kịp!`),
           color: 0xe74c3c,
           footer: { text: "Dùng -rtparry để thử lại" },
         }],
