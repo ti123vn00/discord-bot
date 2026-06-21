@@ -1378,15 +1378,15 @@ roll(v = "no") {
         const d1 = r(5,10), d2 = r(10,20), d3 = r(14,20);
         return [
           `*[Dullahan active]*`,
-          `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Nếu đang dùng Fused Blade: nhận 3 **Coffin**`,
-          `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash]`,
+          `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [AOE] — Nếu đang dùng Fused Blade: nhận 3 **Coffin**`,
+          `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [AOE]`,
           `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [AOE] — gây 8 <:Sinking:1513762793436741652>Sinking`,
         ];
       }
       const d1 = r(4,8), d2 = r(5,9), d3 = r(11,13);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [AOE] — Nếu đang dùng Fused Blade: nhận 1 **Coffin**`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [AOE]`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Nếu đang dùng Fused Blade: nhận 1 **Coffin**`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash]`,
         `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [AOE] — gây 8 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
