@@ -4043,7 +4043,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
           description:
             `<@${session.userId}> **PARRY THÀNH CÔNG!** ✅\n` +
             `> ⚡ Phản ứng: **${ms}ms** — ${rating}\n` +
-            `> Cửa sổ parry: **${session.windowMs}ms** · Page: **${session.skillName}**\n`
+            `> Cửa sổ parry: **${session.windowMs}ms** · Page: **${session.skillName}**\n`,
           color: 0x2ecc71,
           footer: { text: "Dùng -rtparry để thử lại" },
         }],
