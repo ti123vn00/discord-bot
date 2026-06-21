@@ -25,6 +25,11 @@ if (!TOKEN || !CLIENT_ID) {
 }
 
 const commands = [
+  // ── /rtparry ───────────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName("rtparry")
+    .setDescription("Parry phản xạ thời gian thực — bot DM link, đo chính xác 100% trên trình duyệt"),
+
   // ── /skill ─────────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("skill")
