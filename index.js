@@ -77,21 +77,73 @@ function getPublicBaseUrl() {
   return process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || null;
 }
 
+// ─── RTPARRY — TỐC ĐỘ PAGE (hệ thống 3 màu: đỏ→vàng→xanh, lấy cảm hứng Sekiro) ────
+// Game gốc turn-based, KHÔNG có khái niệm "tốc độ real-time" nào — không có field
+// nào trong skills.js được thiết kế để đại diện cho việc này. Đây là HEURISTIC suy
+// luận từ field gần nhất có sẵn, không phải dữ liệu chính xác:
+//   - weaponType (Heavy/Medium/Light): chỉ 7/302 skill có field này, và phần lớn skill
+//     dùng weaponOf lại trỏ tới vũ khí KHÔNG có weaponType (VD: Durandal tự trỏ vào
+//     chính nó) → phủ quá ít, không dùng được.
+//   - diceMul: có ở mọi skill, nhưng 253/302 (84%) đều là "1x" → không phân biệt được.
+//   - cd (cooldown): phân bố tốt nhất (120×2Turn, 55×1Turn, 52×3Turn, 37×4Turn, 16×"—",
+//     9×5Turn, 7×6Turn) — suy luận: cd ngắn = đòn cơ bản/nhẹ dùng liên tục = NHANH;
+//     cd dài = đòn nặng/ulti cần hồi lâu = CHẬM (telegraph dài hơn, giống đòn nặng
+//     trong Sekiro có ký hiệu báo trước lâu hơn).
+// Một số skill có thể bị suy luận sai (cd không = tốc độ thật) — chấp nhận được vì
+// đây chỉ là minigame vui, không phải dữ liệu combat chính thức.
+function inferPageSpeed(skill) {
+  const cd = (skill.cd ?? "").trim();
+  if (cd === "—" || cd === "") return "fast";
+  const match = cd.match(/^(\d+)/);
+  if (!match) return "normal"; // text không parse được rõ ràng (VD: "Khi X kích hoạt")
+  const turns = parseInt(match[1], 10);
+  if (turns <= 1) return "fast";
+  if (turns <= 3) return "normal";
+  return "slow";
+}
+
+// Khoảng thời gian (ms) màn vàng hiện trước khi chuyển xanh, theo tốc độ suy luận được.
+// fast gần như tức khắc ("vàng cái thì instant xanh luôn" — ý gốc của Hugo); slow giữ
+// lâu ("đợi lóe lên một lúc lâu mới xanh").
+const PAGE_SPEED_YELLOW_MS = {
+  fast:   { min: 50,   max: 150 },
+  normal: { min: 500,  max: 900 },
+  slow:   { min: 1300, max: 2000 },
+};
+
+function randomYellowMs(speedTier) {
+  const { min, max } = PAGE_SPEED_YELLOW_MS[speedTier] ?? PAGE_SPEED_YELLOW_MS.normal;
+  return Math.round(min + Math.random() * (max - min));
+}
+
+/** Chọn 1 skill ngẫu nhiên trong toàn bộ SKILLS — dùng khi user không chỉ định tên
+ *  cụ thể cho -rtparry/`/rtparry`. Không cần lọc promptArg vì chỉ đọc name/cd, không
+ *  gọi roll(). */
+function pickRandomSkillForParry() {
+  const keys = Object.keys(SKILLS);
+  return SKILLS[keys[Math.floor(Math.random() * keys.length)]];
+}
+
 /**
  * createRtparryToken — tạo token mới + lưu session, trả về URL đầy đủ. Đây là phần
  * CHUNG thật sự giữa prefix và slash — phần GỬI link (DM hay ephemeral) khác nhau đủ
  * nhiều (xem comment ở từng handler) nên để mỗi bên tự lo, không gò vào 1 hàm chung.
+ * @param {object} skill — skill object (đã resolve qua findSkill/pickRandomSkillForParry
+ *   ở caller) dùng để suy ra tốc độ vàng→xanh qua inferPageSpeed().
  * @returns {{ url: string, token: string } | null} null nếu thiếu baseUrl
  */
-function createRtparryToken({ userId, channelId, messageId }) {
+function createRtparryToken({ userId, channelId, messageId, skill }) {
   const baseUrl = getPublicBaseUrl();
   if (!baseUrl) return null;
   const token = crypto.randomBytes(16).toString("hex");
+  const speedTier = inferPageSpeed(skill);
   webParrySessions.set(token, {
     userId,
     channelId,
     messageId,
     windowMs: RTPARRY_WINDOW_MS,
+    yellowMs: randomYellowMs(speedTier),
+    skillName: skill.name,
     expiresAt: Date.now() + WEB_PARRY_TTL_MS,
   });
   return { url: `${baseUrl}/rtparry/${token}`, token };
@@ -2035,6 +2087,18 @@ client.on("messageCreate", async (message) => {
 
   // ── -rtparry (Parry phản xạ thời gian thực — DM link, đo chính xác trên web) ──
   if (message.content.startsWith("-rtparry")) {
+    const argStr = message.content.replace(/^-rtparry/i, "").trim();
+    let targetSkill = null;
+    if (argStr) {
+      targetSkill = findSkill(argStr);
+      if (!targetSkill) {
+        message.reply(`⚠️ Không tìm thấy skill **"${argStr}"**. Dùng \`-rtparry\` không kèm tên để random.`);
+        return;
+      }
+    } else {
+      targetSkill = pickRandomSkillForParry();
+    }
+
     if (isOnCooldown(message.author.id, "parryrt_web", 5000)) {
       message.reply("⏳ Chờ vài giây trước khi thử lại nhé.");
       return;
@@ -2047,7 +2111,7 @@ client.on("messageCreate", async (message) => {
       sentMsg = await message.reply({
         embeds: [{
           title: "⚔️ Parry Real Time",
-          description: "📬 Đã gửi link qua **DM** cho bạn — mở DM để bắt đầu.",
+          description: `📬 Đã gửi link qua **DM** cho bạn — mở DM để bắt đầu.\n> Page: **${targetSkill.name}**`,
           color: 0xf39c12,
           footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi bạn chơi xong" },
         }],
@@ -2057,7 +2121,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const linkInfo = createRtparryToken({ userId: message.author.id, channelId: message.channel.id, messageId: sentMsg.id });
+    const linkInfo = createRtparryToken({ userId: message.author.id, channelId: message.channel.id, messageId: sentMsg.id, skill: targetSkill });
     if (!linkInfo) {
       await sentMsg.edit({
         embeds: [{
@@ -3150,6 +3214,18 @@ client.on("interactionCreate", async (interaction) => {
   // dùng interaction.commandName làm key, sẽ tạo cooldown RIÊNG cho slash command,
   // cho phép spam đổi qua đổi lại -rtparry/`/rtparry` để né cooldown 5s).
   if (interaction.commandName === "rtparry") {
+    const nameArg = interaction.options.getString("name");
+    let targetSkill = null;
+    if (nameArg) {
+      targetSkill = findSkill(nameArg);
+      if (!targetSkill) {
+        await interaction.reply({ content: `⚠️ Không tìm thấy skill **"${nameArg}"**. Bỏ trống \`name\` để random.`, flags: MessageFlags.Ephemeral }).catch(() => {});
+        return;
+      }
+    } else {
+      targetSkill = pickRandomSkillForParry();
+    }
+
     if (isOnCooldown(interaction.user.id, "parryrt_web", 5000)) {
       await interaction.reply({ content: "⏳ Chờ vài giây trước khi thử lại nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
@@ -3164,7 +3240,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply({
         embeds: [{
           title: "⚔️ Parry Real Time",
-          description: `${interaction.user} đang làm Parry Real Time…`,
+          description: `${interaction.user} đang chơi Parry Real Time…\n> Page: **${targetSkill.name}**`,
           color: 0xf39c12,
           footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi chơi xong" },
         }],
@@ -3175,7 +3251,7 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    const linkInfo = createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id });
+    const linkInfo = createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id, skill: targetSkill });
     if (!linkInfo) {
       await interaction.followUp({
         embeds: [{
@@ -3691,7 +3767,13 @@ client.login(TOKEN);
 /** Render trang Parry Real Time — HTML/CSS/JS thuần, không phụ thuộc gì bên ngoài.
  *  performance.now() chạy hoàn toàn trên máy user, không qua round-trip server
  *  lúc đo — đây là điểm khác biệt cốt lõi so với bản -rtparry trong Discord. */
-function renderParryWebPage(token, windowMs) {
+function renderParryWebPage(token, windowMs, yellowMs, skillName) {
+  // Audio hook — CHƯA có file thật (user sẽ cung cấp sau), nên đọc từ env var, fallback
+  // rỗng. Client tự kiểm tra "có URL không" trước khi play — không lỗi gì nếu để trống,
+  // chỉ là chạy không có âm thanh (im lặng) cho tới khi set 2 biến này.
+  const soundYellowUrl = process.env.RTPARRY_SOUND_YELLOW_URL || "";
+  const soundGoUrl = process.env.RTPARRY_SOUND_GO_URL || "";
+
   return `<!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -3708,6 +3790,7 @@ function renderParryWebPage(token, windowMs) {
   }
   #stage.idle    { background: #2c2f33; }
   #stage.waiting { background: #c0392b; }
+  #stage.yellow  { background: #f1c40f; color: #2c2f33; }
   #stage.go      { background: #27ae60; }
   #stage.early   { background: #8e44ad; }
   #stage.missed  { background: #7f8c8d; }
@@ -3724,19 +3807,23 @@ function renderParryWebPage(token, windowMs) {
 </head>
 <body>
 <div id="stage" class="idle">
-  <h1>⚔️ Parry Real Time — Web</h1>
-  <p>Đo phản xạ trực tiếp trên máy bạn — không lẫn latency mạng.<br>Bấm "Bắt đầu", chờ màn hình chuyển <b>XANH</b>, rồi bấm/chạm NGAY trong ${windowMs}ms.</p>
+  <h1>⚔️ Parry Real Time</h1>
+  <p>Page: <b>${skillName}</b><br>Đỏ = chuẩn bị · Vàng = sắp tới · Xanh = BẤM NGAY (trong ${windowMs}ms)</p>
   <button class="start" id="startBtn">Bắt đầu</button>
 </div>
 <div class="footer">Token: ${token.slice(0, 8)}… · Kết quả sẽ tự gửi vào Discord</div>
 <script>
 const TOKEN = ${JSON.stringify(token)};
 const WINDOW_MS = ${windowMs};
+const YELLOW_MS = ${yellowMs};
+const SOUND_YELLOW_URL = ${JSON.stringify(soundYellowUrl)};
+const SOUND_GO_URL = ${JSON.stringify(soundGoUrl)};
 const stage = document.getElementById("stage");
 const startBtn = document.getElementById("startBtn");
-let phase = "idle"; // idle | waiting | go | late | done
+let phase = "idle"; // idle | waiting | yellow | go | late | done
 let t0 = null;
 let timer = null;
+let yellowTimer = null;
 let goTimeoutTimer = null;
 let noClickTimer = null;
 
@@ -3746,22 +3833,39 @@ function setPhase(p, html) {
   stage.innerHTML = html;
 }
 
+// playSound — KHÔNG lỗi gì nếu url rỗng (chưa có file) hoặc browser chặn autoplay.
+// User đã bấm "Bắt đầu" trước đó nên đã có user-gesture trong page, audio.play()
+// thường được phép sau đó, nhưng vẫn catch lỗi cho chắc (Safari/mobile có thể khác).
+function playSound(url) {
+  if (!url) return;
+  try {
+    const audio = new Audio(url);
+    audio.play().catch(() => {});
+  } catch (e) {}
+}
+
 function startRound() {
-  setPhase("waiting", "<h1>Chờ…</h1><p>ĐỪNG bấm vội — chờ màn hình chuyển XANH</p>");
+  setPhase("waiting", "<h1>Chờ…</h1><p>ĐỪNG bấm vội — chờ qua VÀNG rồi tới XANH</p>");
   const delay = 1200 + Math.random() * 2800; // 1.2s~4s, random để không đoán được nhịp
   timer = setTimeout(() => {
-    t0 = performance.now();
-    setPhase("go", "<div class='big'>BẤM NGAY!</div>");
-    // Sau WINDOW_MS mà chưa bấm — chuyển sang "late" nhưng VẪN cho bấm để biết chính
-    // xác trễ bao nhiêu ms. Trước đây tự submit ngay với reactionMs=null lúc này, nên
-    // không có số thật nào để hiển thị khi báo "bỏ lỡ" — giờ vẫn tính fail (server tự
-    // ép theo windowMs) nhưng có số liệu thật để hiện cho người chơi biết họ trễ bao nhiêu.
-    goTimeoutTimer = setTimeout(() => {
-      setPhase("late", "<h1>⌛ Trễ rồi!</h1><p>Vẫn bấm để xem bạn trễ bao nhiêu</p>");
-      // Failsafe: nếu sau đó vẫn không bấm luôn (bỏ đi, đóng tab giữa chừng), tự submit
-      // "missed" thật (không có số) sau 1 khoảng đủ dài — không để phiên treo vô hạn.
-      noClickTimer = setTimeout(() => submitResult(null, "missed"), 5000);
-    }, WINDOW_MS);
+    // Màn VÀNG — thời gian giữ vàng (YELLOW_MS) phụ thuộc tốc độ Page đang luyện, suy
+    // ra từ cooldown thật của skill (xem inferPageSpeed phía server) — Page nhanh thì
+    // vàng gần như tức khắc chuyển xanh, Page chậm thì giữ vàng lâu hơn nhiều.
+    setPhase("yellow", "<h1>⚠️ Sắp tới!</h1>");
+    playSound(SOUND_YELLOW_URL);
+    yellowTimer = setTimeout(() => {
+      t0 = performance.now();
+      setPhase("go", "<div class='big'>BẤM NGAY!</div>");
+      playSound(SOUND_GO_URL);
+      // Sau WINDOW_MS mà chưa bấm — chuyển sang "late" nhưng VẪN cho bấm để biết chính
+      // xác trễ bao nhiêu ms (vẫn tính fail, chỉ là có số liệu thật để hiển thị).
+      goTimeoutTimer = setTimeout(() => {
+        setPhase("late", "<h1>⌛ Trễ rồi!</h1><p>Vẫn bấm để xem bạn trễ bao nhiêu</p>");
+        // Failsafe: nếu sau đó vẫn không bấm luôn, tự submit "missed" thật (không số)
+        // sau 1 khoảng đủ dài — không để phiên treo vô hạn.
+        noClickTimer = setTimeout(() => submitResult(null, "missed"), 5000);
+      }, WINDOW_MS);
+    }, YELLOW_MS);
   }, delay);
 }
 
@@ -3797,14 +3901,15 @@ startBtn.addEventListener("click", (e) => {
 });
 
 stage.addEventListener("click", () => {
-  if (phase === "waiting") {
-    // Bấm sớm = THẤT BẠI THẬT — khớp đúng hành vi bản Discord ("Bấm sớm = thất bại").
-    // Trước đây cho "thử lại tại chỗ" miễn phí, không báo server — nghĩa là spam-click
-    // suốt từ đầu KHÔNG BAO GIỜ bị tính fail, vô hiệu hoá hoàn toàn mục đích của luật
-    // "bấm sớm thì thua". Giờ bấm sớm 1 lần là kết thúc phiên (token bị dùng), y như
-    // bấm trễ (missed) hay bấm đúng lúc (success) — phải gõ -rtparry lại để có
-    // lượt mới, không còn "free retry".
+  if (phase === "waiting" || phase === "yellow") {
+    // Bấm sớm (kể cả lúc ĐÃ vàng nhưng chưa xanh) = THẤT BẠI THẬT — khớp đúng cảm giác
+    // Sekiro: thấy ký hiệu báo trước không có nghĩa được đỡ ngay, phải đợi đúng lúc đòn
+    // landing (xanh) mới đỡ được. Trước đây cho "thử lại tại chỗ" miễn phí ở phase
+    // "waiting", không báo server — nghĩa là spam-click suốt từ đầu KHÔNG BAO GIỜ bị
+    // tính fail. Giờ bấm sớm 1 lần (dù đỏ hay vàng) là kết thúc phiên luôn, y như bấm
+    // trễ (missed) hay bấm đúng lúc (success) — phải gõ -rtparry lại để có lượt mới.
     clearTimeout(timer);
+    clearTimeout(yellowTimer);
     submitResult(null, "early");
   } else if (phase === "go" || phase === "late") {
     // "late" vẫn submit như "success" — server tự ép thành "missed" nếu reactionMs
@@ -3832,7 +3937,7 @@ app.get("/rtparry/:token", (req, res) => {
       "</body></html>"
     );
   }
-  res.send(renderParryWebPage(req.params.token, session.windowMs));
+  res.send(renderParryWebPage(req.params.token, session.windowMs, session.yellowMs, session.skillName));
 });
 
 // POST /rtparry/:token/result — nhận kết quả đo được TỪ TRÌNH DUYỆT user (đã tính
@@ -3887,7 +3992,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
       await msg.edit({
         embeds: [{
           title: "⚔️ Parry Real Time — Web",
-          description: `<@${session.userId}> đã **bấm sớm quá**! ❌`,
+          description: `<@${session.userId}> đã **bấm sớm quá**! ❌\n> Page: **${session.skillName}**`,
           color: 0xe74c3c,
           footer: { text: "Dùng -rtparry để thử lại" },
         }],
@@ -3903,8 +4008,9 @@ app.post("/rtparry/:token/result", async (req, res) => {
           description:
             `<@${session.userId}> đã **bỏ lỡ** đòn! ❌\n` +
             (lateMs !== null
-              ? `> Phản ứng: **${lateMs}ms** — chậm hơn cửa sổ **${session.windowMs}ms**`
-              : `> Cửa sổ parry: **${session.windowMs}ms** — không bấm kịp!`),
+              ? `> Phản ứng: **${lateMs}ms** — chậm hơn cửa sổ **${session.windowMs}ms**\n`
+              : `> Cửa sổ parry: **${session.windowMs}ms** — không bấm kịp!\n`) +
+            `> Page: **${session.skillName}**`,
           color: 0xe74c3c,
           footer: { text: "Dùng -rtparry để thử lại" },
         }],
@@ -3927,9 +4033,9 @@ app.post("/rtparry/:token/result", async (req, res) => {
         // pha trộn vào nữa, nên hạ hẳn so với mốc cũ (100/200/300, vốn tính trên số
         // đo bị thổi phồng do bug/latency). <120ms gần như chỉ người phản xạ rất tốt
         // hoặc có luyện tập mới đạt được liên tục; 250ms là giới hạn cứng (window).
-        ms < 150 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
-        ms < 200 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
-        ms < 250 ? "✅ **GOOD!** Phản ứng tốt!"          :
+        ms < 120 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
+        ms < 160 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
+        ms < 200 ? "✅ **GOOD!** Phản ứng tốt!"          :
                    "😅 **NOT BAD!** Vừa kịp!";
       await msg.edit({
         embeds: [{
@@ -3937,7 +4043,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
           description:
             `<@${session.userId}> **PARRY THÀNH CÔNG!** ✅\n` +
             `> ⚡ Phản ứng: **${ms}ms** — ${rating}\n` +
-            `> Cửa sổ parry: **${session.windowMs}ms**\n` +
+            `> Cửa sổ parry: **${session.windowMs}ms** · Page: **${session.skillName}**\n` +
             `> *(Đo 100% chính xác trên trình duyệt — không lẫn latency mạng như bản Discord thường)*`,
           color: 0x2ecc71,
           footer: { text: "Dùng -rtparry để thử lại" },
