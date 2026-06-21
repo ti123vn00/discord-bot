@@ -3844,13 +3844,26 @@ function setPhase(p, html) {
   stage.innerHTML = html;
 }
 
-// playSound — KHÔNG lỗi gì nếu url rỗng (chưa có file) hoặc browser chặn autoplay.
+// Preload audio NGAY lúc trang load — KHÔNG đợi tới lúc cần phát mới tạo Audio() như
+// trước (đó là bug thật: tạo mới + bắt đầu fetch network đúng lúc màn vàng/xanh xuất
+// hiện, có thể làm việc tải/decode file cạnh tranh CPU với việc render màn hình ngay
+// lúc cần chính xác nhất — đặc biệt rõ với Page "fast" vì vàng chỉ kéo dài 50-150ms,
+// file có thể chưa tải xong khi cần chuyển xanh). Giờ tạo Audio() 1 lần, gọi .load()
+// chủ động ngay khi script chạy — lúc thật sự cần phát, file đã sẵn sàng từ trước.
+const yellowAudio = SOUND_YELLOW_URL ? new Audio(SOUND_YELLOW_URL) : null;
+const goAudio = SOUND_GO_URL ? new Audio(SOUND_GO_URL) : null;
+if (yellowAudio) { yellowAudio.preload = "auto"; yellowAudio.load(); }
+if (goAudio) { goAudio.preload = "auto"; goAudio.load(); }
+
+// playSound — KHÔNG lỗi gì nếu chưa có audio (url rỗng) hoặc browser chặn autoplay.
 // User đã bấm "Bắt đầu" trước đó nên đã có user-gesture trong page, audio.play()
 // thường được phép sau đó, nhưng vẫn catch lỗi cho chắc (Safari/mobile có thể khác).
-function playSound(url) {
-  if (!url) return;
+// Dùng LẠI audio object đã preload (currentTime reset về 0 để phát lại từ đầu nếu
+// user chơi nhiều lần) — không tạo mới mỗi lần gọi.
+function playSound(audio) {
+  if (!audio) return;
   try {
-    const audio = new Audio(url);
+    audio.currentTime = 0;
     audio.play().catch(() => {});
   } catch (e) {}
 }
@@ -3863,11 +3876,11 @@ function startRound() {
     // ra từ cooldown thật của skill (xem inferPageSpeed phía server) — Page nhanh thì
     // vàng gần như tức khắc chuyển xanh, Page chậm thì giữ vàng lâu hơn nhiều.
     setPhase("yellow", "<h1>⚠️ Sắp tới!</h1>");
-    playSound(SOUND_YELLOW_URL);
+    playSound(yellowAudio);
     yellowTimer = setTimeout(() => {
       t0 = performance.now();
       setPhase("go", "<div class='big'>BẤM NGAY!</div>");
-      playSound(SOUND_GO_URL);
+      playSound(goAudio);
       // Sau WINDOW_MS mà chưa bấm — chuyển sang "late" nhưng VẪN cho bấm để biết chính
       // xác trễ bao nhiêu ms (vẫn tính fail, chỉ là có số liệu thật để hiển thị).
       goTimeoutTimer = setTimeout(() => {
