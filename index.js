@@ -3164,7 +3164,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply({
         embeds: [{
           title: "⚔️ Parry Real Time",
-          description: `${interaction.user} đang chơi Parry Real Time…`,
+          description: `${interaction.user} đang làm Parry Real Time…`,
           color: 0xf39c12,
           footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi chơi xong" },
         }],
