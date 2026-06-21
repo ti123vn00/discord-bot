@@ -3927,9 +3927,9 @@ app.post("/rtparry/:token/result", async (req, res) => {
         // pha trộn vào nữa, nên hạ hẳn so với mốc cũ (100/200/300, vốn tính trên số
         // đo bị thổi phồng do bug/latency). <120ms gần như chỉ người phản xạ rất tốt
         // hoặc có luyện tập mới đạt được liên tục; 250ms là giới hạn cứng (window).
-        ms < 120 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
-        ms < 160 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
-        ms < 200 ? "✅ **GOOD!** Phản ứng tốt!"          :
+        ms < 150 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
+        ms < 200 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
+        ms < 250 ? "✅ **GOOD!** Phản ứng tốt!"          :
                    "😅 **NOT BAD!** Vừa kịp!";
       await msg.edit({
         embeds: [{
