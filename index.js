@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const express = require("express");
 const crypto = require("crypto");
 const { Redis } = require("@upstash/redis");
@@ -1546,17 +1546,22 @@ function formatCombatantBlock(combatant, label) {
   const hpPct = combatant.maxHp > 0 ? Math.max(0, combatant.currentHp / combatant.maxHp) : 0;
   const filled = Math.round(hpPct * 10);
   const hpBar = "🟥".repeat(filled) + "⬛".repeat(10 - filled);
+  const r = combatant.resistance;
+  const resLine = combatant.staggered
+    ? `2x/2x/2x (STAGGER, gốc ${r.B}xB ${r.P}xP ${r.S}xS)`
+    : `${r.B}xB ${r.P}xP ${r.S}xS`;
   const lines = [
     `**${label}**${combatant.currentHp <= 0 ? " — ĐÃ HẠ! 💀" : ""}`,
     `${hpBar} **${Math.max(0, Math.round(combatant.currentHp * 100) / 100)}/${combatant.maxHp}** HP`,
     `> Stamina: **${combatant.currentStamina}/${combatant.maxStamina}** | Sanity: **${combatant.currentSanity}/${combatant.maxSanity}** | Light: **${combatant.currentLight}/${combatant.maxLight}**`,
+    `> Res: **${resLine}** | Vũ khí: **${combatant.weaponWeight}**`,
   ];
   const statusParts = [];
   if (combatant.sinking > 0) statusParts.push(`<:Sinking:1513762793436741652>${combatant.sinking}`);
   if (combatant.rupture > 0) statusParts.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
   if (combatant.poise > 0) statusParts.push(`<:Poise:1513762945715142736>${combatant.poise}`);
   if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
-  if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn (Res tạm set 2x)`);
+  if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
   if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
   if (combatant.stance) lines.push(`> 🛡️ Đang ${combatant.stance.type === "guard" ? "Guard" : "Evade"} — còn chặn được ${combatant.stance.chargesLeft} hit`);
   if (combatant.parryRoll !== null) lines.push(`> 🗡️ Đang chờ Parry (đã roll **${combatant.parryRoll}**)`);
@@ -1607,6 +1612,169 @@ function resolveDefenseOutcome(target, rawDmg) {
     return { finalDmg: reduced, note };
   }
   return { finalDmg: rawDmg, note: null };
+}
+
+/** Action panel — 5 nút cho player bấm thay vì gõ lệnh text. Attack/Hit cần nhập
+ *  công thức dmg nên mở Modal (form nhập liệu) khi bấm; Guard/Evade/Parry không
+ *  cần nhập gì nên thực thi NGAY khi bấm. */
+function buildEncounterActionPanel(channelId) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`encact:${channelId}:attack`).setLabel("⚔️ Đánh thường").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`encact:${channelId}:hit`).setLabel("📖 Dùng Page").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`encact:${channelId}:guard`).setLabel("🛡️ Guard").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`encact:${channelId}:evade`).setLabel("💨 Evade").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`encact:${channelId}:parry`).setLabel("🗡️ Parry").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+/**
+ * doPlayerAttack — logic CHUNG cho `-encounter attack` (text) và nút "Đánh thường"
+ * (qua Modal). QUAN TRỌNG: KHÔNG trừ Stamina ở đây — chỉ TÍNH TRƯỚC stamina cần và
+ * lưu vào pendingAction.staminaCost, trừ THẬT lúc GM xác nhận (xem encconfirm
+ * handler). Trước đây trừ ngay lúc declare — nghĩa là GM từ chối (VD: vì lý do gõ
+ * sai công thức) vẫn làm player mất Stamina oan, dù hành động đó không có hiệu lực
+ * gì cả. Giờ: declare chỉ KIỂM TRA đủ Stamina không (báo lỗi sớm nếu thiếu), CHƯA
+ * trừ; confirm mới trừ thật — khớp đúng nguyên tắc "không gì là thật cho tới khi
+ * GM xác nhận" đã áp dụng cho HP/status từ trước.
+ * @returns {{ embed, components }}
+ * @throws Error nếu input/điều kiện không hợp lệ
+ */
+async function doPlayerAttack(channelId, playerId, playerMention, dmgStr) {
+  if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
+  let result;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
+    const player = encounter.players[playerId];
+    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
+    if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
+    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
+
+    const boss = encounter.boss;
+    const calcOpts = {
+      dmgStr, resStr: combatantResStr(boss),
+      poiseInit: boss.poise, sinkingInit: boss.sinking,
+      ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
+    };
+    const preview = calcMathCore(calcOpts);
+    const hitCount = preview.dmgValues.length;
+    const staminaCost = WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
+    if (player.currentStamina < staminaCost) {
+      throw new Error(`Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
+    }
+
+    encounter.pendingAction = {
+      direction: "playerToBoss", attackerId: playerId, targetId: "boss",
+      calcOpts, preview, finalDmg: preview.totalDmg,
+      staminaCost, // CHỈ attack có field này — đánh dấu cho encconfirm biết cần trừ Stamina người tấn công lúc confirm
+    };
+    await saveEncounter(channelId, encounter);
+
+    result = {
+      embed: {
+        title: "🎯 M1 chờ GM xác nhận",
+        description:
+          `${playerMention} đánh thường (${hitCount} hit) lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
+          `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg\n` +
+          `> Sẽ trừ **${staminaCost} Stamina** NẾU được GM xác nhận (từ chối thì không mất gì).\n` +
+          `> GM bấm nút dưới để áp dụng thật vào encounter.`,
+        color: 0xf39c12,
+      },
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`encconfirm:${channelId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`encreject:${channelId}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
+      )],
+    };
+  });
+  return result;
+}
+
+/** doPlayerHit — logic CHUNG cho `-encounter hit` (text) và nút "Dùng Page". Page
+ *  tốn Light (player tự khai báo/quản lý riêng), KHÔNG đụng tới Stamina — đúng yêu
+ *  cầu giữ rõ ranh giới: chỉ M1/Guard/Evade tốn Stamina, Page không. */
+async function doPlayerHit(channelId, playerId, playerMention, dmgStr, extra = {}) {
+  if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
+  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul = 1, diceMul = 1, critDiv = 0 } = extra;
+  let result;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
+    if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
+    const boss = encounter.boss;
+    const calcOpts = {
+      dmgStr, resStr: resStr || combatantResStr(boss), drStr,
+      bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
+      poiseInit: boss.poise, sinkingInit: boss.sinking,
+      ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
+    };
+    const preview = calcMathCore(calcOpts);
+
+    encounter.pendingAction = {
+      direction: "playerToBoss", attackerId: playerId, targetId: "boss",
+      calcOpts, preview, finalDmg: preview.totalDmg,
+    };
+    await saveEncounter(channelId, encounter);
+
+    result = {
+      embed: {
+        title: "🎯 Action chờ GM xác nhận",
+        description:
+          `${playerMention} dùng Page lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
+          `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg\n` +
+          `> GM bấm nút dưới để áp dụng thật vào encounter.`,
+        color: 0xf39c12,
+      },
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`encconfirm:${channelId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`encreject:${channelId}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
+      )],
+    };
+  });
+  return result;
+}
+
+/** doPlayerGuardEvade — logic CHUNG cho -encounter guard/evade (text) và nút
+ *  Guard/Evade. KHÔNG qua pending/confirm (thực thi NGAY) — vì đây là tuyên bố thế
+ *  thủ của RIÊNG player đó, không cần GM duyệt số liệu gì cả (không có damage math
+ *  nào để sai ở đây). */
+async function doPlayerGuardEvade(channelId, playerId, type) {
+  let message;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    const player = encounter.players[playerId];
+    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
+    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
+    const cost = type === "evade" ? 20 : 10;
+    if (player.currentStamina < cost) throw new Error(`Không đủ Stamina (cần ${cost}, còn ${player.currentStamina}).`);
+    player.currentStamina -= cost;
+    checkStaggerPanic(player);
+    const charges = WEAPON_GUARD_CHARGES[encounter.boss.weaponWeight];
+    player.stance = { type, chargesLeft: charges };
+    await saveEncounter(channelId, encounter);
+    message = `🛡️ <@${playerId}> vào thế **${type === "evade" ? "Evade" : "Guard"}** (-${cost} Stamina, chặn được ${charges} hit tới).`;
+  });
+  return message;
+}
+
+/** doPlayerParry — logic CHUNG cho -encounter parry (text) và nút Parry. 0 Stamina,
+ *  roll d20 ngay, lưu lại chờ đòn tới (xem previewDefenseOutcome/resolveDefenseOutcome). */
+async function doPlayerParry(channelId, playerId) {
+  let message;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    const player = encounter.players[playerId];
+    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
+    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
+    const roll = 1 + Math.floor(Math.random() * 20);
+    player.parryRoll = roll;
+    await saveEncounter(channelId, encounter);
+    message = `🗡️ <@${playerId}> chuẩn bị Parry — roll được **${roll}** (0 Stamina). Chờ đòn tới để so kết quả.`;
+  });
+  return message;
 }
 
 function buildEncounterBoardEmbed(encounter) {
@@ -3261,7 +3429,7 @@ client.on("messageCreate", async (message) => {
             pendingAction: null,
           };
           await saveEncounter(message.channel.id, encounter);
-          await message.reply({ embeds: [buildEncounterBoardEmbed(encounter)] });
+          await message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id) });
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -3296,7 +3464,10 @@ client.on("messageCreate", async (message) => {
             weaponWeight: weapon, resistance: res,
           });
           await saveEncounter(message.channel.id, encounter);
-          message.reply(`✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.bossName}** với ${hp} HP.`);
+          await message.reply({
+            content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.bossName}** với ${hp} HP.`,
+            components: buildEncounterActionPanel(message.channel.id),
+          });
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -3307,7 +3478,7 @@ client.on("messageCreate", async (message) => {
     if (sub === "status") {
       const encounter = await getEncounter(message.channel.id);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào. Dùng `-encounter start` để tạo."); return; }
-      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)] });
+      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id) });
       return;
     }
 
@@ -3368,51 +3539,18 @@ client.on("messageCreate", async (message) => {
       else { const p = parseFloat(critDivStr); if (!isNaN(p) && p > 1) critDiv = p; }
 
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
-          if (encounter.pendingAction) {
-            throw new Error(`Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.`);
-          }
-          const boss = encounter.boss;
-          const calcOpts = {
-            dmgStr, resStr: kv["res"] ?? combatantResStr(boss), drStr: kv["dr"] ?? "",
-            bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
-            poiseInit: boss.poise, sinkingInit: boss.sinking,
-            ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
-          };
-          const preview = calcMathCore(calcOpts);
-
-          encounter.pendingAction = {
-            direction: "playerToBoss", attackerId: message.author.id, targetId: "boss",
-            calcOpts, preview, finalDmg: preview.totalDmg,
-          };
-          await saveEncounter(message.channel.id, encounter);
-
-          await message.reply({
-            embeds: [{
-              title: "🎯 Action chờ GM xác nhận",
-              description:
-                `${message.author} dùng Page lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
-                `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg\n` +
-                `> GM bấm nút dưới để áp dụng thật vào encounter.`,
-              color: 0xf39c12,
-            }],
-            components: [new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId(`encconfirm:${message.channel.id}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-              new ButtonBuilder().setCustomId(`encreject:${message.channel.id}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-            )],
-          });
+        const { embed, components } = await doPlayerHit(message.channel.id, message.author.id, message.author.toString(), dmgStr, {
+          resStr: kv["res"] ?? "", drStr: kv["dr"] ?? "", bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
         });
+        await message.reply({ embeds: [embed], components });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
       return;
     }
 
-    // ── attack: M1 (đánh thường) lên BOSS — TỰ TRỪ STAMINA theo vũ khí × số hit
-    // trong dmgStr. Trừ Stamina NGAY lúc gõ lệnh (không chờ GM confirm) vì đây là
-    // resource CỦA NGƯỜI TẤN CÔNG, tiêu tốn dù đòn có trúng/được duyệt hay không.
+    // ── attack: M1 (đánh thường) lên BOSS — tự TÍNH Stamina cần, trừ thật lúc GM
+    // xác nhận (xem doPlayerAttack — đã sửa để reject không làm mất Stamina oan).
     if (sub === "attack") {
       const kv = parseKeyValues(rest);
       const dmgStr = kv["dmg"] ?? "";
@@ -3421,55 +3559,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-          if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
-          if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-
-          // Đếm số hit trong dmgStr để tính tổng Stamina cần — chạy calcMathCore 1
-          // lần với context boss hiện tại, dùng LUÔN kết quả này cho cả việc đếm hit
-          // (dmgValues.length) và pending action thật, không tính 2 lần.
-          const boss = encounter.boss;
-          const calcOpts = {
-            dmgStr, resStr: combatantResStr(boss),
-            poiseInit: boss.poise, sinkingInit: boss.sinking,
-            ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
-          };
-          const preview = calcMathCore(calcOpts);
-          const hitCount = preview.dmgValues.length;
-          const staminaCost = WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
-          if (player.currentStamina < staminaCost) {
-            throw new Error(`Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
-          }
-          player.currentStamina -= staminaCost;
-          player.staminaUsedThisTurn += staminaCost;
-          checkStaggerPanic(player);
-
-          encounter.pendingAction = {
-            direction: "playerToBoss", attackerId: message.author.id, targetId: "boss",
-            calcOpts, preview, finalDmg: preview.totalDmg,
-          };
-          await saveEncounter(message.channel.id, encounter);
-
-          await message.reply({
-            embeds: [{
-              title: "🎯 M1 chờ GM xác nhận",
-              description:
-                `${message.author} đánh thường (${hitCount} hit, -${staminaCost} Stamina) lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
-                `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg` +
-                (player.staggered ? `\n> 💫 Bạn vừa bị **Stagger**! (hết Stamina)` : "") +
-                `\n> GM bấm nút dưới để áp dụng thật vào encounter.`,
-              color: 0xf39c12,
-            }],
-            components: [new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId(`encconfirm:${message.channel.id}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-              new ButtonBuilder().setCustomId(`encreject:${message.channel.id}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-            )],
-          });
-        });
+        const { embed, components } = await doPlayerAttack(message.channel.id, message.author.id, message.author.toString(), dmgStr);
+        await message.reply({ embeds: [embed], components });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -3537,24 +3628,8 @@ client.on("messageCreate", async (message) => {
 
     if (sub === "evade" || sub === "guard") {
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-          if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-          const cost = sub === "evade" ? 20 : 10;
-          if (player.currentStamina < cost) throw new Error(`Không đủ Stamina (cần ${cost}, còn ${player.currentStamina}).`);
-          player.currentStamina -= cost;
-          checkStaggerPanic(player);
-          // Số charge dựa theo vũ khí của BOSS (người sẽ tấn công), không phải vũ khí
-          // của người thủ — đúng luật "Guard/evade/parry đòn của Light weapon thì chặn
-          // được 4 hit, Medium 2, Heavy 1".
-          const charges = WEAPON_GUARD_CHARGES[encounter.boss.weaponWeight];
-          player.stance = { type: sub, chargesLeft: charges };
-          await saveEncounter(message.channel.id, encounter);
-          message.reply(`🛡️ ${message.author} vào thế **${sub === "evade" ? "Evade" : "Guard"}** (-${cost} Stamina, chặn được ${charges} hit tới).`);
-        });
+        const msg = await doPlayerGuardEvade(message.channel.id, message.author.id, sub);
+        message.reply(msg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -3563,17 +3638,8 @@ client.on("messageCreate", async (message) => {
 
     if (sub === "parry") {
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-          if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-          const roll = 1 + Math.floor(Math.random() * 20);
-          player.parryRoll = roll;
-          await saveEncounter(message.channel.id, encounter);
-          message.reply(`🗡️ ${message.author} chuẩn bị Parry — roll được **${roll}** (0 Stamina). Chờ đòn tới để so kết quả.`);
-        });
+        const msg = await doPlayerParry(message.channel.id, message.author.id);
+        message.reply(msg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -3854,6 +3920,50 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  // ── Nút action panel (Attack/Hit/Guard/Evade/Parry) ──────────────────────────
+  if (interaction.customId.startsWith("encact:")) {
+    const [, channelId, action] = interaction.customId.split(":");
+
+    if (action === "guard" || action === "evade") {
+      try {
+        const msg = await doPlayerGuardEvade(channelId, interaction.user.id, action);
+        await interaction.reply({ content: msg }).catch(() => {});
+      } catch (err) {
+        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+
+    if (action === "parry") {
+      try {
+        const msg = await doPlayerParry(channelId, interaction.user.id);
+        await interaction.reply({ content: msg }).catch(() => {});
+      } catch (err) {
+        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+
+    // attack/hit cần nhập công thức dmg — mở Modal (form nhập liệu) thay vì xử lý
+    // ngay, vì button không mang theo text tự do được. Modal submit xử lý ở listener
+    // riêng (xem "MODAL SUBMIT INTERACTIONS" phía dưới).
+    if (action === "attack" || action === "hit") {
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:${action}`)
+        .setTitle(action === "attack" ? "Đánh thường (M1)" : "Dùng Page/Skill");
+      const dmgInput = new TextInputBuilder()
+        .setCustomId("dmgStr")
+        .setLabel("Công thức dmg (giống /math)")
+        .setPlaceholder("VD: 50x2B+2Sinking")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
+      await interaction.showModal(modal).catch(() => {});
+      return;
+    }
+  }
+
+
   if (interaction.customId.startsWith("encconfirm:") || interaction.customId.startsWith("encreject:")) {
     const isConfirm = interaction.customId.startsWith("encconfirm:");
     const channelId = interaction.customId.slice((isConfirm ? "encconfirm:" : "encreject:").length);
@@ -3867,7 +3977,7 @@ client.on("interactionCreate", async (interaction) => {
         if (!isAdmin && interaction.user.id !== encounter.gmId) {
           return interaction.reply({ content: "⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được xác nhận/từ chối.", flags: MessageFlags.Ephemeral }).catch(() => {});
         }
-        const { direction, attackerId, targetId, calcOpts, preview } = encounter.pendingAction;
+        const { direction, attackerId, targetId, calcOpts, preview, staminaCost } = encounter.pendingAction;
         const attackerLabel = attackerId === "boss" ? `**${encounter.bossName}**` : `<@${attackerId}>`;
         const targetLabel = targetId === "boss" ? `**${encounter.bossName}**` : `<@${targetId}>`;
         const target = targetId === "boss" ? encounter.boss : encounter.players[targetId];
@@ -3877,7 +3987,20 @@ client.on("interactionCreate", async (interaction) => {
           // lúc tạo pending action (-encounter hit/attack/bossattack) chỉ TÍNH TRƯỚC
           // (preview), không áp dụng gì cả. Confirm mới thật sự trừ HP + ghi đè status
           // mới + resolve thế thủ/Parry thật (roll d20 thật cho Parry ở ĐÂY, không
-          // phải lúc preview — xem comment ở resolveDefenseOutcome).
+          // phải lúc preview — xem comment ở resolveDefenseOutcome) + trừ Stamina của
+          // NGƯỜI TẤN CÔNG nếu là action loại attack (staminaCost chỉ có ở attack —
+          // xem doPlayerAttack — KHÔNG trừ lúc declare nữa để reject không làm mất
+          // Stamina oan).
+          let staminaNote = "";
+          if (staminaCost && attackerId !== "boss") {
+            const attacker = encounter.players[attackerId];
+            if (attacker) {
+              attacker.currentStamina = Math.max(0, attacker.currentStamina - staminaCost);
+              attacker.staminaUsedThisTurn += staminaCost;
+              checkStaggerPanic(attacker);
+              staminaNote = `\n> ${attackerLabel} -${staminaCost} Stamina` + (attacker.staggered ? ` — 💫 **Stagger**!` : "");
+            }
+          }
           let finalDmg = preview.totalDmg;
           let defenseNote = "";
           if (direction === "bossToPlayer") {
@@ -3897,7 +4020,7 @@ client.on("interactionCreate", async (interaction) => {
           await interaction.update({
             embeds: [{
               title: "✅ Action đã xác nhận",
-              description: `${attackerLabel} → ${targetLabel}: \`${calcOpts.dmgStr}\`\n> Gây **${finalDmg.toFixed(3)}** dmg thật${defenseNote}`,
+              description: `${attackerLabel} → ${targetLabel}: \`${calcOpts.dmgStr}\`\n> Gây **${finalDmg.toFixed(3)}** dmg thật${defenseNote}${staminaNote}`,
               color: 0x2ecc71,
             }],
             components: [],
@@ -3909,7 +4032,7 @@ client.on("interactionCreate", async (interaction) => {
           await interaction.update({
             embeds: [{
               title: "❌ Action bị từ chối",
-              description: `${attackerLabel} → ${targetLabel} (\`${calcOpts.dmgStr}\`) đã bị GM từ chối — không có gì thay đổi (Stamina/thế thủ đã tiêu trước đó, nếu có, KHÔNG được trả lại).`,
+              description: `${attackerLabel} → ${targetLabel} (\`${calcOpts.dmgStr}\`) đã bị GM từ chối — không có gì thay đổi (Stamina chưa từng bị trừ cho tới lúc xác nhận, nên không mất gì).`,
               color: 0xe74c3c,
             }],
             components: [],
@@ -3926,6 +4049,26 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     log("error", "buttonInteraction", interaction.user?.id ?? "unknown", err.message);
     interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── MODAL SUBMIT INTERACTIONS (encounter attack/hit qua nút) ────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.customId.startsWith("encmodal:")) return;
+  const [, channelId, action] = interaction.customId.split(":");
+  const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+  try {
+    if (action === "attack") {
+      const { embed, components } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr);
+      await interaction.reply({ embeds: [embed], components });
+    } else if (action === "hit") {
+      const { embed, components } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr);
+      await interaction.reply({ embeds: [embed], components });
+    }
+  } catch (err) {
+    log("error", "encModalSubmit", interaction.user?.id ?? "unknown", err.message);
+    await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
 
