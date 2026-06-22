@@ -2410,8 +2410,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,24), d2 = r(24,27);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Gây 1 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up/Coffin (Max 10), +1 <:DiceUp:1513767795681398894>Dice Up/<:Sinking:1513762793436741652>Sinking trên địch (Max 8), +3 <:DiceUp:1513767795681398894>Dice Up/Dullahan (Max 9)`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE] — Gây 1 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up/Coffin (Max 10), +1 <:DiceUp:1513767795681398894>Dice Up/<:Sinking:1513762793436741652>Sinking trên địch (Max 8), +3 <:DiceUp:1513767795681398894>Dice Up/Dullahan (Max 9)`,
         `*[Turn End sau khi dùng] mất hết stack Dullahan*`,
       ];
     },
