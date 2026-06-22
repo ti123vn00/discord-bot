@@ -20,6 +20,11 @@ module.exports = {
   // /math: Rupture counts tối đa của địch
   RUPTURE_MAX: 99,
 
+  // /math: Burn / Tremor / Bleed counts tối đa của địch — cùng mốc 99 như Sinking/Rupture/Poise
+  BURN_MAX: 99,
+  TREMOR_MAX: 99,
+  BLEED_MAX: 99,
+
   // /parry: số lần roll tối đa mỗi lệnh
   PARRY_MAX_ROLLS: 30,
 
