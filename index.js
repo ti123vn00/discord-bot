@@ -229,7 +229,7 @@ function calcExpForGrade(targetGrade) {
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
 
 const ADMIN_IDS = new Set(
-  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355,928618780735705138")
+  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355,1405147450498486332")
     .split(",").map(s => s.trim()).filter(Boolean)
 );
 
