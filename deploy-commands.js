@@ -5,6 +5,9 @@ const {
   POISE_MAX,
   SINKING_MAX,
   RUPTURE_MAX,
+  BURN_MAX,
+  TREMOR_MAX,
+  BLEED_MAX,
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
@@ -102,7 +105,23 @@ const commands = [
     .addIntegerOption(opt =>
       opt.setName("departed")
         .setDescription(`The Departed: Count khởi đầu, bonus dmg = Sinking÷2+count mỗi hit (tối đa ${BUTTERFLY_DEPARTED_MAX})`)
-        .setMinValue(0).setMaxValue(BUTTERFLY_DEPARTED_MAX).setRequired(false)),
+        .setMinValue(0).setMaxValue(BUTTERFLY_DEPARTED_MAX).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("burn")
+        .setDescription(`Burn count hiện tại của địch — tính dmg cuối turn = count×2, sau đó giảm 1 nửa (tối đa ${BURN_MAX})`)
+        .setMinValue(0).setMaxValue(BURN_MAX).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("bleed")
+        .setDescription(`Bleed count hiện tại của địch — tính dmg = count÷4 mỗi lần địch hành động (tối đa ${BLEED_MAX})`)
+        .setMinValue(0).setMaxValue(BLEED_MAX).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("bleedactions")
+        .setDescription("Số lần địch hành động trong turn này (để tính tổng dmg Bleed, mặc định 1)")
+        .setMinValue(0).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("tremor")
+        .setDescription(`Tremor count hiện tại của địch — Tremor Burst trừ 5 Sta/count, giảm 1 nửa sau đó (tối đa ${TREMOR_MAX})`)
+        .setMinValue(0).setMaxValue(TREMOR_MAX).setRequired(false)),
 
 
   // ── /parry ──────────────────────────────────────────────────────────────────
