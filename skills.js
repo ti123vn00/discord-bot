@@ -4222,7 +4222,7 @@ Object.assign(SKILLS, {
   "fused blade of ruined mirror worlds": {
     name: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
     weaponType: "Heavy", weaponDmg: "28 [<:Slash:1513768633434640517>Slash]",
-    passive: `**Dullahan** — Parry thành công khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan**. Khi có **Dullahan**: nhận 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
+    passive: `**Dullahan** — Parry khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan** và giảm bản thân 15 Sanity. Khi có **Dullahan**: nhận 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
     cost: "—", cd: "—", diceMul: "—",
     roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "requiem" hoặc "lament mourn and despair")*`]; },
   },
