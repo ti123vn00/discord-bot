@@ -1,5053 +1,4414 @@
-// index.js
-const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
-const express = require("express");
-const crypto = require("crypto");
-const { Redis } = require("@upstash/redis");
-
-const app = express();
-app.use(express.json()); // cần cho POST /rtparry/:token/result nhận JSON body
-
-// ─── ENV VALIDATION ───────────────────────────────────────────────────────────
-const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-
-if (!TOKEN) {
-  console.error("DISCORD_TOKEN is not set — Discord bot will not start.");
-  process.exit(1);
-}
-if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-  console.error("UPSTASH_REDIS_REST_URL hoặc UPSTASH_REDIS_REST_TOKEN chưa được set — bot sẽ không thể kết nối Redis.");
-  process.exit(1);
-}
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
-
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
-// Các giới hạn dùng chung với deploy-commands.js (slash command options) được
-// tách sang constants.js để tránh duplicate/lệch giá trị giữa 2 file.
-const {
-  SANITY_MIN,
-  POISE_MAX,
-  SINKING_MAX,
-  RUPTURE_MAX,
-  BURN_MAX,
-  TREMOR_MAX,
-  BLEED_MAX,
-  PARRY_MAX_ROLLS,
-  OPEN_COUNT_MAX,
-  MAX_PROFILES,
-  PROFILE_NAME_MAX_LENGTH,
-  BUTTERFLY_LIVING_MAX,
-  BUTTERFLY_DEPARTED_MAX,
-  GRADE_MAX,
-  GRADE_MIN,
-  SKILL_MAX_ROLLS,
-} = require("./constants");
-const POISE_CRIT_BONUS_PER_STACK = 0.05;
-const POISE_RESET_THRESHOLD = 1;
-const POISE_CRIT_DIV_DEFAULT = 2;
-
-// ─── REAL-TIME PARRY (web flow — đo chính xác 100%, không lẫn latency Discord) ──
-// `-rtparry` / `/rtparry` gửi DM 1 link ra trang Parry Real Time độc lập (route
-// Express bên dưới), performance.now() chạy NGAY trên máy user — không qua
-// round-trip Discord nào lúc đo, nên không có vấn đề clock-skew/latency như bản
-// message-edit-đếm-ngược cũ (đã bỏ hoàn toàn — không còn fallback).
-// Map<token, session> — token sống NGẮN (chỉ vài chục giây) nên dùng RAM, không cần
-// Upstash: nếu bot restart giữa lúc user đang làm bài thì coi như hỏng phiên, chấp
-// nhận được vì tỉ lệ xảy ra cực thấp và đây chỉ là minigame, không phải economy.
-const webParrySessions = new Map();
-const WEB_PARRY_TTL_MS = 90_000; // đủ thời gian user mở tab, đọc hướng dẫn, rồi mới bấm
-// Cửa sổ parry (ms) — quá mốc này coi như "bỏ lỡ". Đặt thành const chung 1 chỗ thay vì
-// hardcode rải rác (help text, route POST, v.v.) — tránh lệch số như đã từng gặp khi
-// đổi 400→500→550 mà quên sửa hết chỗ. Đã hạ từ 550 xuống 250 vì giờ đo phản xạ thật,
-// không còn latency Discord/CSS transition bù vào nữa.
-const RTPARRY_WINDOW_MS = 400;
-// Sàn sinh lý học — không ai phản xạ thị giác dưới mức này thật, dùng để lọc kết
-// quả từ script tự động (xem comment đầy đủ ở route POST /rtparry/:token/result).
-const RTPARRY_MIN_HUMAN_MS = 0;
-const webParrySessionCleanupTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [token, s] of webParrySessions)
-    if (s.expiresAt < now) webParrySessions.delete(token);
-}, 30_000);
-
-/** Lấy base URL public của bot — Render tự set RENDER_EXTERNAL_URL, fallback PUBLIC_URL
- *  cho môi trường khác (VD: chạy local hoặc host khác không tự set biến này). */
-function getPublicBaseUrl() {
-  return process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || null;
-}
-
-// ─── RTPARRY — TỐC ĐỘ PAGE (hệ thống 3 màu: đỏ→vàng→xanh, lấy cảm hứng Sekiro) ────
-// Game gốc turn-based, KHÔNG có khái niệm "tốc độ real-time" nào — không có field
-// nào trong skills.js được thiết kế để đại diện cho việc này. Đây là HEURISTIC suy
-// luận từ field gần nhất có sẵn, không phải dữ liệu chính xác:
-//   - weaponType (Heavy/Medium/Light): chỉ 7/302 skill có field này, và phần lớn skill
-//     dùng weaponOf lại trỏ tới vũ khí KHÔNG có weaponType (VD: Durandal tự trỏ vào
-//     chính nó) → phủ quá ít, không dùng được.
-//   - diceMul: có ở mọi skill, nhưng 253/302 (84%) đều là "1x" → không phân biệt được.
-//   - cd (cooldown): phân bố tốt nhất (120×2Turn, 55×1Turn, 52×3Turn, 37×4Turn, 16×"—",
-//     9×5Turn, 7×6Turn) — suy luận: cd ngắn = đòn cơ bản/nhẹ dùng liên tục = NHANH;
-//     cd dài = đòn nặng/ulti cần hồi lâu = CHẬM (telegraph dài hơn, giống đòn nặng
-//     trong Sekiro có ký hiệu báo trước lâu hơn).
-// Một số skill có thể bị suy luận sai (cd không = tốc độ thật) — chấp nhận được vì
-// đây chỉ là minigame vui, không phải dữ liệu combat chính thức.
-function inferPageSpeed(skill) {
-  const cd = (skill.cd ?? "").trim();
-  if (cd === "—" || cd === "") return "fast";
-  const match = cd.match(/^(\d+)/);
-  if (!match) return "normal"; // text không parse được rõ ràng (VD: "Khi X kích hoạt")
-  const turns = parseInt(match[1], 10);
-  if (turns <= 1) return "fast";
-  if (turns <= 3) return "normal";
-  return "slow";
-}
-
-// Khoảng thời gian (ms) màn vàng hiện trước khi chuyển xanh, theo tốc độ suy luận được.
-// fast gần như tức khắc ("vàng cái thì instant xanh luôn" — ý gốc của Hugo); slow giữ
-// lâu ("đợi lóe lên một lúc lâu mới xanh").
-const PAGE_SPEED_YELLOW_MS = {
-  fast:   { min: 50,   max: 150 },
-  normal: { min: 500,  max: 900 },
-  slow:   { min: 1300, max: 2000 },
-};
-
-// Cửa sổ parry (ms) — CŨNG phải đổi theo tốc độ Page, không chỉ riêng màn vàng. Lý do:
-// Page chậm giữ vàng rất lâu (lên tới 2000ms) trước khi xanh — đã chờ lâu như vậy mà
-// cửa sổ vẫn cố định 300ms như Page nhanh thì cảm giác RẤT khó/trễ (đợi căng cả 2s mà
-// chỉ có 300ms để phản ứng, không tương xứng với độ "nặng"/báo trước dài của đòn chậm).
-// Đòn chậm trong nhiều game parry cũng thường DỄ đỡ hơn vì thấy rõ trước — nên window
-// rộng hơn cho slow, hẹp hơn cho fast (đòn nhanh cần phản ứng chính xác, ít khoan nhượng).
-const PAGE_SPEED_WINDOW_MS = {
-  fast:   300,
-  normal: 400,
-  slow:   560,
-};
-
-function randomYellowMs(speedTier) {
-  const { min, max } = PAGE_SPEED_YELLOW_MS[speedTier] ?? PAGE_SPEED_YELLOW_MS.normal;
-  return Math.round(min + Math.random() * (max - min));
-}
-
-/**
- * createRtparryToken — tạo token mới + lưu session, trả về URL đầy đủ. Đây là phần
- * CHUNG thật sự giữa prefix và slash — phần GỬI link (DM hay ephemeral) khác nhau đủ
- * nhiều (xem comment ở từng handler) nên để mỗi bên tự lo, không gò vào 1 hàm chung.
- * @param {object|null} skill — skill object (đã resolve qua findSkill ở caller) dùng để
- *   suy ra tốc độ vàng→xanh + cửa sổ qua inferPageSpeed(). NULL khi gọi `-rtparry` /
- *   `/rtparry` KHÔNG kèm tên — lúc đó dùng mốc mặc định cố định (RTPARRY_WINDOW_MS +
- *   tier "normal" cho vàng), KHÔNG tự chọn skill ngẫu nhiên (trước đây có làm vậy,
- *   user phản hồi là sai — "-rtparry" trần không liên quan gì tới page cụ thể nào cả,
- *   nên giữ hành vi đơn giản/cố định như cũ, chỉ thêm màn vàng cho đồng bộ UI 3 màu).
- * @returns {{ url: string, token: string } | null} null nếu thiếu baseUrl
- */
-function createRtparryToken({ userId, channelId, messageId, skill = null }) {
-  const baseUrl = getPublicBaseUrl();
-  if (!baseUrl) return null;
-  const token = crypto.randomBytes(16).toString("hex");
-  const speedTier = skill ? inferPageSpeed(skill) : "normal";
-  webParrySessions.set(token, {
-    userId,
-    channelId,
-    messageId,
-    windowMs: skill ? PAGE_SPEED_WINDOW_MS[speedTier] : RTPARRY_WINDOW_MS,
-    yellowMs: randomYellowMs(speedTier),
-    skillName: skill ? skill.name : null,
-    expiresAt: Date.now() + WEB_PARRY_TTL_MS,
-  });
-  return { url: `${baseUrl}/rtparry/${token}`, token };
-}
-
-function buildRtparryLinkButton(url) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setLabel("🔗 Mở Parry Real Time").setStyle(ButtonStyle.Link).setURL(url)
-  );
-}
-
-// ─── DAILY REWARDS ────────────────────────────────────────────────────────────
-const DAILY_EXP_REWARD = 5;
-const DAILY_AHN_REWARD = 100_000;
-const DAILY_STREAK_EXP_BONUS = 25;
-const DAILY_STREAK_AHN_BONUS = 400_000;
-// TTL 2 ngày (thay vì 1 ngày) là có chủ ý:
-// - Nếu user điểm danh ngày 1, skip ngày 2, rồi điểm ngày 3: key vẫn còn nhưng
-//   lastClaim (ngày 1) ≠ yesterdayStr (ngày 2) → streak reset về 1 đúng logic.
-// - TTL 1 ngày sẽ khiến key expire đúng lúc ngày 2 reset, và nếu user điểm danh
-//   ngay tại thời điểm ranh giới có thể mất key sớm hơn dự kiến.
-// → TTL 2 ngày là safety margin, không ảnh hưởng đến tính đúng của streak logic.
-const DAILY_KEY_TTL_SECONDS = 86400 * 2;
-
-// ─── LEVELING ─────────────────────────────────────────────────────────────────
-const GRADE_EXP_REQUIRED = {
-  9: 5,
-  8: 10,
-  7: 20,
-  6: 40,
-  5: 80,
-  4: 160,
-  3: 320,
-  2: 640,
-};
-// GRADE_MAX / GRADE_MIN được import từ constants.js (dùng chung với deploy-commands.js)
-
-const EXP_MAX = Object.values(GRADE_EXP_REQUIRED).reduce((a, b) => a + b, 0); // 1275
-
-function clampExp(exp) {
-  return Math.min(Math.max(0, exp), EXP_MAX);
-}
-
-function calcGrade(totalExp) {
-  let grade = GRADE_MIN;
-  let remaining = totalExp;
-
-  while (grade > GRADE_MAX) {
-    const needed = GRADE_EXP_REQUIRED[grade];
-    if (needed === undefined) break;
-    if (remaining >= needed) {
-      remaining -= needed;
-      grade--;
-    } else {
-      break;
-    }
-  }
-
-  const expNeeded = grade > GRADE_MAX ? (GRADE_EXP_REQUIRED[grade] ?? null) : null;
-  return { grade, expInCurrentGrade: remaining, expNeeded };
-}
-
-function calcExpForGrade(targetGrade) {
-  if (targetGrade < GRADE_MAX || targetGrade > GRADE_MIN) {
-    throw new RangeError(`targetGrade phải từ ${GRADE_MAX}–${GRADE_MIN}, nhận được: ${targetGrade}`);
-  }
-  let total = 0;
-  for (let g = GRADE_MIN; g > targetGrade; g--) {
-    total += GRADE_EXP_REQUIRED[g] ?? 0;
-  }
-  return total;
-}
-
-// ─── UI CONSTANTS ─────────────────────────────────────────────────────────────
-const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
-
-const ADMIN_IDS = new Set(
-  (process.env.ADMIN_IDS ?? "208187560692940803,1072123095739019346,675899106614575150,1341034013036511355,1405147450498486332")
-    .split(",").map(s => s.trim()).filter(Boolean)
-);
-
-// ─── BOOK POOLS ───────────────────────────────────────────────────────────────
-const RANDOM_BOOK_POOL = [
-  "Book Thường",
-  "Hana Association Book",
-  "Zwei Association Book",
-  "Shi Association Book",
-  "Cinq Association Book",
-  "Liu Association Book",
-  "Seven Association Book",
-  "Dieci Association Book",
-  "Thumb Syndicate Book",
-  "Index Syndicate Book",
-  "Middle Syndicate Book",
-  "Ring Syndicate Book",
-  "Blade Lineage Syndicate Book",
-  "Kurokumo Syndicate Book",
-  "Smiling Faces Syndicate Book",
-  "N Corp Book",
-  "Sweeping Book",
-];
-
-const SEALED_BOOK_POOL = [
-  "Warp Corp Book",
-  "Fragment Book",
-  "Udjat Book",
-  "Red Gaze Book",
-  "Red Mist Book",
-  "Black Silence Book",
-  "Library Book",
-  "Book of The Birds",
-  "Arbiter Book",
-  "Book of M.A.D.",
-  "Reverbation Ensemble Book",
-  "The Middle Big Brother Book",
-];
-
-const CHIPBOARD_CACHE_POOL = [
-  "Chipboard MK1",
-  "Chipboard MK2",
-  "Chipboard MK3",
-];
-
-// ─── VALID BOOKS & ITEMS ──────────────────────────────────────────────────────
-const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice", "Book of Sorcerer"];
-const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
-
-// Derive từ CHIPBOARD_CACHE_POOL để tránh khai báo trùng MK1–MK3
-const VALID_ITEMS = [
-  ...CHIPBOARD_CACHE_POOL,
-  "Chipboard MK4",
-  "Chipboard MK5",
-  "Uptie Module",
-  "Chipboard Cache",
-];
-
-// ─── CRAFT RECIPES ────────────────────────────────────────────────────────────
-const CRAFT_RECIPES = {
-  "Chipboard MK2": { inputs: { "Chipboard MK1": 4 }, output: { "Chipboard MK2": 1 } },
-  "Chipboard MK3": { inputs: { "Chipboard MK2": 4 }, output: { "Chipboard MK3": 1 } },
-  "Chipboard MK4": { inputs: { "Chipboard MK3": 4, "Uptie Module": 1 }, output: { "Chipboard MK4": 1 } },
-  "Chipboard MK5": { inputs: { "Chipboard MK4": 4, "Uptie Module": 1 }, output: { "Chipboard MK5": 1 } },
-};
-
-const VALID_ITEMS_SET = new Set(VALID_ITEMS.map(i => i.toLowerCase()));
-
-const BOOK_LOOKUP_MAP = new Map(VALID_BOOKS.map(b => [b.toLowerCase(), b]));
-const ITEM_LOOKUP_MAP = new Map(VALID_ITEMS.map(i => [i.toLowerCase(), i]));
-
-function findBook(input) {
-  return BOOK_LOOKUP_MAP.get(input.toLowerCase().trim()) ?? null;
-}
-
-function findItem(input) {
-  return ITEM_LOOKUP_MAP.get(input.toLowerCase().trim()) ?? null;
-}
-
-const ADMIN_ITEM_NAME_MAX_LENGTH = 100;
-function findItemAdmin(input) {
-  const trimmed = input.trim();
-  if (!trimmed || trimmed.length > ADMIN_ITEM_NAME_MAX_LENGTH) return null;
-  return trimmed;
-}
-
-// ─── parseKeyValues ───────────────────────────────────────────────────────────
-const KNOWN_KEYS = new Set([
-  "book", "count", "item", "itemcount", "ahn", "exp", "grade",
-  "dmg", "res", "dr", "bonus", "critmul", "critdiv",
-  "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
-  "poise",
-  "living", "departed",
-  "burn", "bleed", "bleedactions", "tremor",
-  "books", "items",
-  "name", "hp", "weapon", "stamina", "light", // -encounter start/join/bossattack
-]);
-
-const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
-
-function parseKeyValues(input) {
-  const _KV_KEY_RE = new RegExp(_KV_KEY_RE_SRC, "gi");
-  const anchors = [];
-  let m;
-  while ((m = _KV_KEY_RE.exec(input)) !== null) {
-    anchors.push({
-      key: m[1].toLowerCase(),
-      matchStart: m.index,
-      valueStart: m.index + m[0].length,
-    });
-  }
-  const result = {};
-  for (let i = 0; i < anchors.length; i++) {
-    const { key, valueStart } = anchors[i];
-    const valueEnd = i + 1 < anchors.length ? anchors[i + 1].matchStart : input.length;
-    result[key] = input.slice(valueStart, valueEnd).trim();
-  }
-  return result;
-}
-
-function filterZeroFields(fields) {
-  return fields.filter((f) => {
-    if (f.alwaysShow) return true;
-    if ("showIf" in f) return f.showIf;
-    // Fallback cho các field không có showIf
-    const v = String(f.value).trim();
-    return v !== "0" && v !== "No";
-  });
-}
-
-/**
- * Bão hòa % Dmg Bonus:
- *  0–100%   → tỷ lệ 1:1   (đầy đủ)
- *  100–200% → tỷ lệ 0.5:1 (mỗi 1% chỉ còn 0.5%)
- *  200%+    → tỷ lệ 0.25:1 (mỗi 1% chỉ còn 0.25%)
- */
-function saturateBonusPct(raw) {
-  if (raw <= 100) return raw;
-  if (raw <= 200) return 100 + (raw - 100) * 0.5;
-  if (raw <= 300) return 150 + (raw - 200) * 0.25;
-  return 175 + (raw - 300) * 0.125; // 100 + 50 + 25 + (raw-300)*0.125
-}
-
-/**
- * Bão hòa % Damage Reduction (dr < 1x):
- *  DR 0–25%  → tỷ lệ 1:1
- *  DR 25–50% → tỷ lệ 0.5:1
- *  DR 50%+   → tỷ lệ 0.05:1
- * DR >= 1x (vulnerability hoặc neutral) không bị ảnh hưởng.
- * CHỈ áp dụng cho Damage Reduction (dr) — Res (B/P/S) không còn bị bão hòa.
- */
-function saturateDR(mult) {
-  if (mult >= 1) return mult;
-  const drRaw = (1 - mult) * 100;
-  let drEff;
-  if (drRaw <= 25)       drEff = drRaw;
-  else if (drRaw <= 50)  drEff = 25 + (drRaw - 25) * 0.5;
-  else                   drEff = 37.5 + (drRaw - 50) * 0.05;
-  return 1 - drEff / 100;
-}
-
-function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving = 0, theDeparted = 0, burnInit = 0, bleedInit = 0, bleedActions = 1, tremorInit = 0 }) {
-  const errors = [];
-  if (isNaN(bonusPct))       errors.push("bonus phải là số");
-  if (isNaN(sanityBonusPct)) errors.push("sanitybonus phải là số");
-  if (isNaN(critMul))        errors.push("critmul phải là số");
-  if (isNaN(diceMul))        errors.push("dicemul phải là số");
-  if (isNaN(sinkingInit))    errors.push("sinking phải là số");
-  if (isNaN(ruptureInit))    errors.push("rupture phải là số");
-  if (isNaN(sanityInit))     errors.push("sanity phải là số");
-  if (poiseInit < 0 || poiseInit > POISE_MAX) errors.push(`Poise phải từ 0–${POISE_MAX}`);
-  if (!isNaN(critMul) && critMul < 1) errors.push("CritMul phải ≥ 1");
-  if (!isNaN(diceMul) && diceMul < 0) errors.push("DiceMul phải ≥ 0");
-  if (!isNaN(sinkingInit) && !Number.isInteger(sinkingInit)) errors.push("sinking phải là số nguyên");
-  if (!isNaN(ruptureInit) && !Number.isInteger(ruptureInit)) errors.push("rupture phải là số nguyên");
-  if (!isNaN(sanityInit) && !Number.isInteger(sanityInit)) errors.push("sanity phải là số nguyên");
-  if (!isNaN(sinkingInit) && (sinkingInit < 0 || sinkingInit > SINKING_MAX)) errors.push(`Sinking phải từ 0–${SINKING_MAX}`);
-  if (!isNaN(ruptureInit) && (ruptureInit < 0 || ruptureInit > RUPTURE_MAX)) errors.push(`Rupture phải từ 0–${RUPTURE_MAX}`);
-  if (!isNaN(sanityInit) && sanityInit < SANITY_MIN) errors.push(`Sanity phải ≥ ${SANITY_MIN}`);
-  if (!Number.isInteger(theLiving) || theLiving < 0 || theLiving > BUTTERFLY_LIVING_MAX) errors.push(`The Living phải từ 0–${BUTTERFLY_LIVING_MAX}`);
-  if (!Number.isInteger(theDeparted) || theDeparted < 0 || theDeparted > BUTTERFLY_DEPARTED_MAX) errors.push(`The Departed phải từ 0–${BUTTERFLY_DEPARTED_MAX}`);
-  if (isNaN(burnInit) || !Number.isInteger(burnInit) || burnInit < 0 || burnInit > BURN_MAX) errors.push(`Burn phải từ 0–${BURN_MAX}`);
-  if (isNaN(bleedInit) || !Number.isInteger(bleedInit) || bleedInit < 0 || bleedInit > BLEED_MAX) errors.push(`Bleed phải từ 0–${BLEED_MAX}`);
-  if (isNaN(bleedActions) || !Number.isInteger(bleedActions) || bleedActions < 0) errors.push("bleedactions phải là số nguyên ≥ 0");
-  if (isNaN(tremorInit) || !Number.isInteger(tremorInit) || tremorInit < 0 || tremorInit > TREMOR_MAX) errors.push(`Tremor phải từ 0–${TREMOR_MAX}`);
-  return errors;
-}
-
-// ─── RATE LIMITING ────────────────────────────────────────────────────────────
-const cooldowns = new Map();
-const COOLDOWN_CLEANUP_AGE_MS = 60_000;
-
-// Giữ ref timer để có thể clear khi shutdown, tránh memory leak
-const cooldownCleanupTimer = setInterval(() => {
-  const cutoff = Date.now() - COOLDOWN_CLEANUP_AGE_MS;
-  for (const [k, v] of cooldowns) {
-    if (v < cutoff) cooldowns.delete(k);
-  }
-}, COOLDOWN_CLEANUP_AGE_MS);
-
-function isOnCooldown(userId, command, ms) {
-  const key = `${userId}:${command}`;
-  const last = cooldowns.get(key) ?? 0;
-  const now = Date.now();
-  if (now - last < ms) return true;
-  cooldowns.set(key, now);
-  return false;
-}
-
-// Dùng cho slash command — reply ephemeral nếu đang cooldown, trả về true để caller return sớm.
-// Đặt gần isOnCooldown để dễ tìm; được dùng ở slash command handler bên dưới.
-// Lưu ý: luôn gọi TRƯỚC deferReply vì interaction chưa ở trạng thái deferred/replied.
-async function replyOnCooldown(interaction, ms) {
-  if (!isOnCooldown(interaction.user.id, interaction.commandName, ms)) return false;
-  try {
-    await interaction.reply({ content: `⏳ Bạn dùng lệnh này quá nhanh, chờ ${ms / 1000} giây nhé.`, flags: MessageFlags.Ephemeral });
-  } catch {
-    // Interaction có thể đã expired — bỏ qua
-  }
-  return true;
-}
-
-// ─── VN TIME HELPERS ──────────────────────────────────────────────────────────
-const VN_UTC_OFFSET_HOURS = 7;
-// UTC giờ tương đương với VN 00:00 (nửa đêm) = 24 - 7 = 17
-const VN_MIDNIGHT_UTC_HOUR = 24 - VN_UTC_OFFSET_HOURS;
-
-function getVNNow() {
-  const now = new Date();
-  return new Date(now.getTime() + VN_UTC_OFFSET_HOURS * 60 * 60 * 1000);
-}
-
-function getVNDateString() {
-  return getVNNow().toISOString().slice(0, 10);
-}
-
-function secondsUntilVNMidnight() {
-  const now = new Date();
-  const vnNow = getVNNow();
-  const vnMidnight = new Date(Date.UTC(
-    vnNow.getUTCFullYear(), vnNow.getUTCMonth(), vnNow.getUTCDate(),
-    VN_MIDNIGHT_UTC_HOUR, 0, 0, 0
-  ));
-  if (vnMidnight <= now) vnMidnight.setUTCDate(vnMidnight.getUTCDate() + 1);
-  return Math.floor((vnMidnight - now) / 1000);
-}
-
-// ─── STRUCTURED LOGGING ───────────────────────────────────────────────────────
-function log(level, command, userId, msg, extra = {}) {
-  const entry = {
-    ts: new Date().toISOString(),
-    level,
-    cmd: command,
-    uid: userId,
-    msg,
-    ...extra,
-  };
-  if (level === "error") {
-    console.error(JSON.stringify(entry));
-  } else {
-    console.log(JSON.stringify(entry));
-  }
-}
-
-// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
-// Ghi log riêng cho hành động ADMIN-ONLY thành công (set grade, cộng/trừ exp/ahn của
-// người khác, setplayer, v.v.) — khác với log("error", ...) chỉ ghi khi có lỗi.
-// Mục đích: có trail truy vết nếu sau này có tranh chấp ("admin X có thật sự set grade
-// cho user Y hay không, lúc nào, giá trị gì"). Luôn console.log (không phải console.error)
-// vì đây không phải lỗi — chỉ là việc cần ghi nhận lại.
-function auditLog(action, actorId, targetId, details = {}) {
-  console.log(JSON.stringify({
-    ts: new Date().toISOString(),
-    level: "audit",
-    action,
-    actorId,
-    targetId,
-    ...details,
-  }));
-}
-
-// ─── REDIS TIMEOUT ────────────────────────────────────────────────────────────
-const REDIS_TIMEOUT_MS = 8000;
-
-// Custom error class để nhận diện timeout qua instanceof thay vì so sánh chuỗi.
-// Tránh bug âm thầm khi message thay đổi mà isTimeoutError không cập nhật theo.
-class RedisTimeoutError extends Error {
-  constructor(msg = "Thao tác Redis quá thời gian, thử lại sau.") {
-    super(msg);
-    this.name = "RedisTimeoutError";
-  }
-}
-
-function withTimeout(promise, ms = REDIS_TIMEOUT_MS, msg = "Thao tác Redis quá thời gian, thử lại sau.") {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, rej) => {
-      timer = setTimeout(() => rej(new RedisTimeoutError(msg)), ms);
-    }),
-  ]).finally(() => clearTimeout(timer));
-}
-
-// ─── REDIS LOCK ───────────────────────────────────────────────────────────────
-async function acquireLock(userId, ttlSeconds = 5) {
-  const lockKey = `lock:${userId}`;
-  const token = `${Date.now()}-${Math.random()}`;
-  try {
-    const result = await withTimeout(
-      redis.set(lockKey, token, { nx: true, ex: ttlSeconds }),
-      3000,
-      "Lock timeout"
-    );
-    if (result === "OK" || result === true) return { lockKey, token };
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function releaseLock({ lockKey, token }) {
-  await withTimeout(
-    redis.eval(
-      `if redis.call("get",KEYS[1])==ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end`,
-      [lockKey],
-      [token]
-    ),
-    3000,
-    "Release lock timeout"
-  ).catch(() => {});
-}
-
-async function withLock(userId, fn, { ttlSeconds = 5, retries = 3, retryDelayMs = 200 } = {}) {
-  let lock = null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    lock = await acquireLock(userId, ttlSeconds);
-    if (lock) break;
-    if (attempt < retries) await new Promise(r => setTimeout(r, retryDelayMs));
-  }
-  if (!lock) {
-    throw new Error("Đang xử lý lệnh khác của bạn, vui lòng thử lại sau giây lát.");
-  }
-  try {
-    return await fn();
-  } finally {
-    await releaseLock(lock).catch(() => {});
-  }
-}
-
-async function withDoubleLock(idA, idB, fn, {
-  innerTtl = 6, retries = 3, retryDelayMs = 200, bufferSeconds = 15,
-} = {}) {
-  const [firstId, secondId] = [idA, idB].sort();
-  // outerTtl bao gồm: thời gian chờ retry + buffer.
-  // Lưu ý: công thức này KHÔNG tính thời gian chạy fn() bên trong.
-  // bufferSeconds = 15 để có đủ headroom cho executeGive (2 reads + 1 pipeline save)
-  // trong điều kiện Redis latency cao; tăng thêm thủ công nếu fn() nặng hơn.
-  const outerTtl = innerTtl + Math.ceil((retries * retryDelayMs) / 1000) + bufferSeconds;
-  return withLock(firstId, () =>
-    withLock(secondId, fn, { ttlSeconds: innerTtl, retries, retryDelayMs }),
-  { ttlSeconds: outerTtl, retries, retryDelayMs });
-}
-
-// ─── GIVE CONFIRM FLOW ────────────────────────────────────────────────────────
-// Map<giveId, { senderId, targetId, isAdmin, params, expiresAt }> — lưu giao dịch
-// /give đang chờ xác nhận qua nút bấm. Không lưu Redis vì chỉ cần sống tối đa 60s
-// và không cần persist qua restart.
-const pendingGives = new Map();
-const GIVE_PENDING_TTL_MS = 60_000;
-const givePendingCleanupTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [id, g] of pendingGives)
-    if (g.expiresAt < now) pendingGives.delete(id);
-}, 30_000);
-
-
-// ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
-function migratePlayerData(data) {
-  if (data.books !== undefined || data.items !== undefined) {
-    data.books = data.books ?? {};
-    data.items = data.items ?? {};
-    return data;
-  }
-  const inv = data.inventory ?? {};
-  const books = {};
-  const items = {};
-  for (const [name, count] of Object.entries(inv)) {
-    if (count <= 0) continue;
-    if (VALID_ITEMS_SET.has(name.toLowerCase())) {
-      items[name] = count;
-    } else {
-      books[name] = count;
-    }
-  }
-  data.books = books;
-  data.items = items;
-  delete data.inventory;
-  return data;
-}
-
-const REDIS_MAX_RETRIES = 2;
-const REDIS_RETRY_BASE_MS = 150;
-
-function isTimeoutError(err) {
-  return err instanceof RedisTimeoutError;
-}
-
-// ─── PROFILE SYSTEM ───────────────────────────────────────────────────────────
-// MAX_PROFILES được import từ constants.js (dùng chung với deploy-commands.js)
-// Sinh PROFILE_LABELS/PROFILE_EMOJIS tự động theo MAX_PROFILES — tránh tình trạng
-// hard-code chỉ tới slot 3 rồi quên cập nhật khi MAX_PROFILES đổi (gây hiển thị
-// "undefined" cho slot mới), đúng với chủ đích "đổi 1 chỗ trong constants.js,
-// chỗ khác tự đồng bộ".
-function numberEmoji(n) {
-  if (n === 10) return "🔟";
-  if (n >= 0 && n <= 9) return `${n}\u{FE0F}\u{20E3}`; // keycap digit emoji (0️⃣-9️⃣)
-  return `${n}.`; // fallback cho n > 10 (không có keycap emoji chuẩn)
-}
-const PROFILE_LABELS = {};
-const PROFILE_EMOJIS = {};
-for (let s = 1; s <= MAX_PROFILES; s++) {
-  PROFILE_LABELS[s] = `Profile ${s}`;
-  PROFILE_EMOJIS[s] = numberEmoji(s);
-}
-
-// ─── PROFILE NAME HELPERS ─────────────────────────────────────────────────────
-// Tên tuỳ chỉnh lưu vào 1 key duy nhất per-user để giảm Redis round-trip.
-// Cấu trúc: { "1": "Tên A", "2": "Tên B", "3": "Tên C" }
-function profileNamesKey(userId) {
-  return `profilenames:${userId}`;
-}
-
-async function getProfileNames(userId) {
-  try {
-    const raw = await withTimeout(redis.get(profileNamesKey(userId)));
-    if (!raw) return {};
-    return typeof raw === "string" ? JSON.parse(raw) : raw;
-  } catch {
-    return {};
-  }
-}
-
-async function setProfileName(userId, slot, name) {
-  const names = await getProfileNames(userId);
-  if (name) {
-    names[String(slot)] = name;
-  } else {
-    delete names[String(slot)];
-  }
-  if (Object.keys(names).length === 0) {
-    await withTimeout(redis.del(profileNamesKey(userId)));
-  } else {
-    await withTimeout(redis.set(profileNamesKey(userId), JSON.stringify(names)));
-  }
-}
-
-/** Trả về tên hiển thị của profile: tên tuỳ chỉnh nếu có, mặc định nếu không. */
-function resolveProfileLabel(names, slot) {
-  return names[String(slot)] ?? PROFILE_LABELS[slot];
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function getActiveProfileSlot(userId) {
-  try {
-    const raw = await withTimeout(redis.get(`profile:${userId}`));
-    const slot = parseInt(raw, 10);
-    return (slot >= 1 && slot <= MAX_PROFILES) ? slot : 1;
-  } catch {
-    return 1;
-  }
-}
-
-async function setActiveProfileSlot(userId, slot) {
-  await withTimeout(redis.set(`profile:${userId}`, String(slot)));
-}
-
-function playerKeyForSlot(userId, slot) {
-  return slot === 1 ? `player:${userId}` : `player:${userId}:slot${slot}`;
-}
-
-function dailyKeyForSlot(userId, slot) {
-  return slot === 1 ? `daily:${userId}` : `daily:${userId}:slot${slot}`;
-}
-
-// buildProfileInfoEmbed đã chuyển sang player-actions.js (xem phần require + wiring bên dưới)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function getPlayerData(userId) {
-  const slot = await getActiveProfileSlot(userId);
-  const key = playerKeyForSlot(userId, slot);
-  let lastErr;
-  for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
-    try {
-      const raw = await withTimeout(redis.get(key));
-      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {} };
-      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-      return migratePlayerData(data);
-    } catch (err) {
-      lastErr = err;
-      if (isTimeoutError(err)) break;
-      if (attempt < REDIS_MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, REDIS_RETRY_BASE_MS * (attempt + 1)));
-      }
-    }
-  }
-  throw lastErr;
-}
-
-// Giống getPlayerData nhưng trả về cả slot — dùng khi caller cần gọi savePlayerData
-// với cùng slot để tránh gọi getActiveProfileSlot 2 lần (2 Redis round-trips).
-async function getPlayerDataWithSlot(userId) {
-  const slot = await getActiveProfileSlot(userId);
-  const key = playerKeyForSlot(userId, slot);
-  let lastErr;
-  for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
-    try {
-      const raw = await withTimeout(redis.get(key));
-      const data = raw
-        ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
-        : { exp: 0, ahn: 0, books: {}, items: {} };
-      return { data, slot };
-    } catch (err) {
-      lastErr = err;
-      if (isTimeoutError(err)) break;
-      if (attempt < REDIS_MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, REDIS_RETRY_BASE_MS * (attempt + 1)));
-      }
-    }
-  }
-  throw lastErr;
-}
-
-async function savePlayerData(userId, data, slot = null) {
-  // slot có thể được truyền vào từ caller (VD: handleOpenCache) để tránh thêm 1 Redis
-  // round-trip khi đã biết slot rồi (từ getPlayerDataWithSlot).
-  const resolvedSlot = slot ?? await getActiveProfileSlot(userId);
-  const key = playerKeyForSlot(userId, resolvedSlot);
-  const payload = JSON.stringify(data);
-  let lastErr;
-  for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
-    try {
-      await withTimeout(redis.set(key, payload));
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (isTimeoutError(err)) break;
-      if (attempt < REDIS_MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, REDIS_RETRY_BASE_MS * (attempt + 1)));
-      }
-    }
-  }
-  log("error", "savePlayerData", userId, lastErr?.message ?? "Unknown save error");
-  throw lastErr;
-}
-
-async function saveMultiplePlayerData(entries) {
-  // Nếu entry đã có slot (được truyền từ getPlayerDataWithSlot), dùng luôn để tránh
-  // round-trip Redis thứ 2 và ngăn TOCTOU nếu user switch profile giữa chừng.
-  const slots = await Promise.all(entries.map(e =>
-    e.slot != null ? Promise.resolve(e.slot) : getActiveProfileSlot(e.userId)
-  ));
-  const keys = entries.map((e, i) => playerKeyForSlot(e.userId, slots[i]));
-  const values = entries.map(e => JSON.stringify(e.data));
-
-  // Dùng 1 lệnh EVAL (Lua script) để SET toàn bộ key cùng lúc — Redis chạy Lua
-  // script atomic (đơn luồng), nên đảm bảo TẤT CẢ key cùng thành công hoặc TẤT
-  // CẢ cùng thất bại. Trước đây dùng pipeline: mỗi SET trong pipeline thực thi
-  // độc lập, nên nếu 1 lệnh lỗi giữa đường (VD: lưu cho recipient lỗi nhưng lưu
-  // cho sender vẫn thành công), /give có thể làm mất Ahn/sách của người gửi mà
-  // người nhận lại không được cộng — Lua script tránh được rủi ro nửa-nửa này.
-  const setAllScript = `
-    for i = 1, #KEYS do
-      redis.call("set", KEYS[i], ARGV[i])
-    end
-    return "OK"
-  `;
-  try {
-    await withTimeout(redis.eval(setAllScript, keys, values));
-  } catch (err) {
-    for (const e of entries) {
-      log("error", "saveMultiplePlayerData", e.userId ?? "unknown", err.message);
-    }
-    throw new Error(`Lưu dữ liệu thất bại, không ai bị trừ/mất dữ liệu (atomic): ${err.message}`);
-  }
-}
-
-function unwrapPipelineResults(results) {
-  return results.map(r => {
-    if (r !== null && typeof r === "object" && "result" in r) return r.result;
-    return r;
-  });
-}
-
-function formatNumber(n) {
-  return Math.floor(n).toLocaleString("en-US");
-}
-
-// ─── SHARED LOGIC: OPEN CACHE ─────────────────────────────────────────────────
-function parseOpenCount(raw, max = OPEN_COUNT_MAX) {
-  // Không nhập arg → default 1
-  if (raw === undefined || raw === null || String(raw).trim() === "") return { count: 1 };
-  const parsed = parseInt(raw, 10);
-  // Nhập chữ (NaN) → lỗi rõ ràng, không silent-fallback về 1
-  if (isNaN(parsed)) return { error: `❌ Số lần mở không hợp lệ: \`${raw}\`. Nhập số nguyên dương.` };
-  if (parsed <= 0) return { error: `❌ Số lần mở phải lớn hơn 0.` };
-  if (parsed > max) return { error: `❌ Số lần mở tối đa là ${max}.` };
-  return { count: parsed };
-}
-
-async function handleOpenCache(userId, { cacheKey, pool, dataField, count = 1 }) {
-  return withLock(userId, async () => {
-    // Dùng getPlayerDataWithSlot để lấy slot 1 lần, truyền thẳng vào savePlayerData
-    // — tránh getActiveProfileSlot bị gọi lần 2 bên trong savePlayerData.
-    const { data, slot } = await getPlayerDataWithSlot(userId);
-    data.books = data.books ?? {};
-    data.items = data.items ?? {};
-    const store = data[dataField];
-    const owned = store[cacheKey] ?? 0;
-    const rolls = Math.min(count, owned);
-    if (rolls < 1) return { success: false, data, results: [] };
-    store[cacheKey] = owned - rolls;
-    if (store[cacheKey] <= 0) delete store[cacheKey];
-    const results = [];
-    for (let i = 0; i < rolls; i++) {
-      const result = pool[Math.floor(Math.random() * pool.length)];
-      store[result] = (store[result] ?? 0) + 1;
-      results.push(result);
-    }
-    await savePlayerData(userId, data, slot);
-    // partial=true khi user yêu cầu nhiều hơn số lượng thực sự có
-    return { success: true, data, results, partial: rolls < count };
-  });
-}
-
-function handleOpenRandomBook(userId, count = 1) {
-  return handleOpenCache(userId, { cacheKey: "Random Book", pool: RANDOM_BOOK_POOL, dataField: "books", count });
-}
-function handleOpenSealedBook(userId, count = 1) {
-  return handleOpenCache(userId, { cacheKey: "Sealed Book Cache", pool: SEALED_BOOK_POOL, dataField: "books", count });
-}
-function handleOpenChipboardCache(userId, count = 1) {
-  return handleOpenCache(userId, { cacheKey: "Chipboard Cache", pool: CHIPBOARD_CACHE_POOL, dataField: "items", count });
-}
-
-// Discord giới hạn embed description tối đa 4096 ký tự
-const DISCORD_EMBED_DESCRIPTION_LIMIT = 4096;
-
-function safeTruncate(str, maxChars) {
-  const chars = Array.from(str);
-  if (chars.length <= maxChars) return str;
-  return chars.slice(0, maxChars).join("") + "…";
-}
-
-function buildRollDescription({ user, cacheType, results, remainingCount }) {
-  const lines = results.map((r, i) => `**${i + 1}.** ✨ ${r}`);
-  const tally = {};
-  for (const r of results) tally[r] = (tally[r] ?? 0) + 1;
-  const summaryLines = Object.entries(tally)
-    .sort(([, a], [, b]) => b - a)
-    .map(([name, cnt]) => `• **${name}** × ${cnt}`);
-
-  const footer = `\n\n> Còn lại: **${remainingCount}** ${cacheType}`;
-  const summary = `\n\n**📊 Tổng kết:**\n` + summaryLines.join("\n");
-  const header = `${user} đã dùng **${results.length} ${cacheType}** và nhận được:\n\n`;
-
-  const LIMIT = DISCORD_EMBED_DESCRIPTION_LIMIT;
-  const fixedLen = header.length + summary.length + footer.length;
-  let body = lines.join("\n");
-  if (fixedLen + body.length > LIMIT) {
-    const budget = LIMIT - fixedLen - 20;
-    body = safeTruncate(body, budget) + `\n…(bị cắt bớt)`;
-  }
-
-  return header + body + summary + footer;
-}
-
-// ─── SHARED LOGIC: DAILY ──────────────────────────────────────────────────────
-async function processDailyClaimForUser(userId) {
-  return withLock(userId, async () => {
-    const slot = await getActiveProfileSlot(userId);
-    const dailyKey = dailyKeyForSlot(userId, slot);
-    const playerKey = playerKeyForSlot(userId, slot);
-
-    const rawResults = await withTimeout(
-      redis.pipeline().get(dailyKey).get(playerKey).exec()
-    );
-    const [dailyRaw, playerRaw] = unwrapPipelineResults(rawResults);
-
-    const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
-    let playerData = playerRaw
-      ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
-      : { exp: 0, ahn: 0, books: {}, items: {} };
-    playerData = migratePlayerData(playerData);
-
-    const today = getVNDateString();
-    if (dailyData && dailyData.lastClaim === today) {
-      const remaining = secondsUntilVNMidnight();
-      const hours = Math.floor(remaining / 3600);
-      const minutes = Math.floor((remaining % 3600) / 60);
-      const seconds = remaining % 60;
-      return { alreadyClaimed: true, hours, minutes, seconds };
-    }
-
-    const vnNow = getVNNow();
-    const vnYesterday = new Date(vnNow);
-    vnYesterday.setUTCDate(vnYesterday.getUTCDate() - 1);
-    const yesterdayStr = vnYesterday.toISOString().slice(0, 10);
-
-    const prevStreak = dailyData ? (dailyData.streak ?? 0) : 0;
-    let streak = (dailyData && dailyData.lastClaim === yesterdayStr) ? prevStreak + 1 : 1;
-
-    const isWeekComplete = streak >= 7;
-    const newDailyData = { lastClaim: today, streak: isWeekComplete ? 0 : streak };
-
-    playerData.books = playerData.books ?? {};
-    playerData.items = playerData.items ?? {};
-
-    const expBefore = playerData.exp ?? 0;
-    const expGain = DAILY_EXP_REWARD + (isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0);
-    playerData.exp = clampExp(expBefore + expGain);
-    const actualExpGained = playerData.exp - expBefore;
-
-    playerData.ahn = (playerData.ahn ?? 0) + DAILY_AHN_REWARD;
-    playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
-
-    if (isWeekComplete) {
-      playerData.ahn += DAILY_STREAK_AHN_BONUS;
-      playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
-    }
-
-    const saveResults = await withTimeout(
-      redis.pipeline()
-        .set(dailyKey, JSON.stringify(newDailyData), { ex: DAILY_KEY_TTL_SECONDS })
-        .set(playerKey, JSON.stringify(playerData))
-        .exec()
-    );
-    if (Array.isArray(saveResults)) {
-      const labels = ["daily", "player"];
-      const failures = saveResults
-        .map((r, i) => {
-          const err = r && typeof r === "object" && "error" in r ? r.error : null;
-          return err ? `[${labels[i]}]: ${err}` : null;
-        })
-        .filter(Boolean);
-      if (failures.length > 0) {
-        throw new Error(`Daily save thất bại một phần: ${failures.join(", ")}`);
-      }
-    }
-
-    const displayStreak = isWeekComplete ? 7 : streak;
-    const bar = Array.from({ length: 7 }, (_, i) => i < displayStreak ? "🟩" : "⬛").join("");
-
-    const atMax = playerData.exp >= EXP_MAX;
-    const expLine = atMax
-      ? `📦 **${actualExpGained} Exp** (đã đạt MAX ${EXP_MAX}) | **100k Ahn** | **1 Random Book**`
-      : `📦 **${actualExpGained} Exp** | **100k Ahn** | **1 Random Book**`;
-
-    let replyMsg =
-      `🎉 {USER} đã điểm danh thành công!\n` +
-      `> ${expLine}\n` +
-      `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
-
-    if (isWeekComplete) {
-      replyMsg +=
-        `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **${isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0} Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
-        `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
-    }
-
-    return { alreadyClaimed: false, replyMsg };
-  });
-}
-
-// ─── SHARED LOGIC: PARRY ──────────────────────────────────────────────────────
-function runParryRolls(rolls) {
-  let successCount = 0;
-  let failCount = 0;
-  const lines = [];
-  for (let i = 0; i < rolls; i++) {
-    let atk, pry, rerolls = 0;
-    do {
-      atk = Math.floor(Math.random() * 16) + 1;
-      pry = Math.floor(Math.random() * 20) + 1;
-      if (atk === pry) rerolls++;
-    } while (atk === pry);
-    const isSuccess = atk <= pry;
-    if (isSuccess) successCount++; else failCount++;
-    const rerollNote = rerolls > 0 ? ` *(Hòa và roll lại ${rerolls} lần)*` : "";
-    const result = isSuccess ? "Parry thành công ✅" : "Parry thất bại ❌";
-    lines.push(`Lần ${i + 1}: Attacker: \`${atk}\` vs Defender: \`${pry}\`${rerollNote} → ${result}`);
-  }
-  return { successCount, failCount, lines };
-}
-
-
-function calcMathCore(opts) {
-  const {
-    dmgStr = "",
-    resStr = "",
-    drStr = "",
-    bonusPct = 0,
-    sanityBonusPct = 0,
-    critMul = 1,
-    poiseInit = 0,
-    critDiv = 0,
-    sanityInit = 0,
-    diceMul = 1,
-    sinkingInit = 0,
-    ruptureInit = 0,
-    theLiving = 0,
-    theDeparted = 0,
-    burnInit = 0,
-    bleedInit = 0,
-    bleedActions = 1, // số lần địch hành động trong turn — Bleed trigger MỖI LẦN địch
-                       // hành động (không phải lúc bị mình tấn công), /math không tự
-                       // biết enemy hành động mấy lần nên cần nhập tay số này.
-    tremorInit = 0,
-  } = opts;
-
-  const resValues = { B: 1, P: 1, S: 1 };
-  const resRegex = /([\d.]+)(?:x)?([BPS])/gi;
-  let match;
-  while ((match = resRegex.exec(resStr)) !== null) {
-    resValues[match[2].toUpperCase()] = parseFloat(match[1]);
-  }
-  // Res (B/P/S) không bị bão hòa nữa — chỉ DR mới bị bão hòa.
-  const resRaw = { ...resValues };
-
-  // DR: flat, áp lên tất cả damage type, độc lập với res
-  // Final DMG = (DMG × bonusFactor) × res × dr
-  const drRawPct = drStr ? parseFloat(drStr) : 0;
-  const hasDR = !isNaN(drRawPct) && drRawPct !== 0;
-  const drMult = hasDR ? saturateDR(1 - drRawPct / 100) : 1;
-
-  const dmgValues = [];
-  const damageRegex =
-    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+\d*Living|\+\d*Departed|\+Crit\d+|\+TremorBurst)*)/gi;
-  while ((match = damageRegex.exec(dmgStr)) !== null) {
-    const base = parseFloat(match[1]);
-    const multiplier = match[2] ? parseInt(match[2]) : 1;
-    const extraPct = match[3] ? parseFloat(match[3]) : 0;
-    const isDice = !!match[4];
-    const dmgType = match[5] ? match[5].toUpperCase() : "B";
-    const effectsStr = match[6] || "";
-    const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
-    const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
-    const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
-    const livingMatch = effectsStr.match(/\+(\d+)?Living/i);
-    const departedMatch = effectsStr.match(/\+(\d+)?Departed/i);
-    // TremorBurst KHÔNG có số đếm (chỉ là cờ đánh dấu "đòn này có gắn Tremor Burst") —
-    // khác Sinking/Rupture/Poise vốn có thể kèm số lượng tùy chọn.
-    const tremorBurst = /\+TremorBurst/i.test(effectsStr);
-    const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
-    const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
-    const poiseToApply = poiseMatch ? parseInt(poiseMatch[1] || "0") : 0;
-    const livingToApply = livingMatch ? parseInt(livingMatch[1] || "1") : 0;
-    const departedToApply = departedMatch ? parseInt(departedMatch[1] || "1") : 0;
-    for (let i = 0; i < multiplier; i++) {
-      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, livingToApply, departedToApply, tremorBurst, effectsStr });
-    }
-  }
-  if (dmgValues.length === 0) {
-    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseToApply: 0, livingToApply: 0, departedToApply: 0, tremorBurst: false, effectsStr: "" });
-  }
-
-  let sanity = sanityInit;
-  let totalDmg = 0;
-  let totalPoise = poiseInit;
-  let enemySinking = Math.min(sinkingInit, SINKING_MAX);
-  let enemyTremor = Math.min(tremorInit, TREMOR_MAX);
-  let totalTremorStaminaLoss = 0; // tích lũy từ các hit có +TremorBurst
-  let enemyRupture = Math.min(ruptureInit, RUPTURE_MAX);
-  let livingStacks = Math.min(theLiving, BUTTERFLY_LIVING_MAX);     // Count The Living hiện tại, có thể tăng qua +Living trong dmg
-  let departedStacks = Math.min(theDeparted, BUTTERFLY_DEPARTED_MAX); // Count The Departed hiện tại, có thể tăng qua +Departed trong dmg
-  let totalSanityHeal = 0;   // tích lũy từ The Living qua các hit
-  let totalDepartedDmg = 0;  // tích lũy bonus dmg từ The Departed
-  // Sanity Bonus hiệu dụng tích lũy: bắt đầu từ sanityBonusPct (input),
-  // cộng thêm livingHeal sau mỗi hit — áp dụng cho Dice hit tiếp theo.
-  let effectiveSanityBonus = sanityBonusPct;
-  const instanceResults = [];
-
-  for (const dmgObj of dmgValues) {
-    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, livingToApply, departedToApply, tremorBurst, effectsStr } = dmgObj;
-    const currentRes = resValues[dmgType] ?? 1.0;
-    const currentDR  = drMult;
-
-    const critFromPoise = totalPoise * POISE_CRIT_BONUS_PER_STACK;
-    const critMatch = effectsStr ? effectsStr.match(/\+Crit(\d+)/i) : null;
-    const bonusCritRate = critMatch ? parseInt(critMatch[1]) / 100 : 0;
-    const rawCritChance = critFromPoise + bonusCritRate;
-    const critChance = Math.min(rawCritChance, 1);
-    const poiseOverflow = Math.max(0, rawCritChance - 1);
-
-    const didCrit = critChance >= 1 ? true : Math.random() < critChance;
-
-    const multiplier = didCrit ? critMul : 1;
-    const rawTotalPct = bonusPct + extraPct;
-    const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0);
-    const bonusFactor = 1 + effTotalPct / 100;
-    let instanceDmg = dmg * bonusFactor * multiplier * currentRes * currentDR;
-    if (isDice) instanceDmg *= diceMul;
-
-    // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).
-    // Mỗi hit tiêu thụ 1 stack và trừ 1 sanity; cộng bonus dmg khi sanity địch ở SANITY_MIN.
-    // sinkingBeforeProc được lưu trước khi drain, để The Departed dùng đúng giá trị hiện tại.
-    const sinkingBeforeProc = enemySinking;
-    let sinkingBonus = 0;
-    if (enemySinking > 0) {
-      const sanityBefore = sanity;
-      sanity = Math.max(sanity - 1, SANITY_MIN);
-      if (sanityBefore <= SANITY_MIN || sanity <= SANITY_MIN) {
-        instanceDmg += enemySinking;
-        sinkingBonus = enemySinking;
-      }
-      enemySinking = Math.max(enemySinking - 1, 0);
-    }
-
-    let ruptureBonus = 0;
-    if (enemyRupture > 0) {
-      ruptureBonus = enemyRupture;
-      instanceDmg += ruptureBonus;
-      enemyRupture = Math.max(enemyRupture - 1, 0);
-    }
-
-    // ── Tremor Burst ───────────────────────────────────────────────────────────
-    // "Mỗi lần skill có Tremor Burst dùng lên địch sẽ trừ 5 sta tương ứng với mỗi 1
-    // tremor; giảm 1 nửa sau khi Tremor Burst" — đây là hiệu ứng tốn STAMINA của địch
-    // (không phải dmg), trigger MỖI HIT có tag +TremorBurst, dùng count HIỆN TẠI
-    // (trước khi giảm) rồi mới giảm 1 nửa — khác Sinking/Rupture giảm -1 mỗi hit.
-    let tremorStaminaLoss = 0;
-    if (tremorBurst && enemyTremor > 0) {
-      tremorStaminaLoss = enemyTremor * 5;
-      totalTremorStaminaLoss += tremorStaminaLoss;
-      enemyTremor = enemyTremor / 2;
-      if (enemyTremor <= 0.5) enemyTremor = 0;
-    }
-
-    // ── Butterfly: The Departed ───────────────────────────────────────────────
-    // Bonus dmg = floor(Sinking hiện tại / 2) + The Departed count hiện tại (trước khi cộng stack của đòn này).
-    // Cap 30 nếu địch còn Sanity (> SANITY_MIN, chưa chạm đáy), cap 15 nếu địch đã hết Sanity (== SANITY_MIN).
-    let departedBonus = 0;
-    if (departedStacks > 0) {
-      const departedRaw = Math.floor(sinkingBeforeProc / 2) + departedStacks;
-      const departedCap = sanity > SANITY_MIN ? 30 : 15;
-      departedBonus = Math.min(departedRaw, departedCap);
-      instanceDmg += departedBonus;
-      totalDepartedDmg += departedBonus;
-    }
-
-    // ── Butterfly: The Living ────────────────────────────────────────────────
-    // Hồi Sanity người dùng = floor(The Living / 4) mỗi hit, dùng Count hiện tại (trước khi cộng stack của đòn này).
-    // Sanity hồi được cộng vào effectiveSanityBonus để Dice hit TIẾP THEO hưởng bonus (không áp dụng cho hit hiện tại).
-    const livingHeal = livingStacks > 0 ? Math.floor(livingStacks / 4) : 0;
-    const sanityBonusUsed = effectiveSanityBonus; // snapshot dùng cho hit này (trước khi cộng heal)
-    totalSanityHeal += livingHeal;
-    effectiveSanityBonus += livingHeal;
-
-    totalDmg += instanceDmg;
-
-    // Apply stack mới từ đòn này sau khi đã tính dmg xong
-    if (poiseToApply > 0) totalPoise = Math.min(totalPoise + poiseToApply, POISE_MAX);
-    if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
-    if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
-    if (livingToApply > 0) livingStacks = Math.min(livingStacks + livingToApply, BUTTERFLY_LIVING_MAX);
-    if (departedToApply > 0) departedStacks = Math.min(departedStacks + departedToApply, BUTTERFLY_DEPARTED_MAX);
-
-    // Ghi lại poise sau gain nhưng trước critDiv để hiển thị trong breakdown
-    const poiseAfterGain = totalPoise;
-
-    if (didCrit && critDiv > 1) {
-      totalPoise = Math.floor(totalPoise / critDiv);
-      if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
-    }
-
-    instanceResults.push({
-      dmg, dmgType, didCrit, critChance, poiseOverflow,
-      poiseStacksAfter: totalPoise,  // sau critDiv — giá trị thực dùng cho hit tiếp theo
-      poiseAfterGain,                 // sau gain, trước critDiv — để hiển thị gain chính xác
-      instanceDmg, ruptureBonus, sinkingBonus,
-      sinkingApplied: sinkingToApply,
-      ruptureApplied: ruptureToApply,
-      poiseApplied: poiseToApply,
-      effectsStr, isDice,
-      departedBonus, livingHeal,
-      livingApplied: livingToApply,
-      departedApplied: departedToApply,
-      livingStacksAfter: livingStacks,
-      departedStacksAfter: departedStacks,
-      sanityBonusUsed, // Sanity Bonus hiệu dụng đã dùng cho hit này
-      tremorStaminaLoss,
-    });
-  }
-
-  const finalPoiseStacks = totalPoise;
-
-  const critCount = instanceResults.filter((r) => r.didCrit).length;
-
-  // ── Burn (end-turn tick — KHÔNG liên quan tới hit loop ở trên) ──────────────
-  // "1 burn count sẽ gây dmg = 2x count mỗi khi end turn, sau đó giảm 1 NỬA (không
-  // phải -1 như Sinking/Rupture), nếu đạt 0.5 thì hết." — đây là tính cho lúc KẾT
-  // THÚC TURN, độc lập hoàn toàn với damage của hit chính — vẫn tính được dù dmgStr
-  // rỗng (VD: chỉ muốn biết turn này Burn tick bao nhiêu).
-  const burnClamped = Math.min(burnInit, BURN_MAX);
-  const burnDmgThisTurn = burnClamped * 2;
-  let burnAfter = burnClamped / 2;
-  if (burnAfter <= 0.5) burnAfter = 0;
-
-  // ── Bleed (trigger mỗi lần ĐỊCH hành động — không phải lúc bị tấn công — RỒI
-  // giảm 1 nửa lúc end turn, đây là 2 thời điểm KHÁC NHAU) ────────────────────
-  // "1 bleed count gây dmg = 1/4 count mỗi khi địch hành động trong turn, giảm 1
-  // nửa sau end turn." — bleedActions = số lần địch hành động turn này (không tự
-  // suy ra được, phải nhập tay vì /math không mô phỏng hành động của địch).
-  const bleedClamped = Math.min(bleedInit, BLEED_MAX);
-  const bleedDmgPerAction = bleedClamped / 4;
-  const bleedDmgThisTurn = bleedDmgPerAction * Math.max(0, bleedActions);
-  let bleedAfter = bleedClamped / 2;
-  if (bleedAfter <= 0.5) bleedAfter = 0;
-
-  // Trả về TẤT CẢ biến cần cho phần display (calcMath) VÀ cho hệ thống khác (encounter)
-  // muốn lấy số liệu thuần để lưu lại — không lọc bớt, tránh sót biến nào cần dùng sau.
-  return {
-    // Input gốc (echo lại để display dùng, không cần destructure lại opts)
-    dmgStr, resStr, drStr, bonusPct, sanityBonusPct, critMul, poiseInit, critDiv,
-    sanityInit, diceMul, sinkingInit, ruptureInit, theLiving, theDeparted,
-    burnInit, bleedInit, bleedActions, tremorInit,
-    // Kết quả tính toán — DÙNG ĐỂ LƯU LẠI cho encounter (số liệu mới sau hit này)
-    totalDmg, finalSanity: sanity, finalPoiseStacks, finalSinking: enemySinking,
-    finalRupture: enemyRupture, finalLivingStacks: livingStacks, finalDepartedStacks: departedStacks,
-    totalSanityHeal, totalDepartedDmg, critCount,
-    // Burn/Bleed (end-turn tick) — KHÔNG cộng vào totalDmg, vì đây là dmg ở 1 THỜI
-    // ĐIỂM KHÁC (end turn), không phải dmg của hit đang tính.
-    burnDmgThisTurn, finalBurn: burnAfter,
-    bleedDmgThisTurn, finalBleed: bleedAfter,
-    // Tremor Burst (per-hit, đã tích lũy trong loop ở trên)
-    totalTremorStaminaLoss, finalTremor: enemyTremor,
-    // Chi tiết — dùng để build breakdown display trong calcMath()
-    instanceResults, dmgValues, resRaw, resValues, hasDR, drMult, drRawPct, effectiveSanityBonus,
-  };
-}
-
-function calcMath(opts) {
-  const calcResult = calcMathCore(opts);
-  const {
-    dmgStr, resStr, drStr, bonusPct, sanityBonusPct, critMul, poiseInit, critDiv,
-    sanityInit, diceMul, sinkingInit, ruptureInit, theLiving, theDeparted,
-    burnInit, bleedInit, bleedActions, tremorInit,
-    totalDmg, finalSanity: sanity, finalPoiseStacks, finalSinking: enemySinking,
-    finalRupture: enemyRupture, finalLivingStacks: livingStacks, finalDepartedStacks: departedStacks,
-    totalSanityHeal, totalDepartedDmg, critCount,
-    burnDmgThisTurn, finalBurn, bleedDmgThisTurn, finalBleed,
-    totalTremorStaminaLoss, finalTremor,
-    instanceResults, dmgValues, resRaw, resValues, hasDR, drMult, drRawPct, effectiveSanityBonus,
-  } = calcResult;
-
-  const breakdownLines = instanceResults.map((r, i) => {
-    const rateStr = `${(r.critChance * 100).toFixed(1)}%`;
-    const critLabel = r.didCrit ? "✅" : "❌";
-    let extraInfo = "";
-    if (r.poiseOverflow > 0) {
-      const wastedStacks = Math.round(r.poiseOverflow / POISE_CRIT_BONUS_PER_STACK);
-      extraInfo += ` | ${wastedStacks} <:Poise:1513762945715142736>Poise dư`;
-    }
-    if (r.sinkingBonus > 0) extraInfo += ` | +${r.sinkingBonus} dmg từ <:Sinking:1513762793436741652>Sinking`;
-    if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} <:Sinking:1513762793436741652>Sinking`;
-    if (r.ruptureBonus > 0) extraInfo += ` | +${r.ruptureBonus} dmg từ <:Rupture:1513762812722155682>Rupture`;
-    if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} <:Rupture:1513762812722155682>Rupture`;
-    if (r.poiseApplied > 0) {
-      if (critDiv > 1 && r.didCrit && r.poiseAfterGain !== r.poiseStacksAfter) {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} Counts`;
-      } else {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} Counts`;
-      }
-    }
-    if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
-      const critVal = r.effectsStr.match(/\+Crit(\d+)/i)[1];
-      extraInfo += ` | +Crit${critVal}%`;
-    }
-    if (r.isDice && diceMul !== 1) extraInfo += ` | DiceMul ${diceMul}x`;
-    if (r.departedBonus > 0) extraInfo += ` | +${r.departedBonus} dmg <:Butterfly:1516679919399338074>Departed`;
-    if (r.departedApplied > 0) extraInfo += ` | áp +${r.departedApplied} <:Butterfly:1516679919399338074>Departed (${r.departedStacksAfter} Count)`;
-    if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi <:Butterfly:1516679919399338074>Living`;
-    if (r.livingApplied > 0) extraInfo += ` | áp +${r.livingApplied} <:Butterfly:1516679919399338074>Living (${r.livingStacksAfter} Count)`;
-    if (r.isDice && r.sanityBonusUsed > 0 && r.sanityBonusUsed !== sanityBonusPct)
-      extraInfo += ` | Sanity: ${r.sanityBonusUsed} (+${r.sanityBonusUsed}% Dice)`;
-    if (r.tremorStaminaLoss > 0) extraInfo += ` | <:Tremor:1513762737388257380>Tremor Burst: -${r.tremorStaminaLoss} Sta địch`;
-    return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
-  });
-
-  let breakdownValue = breakdownLines.join("\n");
-  if (breakdownValue.length > 1024) {
-    const shown = [];
-    for (const line of breakdownLines) {
-      if ((shown.join("\n") + "\n" + line).length > 990) {
-        shown.push(`…+${breakdownLines.length - shown.length} more hits`);
-        break;
-      }
-      shown.push(line);
-    }
-    breakdownValue = shown.join("\n");
-  }
-
-  const startingCritRate = poiseInit * POISE_CRIT_BONUS_PER_STACK;
-  const finalCritRate = finalPoiseStacks * POISE_CRIT_BONUS_PER_STACK;
-  let poiseDisplay;
-  if (critDiv > 1 && critCount > 0) {
-    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Counts (${critCount} crit${critCount > 1 ? "s" : ""}, ÷${critDiv})`;
-  } else if (poiseInit !== finalPoiseStacks) {
-    poiseDisplay = `${poiseInit} → ${finalPoiseStacks} Counts (${(startingCritRate * 100).toFixed(0)}% → ${(finalCritRate * 100).toFixed(0)}% crit)`;
-  } else {
-    poiseDisplay = `${poiseInit} Counts (${(startingCritRate * 100).toFixed(0)}% crit)`;
-  }
-
-  const resDisplay = ["B", "P", "S"].map(k => {
-    const raw = resRaw[k], eff = resValues[k];
-    return raw !== eff
-      ? `${k}: ${raw}x → **${eff.toFixed(3)}x** *(bão hòa)*`
-      : `${k}: ${raw}x`;
-  }).join(" | ");
-  const drEffPct = hasDR ? ((1 - drMult) * 100).toFixed(2) : null;
-  const drDisplay = hasDR
-    ? `${drRawPct}% raw → **${drEffPct}%** effective *(${drMult.toFixed(3)}x)*`
-    : null;
-
-  const finalLivingStacks = livingStacks;
-  const finalDepartedStacks = departedStacks;
-  const livingDisplay = theLiving !== finalLivingStacks
-    ? `${theLiving} → ${finalLivingStacks} Count (hồi **${Math.floor(finalLivingStacks / 4)}** Sanity/hit ở cuối)`
-    : `${theLiving} Count → hồi **${Math.floor(theLiving / 4)}** Sanity/hit`;
-  const departedCapLabel = sanity > SANITY_MIN ? "30 (địch còn Sanity)" : "15 (địch hết Sanity)";
-  const departedDisplay = theDeparted !== finalDepartedStacks
-    ? `${theDeparted} → ${finalDepartedStacks} Count (cap: ${departedCapLabel})`
-    : `${theDeparted} Count (cap: ${departedCapLabel})`;
-
-  // Tính effective bonus để hiển thị (dùng worst-case: có cả sanityBonus nếu > 0)
-  const rawBonusDisplay = bonusPct;
-  const effBonusDisplay = saturateBonusPct(rawBonusDisplay);
-  const isSaturated = rawBonusDisplay > 100;
-  const bonusPctDisplay = isSaturated
-    ? `${effBonusDisplay.toFixed(1)}% *(raw: ${rawBonusDisplay.toFixed(1)}%)*`
-    : bonusPct.toFixed(1) + "%";
-
-  const allFields = [
-    { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
-    { name: "% Dmg Bonus", value: bonusPctDisplay, inline: true, alwaysShow: true },
-    { name: "Player's Sanity", value: totalSanityHeal > 0
-        ? `${sanityBonusPct} (+${sanityBonusPct}% Dice bonus) → ${sanityBonusPct + totalSanityHeal} (+${sanityBonusPct + totalSanityHeal}% Dice bonus)`
-        : `${sanityBonusPct} (+${sanityBonusPct}% Dice bonus)`,
-      inline: true, showIf: effectiveSanityBonus !== 0 || sanityBonusPct !== 0 },
-    { name: "CritMul", value: critMul + "x", inline: true, alwaysShow: true },
-    { name: "Res Multipliers", value: resDisplay, inline: true, alwaysShow: true },
-    { name: "Damage Reduction", value: drDisplay ?? "", inline: true, showIf: hasDR },
-    { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
-    { name: "<:Poise:1513762945715142736>Poise Counts", value: poiseDisplay, inline: true, alwaysShow: true },
-    { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
-    { name: "<:Butterfly:1516679919399338074>The Living", value: livingDisplay, inline: true, showIf: finalLivingStacks > 0 },
-    { name: "<:Butterfly:1516679919399338074>The Departed", value: departedDisplay, inline: true, showIf: finalDepartedStacks > 0 },
-    { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
-    { name: "<:Butterfly:1516679919399338074>Tổng Sanity hồi (The Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
-    { name: "<:Butterfly:1516679919399338074>Tổng DMG Bonus (The Departed)", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
-    { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
-    { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
-    { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
-    { name: "<:Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 },
-    { name: "Bleed (end turn)", value: `${bleedDmgThisTurn.toFixed(2)} dmg (x${bleedActions} hành động) — count: ${bleedInit} → ${finalBleed}`, inline: true, showIf: bleedInit > 0 },
-    { name: "<:Tremor:1513762737388257380>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 && totalTremorStaminaLoss > 0 },
-  ];
-
-  return {
-    embeds: [{
-      title: "📊 Kết quả tính DMG",
-      color: 0x00ae86,
-      fields: filterZeroFields(allFields),
-    }],
-  };
-}
-
-
-// ─── ENCOUNTER SYSTEM ───────────────────────────────────────────────────────
-// Giải quyết đúng vấn đề Fragaria/Sora bàn: Profile bị bind cứng với 1 player cụ
-// thể (key Redis luôn có userId), không thể tái dùng làm "entity có stat" cho boss.
-// Encounter là model HOÀN TOÀN TÁCH BIỆT khỏi Profile — key theo channelId, không
-// theo userId nào cả. Chỉ 1 encounter active / channel (đơn giản, theo yêu cầu).
+// skills.js — Toàn bộ skill data, tách ra để dễ quản lý
+// Được require bởi index.js: const { SKILLS, SKILL_ALIASES, findSkill } = require("./skills");
+// ─── SKILL DATA ───────────────────────────────────────────────────────────────
+const D1 = "<:Dice1:1508173590078558369>";
+const D2 = "<:Dice2:1508173623691710625>";
+const D3 = "<:Dice3:1508173643518050395>";
+const D4 = "<:Dice4:1508176464367845600>";
+const D5 = "<:Dice5:1508176500438990968>";
+const D6 = "<:Dice6:1517712655106838638>";
+const D7 = "<:Dice7:1517712721796403272>";
+const D8 = "<:Dice8:1517712757053591642>";
+const D9 = "<:Dice9:1517712785612603462>";
+const D10 = "<:Dice10:1517712814314225704>";
+
+// ─── EMOTION COIN TRACKING ──────────────────────────────────────────────────
+// Cơ chế game: roll ra đúng MAX của dice → +1 Emotion Coin; roll ra đúng MIN → -1.
+// Nếu min === max (dice cố định 1 giá trị, VD: [5~5]) thì không tính (không thể biết
+// nên coi là "max" hay "min"). CHỈ hiển thị cho người chơi tự cộng/trừ tay — bot KHÔNG
+// lưu lại Emotion Coin ở đâu cả.
 //
-// Phiên bản đầy đủ: track CẢ 2 phía (boss + từng player) bằng 1 "Combatant" model
-// chung — HP/Stamina/Sanity/Light/Resistance/vũ khí/Sinking/Rupture/Poise/Stagger/
-// Panic/thế thủ — vì theo luật, Sinking/Rupture/Poise/Stagger/Panic áp dụng được
-// cho CẢ 2 bên (không chỉ riêng boss), không có lý do tách 2 model khác nhau.
-const ENCOUNTER_BOSS_NAME_MAX_LENGTH = 100;
-const ENCOUNTER_DEFAULT_MAX_STAMINA = 100;
-const ENCOUNTER_DEFAULT_MAX_LIGHT = 4;
-const ENCOUNTER_SANITY_MAX = 45; // luôn bắt đầu 0/45 mỗi trận theo luật
-const ENCOUNTER_STAMINA_REGEN_PER_TURN = 30;
-const ENCOUNTER_GUARD_DR_PCT = 90; // Guard giảm 90% dmg nhận
-const ENCOUNTER_PARRY_FAIL_STAMINA_LOSS = 40;
+// VẤN ĐỀ: mỗi skill's roll() tự gọi r(min, max) nhiều lần với range KHÁC NHAU cho từng
+// dice, rồi tự build string mô tả riêng — không có chỗ nào "biết" min/max ban đầu sau
+// khi đã roll xong để mà annotate. Thay vì sửa tay ~290 skill (rủi ro cực cao, dễ sót/sai),
+// dùng side-channel: r() tự ghi lại {min, max, result, delta} vào 1 mảng module-level mỗi
+// khi được gọi, NẾU đang ở chế độ tracking. index.js gọi startEmotionTracking() ngay
+// trước skill.roll(...) và stopEmotionTracking() ngay sau, lấy lại toàn bộ các lần roll
+// đã xảy ra TRONG khoảng đó để build dòng tổng kết Emotion Coin.
+//
+// AN TOÀN VỚI CONCURRENT REQUEST: biến module-level dùng chung cho mọi user, nhưng vì
+// toàn bộ chuỗi start→roll()→stop chạy ĐỒNG BỘ (không có await ở giữa, do mọi roll()
+// hiện tại đều là hàm sync thuần), Node.js không thể context-switch sang xử lý request
+// của user khác giữa lúc đó — không có race condition.
+let emotionTracker = null; // null = không track; Array nếu đang track
 
-// Stamina cost cho 1 lần M1 (đánh thường), theo độ nặng vũ khí.
-const WEAPON_STAMINA_COST = { light: 5, medium: 10, heavy: 20 };
-// Số hit M1 mà 1 lần Guard/Evade/Parry chặn được, theo độ nặng vũ khí CỦA NGƯỜI TẤN
-// CÔNG (không phải người thủ) — "Guard/evade/parry các đòn đánh thường của Light
-// weapon thì 1 lần sẽ guard/evade/parry được 4 hit còn Medium là 2, Heavy là 1".
-const WEAPON_GUARD_CHARGES = { light: 4, medium: 2, heavy: 1 };
-
-function normalizeWeaponWeight(w) {
-  const x = (w ?? "").trim().toLowerCase();
-  if (x === "light" || x === "l") return "light";
-  if (x === "heavy" || x === "h") return "heavy";
-  return "medium"; // default — bao gồm cả khi gõ "medium"/"m"/để trống
+function computeEmotionDelta(min, max, result) {
+  if (min === max) return 0; // dice cố định 1 giá trị — không tính
+  if (result === max) return 1;
+  if (result === min) return -1;
+  return 0;
 }
 
-/** Combatant — dùng CHUNG cho cả boss và mỗi player trong encounter. */
-function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", resistance = null }) {
-  return {
-    name,
-    maxHp, currentHp: maxHp,
-    maxStamina, currentStamina: maxStamina,
-    maxSanity: ENCOUNTER_SANITY_MAX, currentSanity: 0,
-    maxLight, currentLight: 0,
-    weaponWeight: normalizeWeaponWeight(weaponWeight),
-    resistance: resistance ?? { B: 1, P: 1, S: 1 },
-    sinking: 0, rupture: 0, poise: 0,
-    staggered: false, staggerTurnsLeft: 0,
-    panic: false, panicTurnsLeft: 0,
-    // stance: thế thủ đang giữ — { type: "evade"|"guard", chargesLeft } | null. KHÔNG
-    // tự hết theo turn (theo luật là hết theo SỐ HIT chặn được, không phải thời gian) —
-    // chỉ bị xoá khi charges về 0 sau khi đỡ đòn, hoặc bị ghi đè bởi 1 lần tuyên bố mới.
-    stance: null,
-    // parryRoll: kết quả d20 đã roll, chờ bị tấn công để so sánh — cũng KHÔNG tự hết
-    // theo turn, chỉ tiêu thụ khi có 1 đòn tấn công thật được áp dụng vào combatant này.
-    parryRoll: null,
-    // staminaUsedThisTurn: để tính Light gain ("đánh đủ 20 sta M1 trong turn → +1
-    // Light turn sau") — reset về 0 mỗi lần endturn.
-    staminaUsedThisTurn: 0,
-  };
+function startEmotionTracking() {
+  emotionTracker = [];
 }
 
-/** Đổi { B, P, S } resistance object thành resStr cho calcMathCore — Stagger thì
- *  ĐÈ TOÀN BỘ về 2x bất kể resistance gốc, đúng luật "Khi bị Stagger Resistance set 2x". */
-function combatantResStr(combatant) {
-  if (combatant.staggered) return "2xB 2xP 2xS";
-  const r = combatant.resistance;
-  return `${r.B}xB ${r.P}xP ${r.S}xS`;
+/** @returns {Array<{min:number,max:number,result:number,delta:number}>} */
+function stopEmotionTracking() {
+  const rolls = emotionTracker ?? [];
+  emotionTracker = null;
+  return rolls;
 }
 
-/** Kiểm tra + set Stagger (Stamina=0) / Panic (Sanity=-45) sau khi 1 combatant vừa
- *  bị trừ Stamina/Sanity — gọi MỖI LẦN sau khi thay đổi 2 giá trị này. Không tự bỏ
- *  qua nếu đã đang stagger/panic (idempotent — set lại staggerTurnsLeft=1 chỉ nếu
- *  CHƯA staggered, tránh việc bị trừ Stamina=0 nhiều lần liên tục lại reset đếm ngược). */
-function checkStaggerPanic(combatant) {
-  if (combatant.currentStamina <= 0 && !combatant.staggered) {
-    combatant.staggered = true;
-    combatant.staggerTurnsLeft = 1;
-    combatant.currentStamina = 0;
+function r(min, max) {
+  const result = Math.floor(Math.random() * (max - min + 1)) + min;
+  if (emotionTracker) {
+    emotionTracker.push({ min, max, result, delta: computeEmotionDelta(min, max, result) });
   }
-  if (combatant.currentSanity <= -ENCOUNTER_SANITY_MAX && !combatant.panic) {
-    combatant.panic = true;
-    combatant.panicTurnsLeft = 1;
-    combatant.currentSanity = -ENCOUNTER_SANITY_MAX;
-  }
+  return result;
 }
 
-/** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
- *  Panic, tính Light gain. Gọi cho TỪNG combatant (boss + mọi player) khi -encounter
- *  endturn được gọi. */
-function advanceCombatantTurn(combatant) {
-  if (combatant.staggered) {
-    combatant.staggerTurnsLeft -= 1;
-    if (combatant.staggerTurnsLeft <= 0) {
-      combatant.staggered = false;
-      combatant.currentStamina = combatant.maxStamina; // hồi đầy sau khi hết Stagger
-    }
-    // Đang stagger thì KHÔNG hồi 30 Stamina thường — turn này coi như "không hành
-    // động được", hồi đầy 1 LẦN lúc hết stagger (đã xử lý ở trên).
-  } else {
-    combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + ENCOUNTER_STAMINA_REGEN_PER_TURN);
-  }
-  if (combatant.panic) {
-    combatant.panicTurnsLeft -= 1;
-    if (combatant.panicTurnsLeft <= 0) {
-      combatant.panic = false;
-      combatant.currentSanity = 0; // reset Sanity về 0 sau khi hết Panic
-    }
-  }
-  if (combatant.staminaUsedThisTurn >= 20 && combatant.currentLight < combatant.maxLight) {
-    combatant.currentLight += 1;
-  }
-  combatant.staminaUsedThisTurn = 0;
-}
+const SKILLS = {
+  "fare-thee well": {
+    name: "Fare-Thee Well",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "0.8x",
+    roll() {
+      const d1 = r(6,7), d2 = r(7,8), d3 = r(10,15);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Bleed:1513762688226955285>Bleed ở turn kế và nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Bleed:1513762688226955285>Bleed ở turn kế và nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D3} *Nếu bản thân có trên 10 <:Poise:1513762945715142736>Poise, Dice 3 nhận 5 <:DiceUp:1513767795681398894>Dice Up*`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — gây 4 <:Bleed:1513762688226955285>Bleed ở turn kế và nhận 4 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "purify": {
+    name: "Purify",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,16), d2 = r(8,12), d3 = r(12,16);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — gây 2 <:Nails:1513768423124111482>Nails`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — gây 2 <:Nails:1513768423124111482>Nails`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — gây 3 <:Nails:1513768423124111482>Nails và 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `${D3} Gây 1 <:Gaze:1513768454967001179>Gaze — nếu địch có trên 7 <:Nails:1513768423124111482>Nails sẽ mất toàn bộ stack vượt quá 7`,
+      ];
+    },
+  },
+  "kicking": {
+    name: "Kicking",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,5), d2 = r(5,6), d3 = r(6,7);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế; nếu ở **Middle Syndicate** thêm 2 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+  "extract fuel": {
+    name: "Extract Fuel",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,12);
+      // heal phụ thuộc endpoint của range r(7,12): min=7→10HP, max=12→20HP, giữa→15HP.
+      // Nếu range thay đổi, cần cập nhật cả 3 nhánh này theo.
+      let heal = d1 === 7 ? "hồi 10 HP" : d1 === 12 ? "hồi 20 HP" : "hồi 15 HP";
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — hồi lại 2 <:Light:1513786082502770719>Light (${heal})`,
+      ];
+    },
+  },
+  "stamp of vengeance": {
+    name: "Stamp of Vengeance",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(16,24);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE 3 người] — gây 5 <:Bleed:1513762688226955285>Bleed ở turn kế, 2 <:Bind:1513768025881317457>Bind và nhận 2 **Middle Nursefather Tattoos** với mỗi địch đánh trúng`,
+      ];
+    },
+  },
+  "complete and total extermination": {
+    name: "Complete and Total Extermination",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(18,25);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — gây 4 <:Paralyze:1513763316479295548>Paralyze, <:TremorBurst:1513802464632246352>Tremor Burst, 10 <:Fragile:1513763336167100536>Fragile và 2 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+      ];
+    },
+  },
+  "following the flow": {
+    name: "Following the Flow",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(7,9), d3 = r(8,10);
+      return [
+        `${D1} *Nếu địch có ≥4 <:Bind:1513768025881317457>Bind, mọi Dice của skill này add thêm 1 <:Burn:1513762753691652177>Burn*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Burn:1513762753691652177>Burn và 2 <:Bind:1513768025881317457>Bind`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+  "silence": {
+    name: "Silence",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(5,7), d3 = r(7,10), d4 = r(8,12);
+      return [
+        `${D1} *Khi dùng: +1 <:DiceUp:1513767795681398894>Dice Up turn này và sau ứng với mỗi nhánh Skill Tree Wrath đã kích hoạt [Max: 4]*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Bind:1513768025881317457>Bind và +1 <:Burn:1513762753691652177>Burn ứng với mỗi <:Bind:1513768025881317457>Bind trên địch`,
+      ];
+    },
+  },
+  "waltz in black": {
+    name: "Waltz In Black",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,14);
+      return [
+        `${D1} *Nếu turn trước địch dính Waltz In White: skill này thành 3x Dice Multiplier và [Unevadeable]*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break]`,
+      ];
+    },
+  },
+  "waltz in white": {
+    name: "Waltz In White",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(13,24);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unevadeable] [Unblockable]`,
+      ];
+    },
+  },
+  "light attack": {
+    name: "Light Attack",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unparriable] [Unblockable] — hồi 2 <:Light:1513786082502770719>Light sau khi trúng`,
+      ];
+    },
+  },
+  "slash series": {
+    name: "Slash Series",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(3,5), d3 = r(5,7);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — nhận 2 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "execute prescript": {
+    name: "Execute Prescript",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,8);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Rupture:1513762812722155682>Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Rupture:1513762812722155682>Rupture; nếu trong Index Syndicate & Deck Singleton thì +4 <:DiceUp:1513767795681398894>Dice Up`,
+      ];
+    },
+  },
+  "will of the city": {
+    name: "Will of The City",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — hồi 1 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "dodge and strike": {
+    name: "Dodge and Strike",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,16);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash]`,
+      ];
+    },
+  },
+  "soulburn": {
+    name: "Soulburn",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(3,6), d2 = r(3,6), d3 = r(5,9);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 4 <:Burn:1513762753691652177>Burn và 1 <:Fragile:1513763336167100536>Fragile ở turn kế`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 6 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile ở turn kế`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 10 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile ở turn kế`,
+      ];
+    },
+  },
+  "inferno burst": {
+    name: "Inferno Burst",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1.5x",
+    roll() {
+      const d1 = r(9,12), d2 = r(11,13);
+      return [
+        `${D1} *Nếu địch có trên 10 Burn: tăng lượng <:Burn:1513762753691652177>Burn mỗi Hit thêm 3 <:Burn:1513762753691652177>Burn*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Burn:1513762753691652177>Burn và kích Burning Sensation`,
+      ];
+    },
+  },
+  "take this kid": {
+    name: "Take this, Kid",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,16), d2 = r(16,24);
+      return [
+        `${D1} *Nếu địch có Bleed: gắn 1 <:Hemorrhage:1513762688226955285>Hemorrhage*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+      ];
+    },
+  },
+  "learn again kid": {
+    name: "Learn again, Kid",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1.5x",
+    roll() {
+      const d1 = r(8,12), d2 = r(8,12), d3 = r(10,14), d4 = r(14,20);
+      return [
+        `${D1} *Nếu địch có <:Bleed:1513762688226955285>Bleed: gắn 1 <:Hemorrhage:1513762688226955285>Hemorrhage*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+      ];
+    },
+  },
+  "catch breath": {
+    name: "Catch Breath",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,15);
+      return [
+        `${D1} *Khi dưới 50% HP: <:Dice1:1508173590078558369>Dice 1 nhận 4 <:DiceUp:1513767795681398894>Dice Up*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 6 <:Poise:1513762945715142736>Poise; khi dưới 50% HP thêm 2 <:Poise:1513762945715142736>Poise và 4 <:Haste:1513768004222062632>Haste`,
+      ];
+    },
+  },
+  "onrush": {
+    name: "Onrush",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,26);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 1 <:Imitation:1513769425063514173>Imitation, giảm 40 Stamina địch`,
+        `${D1} *Nếu bản thân có ≥6 <:Light:1513786082502770719>Light: dùng thêm 3 <:Light:1513786082502770719>Light để reuse đòn này*`,
+      ];
+    },
+  },
+  "overthrow": {
+    name: "Overthrow",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,4), d2 = r(2,4), d3 = r(5,10);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 2 <:Poise:1513762945715142736>Poise; nếu có trên 5 <:Poise:1513762945715142736>Poise thêm 2 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D3} *Nếu có ≥5 <:Poise:1513762945715142736>Poise: chuyển 5 <:Poise:1513762945715142736>Poise → 8 <:DiceUp:1513767795681398894>Dice Up cho Dice 3; nếu kết liễu được địch thêm 3 <:DiceUp:1513767795681398894>Dice Up turn sau*`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unparriable] [Guard Break] — gây 10 <:Bleed:1513762688226955285>Bleed ở turn kế, 5 <:Paralyze:1513763316479295548>Paralyze, nhận 5 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "shadowcloud shattercleaver": {
+    name: "Shadowcloud Shattercleaver",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,5), d2 = r(2,5), d3 = r(8,10);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 2 <:DefenseUp:1513767487894716497>Defense Up`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 2 <:DefenseUp:1513767487894716497>Defense Up; nếu địch có trên 6 <:Bleed:1513762688226955285>Bleed thêm 2 <:DefenseUp:1513767487894716497>Defense Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — gây 5 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+      ];
+    },
+  },
+  "punting": {
+    name: "Punting",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,5), d2 = r(5,6);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable]`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 2 <:Poise:1513762945715142736>Poise và 1 **Middle Nursefather Tattoos**`,
+      ];
+    },
+  },
+  "punching": {
+    name: "Punching",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(5,7), d3 = r(6,8);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Paralyze:1513763316479295548>Paralyze nếu ở trong **Middle Syndicate**`,
+      ];
+    },
+  },
+  "furioso": {
+    name: "Furioso",
+    cost: "A Prayer For Loving Sorrow", cd: "—", diceMul: "2.5x",
+    roll() {
+      const d1=r(12,21), d2=r(11,20), d3=r(16,25), d4=r(15,21),
+            d5=r(17,26), d6=r(14,23), d7=r(17,26), d8=r(29,38), d9=r(17,26);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 2 <:Tremor:1513762737388257380>Tremor`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture`,
+        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `${D6} **${d6}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D7} **${d7}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 <:Tremor:1513762737388257380>Tremor`,
+        `${D8} **${d8}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `${D9} **${d9}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture *trước* khi gây Dmg`,
+      ];
+    },
+  },
 
-function encounterKey(channelId) {
-  return `encounter:${channelId}`;
-}
+// NEW SKILLS BLOCK - insert before closing }; of SKILLS
 
-async function getEncounter(channelId) {
-  const raw = await withTimeout(redis.get(encounterKey(channelId)));
-  if (!raw) return null;
-  return typeof raw === "string" ? JSON.parse(raw) : raw;
-}
+  // ── <:Sinking:1513762793436741652>Sinking skills ──
+  "weight of knowledge": {
+    name: "Weight of Knowledge", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(2,4),d2=r(3,5),d3=r(3,5),d4=r(3,6);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice4:1508176464367845600> *Nếu địch có trên 8 <:Sinking:1513762793436741652>Sinking: nhận 15 **Shield HP***`,
+      ];
+    },
+  },
+  "illuminate thy vacuity": {
+    name: "Illuminate Thy Vacuity", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(2,4),d2=r(2,4),d3=r(2,4),d4=r(2,4),d5=r(3,6);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice5:1508176500438990968> **${d5}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice5:1508176500438990968> *Nếu địch có trên 6 <:Sinking:1513762793436741652>Sinking: nhận 25 **Shield HP***`,
+      ];
+    },
+  },
+  "studious dedication": {
+    name: "Studious Dedication", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(5,8),d2=r(5,8);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "scorch knowledge": {
+    name: "Scorch Knowledge", cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(2,4),d2=r(4,8),d3=r(13,18);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 5 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
 
-async function saveEncounter(channelId, data) {
-  await withTimeout(redis.set(encounterKey(channelId), JSON.stringify(data)));
-}
+  // ── <:Bleed:1513762688226955285>Bleed skills ──
+  "sanguine painting": {
+    name: "Sanguine Painting", cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "0.66x",
+    roll() {
+      const rolls = [r(4,9), r(4,9)];
+      const lines = [
+        `*Chém 2 nhát, mỗi nhát gây 2 <:Bleed:1513762688226955285>Bleed*`,
+        `<:Dice1:1508173590078558369> Nhát 1: **${rolls[0]}** [<:Pierce:1513768511179329556>Pierce]`,
+        `<:Dice2:1508173623691710625> Nhát 2: **${rolls[1]}** [<:Pierce:1513768511179329556>Pierce]`,
+      ];
+      // Nếu địch trên 6 Bleed: thêm 2 lần với +5 dice
+      const bonus1=r(9,14), bonus2=r(9,14);
+      lines.push(`*Nếu địch có trên 6 <:Bleed:1513762688226955285>Bleed: thêm 2 nhát với +5 Dice, mỗi nhát gây 2 <:Bleed:1513762688226955285>Bleed*`);
+      lines.push(`<:Dice1:1508173590078558369> Nhát bonus 1: **${bonus1}** [<:Pierce:1513768511179329556>Pierce]`);
+      lines.push(`<:Dice2:1508173623691710625> Nhát bonus 2: **${bonus2}** [<:Pierce:1513768511179329556>Pierce]`);
+      return lines;
+    },
+  },
+  "hematic coloring": {
+    name: "Hematic Coloring", cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "(1~4): 0.5x / (5): 1x",
+    roll() {
+      const EFFECTS = [
+        `<:Burn:1513762753691652177>Burn`, `<:Tremor:1513762737388257380>Tremor`,
+        `<:Rupture:1513762812722155682>Rupture`, `<:Sinking:1513762793436741652>Sinking`, `<:Bleed:1513762688226955285>Bleed`
+      ];
+      function pickEffects() {
+        const pool = [...EFFECTS];
+        const picked = [];
+        for (let i = 0; i < 3; i++) {
+          const idx = Math.floor(Math.random() * pool.length);
+          picked.push(pool.splice(idx, 1)[0]);
+        }
+        return picked.join(" ");
+      }
+      const ranges = [[3,6],[6,9],[9,12],[12,15],[15,18]];
+      const diceEmoji = [
+        `<:Dice1:1508173590078558369>`,`<:Dice2:1508173623691710625>`,
+        `<:Dice3:1508173643518050395>`,`<:Dice4:1508176464367845600>`,`<:Dice5:1508176500438990968>`
+      ];
+      const lines = [`*Dice 1~4: mỗi lần gây 3 Effects ngẫu nhiên. Dice 5: đòn kết thúc 1x*`];
+      for (let i = 0; i < 5; i++) {
+        const val = r(ranges[i][0], ranges[i][1]);
+        if (i < 4) {
+          lines.push(`${diceEmoji[i]} **${val}** [<:Pierce:1513768511179329556>Pierce] — ${pickEffects()}`);
+        } else {
+          lines.push(`${diceEmoji[i]} **${val}** [<:Pierce:1513768511179329556>Pierce] *(đòn kết thúc)*`);
+        }
+      }
+      return lines;
+    },
+  },
+  "sanguine pointilism": {
+    name: "Sanguine Pointilism", cost: "—", cd: "2 Turn", diceMul: "1x",
+    needsReuse: true,
+    promptArg: {
+      label: "% Reuse",
+      parse: (s) => parseInt(s, 10),
+      validate: (v) => !isNaN(v) && v >= 0 && v <= 100,
+      errorMsg:
+        "❓ **Sanguine Pointilism** cần nhập % Reuse.\n" +
+        "> Cú pháp: `-skill sanguine pointilism <% reuse>`\n" +
+        "> VD: `-skill sanguine pointilism 60` (mặc định 40%, +20% mỗi 5 Bleed trên địch)",
+      buildHeader: (v, s) => `[Reuse: ${v}%] [CD: ${s.cd}] [Dice Mul: ${s.diceMul}]`,
+    },
+    roll(reusePct = 40) {
+      const D1 = `<:Dice1:1508173590078558369>`;
+      const D2 = `<:Dice2:1508173623691710625>`;
+      const D3 = `<:Dice3:1508173643518050395>`;
+      const REUSE_EMOJIS = [D2, D3, `<:Dice4:1508176464367845600>`];
+      const d1 = 14;
+      const lines = [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture`,
+      ];
+      for (let i = 1; i <= 2; i++) {
+        const triggered = Math.random() * 100 < reusePct;
+        const dEmoji = REUSE_EMOJIS[i - 1] ?? REUSE_EMOJIS[REUSE_EMOJIS.length - 1];
+        if (triggered) {
+          lines.push(`${dEmoji} ↩️ Reuse ${i} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture *(${reusePct}% → ✅)*`);
+        } else {
+          lines.push(`${dEmoji} ↩️ Reuse ${i} dừng tại đây *(${reusePct}% → ❌)*`);
+          break;
+        }
+      }
+      return lines;
+    },
+  },
 
-async function deleteEncounter(channelId) {
-  await withTimeout(redis.del(encounterKey(channelId)));
-}
+  // ── <:Burn:1513762753691652177>Burn skills ──
+  "perfected death fist": {
+    name: "Perfected Death Fist", cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(3,6),d2=r(6,9),d3=r(9,12);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice3:1508173643518050395> *Nếu địch có trên 8 <:Burn:1513762753691652177>Burn: gắn thêm 3 <:Burn:1513762753691652177>Burn*`,
+        `<:Dice3:1508173643518050395> *Nếu địch có trên 6 <:Burn:1513762753691652177>Burn: +5 <:DiceUp:1513767795681398894>Dice Up cho bản thân*`,
+      ];
+    },
+  },
+  "raging storm": {
+    name: "Raging Storm", cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(5,9),d2=r(10,16);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — gây 4 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — gây 8 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+  "fiery waltz": {
+    name: "Fiery Waltz", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(9,13);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 5 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+  "red kick": {
+    name: "Red Kick", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(2,5),d2=r(8,13);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> *Tấn công cộng thêm (số <:Burn:1513762753691652177>Burn trên địch ÷ 3) dice*`,
+      ];
+    },
+  },
+  "flowing flame": {
+    name: "Flowing Flame", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(8,14);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gắn 4 <:Burn:1513762753691652177>Burn`,
+        `<:Dice1:1508173590078558369> *Trên 30 Sanity: gắn 6 <:Burn:1513762753691652177>Burn | Trên 45 Sanity: gắn 8 <:Burn:1513762753691652177>Burn*`,
+      ];
+    },
+  },
+  "fleet edge": {
+    name: "Fleet Edge", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(3,6),d2=r(4,12);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> *Nếu địch có trên 10 <:Burn:1513762753691652177>Burn: gắn thêm 3 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>*`,
+      ];
+    },
+  },
+  "flow of the sword": {
+    name: "Flow of the Sword", cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(3,5),d2=r(6,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
 
-/** Build embed "bảng" hiển thị trạng thái encounter hiện tại — gọi lại mỗi khi
- *  start/hit-confirm/status để luôn phản ánh đúng state mới nhất đã lưu. */
-/** Render 1 dòng trạng thái cho 1 combatant (boss hoặc player) — dùng chung để
- *  không lặp code giữa phần hiện boss và phần hiện từng player. */
-function formatCombatantBlock(combatant, label) {
-  const hpPct = combatant.maxHp > 0 ? Math.max(0, combatant.currentHp / combatant.maxHp) : 0;
-  const filled = Math.round(hpPct * 10);
-  const hpBar = "🟥".repeat(filled) + "⬛".repeat(10 - filled);
-  const r = combatant.resistance;
-  const resLine = combatant.staggered
-    ? `2x/2x/2x (STAGGER, gốc ${r.B}xB ${r.P}xP ${r.S}xS)`
-    : `${r.B}xB ${r.P}xP ${r.S}xS`;
-  const lines = [
-    `**${label}**${combatant.currentHp <= 0 ? " — ĐÃ HẠ! 💀" : ""}`,
-    `${hpBar} **${Math.max(0, Math.round(combatant.currentHp * 100) / 100)}/${combatant.maxHp}** HP`,
-    `> Stamina: **${combatant.currentStamina}/${combatant.maxStamina}** | Sanity: **${combatant.currentSanity}/${combatant.maxSanity}** | Light: **${combatant.currentLight}/${combatant.maxLight}**`,
-    `> Res: **${resLine}** | Vũ khí: **${combatant.weaponWeight}**`,
-  ];
-  const statusParts = [];
-  if (combatant.sinking > 0) statusParts.push(`<:Sinking:1513762793436741652>${combatant.sinking}`);
-  if (combatant.rupture > 0) statusParts.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
-  if (combatant.poise > 0) statusParts.push(`<:Poise:1513762945715142736>${combatant.poise}`);
-  if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
-  if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
-  if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
-  if (combatant.stance) lines.push(`> 🛡️ Đang ${combatant.stance.type === "guard" ? "Guard" : "Evade"} — còn chặn được ${combatant.stance.chargesLeft} hit`);
-  if (combatant.parryRoll !== null) lines.push(`> 🗡️ Đang chờ Parry (đã roll **${combatant.parryRoll}**)`);
-  return lines.join("\n");
-}
+  // ── <:Poise:1513762945715142736>Poise / <:Bleed:1513762688226955285>Bleed mixed ──
+  "extreme edge": {
+    name: "Extreme Edge", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const normal=r(7,8), air=r(4,7), low=r(17,30);
+      return [
+        `**Mặt đất:** **${normal}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Knockback] — gây 5 <:Bleed:1513762688226955285>Bleed và 2 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
+        `**Trên không:** **${air}** [<:Slash:1513768633434640517>Slash] — gây 5 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
+        `**Dưới 33% HP:** **${low}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285>Bleed và 5 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
+      ];
+    },
+  },
+  "flying sword": {
+    name: "Flying Sword", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(4,8),d2=r(3,9),dAir=r(6,12);
+      return [
+        `*Nhận 6 <:Poise:1513762945715142736>Poise*`,
+        `**Mặt đất:**`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `**Trên không:** *Nhận 6 <:Poise:1513762945715142736>Poise*`,
+        `<:Dice1:1508173590078558369> **${dAir}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Uptilt] — gây 5 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
+      ];
+    },
+  },
+  "boundary of death": {
+    name: "Boundary of Death", tags: "Poise",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const roll4 = r(1,4);
+      if (roll4 === 4) {
+        const dmg = r(47,57);
+        return [
+          `*Page độc quyền của **Shi Association** — chỉ sử dụng được khi dùng Outfit **Shi Association** và đang ở trong **Shi Association***`,
+          `${D1} **${roll4}→${dmg}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] — Roll đúng 4: đổi dice thành **[47~57]**, gây **${dmg} True Damage** và nhận lại 4 <:Light:1513786082502770719>Light`,
+        ];
+      } else {
+        return [
+          `*Page độc quyền của **Shi Association** — chỉ sử dụng được khi dùng Outfit **Shi Association** và đang ở trong **Shi Association***`,
+          `${D1} **${roll4}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] — Gây **${roll4} True Damage** *(Roll đúng 4 để kích hoạt dạng mạnh: đổi dice thành [47~57])*`,
+        ];
+      }
+    },
+  },
 
-/** Preview (READ-ONLY, không sửa target) — dùng để hiện dự kiến trong pending action.
- *  Parry không roll thật ở đây (vì random — roll ở preview rồi roll lại lúc confirm
- *  sẽ ra 2 kết quả khác nhau, gây hiểu nhầm) — chỉ báo "sẽ roll lúc confirm". */
-function previewDefenseOutcome(target, rawDmg) {
-  if (target.parryRoll !== null) {
-    return { finalDmg: null, note: `🗡️ Target đang chờ Parry (đã roll **${target.parryRoll}**) — kết quả thật sẽ roll khi GM xác nhận` };
-  }
-  if (target.stance?.type === "evade") {
-    return { finalDmg: 0, note: `🛡️ Target đang Evade — dự kiến đỡ được, KHÔNG nhận dmg (còn ${target.stance.chargesLeft} charge)` };
-  }
-  if (target.stance?.type === "guard") {
-    return { finalDmg: rawDmg * (1 - ENCOUNTER_GUARD_DR_PCT / 100), note: `🛡️ Target đang Guard — dự kiến giảm ${ENCOUNTER_GUARD_DR_PCT}% dmg (còn ${target.stance.chargesLeft} charge)` };
-  }
-  return { finalDmg: rawDmg, note: null };
-}
+  // ── Misc skills ──
+  "xuất lực tối đa": {
+    name: "Xuất Lực Tối Đa", cost: "1 <:Light:1513786082502770719>Light + 20 Cursed Energy", cd: "0 Turn", diceMul: "1x",
+    needsBlackFlash: true,
+    promptArg: {
+      label: "% Hắc Thiểm",
+      parse: (s) => parseFloat(s),
+      validate: (v) => !isNaN(v) && v >= 0 && v <= 100,
+      errorMsg:
+        "❓ **Xuất Lực Tối Đa** có thể nhập % Hắc Thiểm (mặc định 5%).\n" +
+        "> Cú pháp: `-skill xuất lực tối đa [%]`\n" +
+        "> VD: `-skill xltd` | `-skill xltd 20` | `-skill xltd 0.5`",
+      buildHeader: (v, s) => `[${s.cost}] [CD: ${s.cd}] [Hắc Thiểm: ${v}%]`,
+    },
+    embedColor: 0x1a1a2e,
+    roll(blackFlashPct = 5) {
+      const d1=r(13,17);
+      const isBlackFlash = Math.random() * 100 < blackFlashPct;
+      if (isBlackFlash) {
+        return [
+          `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break]`,
+          `⚫ **HẮC THIỂM!** Dice Multiplier → **2.5x** *(tỷ lệ: ${blackFlashPct}%)*`,
+        ];
+      }
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break]`,
+        `*(${blackFlashPct}% HẮC Thiểm → không kích hoạt)*`,
+      ];
+    },
+  },
+  "level slash": {
+    name: "Level Slash", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(8,10),d2=r(9,11);
+      return [
+        `*Khi trong E.G.O mà kết liễu địch: nhận 5 <:DiceUp:1513767795681398894>Dice Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1513769425063514173>Imitation`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1513769425063514173>Imitation`,
+      ];
+    },
+  },
+  "spear": {
+    name: "Spear", cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(4,5),d2=r(5,6),d3=r(6,7);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1513769425063514173>Imitation`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1513769425063514173>Imitation`,
+      ];
+    },
+  },
+  "focus spirit": {
+    name: "Focus Spirit", cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(10,20);
+      const turns = d1 === 20 ? 3 : d1 >= 15 ? 2 : 1;
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [không bị ảnh hưởng bởi buff dice]`,
+        `→ Nhận 2 <:DiceUp:1513767795681398894>Dice Up tồn tại **${turns} Turn**`,
+      ];
+    },
+  },
 
-/** Resolve THẬT (SỬA target) — CHỈ gọi lúc GM xác nhận, không gọi lúc preview. Roll
- *  d20 thật cho Parry, tiêu charge Guard/Evade, trừ Stamina nếu Parry thất bại. */
-function resolveDefenseOutcome(target, rawDmg) {
-  if (target.parryRoll !== null) {
-    const bossRoll = 1 + Math.floor(Math.random() * 20);
-    const playerRoll = target.parryRoll;
-    target.parryRoll = null;
-    if (playerRoll >= bossRoll) {
-      return { finalDmg: 0, note: `🗡️ Parry THÀNH CÔNG! (roll ${playerRoll} vs ${bossRoll}) — không nhận dmg` };
-    }
-    target.currentStamina = Math.max(0, target.currentStamina - ENCOUNTER_PARRY_FAIL_STAMINA_LOSS);
-    checkStaggerPanic(target);
-    return { finalDmg: rawDmg, note: `🗡️ Parry THẤT BẠI! (roll ${playerRoll} vs ${bossRoll}) — mất ${ENCOUNTER_PARRY_FAIL_STAMINA_LOSS} Stamina, ăn full dmg` };
-  }
-  if (target.stance?.type === "evade") {
-    target.stance.chargesLeft -= 1;
-    const note = `🛡️ Evade thành công (còn ${Math.max(0, target.stance.chargesLeft)} charge)`;
-    if (target.stance.chargesLeft <= 0) target.stance = null;
-    return { finalDmg: 0, note };
-  }
-  if (target.stance?.type === "guard") {
-    const reduced = rawDmg * (1 - ENCOUNTER_GUARD_DR_PCT / 100);
-    target.stance.chargesLeft -= 1;
-    const note = `🛡️ Guard — giảm ${ENCOUNTER_GUARD_DR_PCT}% dmg (còn ${Math.max(0, target.stance.chargesLeft)} charge)`;
-    if (target.stance.chargesLeft <= 0) target.stance = null;
-    return { finalDmg: reduced, note };
-  }
-  return { finalDmg: rawDmg, note: null };
-}
+  // ── Weapon criticals ──
+  "dimensional rift dagger": {
+    name: "Dimensional Rift", cost: "—", cd: "2 Turn", diceMul: "1x",
+    weaponOf: "WARP Corp. Dagger",
+    roll() {
+      const hasCharge = Math.random() < 0.5; // placeholder
+      const dNormal=r(6,12), dCharged=r(16,24);
+      return [
+        `*Tiêu thụ 15 <:Charge:1513762867558613033>Charge nếu đủ → đổi Dice 1 thành [16~24] và gây 6 <:Rupture:1513762812722155682>Rupture*`,
+        `<:Dice1:1508173590078558369> **${dNormal}** [<:Pierce:1513768511179329556>Pierce] *(thường)* / **${dCharged}** [<:Pierce:1513768511179329556>Pierce] *(có 15 Charge)* — gây 3 <:Rupture:1513762812722155682>Rupture và nhận 4 <:Charge:1513762867558613033>Charge`,
+      ];
+    },
+  },
 
-/** Action panel — 5 nút cho player bấm thay vì gõ lệnh text. Attack/Hit cần nhập
- *  công thức dmg nên mở Modal (form nhập liệu) khi bấm; Guard/Evade/Parry không
- *  cần nhập gì nên thực thi NGAY khi bấm. */
-function buildEncounterActionPanel(channelId) {
+  // ── Charge skills ──
+  "charge shield": {
+    name: "Charge Shield", cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(5,15);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 2 <:Rupture:1513762812722155682>Rupture, nhận 5 <:ChargeBarrier:1513768302973812887> Charge Barrier`,
+        `*Nếu ≥10 <:Charge:1513762867558613033>Charge: tiêu thụ toàn bộ Charge → đổi thành Shield HP tương đương*`,
+      ];
+    },
+  },
+  "leap": {
+    name: "Leap", cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(4,8),d2=r(8,12),d3=r(12,16);
+      return [
+        `*Nếu ≥10 <:Charge:1513762867558613033>Charge: +5 <:DiceUp:1513767795681398894>Dice Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — nhận 3 <:Charge:1513762867558613033>Charge và gây 2 <:Fragile:1513763336167100536>Fragile`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — nhận 3 <:Charge:1513762867558613033>Charge và gây 2 <:Fragile:1513763336167100536>Fragile`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 4 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "overcharged ripple": {
+    name: "Overcharged Ripple", cost: "4 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(5,7),d2=r(6,8),d3=r(7,9),d4=r(8,10);
+      return [
+        `*Nếu ≥10 <:Charge:1513762867558613033>Charge: Dice Multiplier → 1.5x*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nhận 1 <:Charge:1513762867558613033>Charge`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — nhận 1 <:Charge:1513762867558613033>Charge`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — nhận 1 <:Charge:1513762867558613033>Charge`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — nhận 4 <:Charge:1513762867558613033>Charge`,
+      ];
+    },
+  },
+
+  // ── <:Poise:1513762945715142736>Poise (Blade Lineage) ──
+  "moon-splitting draw": {
+    name: "Moon-Splitting Draw", cost: "4 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(15,25);
+      return [
+        `*Nếu bản thân có trên 15 <:Poise:1513762945715142736>Poise: +5 <:DiceUp:1513767795681398894>Dice Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — gây 3 <:Paralyze:1513763316479295548>Paralyze, nhận 5 <:Poise:1513762945715142736>Poise, mất 5 HP và nhận 3 <:Light:1513786082502770719>Light`,
+        `*Nếu địch parry thành công hay không dính dmg: không hồi <:Light:1513786082502770719>Light*`,
+      ];
+    },
+  },
+  "red plum blossom scatter": {
+    name: "Red Plum Blossom Scatter", cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1.6x",
+    roll() {
+      const d1=r(5,12),d2=r(4,7);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 2 <:Red_Plum_Blossom:1513768345521094668> và nhận <:DiceUp:1513767795681398894>Dice Up bằng (Poise ÷ 3)`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Undodgeable] — gây 4 <:Red_Plum_Blossom:1513768345521094668>`,
+      ];
+    },
+  },
+  "yield my flesh": {
+    name: "Yield My Flesh", cost: "2 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1=r(3,6),d2=r(6,12);
+      return [
+        `*Skill đặc biệt của Blade Lineage — yêu cầu Outfit Blade Lineage*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Né 4 đòn đánh thường hoặc clash`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — Nếu địch không đánh để né/clash: chém và nhận 2 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "to claim their bones": {
+    name: "To Claim Their Bones", cost: "0 <:Light:1513786082502770719>Light", cd: "Khi Yield My Flesh kích hoạt", diceMul: "1x",
+    roll() {
+      const d1=r(3,4),d2=r(4,5),d3=r(5,6),d4=r(6,7);
+      return [
+        `*[Unblockable] — Chỉ dùng được sau khi Yield My Flesh phản công hoặc clash thua*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và 5 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+
+
+  // ── <:Rupture:1513762812722155682>Rupture (Seven Association) ──
+  "dissect target": {
+    name: "Dissect Target",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 3 <:Rupture:1513762812722155682>Rupture`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Rupture:1513762812722155682>Rupture`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "swash": {
+    name: "Swash",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(6,9), d3 = r(9,11);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 5 <:Rupture:1513762812722155682>Rupture`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 6 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "profiling": {
+    name: "Profiling",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,10), d2 = r(7,11), d3 = r(13,18);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Rupture:1513762812722155682>Rupture`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Rupture:1513762812722155682>Rupture`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+
+  // ── Protection (Udjat) ──
+  "sand split": {
+    name: "Sand Split",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,13), d2 = r(7,9);
+      return [
+        `<:Dice1:1508173590078558369> *Nếu có ≥4 Protection: nhận 3 <:DiceUp:1513767795681398894>Dice Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 2 Protection`,
+      ];
+    },
+  },
+  "furusiyya": {
+    name: "Furūsiyya",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — ngắt 4 đòn đánh thường của địch, nhận 2 Protection`,
+      ];
+    },
+  },
+  "jamadhar": {
+    name: "Jamadhar",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,9), d2 = r(7,8), d3 = r(5,9), d4 = r(8,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 1 Protection`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 1 Protection`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 1 Protection; nếu có ≥5 Protection dùng tiếp Dice 4`,
+        `<:Dice4:1508176464367845600> **${d4}** [Guard Break]`,
+      ];
+    },
+  },
+  "mirage incision": {
+    name: "Mirage Incision",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,4), d2 = r(2,6), d3 = r(2,6), d4 = r(7,12);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — nhận 1 Protection và gây 1 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice4:1508176464367845600> **${d4}** [Guard Break]`,
+      ];
+    },
+  },
+  "khopesh swordplay": {
+    name: "Khopesh Swordplay",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,15), d2 = r(4,6);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — gây 2 <:Tremor:1513762737388257380>Tremor (nếu có ≥5 Protection: gây 5 <:Tremor:1513762737388257380>Tremor)`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — nhận Protection = (Tremor+1)÷6 [Max: 3]`,
+      ];
+    },
+  },
+
+  // ── Defense (Zwei) ──
+  "blade whirl": {
+    name: "Blade Whirl",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "0.5x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,8), d3 = r(4,9), d4 = r(9,14);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — nhận 2 <:DefenseUp:1513767487894716497>Defense Up`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — nhận 2 <:DefenseUp:1513767487894716497>Defense Up`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — nhận 2 <:DefenseUp:1513767487894716497>Defense Up`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — gây 5 <:DefenseDown:1513767463337066576>Defense Down; nếu có trên 10 <:DefenseUp:1513767487894716497>Defense Up: nhận 10 Protection`,
+      ];
+    },
+  },
+  "client protection": {
+    name: "Client Protection",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(4,8), d3 = r(5,9);
+      return [
+        `*Nếu có trên 10 <:DefenseUp:1513767487894716497>Defense Up: +3 <:DiceUp:1513767795681398894>Dice Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:DefenseUp:1513767487894716497>Defense Up`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:DefenseUp:1513767487894716497>Defense Up`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 6 <:DefenseDown:1513767463337066576>Defense Down`,
+      ];
+    },
+  },
+  "standoff": {
+    name: "Standoff",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(4,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 3 <:DefenseUp:1513767487894716497>Defense Up`,
+        `<:Dice2:1508173590078558369> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 3 <:DefenseUp:1513767487894716497>Defense Up`,
+      ];
+    },
+  },
+  "law and order": {
+    name: "Law and Order",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,5), d2 = r(5,9), d3 = r(8,14);
+      return [
+        `*Chặn 4 đòn đánh thường của địch — nhận 5 <:DefenseUp:1513767487894716497>Defense Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
+      ];
+    },
+  },
+
+  // ── <:Tremor:1513762737388257380>Tremor (Augury) ──
+  "augury crusher": {
+    name: "Augury Crusher",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "0.75x",
+    roll() {
+      const d1 = r(7,16), d2 = r(7,16);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE 4 người] — dập chân gây rung chấn, đẩy địch về phía sau`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [AOE 4 người] — vô số cột sát, mỗi lần trúng gây 5 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+  "augury infusion": {
+    name: "Augury Infusion",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(13,18);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "augury kick": {
+    name: "Augury Kick",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,9), d2 = r(18,26);
+      const hasDiceUp = d2 > 20;
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — đá địch lên trời, gây 8 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable] [Undodgeable] — đá xuống, gây <:TremorBurst:1513802464632246352>Tremor Burst`,
+        hasDiceUp ? `✨ Trên 20 Tremor: nhận 2 <:DiceUp:1513767795681398894>Dice Up cho 2 Turn kế tiếp` : `*(Cần trên 20 <:Tremor:1513762737388257380>Tremor để nhận <:DiceUp:1513767795681398894>Dice Up)*`,
+      ];
+    },
+  },
+  "celestial sight": {
+    name: "Celestial Sight",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — né 4 đòn thường của địch, phản công gây 6 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+
+  // ── <:Tremor:1513762737388257380>Tremor (L'Heure du Loup) ──
+  "lupine onslaught": {
+    name: "Lupine Onslaught",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(3,6), d3 = r(4,7), d4 = r(4,8);
+      return [
+        `*Nếu địch có trên 5 <:Tremor:1513762737388257380>Tremor: **[Uptilt]***`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+  "kick and stomps": {
+    name: "Kick And Stomps",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,10), d2 = r(6,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 2 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+  "rapacious assault": {
+    name: "Rapacious Assault",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,9), d2 = r(10,16);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Paralyze:1513763316479295548>Paralyze và 3 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Uptilt] — gây 1 <:Paralyze:1513763316479295548>Paralyze và 3 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+  "pitch-black pulverizer": {
+    name: "Pitch-Black Pulverizer",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(18,27);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] — lao vào địch, gây 5 <:Tremor:1513762737388257380>Tremor`,
+        `→ Sau đó gây <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+
+  // ── <:Bleed:1513762688226955285>Bleed (Kurokumo) ──
+  "cloud cutter": {
+    name: "Cloud Cutter",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(1,5), d2 = r(1,5);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
+        `*Reuse 1 lần nếu bản thân đang có trên 2 <:Light:1513786082502770719>Light*`,
+      ];
+    },
+  },
+  "sky clearing cut": {
+    name: "Sky Clearing Cut",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(5,9), d3 = r(6,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed; nếu địch có trên 10 <:Bleed:1513762688226955285>Bleed: dmg ×1.3`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed; nếu địch có trên 10 <:Bleed:1513762688226955285>Bleed: dmg ×1.3`,
+      ];
+    },
+  },
+  "dark cloud cleaver": {
+    name: "Dark Cloud Cleaver",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(7,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 4 <:Poise:1513762945715142736>Poise`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+  "sober up": {
+    name: "Sober Up",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,7);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 6 <:Bleed:1513762688226955285>Bleed turn kế`,
+      ];
+    },
+  },
+  "shadowcloud kick": {
+    name: "Shadowcloud Kick",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(6,8);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed; nếu địch có trên 7 <:Bleed:1513762688226955285>Bleed: nhận 3 <:DiceUp:1513767795681398894>Dice Up`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash]; nếu địch có trên 7 <:Bleed:1513762688226955285>Bleed: địch nhận 2 <:DiceDown:1513767826257874964>Dice Down`,
+      ];
+    },
+  },
+  "silent mist": {
+    name: "Silent Mist",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 4 <:Bleed:1513762688226955285>Bleed và nhận 3 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+
+  // ── Rupture/Nails (Smiling Faces) ──
+  "somber procuration": {
+    name: "Somber Procuration",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8), d2 = r(4,6), d3 = r(2,4);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce]`,
+        `<:Dice3:1508173643518050395> **${d3}** — đạp địch ra xa, gây 5 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "trash disposal": {
+    name: "Trash Disposal",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const MAX_REUSE = 6;
+      const DICE_EMOJIS = [
+        `<:Dice1:1508173590078558369>`,`<:Dice2:1508173623691710625>`,`<:Dice3:1508173643518050395>`,
+        `<:Dice4:1508176464367845600>`,`<:Dice5:1508176500438990968>`,
+        `<:Dice5:1508176500438990968>`,`<:Dice5:1508176500438990968>`,
+      ];
+      const lines = [];
+      let stopped = false;
+      for (let i = 0; i <= MAX_REUSE; i++) {
+        const val = r(4,6);
+        const isMin = val === 4;
+        const dEmoji = DICE_EMOJIS[i] ?? DICE_EMOJIS[DICE_EMOJIS.length - 1];
+        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        if (i === 0) {
+          lines.push(`${dEmoji}${label} **${val}** [<:Slash:1513768633434640517>Slash] — đâm vào địch, gắn 5 <:Fragile:1513763336167100536>Fragile${isMin ? " *(Min — dừng)*" : ""}`);
+        } else {
+          lines.push(`${dEmoji}${label} **${val}** [<:Slash:1513768633434640517>Slash] — đâm, hồi 3 HP${isMin ? " *(Min — dừng)*" : i === MAX_REUSE ? " *(hết Reuse)*" : ""}`);
+        }
+        if (isMin) { stopped = true; break; }
+      }
+      return lines;
+    },
+  },
+  "cackle": {
+    name: "Cackle",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(8,14);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Nails:1513768423124111482>Nails`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+
+  // ── Index ──
+  "unlock": {
+    name: "Unlock",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "0 Turn", diceMul: "1x",
+    roll() {
+      const stage = Math.floor(Math.random() * 3) + 1;
+      if (stage === 1) {
+        const d1 = r(2,4);
+        return [
+          `**Unlock - 1** *(không có Unlock Blade)*`,
+          `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — trúng: nhận **Unlock Blade - 1**`,
+        ];
+      } else if (stage === 2) {
+        const d1 = r(3,6), d2 = r(3,6);
+        return [
+          `**Unlock - 2** *(cần Unlock Blade - 1)*`,
+          `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash]`,
+          `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận **Unlock Blade - 2**`,
+        ];
+      } else {
+        const d1 = r(6,11), d2 = r(6,11);
+        return [
+          `**Unlock - 3** *(cần Unlock Blade - 2)*`,
+          `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash]`,
+          `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận **Unlocked Blade**`,
+        ];
+      }
+    },
+  },
+
+  // ── Misc ──
+  "blade flourish": {
+    name: "Blade Flourish",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(5,8), d3 = r(6,9);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash]`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — nhận 3 <:DiceUp:1513767795681398894>Dice Up đến hết turn này`,
+      ];
+    },
+  },
+
+  // ── EGO Pages (TETH) ──
+  "beak": {
+    name: "Beak",
+    tags: "Ego Pages <:TETH:1449759432119419070>",
+    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,14), d2 = r(7,10);
+      return [
+        `*Trừ 2 <:Light:1513786082502770719>Light và 20 Sanity để sử dụng cho pages kế tiếp*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce]`,
+      ];
+    },
+  },
+  "punishing beak": {
+    name: "Punishing Beak",
+    tags: "Corrosion Pages <:TETH:1449759432119419070>",
+    cost: "6 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(15,20);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 6 <:Bleed:1513762688226955285>Bleed và hồi 10 Stamina`,
+      ];
+    },
+  },
+
+  // ── EGO Pages (HE) ──
+  "lamp": {
+    name: "Lamp",
+    tags: "Ego Pages <:HE:1449759447152070796>",
+    cost: "3 <:Light:1513786082502770719>Light & 5 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,18);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE] — khiến toàn bộ pages kẻ địch sắp dùng bị trừ 3 Dice và giảm 1 nửa buff địch vào turn sau`,
+      ];
+    },
+  },
+  "eyes lamp": {
+    name: "Eyes Lamp",
+    tags: "Corrosion Pages <:HE:1449759447152070796>",
+    cost: "8 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,15);
+      return [
+        `*[AOE] — Phải là page cuối cùng được dùng cuối turn để kích hoạt*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — giải trừ toàn bộ pages của toàn bộ nhưng không hoàn trả thứ gì`,
+      ];
+    },
+  },
+
+  // ── EGO Pages (WAW) ──
+  "justitia": {
+    name: "Justitia",
+    tags: "Ego Pages <:WAW:1449759461001527518>",
+    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(15,25);
+      return [
+        `*[After Use] Sau khi dùng: tăng 1 <:Light:1513786082502770719>Light, lần tiếp theo +5% HP damage*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — chém gây thêm 5% Max HP địch (Giới hạn 100 Dmg hoặc 150 khi dùng cùng Justitia)`,
+      ];
+    },
+  },
+  "the justice scale": {
+    name: "The Justice Scale",
+    tags: "Corrosion Pages <:WAW:1449759461001527518>",
+    cost: "6 <:Light:1513786082502770719>Light & 25 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,50);
+      return [
+        `*[Clash] Nếu địch clash: địch bị trừ 5 Dice*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — chém gây 7% Max HP địch (Giới hạn 150 Dmg hoặc 200 khi dùng cùng Justitia); Heal = 15% dmg gây ra`,
+      ];
+    },
+  },
+
+  // ── EGO Pages (ALEPH) ──
+  "twillight": {
+    name: "Twillight",
+    tags: "Ego Pages <:ALEPH:1449759474268242021>",
+    cost: "5 <:Light:1513786082502770719>Light & 25 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `<:Dice1:1508173590078558369> Giảm 0.2 Res cho toàn bộ trong 3 turn. Khi chết sẽ kích hoạt Apocalypse với sát thương Blunt`,
+        `*[Sau khi dùng] Biến thành Apocalypse ở lần dùng kế tiếp*`,
+      ];
+    },
+  },
+"apocalypse": {
+    name: "Apocalypse",
+    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "—", diceMul: "1.5x",
+promptArg: {
+  label: "Dưới 50% HP?",
+  parse: (s) => {
+    const v = s.toLowerCase().trim();
+    if (v === "yes" || v === "y" || v === "1" || v === "true") return "yes";
+    return "no"; // mặc định no khi không nhập hoặc nhập sai
+  },
+  validate: (v) => true,
+  errorMsg: "", // không dùng nữa vì luôn pass
+  buildHeader: (v, s) => `[${s.cost}] [CD: ${s.cd}] [Dice Mul: ${s.diceMul}]${v === "yes" ? " *(Dưới 50% HP: Dice x2)*" : ""}`,
+},
+roll(v = "no") {
+  const lowHp = v === "yes";
+  const d1 = r(25,35);
   return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`encact:${channelId}:attack`).setLabel("⚔️ Đánh thường").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:hit`).setLabel("📖 Dùng Page").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:guard`).setLabel("🛡️ Guard").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:evade`).setLabel("💨 Evade").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:parry`).setLabel("🗡️ Parry").setStyle(ButtonStyle.Secondary),
-    ),
+    `*[Before Use] Nếu bản thân dưới 50% HP: nhân đôi Dice*`,
+    `*[Before Use] Nếu chết trước khi kích hoạt: kích hoạt lại 1 đòn không có hiệu ứng sát thương chuẩn*`,
+    `<:Dice1:1508173590078558369> **${lowHp ? d1*2 : d1}** [<:Blunt:1513768529718022254>Blunt] [True Damage]${lowHp ? " *(Dưới 50% HP: Dice x2)*" : ""} — nếu địch dưới 50% gây thêm 50% damage`,
   ];
-}
+},
+},
 
-/**
- * doPlayerAttack — logic CHUNG cho `-encounter attack` (text) và nút "Đánh thường"
- * (qua Modal). QUAN TRỌNG: KHÔNG trừ Stamina ở đây — chỉ TÍNH TRƯỚC stamina cần và
- * lưu vào pendingAction.staminaCost, trừ THẬT lúc GM xác nhận (xem encconfirm
- * handler). Trước đây trừ ngay lúc declare — nghĩa là GM từ chối (VD: vì lý do gõ
- * sai công thức) vẫn làm player mất Stamina oan, dù hành động đó không có hiệu lực
- * gì cả. Giờ: declare chỉ KIỂM TRA đủ Stamina không (báo lỗi sớm nếu thiếu), CHƯA
- * trừ; confirm mới trừ thật — khớp đúng nguyên tắc "không gì là thật cho tới khi
- * GM xác nhận" đã áp dụng cho HP/status từ trước.
- * @returns {{ embed, components }}
- * @throws Error nếu input/điều kiện không hợp lệ
- */
-async function doPlayerAttack(channelId, playerId, playerMention, dmgStr) {
-  if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
-  let result;
-  await withLock(encounterKey(channelId), async () => {
-    const encounter = await getEncounter(channelId);
-    if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
-    const player = encounter.players[playerId];
-    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-    if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
-    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-
-    const boss = encounter.boss;
-    const calcOpts = {
-      dmgStr, resStr: combatantResStr(boss),
-      poiseInit: boss.poise, sinkingInit: boss.sinking,
-      ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
-    };
-    const preview = calcMathCore(calcOpts);
-    const hitCount = preview.dmgValues.length;
-    const staminaCost = WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
-    if (player.currentStamina < staminaCost) {
-      throw new Error(`Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
-    }
-
-    encounter.pendingAction = {
-      direction: "playerToBoss", attackerId: playerId, targetId: "boss",
-      calcOpts, preview, finalDmg: preview.totalDmg,
-      staminaCost, // CHỈ attack có field này — đánh dấu cho encconfirm biết cần trừ Stamina người tấn công lúc confirm
-    };
-    await saveEncounter(channelId, encounter);
-
-    result = {
-      embed: {
-        title: "🎯 M1 chờ GM xác nhận",
-        description:
-          `${playerMention} đánh thường (${hitCount} hit) lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
-          `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg\n` +
-          `> Sẽ trừ **${staminaCost} Stamina** NẾU được GM xác nhận (từ chối thì không mất gì).\n` +
-          `> GM bấm nút dưới để áp dụng thật vào encounter.`,
-        color: 0xf39c12,
-      },
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`encconfirm:${channelId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`encreject:${channelId}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-      )],
-    };
-  });
-  return result;
-}
-
-/** doPlayerHit — logic CHUNG cho `-encounter hit` (text) và nút "Dùng Page". Page
- *  tốn Light (player tự khai báo/quản lý riêng), KHÔNG đụng tới Stamina — đúng yêu
- *  cầu giữ rõ ranh giới: chỉ M1/Guard/Evade tốn Stamina, Page không. */
-async function doPlayerHit(channelId, playerId, playerMention, dmgStr, extra = {}) {
-  if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
-  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul = 1, diceMul = 1, critDiv = 0 } = extra;
-  let result;
-  await withLock(encounterKey(channelId), async () => {
-    const encounter = await getEncounter(channelId);
-    if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
-    if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
-    const boss = encounter.boss;
-    const calcOpts = {
-      dmgStr, resStr: resStr || combatantResStr(boss), drStr,
-      bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
-      poiseInit: boss.poise, sinkingInit: boss.sinking,
-      ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
-    };
-    const preview = calcMathCore(calcOpts);
-
-    encounter.pendingAction = {
-      direction: "playerToBoss", attackerId: playerId, targetId: "boss",
-      calcOpts, preview, finalDmg: preview.totalDmg,
-    };
-    await saveEncounter(channelId, encounter);
-
-    result = {
-      embed: {
-        title: "🎯 Action chờ GM xác nhận",
-        description:
-          `${playerMention} dùng Page lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
-          `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg\n` +
-          `> GM bấm nút dưới để áp dụng thật vào encounter.`,
-        color: 0xf39c12,
-      },
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`encconfirm:${channelId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`encreject:${channelId}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-      )],
-    };
-  });
-  return result;
-}
-
-/** doPlayerGuardEvade — logic CHUNG cho -encounter guard/evade (text) và nút
- *  Guard/Evade. KHÔNG qua pending/confirm (thực thi NGAY) — vì đây là tuyên bố thế
- *  thủ của RIÊNG player đó, không cần GM duyệt số liệu gì cả (không có damage math
- *  nào để sai ở đây). */
-async function doPlayerGuardEvade(channelId, playerId, type) {
-  let message;
-  await withLock(encounterKey(channelId), async () => {
-    const encounter = await getEncounter(channelId);
-    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-    const player = encounter.players[playerId];
-    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-    const cost = type === "evade" ? 20 : 10;
-    if (player.currentStamina < cost) throw new Error(`Không đủ Stamina (cần ${cost}, còn ${player.currentStamina}).`);
-    player.currentStamina -= cost;
-    checkStaggerPanic(player);
-    const charges = WEAPON_GUARD_CHARGES[encounter.boss.weaponWeight];
-    player.stance = { type, chargesLeft: charges };
-    await saveEncounter(channelId, encounter);
-    message = `🛡️ <@${playerId}> vào thế **${type === "evade" ? "Evade" : "Guard"}** (-${cost} Stamina, chặn được ${charges} hit tới).`;
-  });
-  return message;
-}
-
-/** doPlayerParry — logic CHUNG cho -encounter parry (text) và nút Parry. 0 Stamina,
- *  roll d20 ngay, lưu lại chờ đòn tới (xem previewDefenseOutcome/resolveDefenseOutcome). */
-async function doPlayerParry(channelId, playerId) {
-  let message;
-  await withLock(encounterKey(channelId), async () => {
-    const encounter = await getEncounter(channelId);
-    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-    const player = encounter.players[playerId];
-    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-    const roll = 1 + Math.floor(Math.random() * 20);
-    player.parryRoll = roll;
-    await saveEncounter(channelId, encounter);
-    message = `🗡️ <@${playerId}> chuẩn bị Parry — roll được **${roll}** (0 Stamina). Chờ đòn tới để so kết quả.`;
-  });
-  return message;
-}
-
-function buildEncounterBoardEmbed(encounter) {
-  const blocks = [formatCombatantBlock(encounter.boss, `⚔️ ${encounter.bossName}`)];
-  const playerIds = Object.keys(encounter.players);
-  for (const pid of playerIds) {
-    blocks.push(formatCombatantBlock(encounter.players[pid], `<@${pid}>`));
-  }
-  if (encounter.pendingAction) {
-    const { direction, attackerId, targetId, calcOpts, preview, finalDmg } = encounter.pendingAction;
-    const attackerLabel = attackerId === "boss" ? encounter.bossName : `<@${attackerId}>`;
-    const targetLabel = targetId === "boss" ? encounter.bossName : `<@${targetId}>`;
-    const dmgToShow = typeof finalDmg === "number" ? finalDmg : preview.totalDmg;
-    blocks.push(`⏳ **${attackerLabel}** → **${targetLabel}**: \`${calcOpts.dmgStr}\` → dự kiến **${dmgToShow.toFixed(3)}** dmg (chờ GM xác nhận)`);
-  }
-  return {
-    title: `Encounter Board`,
-    description: blocks.join("\n\n"),
-    color: encounter.boss.currentHp <= 0 ? 0x555555 : 0xe74c3c,
-    footer: { text: "-encounter attack/bossattack/evade/guard/parry/endturn — xem -encounter help để biết hết lệnh" },
-  };
-}
-
-
-async function buildBalanceEmbed(targetUser) {
-  const data = await getPlayerData(targetUser.id);
-  const { grade, expInCurrentGrade, expNeeded } = calcGrade(data.exp ?? 0);
-  const totalBooks = Object.values(data.books ?? {}).reduce((a, b) => a + b, 0);
-  const totalItems = Object.values(data.items ?? {}).reduce((a, b) => a + b, 0);
-  const gradeDisplay = grade === GRADE_MAX
-    ? `**Grade ${grade}** (MAX)`
-    : `**Grade ${grade}** (${expInCurrentGrade}/${expNeeded} EXP → Grade ${grade - 1})`;
-  let progressBar = "";
-  if (grade > GRADE_MAX && expNeeded) {
-    const filled = Math.round((expInCurrentGrade / expNeeded) * 10);
-    progressBar = "\n> " + "🟦".repeat(filled) + "⬛".repeat(10 - filled) + ` ${expInCurrentGrade}/${expNeeded}`;
-  }
-  return {
-    embeds: [{
-      title: `💼 Thông tin của ${targetUser.displayName ?? targetUser.username}`,
-      color: 0x5865f2,
-      thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
-      fields: [
-        { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
-        { name: "✨ Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
-        { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
-        { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
-        { name: "🔩 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
-      ],
-      footer: { text: INVENTORY_HINT_TEXT },
-    }],
-  };
-}
-
-// Số entry tối đa mỗi trang inventory
-const INV_PAGE_SIZE = 15;
-
-/**
- * Tách toàn bộ books + items thành mảng pages (mỗi page là mảng fields).
- * Trả về null nếu kho trống.
- */
-function buildInventoryPages(targetUser, data) {
-  const books = data.books ?? {};
-  const items = data.items ?? {};
-  const bookEntries = Object.entries(books).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
-  const itemEntries = Object.entries(items).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
-  if (bookEntries.length === 0 && itemEntries.length === 0) return null;
-
-  const totalBooks = bookEntries.reduce((s, [, c]) => s + c, 0);
-  const totalItems = itemEntries.reduce((s, [, c]) => s + c, 0);
-  const pages = [];
-
-  // ── Sách ──
-  for (let i = 0; i < bookEntries.length; i += INV_PAGE_SIZE) {
-    const chunk = bookEntries.slice(i, i + INV_PAGE_SIZE);
-    const isLast = i + INV_PAGE_SIZE >= bookEntries.length;
-    const from = i + 1, to = Math.min(i + INV_PAGE_SIZE, bookEntries.length);
-    const fields = [{
-      name: `📚 Sách (${from}–${to} / ${bookEntries.length})`,
-      value: chunk.map(([name, count]) => `• **${name}** × ${count}`).join("\n"),
-      inline: false,
-    }];
-    if (isLast) fields.push({ name: "📊 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true });
-    pages.push(fields);
-  }
-
-  // ── Vật phẩm ──
-  for (let i = 0; i < itemEntries.length; i += INV_PAGE_SIZE) {
-    const chunk = itemEntries.slice(i, i + INV_PAGE_SIZE);
-    const isLast = i + INV_PAGE_SIZE >= itemEntries.length;
-    const from = i + 1, to = Math.min(i + INV_PAGE_SIZE, itemEntries.length);
-    const fields = [{
-      name: `🔩 Vật phẩm (${from}–${to} / ${itemEntries.length})`,
-      value: chunk.map(([name, count]) => `• **${name}** × ${count}`).join("\n"),
-      inline: false,
-    }];
-    if (isLast) fields.push({ name: "📊 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true });
-    pages.push(fields);
-  }
-
-  return pages;
-}
-
-/** Build embed object cho trang `page` (0-indexed).*/
-function buildInvEmbed(targetUser, pages, page) {
-  return {
-    title: `🎒 Inventory của ${targetUser.displayName ?? targetUser.username}`,
-    color: 0xf0a500,
-    fields: pages[page],
-    footer: pages.length > 1 ? { text: `Trang ${page + 1} / ${pages.length}` } : undefined,
-  };
-}
-
-/** Build ActionRow nút Prev/Next. */
-function buildInvRow(targetUserId, page, totalPages) {
-  // Dùng Math.max/min để đảm bảo customId không chứa page âm (-1) hoặc vượt bound
-  // khi button bị disabled. Không ảnh hưởng đến logic vì button disabled không click được,
-  // nhưng tránh trường hợp Discord reject customId không hợp lệ.
-  const prevPage = Math.max(0, page - 1);
-  const nextPage = Math.min(totalPages - 1, page + 1);
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`invpage:${targetUserId}:${prevPage}`)
-      .setLabel("◀ Trước")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page === 0),
-    new ButtonBuilder()
-      .setCustomId(`invpage:${targetUserId}:${nextPage}`)
-      .setLabel("Sau ▶")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page === totalPages - 1),
-  );
-}
-
-/**
- * Build StringSelectMenu chứa các item trên ĐÚNG trang đang hiển thị.
- * QUAN TRỌNG: buildInventoryPages sinh trang sách TRƯỚC (1..bookPageCount),
- * rồi trang item SAU — không gộp chung. Hàm này phải dùng đúng công thức
- * bookPageCount = Math.ceil(books.length / INV_PAGE_SIZE) để xác định trang
- * hiện tại đang ở phía "sách" hay phía "item", nếu không select menu sẽ liệt
- * kê sai item so với embed đang hiển thị.
- */
-function buildInvSelectMenu(targetUserId, data, page) {
-  const books = Object.entries(data.books ?? {}).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
-  const items = Object.entries(data.items ?? {}).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
-
-  const bookPageCount = Math.ceil(books.length / INV_PAGE_SIZE); // = 0 nếu không có sách
-
-  let chunk, type;
-  if (page < bookPageCount) {
-    chunk = books.slice(page * INV_PAGE_SIZE, (page + 1) * INV_PAGE_SIZE);
-    type = "book";
-  } else {
-    const itemPage = page - bookPageCount;
-    chunk = items.slice(itemPage * INV_PAGE_SIZE, (itemPage + 1) * INV_PAGE_SIZE);
-    type = "item";
-  }
-  if (chunk.length === 0) return null;
-
-  const options = chunk.map(([name, count]) =>
-    new StringSelectMenuOptionBuilder()
-      .setLabel(`${name} ×${count}`)
-      .setDescription(type === "book" ? "📚 Sách" : "🔩 Vật phẩm")
-      .setValue(`${type}:${name}`)
-      .setEmoji(type === "book" ? "📖" : "🔩")
-  );
-
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(`invsel:${targetUserId}:${page}`)
-      .setPlaceholder("📋 Chọn item để thao tác...")
-      .addOptions(options)
-  );
-}
-
-/** Wrapper async dùng chung cho prefix và slash command. */
-async function fetchInventoryReply(targetUser, page = 0) {
-  const data = await getPlayerData(targetUser.id);
-  const pages = buildInventoryPages(targetUser, data);
-  if (!pages) return null;
-  const clampedPage = Math.max(0, Math.min(page, pages.length - 1));
-  const embed = buildInvEmbed(targetUser, pages, clampedPage);
-
-  const components = [];
-  if (pages.length > 1) components.push(buildInvRow(targetUser.id, clampedPage, pages.length));
-  const selectMenu = buildInvSelectMenu(targetUser.id, data, clampedPage);
-  if (selectMenu) components.push(selectMenu);
-
-  return { embeds: [embed], components };
-}
-
-// ─── SHARED BUSINESS LOGIC: GIVE / REMOVE ────────────────────────────────────
-/**
- * executeGive / executeRemove / buildProfileInfoEmbed đã tách sang player-actions.js
- * (file riêng, dùng dependency-injection để không phải tạo redis client thứ 2 — xem
- * comment đầu file đó để biết lý do chọn pattern này). Inject toàn bộ helper cần thiết
- * vào đây 1 lần duy nhất; vị trí đặt require này PHẢI sau khi các const (redis, EXP_MAX,
- * MAX_PROFILES, PROFILE_EMOJIS) đã được khai báo phía trên — các hàm helper khác là
- * function declaration nên được hoisted, không bị ảnh hưởng bởi vị trí.
- */
-const { executeGive, executeRemove, buildProfileInfoEmbed } = require("./player-actions")({
-  redis,
-  getPlayerDataWithSlot,
-  saveMultiplePlayerData,
-  savePlayerData,
-  calcExpForGrade,
-  clampExp,
-  calcGrade,
-  getActiveProfileSlot,
-  getProfileNames,
-  resolveProfileLabel,
-  getVNDateString,
-  playerKeyForSlot,
-  dailyKeyForSlot,
-  withTimeout,
-  unwrapPipelineResults,
-  formatNumber,
-  auditLog,
-  EXP_MAX,
-  MAX_PROFILES,
-  PROFILE_EMOJIS,
-});
-
-/**
- * executeCraft — logic craft dùng chung cho prefix -use và slash /use
- * Phải được gọi bên trong withLock của userId.
- * @returns {Promise<{ outputLines: string[], costLines: string[] }>}
- */
-async function executeCraft(userId, itemName, craftCount) {
-  const recipe = CRAFT_RECIPES[itemName];
-  const { data, slot } = await getPlayerDataWithSlot(userId);
-  const totalCost = {};
-  for (const [mat, qty] of Object.entries(recipe.inputs)) totalCost[mat] = qty * craftCount;
-  const shortages = [];
-  for (const [mat, needed] of Object.entries(totalCost)) {
-    const owned = data.items[mat] ?? 0;
-    if (owned < needed) shortages.push(`• **${mat}**: cần **${needed}**, có **${owned}** (thiếu **${needed - owned}**)`);
-  }
-  if (shortages.length > 0) {
-    throw new Error(`Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` + shortages.join("\n"));
-  }
-  for (const [mat, needed] of Object.entries(totalCost)) {
-    data.items[mat] = (data.items[mat] ?? 0) - needed;
-    if (data.items[mat] <= 0) delete data.items[mat];
-  }
-  const outputLines = [];
-  for (const [out, qty] of Object.entries(recipe.output)) {
-    const gained = qty * craftCount;
-    data.items[out] = (data.items[out] ?? 0) + gained;
-    outputLines.push(`**${gained}× ${out}**`);
-  }
-  await savePlayerData(userId, data, slot);
-  const costLines = Object.entries(totalCost)
-    .map(([mat, qty]) => `• -${qty} **${mat}** (còn lại: ${data.items[mat] ?? 0})`);
-  return { outputLines, costLines };
-}
-
-/**
- * parseBatchEntries — parse chuỗi "Tên x<số>, Tên x<số>" thành mảng entries
- * @param {string} raw          — chuỗi input
- * @param {Function} findFn     — hàm lookup tên (findBook / findItem / findItemAdmin)
- * @param {string} entityLabel  — "sách" hoặc "vật phẩm" (dùng trong thông báo lỗi)
- * @returns {{ entries: Array<{name:string,count:number}> } | { error: string }}
- */
-function parseBatchEntries(raw, findFn, entityLabel) {
-  // Dùng Map để tự động gộp entries cùng tên (VD: "Random Book x2, Random Book x3" → x5)
-  const entryMap = new Map();
-  const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
-  for (const part of parts) {
-    const match = part.match(/^(.+?)\s+x(\d+)$/i);
-    if (!match) {
-      return { error: `❌ Định dạng ${entityLabel} sai: \`${part}\`\nĐúng: \`Tên ${entityLabel === "sách" ? "Sách" : "Item"} x<số>\` (VD: \`${entityLabel === "sách" ? "Random Book x2" : "Chipboard MK1 x3"}\`)` };
-    }
-    const count = parseInt(match[2], 10);
-    if (count <= 0) {
-      return { error: `❌ Số lượng ${entityLabel} phải lớn hơn 0: \`${part}\`` };
-    }
-    const name = findFn(match[1].trim());
-    if (!name) return { error: `❌ Tên ${entityLabel} không hợp lệ: \`${match[1].trim()}\`` };
-    entryMap.set(name, (entryMap.get(name) ?? 0) + count);
-  }
-  const entries = Array.from(entryMap.entries()).map(([name, count]) => ({ name, count }));
-  return { entries };
-}
-
-
-
-
-// ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
-const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking } = require("./skills");
-
-
-// ─── PRESCRIPT TABLE ──────────────────────────────────────────────────────────
-const PRESCRIPT_TABLE = [
-  "Dice 1: **27 Dmg** [<:Blunt:1513768529718022254>Blunt] — nhận 2 <:Poise:1513762945715142736>Poise [20 Stamina]",
-  "Dice 2: **8 Dmg** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Sinking:1513762793436741652>Sinking [5 Stamina]",
-  "Dice 3: **15 Dmg** [<:Slash:1513768633434640517>Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
-  "Dice 4: **6 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [5 Stamina]",
-  "Dice 5: **25 Dmg** [<:Blunt:1513768529718022254>Blunt] — giảm 50 Stamina địch [20 Stamina]",
-  "Dice 6: **24 Dmg** [<:Slash:1513768633434640517>Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
-  "Dice 7: **12 Dmg** [<:Pierce:1513768511179329556>Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [10 Stamina]",
-  "Dice 8: **12 Dmg** [<:Blunt:1513768529718022254>Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [10 Stamina]",
-  "Dice 9: **30 Dmg** [<:Slash:1513768633434640517>Slash] — 100% Crit [20 Stamina]",
-];
-
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
-
-let botReady = false;
-client.once("ready", () => {
-  botReady = true;
-  log("info", "startup", "system", `Bot online: ${client.user.tag}`);
-});
-
-// ─── PREFIX COMMANDS ──────────────────────────────────────────────────────────
-// ─── SHARED CORE: SKILL LIST / ROLL ─────────────────────────────────────────
-// Tách riêng phần "tính toán + build embed" ra khỏi phần "parse input theo từng
-// loại lệnh" — để /skill (slash, structured options) và -skill (prefix, tự parse
-// chuỗi) dùng CHUNG logic này, tránh lệch hành vi giữa 2 dạng lệnh (như đã từng xảy
-// ra với /profile info trước đây).
-
-/**
- * buildSkillListResult — build embed danh sách skill, có/không kèm keyword filter.
- * @returns {{ error: string } | { embed: object }}
- */
-function buildSkillListResult({ keyword = null, page = 1 } = {}) {
-  if (keyword) {
-    const KW_PAGE_SIZE = 10;
-    const found = findByKeyword(keyword);
-    if (!found.length) {
-      return { error: `❌ Không tìm thấy skill nào có keyword **${keyword}**.\nDùng \`-skill list\` để xem toàn bộ.` };
-    }
-    const totalPages = Math.ceil(found.length / KW_PAGE_SIZE);
-    const clampedPage = Math.min(Math.max(page, 1), totalPages);
-    const start = (clampedPage - 1) * KW_PAGE_SIZE;
-    const pageSkills = found.slice(start, start + KW_PAGE_SIZE);
-    const list = pageSkills.map(s => `• **${s.name}** — ${s.cost} | CD: ${s.cd}`).join("\n");
-    return {
-      embed: {
-        title: `🔍 Skill có keyword "${keyword}" (${found.length} kết quả) — Trang ${clampedPage}/${totalPages}`,
-        color: 0x9b59b6,
-        description: list,
-        footer: { text: `-skill list ${keyword} <trang> để xem trang khác | -skill <tên> để roll` },
-      },
-    };
-  }
-
-  const PAGE_SIZE = 15;
-  const skillEntries = Object.values(SKILLS);
-  const totalPages = Math.ceil(skillEntries.length / PAGE_SIZE);
-  const clampedPage = Math.min(Math.max(page, 1), totalPages);
-  const start = (clampedPage - 1) * PAGE_SIZE;
-  const pageSkills = skillEntries.slice(start, start + PAGE_SIZE);
-  const skillLines = pageSkills.map((s, i) => {
-    const num = start + i + 1;
-    const tags = [];
-    if (s.weaponOf) tags.push(`⚔️ ${s.weaponOf}`);
-    if (s.needsBlackFlash) tags.push("nhập %");
-    if (s.needsReuse) tags.push("nhập %reuse");
-    if (s.hasDullahanRoll) tags.push("mặc định bản thường, nhập dullahan để ra bản Dullahan");
-    if (s.maxUses) tags.push(`reuse tối đa ${s.maxUses}x`);
-    const tagStr = tags.length ? ` *(${tags.join(", ")})*` : "";
-    return `\`${num}.\` **${s.name}**${tagStr} — ${s.cost} | CD: ${s.cd} | ${s.diceMul}`;
-  });
-  return {
-    embed: {
-      title: `📖 Danh sách Skill (Trang ${clampedPage}/${totalPages})`,
-      color: 0x9b59b6,
-      description: skillLines.join("\n"),
-      footer: { text: `Tổng ${skillEntries.length} skill | -skill list <trang> | -skill <tên> [số lần] để roll (VD: -skill durandal 2)` },
+  // ── Sinking (Fused Blade) ──
+  "greatsword rend": {
+    name: "Greatsword Rend",
+    tags: "Sinking",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 5 <:Sinking:1513762793436741652>Sinking. Nếu đang dùng **Fused Blade of Ruined Mirror Worlds**: nhận 1 **Coffin**`,
+      ];
     },
-  };
-}
-
-/**
- * formatEmotionSummary — build dòng tổng kết Emotion Coin từ mảng tracked rolls.
- * CHỈ hiển thị cho người chơi tự cộng/trừ tay — không lưu lại ở đâu cả.
- */
-function formatEmotionSummary(tracked) {
-  const total = tracked.reduce((sum, t) => sum + t.delta, 0);
-  const maxHits = tracked.filter(t => t.delta > 0).length;
-  const minHits = tracked.filter(t => t.delta < 0).length;
-  if (maxHits === 0 && minHits === 0) {
-    return `<:EmotionCoin:1517705929989033994> Emotion Coin: 0 *(không có Max/Min Dice)*`;
-  }
-  const parts = [];
-  if (maxHits > 0) parts.push(`${maxHits}× Max`);
-  if (minHits > 0) parts.push(`${minHits}× Min`);
-  const sign = total > 0 ? "+" : "";
-  return `<:EmotionCoin:1517705929989033994> Emotion Coin: **${sign}${total}** *(${parts.join(", ")})*`;
-}
-
-// Khớp dòng dice bằng emoji <:Dice1:...> đến <:Dice5:...> ở ĐẦU dòng — không phụ thuộc
-// việc skill dùng biến D1..D5 hay hardcode literal, vì cả 2 đều match cùng pattern.
-const DICE_LINE_RE = /^<:Dice(10|[1-9]):\d+>/;
-
-/**
- * annotateLinesWithEmotion — gắn "<:EmotionCoin:...> +1/-1" NGAY CUỐI từng dòng dice
- * tương ứng, AN TOÀN chỉ khi số dòng có emoji Dice khớp CHÍNH XÁC với số lần roll thật
- * VÀ không có dice-number nào bị lặp lại (xem giải thích case lặp bên dưới).
- *
- * TẠI SAO CẦN CHECK SỐ LƯỢNG: đã quét thực tế cả 290 skill — nếu chỉ zip theo index thô
- * (dòng thứ N ↔ roll thứ N) thì 111/285 skill (39%) bị lệch, vì nhiều skill có dòng
- * "flavor text" không gắn với dice nào (VD: "*+5% Dmg cho skill này...*"). Lọc theo dòng
- * CÓ emoji Dice giảm lệch xuống còn ~32/285 (11%).
- *
- * TẠI SAO CẦN CHECK KHÔNG LẶP DICE-NUMBER: một số skill (VD: "Tiantui Savage Tigerslayer
- * Flurry") có dòng flavor DÙNG LẠI emoji Dice1 (để chỉ rõ "đây là hiệu ứng phụ của Dice 1")
- * NGAY TRƯỚC dòng Dice1 thật — y hệt style "Fare-Thee Well"/"Gut Stab Laevateinn". Nếu
- * skill đó CÓ ĐỦ SỐ DICE để tổng count vẫn khớp tình cờ (VD: 6 dice thật + 1 dòng flavor
- * dùng lại D1 - 1 dòng "Dice 6" không có emoji = vẫn ra 6 = 6), check số lượng đơn thuần
- * SẼ PASS NHẦM — gắn lệch delta sang dòng kế bên, dòng dice thật cuối cùng (có thể là Max
- * roll) bị mất tag hoàn toàn. Đã tự bắt được case này khi test "Tiantui Savage Tigerslayer
- * Flurry" — số lượng khớp (6=6) nhưng vị trí lệch hết 1 dòng. Check thêm: nếu có dice-number
- * nào xuất hiện ≥2 lần trong các dòng matched, coi như không an toàn, fallback luôn.
- */
-function annotateLinesWithEmotion(lines, tracked) {
-  const diceLineIndices = [];
-  const diceNumbersSeen = [];
-  lines.forEach((l, i) => {
-    const m = l.match(DICE_LINE_RE);
-    if (m) { diceLineIndices.push(i); diceNumbersSeen.push(m[1]); }
-  });
-  const hasDuplicateDiceNumber = new Set(diceNumbersSeen).size !== diceNumbersSeen.length;
-
-  if (!hasDuplicateDiceNumber && diceLineIndices.length === tracked.length) {
-    const result = [...lines];
-    diceLineIndices.forEach((lineIdx, i) => {
-      const { delta } = tracked[i];
-      if (delta !== 0) result[lineIdx] += ` <:EmotionCoin:1517705929989033994> ${delta > 0 ? "+1" : "-1"}`;
-    });
-    return result.join("\n");
-  }
-
-  // Không khớp 1:1 (hoặc có dice-number lặp, nghi vấn flavor line) — fallback an toàn:
-  // giữ nguyên dòng gốc, thêm 1 dòng tổng kết riêng thay vì liều gắn nhầm.
-  return lines.join("\n") + "\n" + formatEmotionSummary(tracked);
-}
-
-/**
- * buildSkillRollResult — roll 1 skill (1 hoặc nhiều lần) và build embed kết quả.
- * Input đã được resolve sẵn (skill object, rollCount số, promptArgRaw chuỗi thô) —
- * hàm này KHÔNG tự parse chuỗi lệnh, để prefix/slash tự lo phần đó theo cách riêng.
- * @returns {{ error: string } | { embed: object }}
- */
-function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, forceDullahan = false }) {
-  // Skill đặc biệt cần arg — dùng promptArg nếu có (VD: Thrust cần nhập Light hiện tại)
-  if (skill.promptArg) {
-    const { parse, validate, errorMsg, buildHeader } = skill.promptArg;
-    const parsed = parse(promptArgRaw ?? "");
-    if (!validate(parsed)) return { error: errorMsg };
-    startEmotionTracking();
-    const lines = skill.roll(parsed);
-    const tracked = stopEmotionTracking();
-    const header = buildHeader(parsed, skill);
-    return {
-      embed: {
-        title: `🎲 ${skill.name}`,
-        color: skill.embedColor ?? 0x5865f2,
-        description: header + "\n\n" + annotateLinesWithEmotion(lines, tracked),
-      },
-    };
-  }
-
-  // Clamp rollCount: ưu tiên skill.maxUses riêng (VD: Mook Workshop = 3, do reuse
-  // chỉ cho phép tối đa 2 lần) nếu có, không thì dùng SKILL_MAX_ROLLS chung.
-  const maxAllowed = skill.maxUses ?? SKILL_MAX_ROLLS;
-  if (rollCount < 1) return { error: "❌ Số lần roll phải lớn hơn 0." };
-  if (rollCount > maxAllowed) return { error: `❌ **${skill.name}** chỉ cho roll tối đa **${maxAllowed}** lần mỗi lệnh.` };
-
-  const header = skill.weaponOf
-    ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
-    : skill.cost !== "—"
-      ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
-      : `[CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
-
-  // Roll rollCount lần độc lập — mỗi lần dice riêng. Truyền reuseIndex (0 = lần
-  // gốc, 1 = reuse lần 1, 2 = reuse lần 2, ...) thay vì boolean đơn thuần, để skill
-  // nào cần tính hiệu ứng cộng dồn theo số lần reuse (VD: Thrust +5 Dice Up/lần)
-  // có đủ thông tin. Vẫn tương thích ngược với skill cũ dùng `isReuse ? x : y`
-  // (VD: Mook Workshop) vì reuseIndex=0 falsy, ≥1 truthy — hành vi y nguyên.
-  // Bọc start/stopEmotionTracking quanh MỖI lần roll() để biết dice nào trong lần đó
-  // ra Max/Min — xem comment ở r() trong skills.js để hiểu cơ chế side-channel này.
-  const blocks = [];
-  const allTracked = [];
-  for (let i = 0; i < rollCount; i++) {
-    const reuseIndex = i;
-    startEmotionTracking();
-    const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan, reuseIndex) : skill.roll(reuseIndex);
-    const tracked = stopEmotionTracking();
-    allTracked.push(...tracked);
-    const block = annotateLinesWithEmotion(lines, tracked);
-    blocks.push(rollCount > 1 ? `**Lần ${i + 1}:**\n${block}` : block);
-  }
-  let description = header + "\n\n" + blocks.join("\n\n");
-  if (rollCount > 1) {
-    description += `\n\n**Tổng cộng cả ${rollCount} lần:** ${formatEmotionSummary(allTracked)}`;
-  }
-  // Embed description giới hạn 4096 ký tự — cắt an toàn nếu roll nhiều lần dồn quá dài.
-  if (description.length > 4090) {
-    description = description.slice(0, 4080) + "\n…(bị cắt bớt, giảm số lần roll để xem đầy đủ)";
-  }
-
-  return {
-    embed: {
-      title: rollCount > 1 ? `🎲 ${skill.name} ×${rollCount}` : `🎲 ${skill.name}`,
-      color: 0x5865f2,
-      description,
+  },
+  "beheading": {
+    name: "Beheading",
+    tags: "Sinking",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    needsReuse: false,
+    hasDullahanRoll: true,
+    roll(forceDullahan) {
+      const hasDullahan = forceDullahan !== undefined ? forceDullahan : Math.random() < 0.5;
+      if (hasDullahan) {
+        const d1 = r(8,13), d2 = r(13,16);
+        return [
+          `*[Dullahan active]*`,
+          `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Sinking:1513762793436741652>Sinking. Nếu đang dùng Fused Blade: nhận 3 **Coffin**`,
+          `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+        ];
+      }
+      const d1 = r(3,6), d2 = r(4,8);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Sinking:1513762793436741652>Sinking. Nếu đang dùng Fused Blade: nhận 1 **Coffin**`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Sinking:1513762793436741652>Sinking`,
+      ];
     },
-  };
-}
-
-
-client.on("messageCreate", async (message) => {
-  if (message.author.bot) return;
-  try {
-
-  // ── -rolldice ──
-  // Cú pháp: -rolldice <min>-<max> [x<lần>], <min>-<max> [x<lần>], ...
-  // VD: -rolldice 3-7 | -rolldice 3-7 x5 | -rolldice 3-17 x14, 2-4, 2-7 x3
-  if (message.content.startsWith("-rolldice")) {
-    if (isOnCooldown(message.author.id, "rolldice", 3000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
-      return;
-    }
-    const input = message.content.replace("-rolldice", "").trim();
-    if (!input) {
-      message.reply(
-        "❌ Cú pháp:\n" +
-        "> `-rolldice <min>-<max>` — roll 1 lần\n" +
-        "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)\n" +
-        "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng\n" +
-        "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"
-      );
-      return;
-    }
-
-    const DICE_MAX_COUNT = 10;
-    const ROLL_MAX_TIMES = 20;
-
-    // Parse từng dice entry: "3-7 x5" hoặc "3-7"
-    function parseDiceEntry(raw) {
-      const trimmed = raw.trim();
-      // Match: <min>-<max> x<times> hoặc <min>-<max>
-      const match = trimmed.match(/^(\d+)-(\d+)(?:\s+x(\d+))?$/i);
-      if (!match) return { error: `Định dạng không hợp lệ: \`${trimmed}\`` };
-      const min = parseInt(match[1], 10);
-      const max = parseInt(match[2], 10);
-      const times = match[3] ? parseInt(match[3], 10) : 1;
-      if (min >= max || min < 0) return { error: `Min phải nhỏ hơn Max và không âm: \`${trimmed}\`` };
-      if (times <= 0) return { error: `Số lần roll phải lớn hơn 0: \`${trimmed}\`` };
-      if (times > ROLL_MAX_TIMES) return { error: `Số lần roll tối đa là ${ROLL_MAX_TIMES}: \`${trimmed}\`` };
-      return { min, max, times };
-    }
-
-    const rawEntries = input.split(",").map(s => s.trim()).filter(Boolean);
-    if (rawEntries.length > DICE_MAX_COUNT) {
-      message.reply(`❌ Tối đa ${DICE_MAX_COUNT} dice cùng lúc.`);
-      return;
-    }
-
-    const diceList = [];
-    for (const raw of rawEntries) {
-      const parsed = parseDiceEntry(raw);
-      if (parsed.error) {
-        message.reply(`❌ ${parsed.error}\nĐúng: \`<min>-<max>\` hoặc \`<min>-<max> x<lần>\` (VD: \`3-7 x5\`)`);
-        return;
+  },
+  "smackdown": {
+    name: "Smackdown",
+    tags: "Sinking",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,4), d2 = r(4,6), d3 = r(8,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Sinking:1513762793436741652>Sinking. Nếu đang dùng Fused Blade: nhận 1 **Coffin**`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây Bleed = (số Sinking trên địch ÷ 2) ở turn kế`,
+      ];
+    },
+  },
+  "memorial procession": {
+    name: "Memorial Procession",
+    tags: "Sinking",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    hasDullahanRoll: true,
+    roll(forceDullahan) {
+      const hasDullahan = forceDullahan !== undefined ? forceDullahan : Math.random() < 0.5;
+      if (hasDullahan) {
+        const d1 = r(5,10), d2 = r(10,20), d3 = r(14,20);
+        return [
+          `*[Dullahan active]*`,
+          `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [AOE] — Nếu đang dùng Fused Blade: nhận 3 **Coffin**`,
+          `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [AOE]`,
+          `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [AOE] — gây 8 <:Sinking:1513762793436741652>Sinking`,
+        ];
       }
-      diceList.push(parsed);
-    }
+      const d1 = r(4,8), d2 = r(5,9), d3 = r(11,13);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Nếu đang dùng Fused Blade: nhận 1 **Coffin**`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash]`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [AOE] — gây 8 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
 
-    // Build output
-    const outputLines = [];
-    const allTracked = [];
-    for (const { min, max, times } of diceList) {
-      startEmotionTracking();
-      const results = Array.from({ length: times }, () => r(min, max));
-      const tracked = stopEmotionTracking();
-      allTracked.push(...tracked);
-      if (times === 1) {
-        outputLines.push(`🎲 \`${min}-${max}\` → **${results[0]}** — ${formatEmotionSummary(tracked)}`);
-      } else {
-        const total = results.reduce((a, b) => a + b, 0);
-        const avg = (total / times).toFixed(2);
-        outputLines.push(
-          `🎲 \`${min}-${max}\` ×${times}: **${total}** [${results.join(" ")}]` +
-          ` *(avg: ${avg} | min: ${Math.min(...results)} | max: ${Math.max(...results)})*\n` +
-          `> ${formatEmotionSummary(tracked)}`
+  // ── Smoke skills ──
+  "inhale": {
+    name: "Inhale",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,12);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** — nhận ${d1} <:Smoke:1513778039610282015>Smoke (1 mỗi Dice); nhận thêm 1 <:Paralyze:1513763316479295548>Paralyze sau khi dùng`,
+      ];
+    },
+  },
+  "exhale smoke": {
+    name: "Exhale Smoke",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,13);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Smoke:1513778039610282015>Smoke lên địch; với mỗi <:Smoke:1513778039610282015>Smoke trên địch Dice +1`,
+      ];
+    },
+  },
+  "loss of senses": {
+    name: "Loss of Senses",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,11);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Counter] [Undodgeable] — né 4 đòn đánh thường; phản công gây 2 lần sát thương, mỗi lần gây 2 <:Smoke:1513778039610282015>Smoke; rồi gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+
+  // ── Misc combat skills non status ──
+  "y-you only live once": {
+    name: "Y-you Only Live Once",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(1,12);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [Fixed Dmg] [Guard Break] [AOE 5 mục tiêu] — đánh văng toàn bộ địch, gây dmg và áp 2 <:Paralyze:1513763316479295548>Paralyze cho turn sau`,
+      ];
+    },
+  },
+  "crush": {
+    name: "Crush",
+    tags: "Tremor",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(3,6);
+      return [
+        `*Dặm đất, gây dmg 2 lần, mỗi hit áp 2 <:Tremor:1513762737388257380>Tremor*`,
+        `<:Dice1:1508173590078558369> Nhát 1: **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice1:1508173590078558369> Nhát 2: **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+  "you're too slow": {
+    name: "You're Too Slow",
+    tags: "Bleed",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,23);
+      return [
+        `*Né 1 đòn của địch, đánh dấu chúng, hồi 1 <:Light:1513786082502770719>Light; turn sau kích hoạt lại 1 lần*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — đâm sau lưng địch, gây 3 <:Bleed:1513762688226955285>Bleed cho turn sau`,
+      ];
+    },
+  },
+
+  // ── Coin Trick / Pistol / Summary ──
+  "coin trick": {
+    name: "Coin Trick",
+    tags: "Rupture",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,13);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] [AOE 5 mục tiêu] — tiêu 1 Ahn, búng đồng xu gây 3 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "pistol draw": {
+    name: "Pistol Draw",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,8), d2 = r(6,8), d3 = r(6,8);
+      return [
+        `*Yêu cầu 1 viên đạn (không tiêu). Bắn 3 đường đạn [AOE 2 mục tiêu]*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce]`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce]`,
+      ];
+    },
+  },
+  "summary judgement": {
+    name: "Summary Judgement",
+    tags: "Tremor/Burn",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,9), d2 = r(10,15);
+      return [
+        `*Yêu cầu tối thiểu 1 viên đạn (không tiêu)*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — dậm chân, gây 6 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — rút súng bắn rồi giật lùi, áp 4 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+
+  // ── Haste (Fencing) ──
+  "contre attaque": {
+    name: "Contre Attaque",
+    tags: "Haste",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(3,5), d3 = r(7,13);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — nhận 6 <:Poise:1513762945715142736>Poise`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — nhận 2 <:Haste:1513768004222062632>Haste`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — nhận 4 <:Haste:1513768004222062632>Haste`,
+      ];
+    },
+  },
+  "engagement": {
+    name: "Engagement",
+    tags: "Haste",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(5,10), d3 = r(6,8);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — nhận 2 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "balestra fente": {
+    name: "Balestra Fente",
+    tags: "Haste",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "Dice1: 1x / Dice2: 0.5x",
+    roll() {
+      const d1 = r(5,8), d2 = r(7,11);
+      const hasPoise = Math.random() < 0.5;
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — chọt nhiều đòn`,
+        `<:Dice2:1508173623691710625> **${d2}${hasPoise ? "+4 DiceUp" : ""}** [<:Pierce:1513768511179329556>Pierce]${hasPoise ? " *(≥8 Poise: nhận 4 <:DiceUp:1513767795681398894>Dice Up)*" : ""}`,
+      ];
+    },
+  },
+
+  // ── Burn/Haste (Viriscent) ──
+  "scorching incision": {
+    name: "Scorching Incision",
+    tags: "Burn",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(4,6), d3 = r(4,6);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn và gắn 1 <:Bind:1513768025881317457>Bind với mỗi 2 <:Burn:1513762753691652177>Burn trên địch [Max: 6]`,
+      ];
+    },
+  },
+
+  // ── Abnormality Pages (TETH) ──
+  "fourth match flame": {
+    name: "Fourth Match Flame",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,40);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [AOE] — chém đường lửa gây 5 <:Burn:1513762753691652177>Burn lên kẻ thù ở turn sau`,
+      ];
+    },
+  },
+  "today's expression": {
+    name: "Today's Expression",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(18,30), d2 = r(6,9), d3 = r(5,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** — giảm Stamina địch bằng số dice [chỉ giảm Stamina, không gây dmg]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — nếu địch Stagger: dmg = dice + 10`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash]`,
+      ];
+    },
+  },
+  "regret": {
+    name: "Regret",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "5 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,8), d2 = r(6,8), d3 = r(9,19);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — đập búa, giảm 20 Stamina địch`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — đập búa, giảm 20 Stamina địch`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — đập búa, giảm 60 Stamina địch`,
+      ];
+    },
+  },
+  "fragments from somewhere": {
+    name: "Fragments from Somewhere",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,7), d3 = r(4,7);
+      return [
+        `*Khi dùng: toàn bộ skill địch turn này bị giảm 5 Dice*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây nốt nhạc, giảm 10 Stamina địch`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây nốt nhạc, giảm 10 Stamina địch`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây nốt nhạc, giảm 10 Stamina địch`,
+      ];
+    },
+  },
+  "wrist cutter": {
+    name: "Wrist Cutter",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "5 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(19,27);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] [AOE] — tạo vũng máu, khiến địch mất toàn bộ buff trên người`,
+      ];
+    },
+  },
+  "aspiration": {
+    name: "Aspiration",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "5 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(24,39);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — đấm vào mặt địch. Bản thân mất 1/2 HP; toàn bộ đồng minh (không kể bản thân) nhận 3 <:DiceUp:1513767795681398894>Dice Up trong 1 Turn`,
+      ];
+    },
+  },
+  "red eyes": {
+    name: "Red Eyes",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,25), d2 = r(5,8);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nhảy lên chém xuống, gây 3 <:Bind:1513768025881317457>Bind và 3 Feeble`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — chém địch`,
+      ];
+    },
+  },
+  "marionette": {
+    name: "Marionette",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:ZAYIN:1449759413966606398>",
+    cost: "1 <:Light:1513786082502770719>Light & 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(19,27);
+      return [
+        `*Khi dùng: turn sau mọi skill của bản thân tốn thêm 1 <:Light:1513786082502770719>Light*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — dmg = dice + 5`,
+      ];
+    },
+  },
+
+  // ── Abnormality Pages (ZAYIN) ──
+  "wingbeat": {
+    name: "Wingbeat",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:ZAYIN:1449759413966606398>",
+    cost: "3 <:Light:1513786082502770719>Light & 10 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    needsReuse: true,
+    roll() {
+      const DICE_EMOJIS = [
+        `<:Dice1:1508173590078558369>`,`<:Dice2:1508173623691710625>`,
+        `<:Dice3:1508173643518050395>`,`<:Dice4:1508176464367845600>`,`<:Dice5:1508176500438990968>`,
+        `<:Dice5:1508176500438990968>`,`<:Dice5:1508176500438990968>`,
+      ];
+      const MAX_REUSE = 5;
+      const lastD2 = r(6,8);
+      const lines = [];
+      let reuseStopped = false;
+      for (let i = 0; i <= MAX_REUSE; i++) {
+        const val = r(3,8);
+        const isMin = val === 3;
+        const dEmoji = DICE_EMOJIS[i] ?? DICE_EMOJIS[DICE_EMOJIS.length - 1];
+        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        lines.push(`${dEmoji}${label} **${val}** [<:Pierce:1513768511179329556>Pierce] — lao đến đâm, hồi 3 HP${isMin ? " *(Min — dừng)*" : ""}`);
+        if (isMin) { reuseStopped = true; break; }
+      }
+      if (!reuseStopped) lines.push(`*(Đã hết 5 lần Reuse)*`);
+      lines.push(`<:Dice2:1508173623691710625> **${lastD2}** [<:Pierce:1513768511179329556>Pierce] — lao đến đâm địch`);
+      return lines;
+    },
+  },
+
+  // ── Abnormality Pages (HE) ──
+  "the forgotten": {
+    name: "The Forgotten",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,25);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nếu clash thắng: hủy skill tiếp theo của địch`,
+      ];
+    },
+  },
+  "grinder mk. 5-2": {
+    name: "Grinder Mk. 5-2",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,7), d2 = r(3,8), d3 = r(4,9);
+      return [
+        `*[AOE]*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — chọt toàn bộ địch, gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — chọt toàn bộ địch, gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — chọt toàn bộ địch, gây 2 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+  "harmony": {
+    name: "Harmony",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    needsReuse: true,
+    roll() {
+      const DICE_EMOJIS = [
+        `<:Dice1:1508173590078558369>`,`<:Dice2:1508173623691710625>`,`<:Dice3:1508173643518050395>`,
+      ];
+      const MINS = [4, 3, 4];
+      const RANGES = [[4,7],[3,6],[4,8]];
+      const MAX_REUSE = 2;
+      const lines = [
+        `*Mỗi lần tấn công thành công: 1 đồng minh ngẫu nhiên mất 3 Stamina*`,
+        `*Mỗi 2 lần tấn công thành công: 1 đồng minh nhận 1 <:DiceUp:1513767795681398894>Dice Up*`,
+        `*Nếu có thể kết liễu địch: toàn bộ đồng minh nhận 2 <:DiceUp:1513767795681398894>Dice Up*`,
+      ];
+      for (let di = 0; di < 3; di++) {
+        const [mn, mx] = RANGES[di];
+        const min = MINS[di];
+        const dEmoji = DICE_EMOJIS[di];
+        const val = r(mn, mx);
+        const isMin = val === min;
+        lines.push(`${dEmoji} **${val}** [<:Blunt:1513768529718022254>Blunt] — cưa địch${isMin ? " *(Min — dừng)*" : ""}`);
+        if (!isMin) {
+          for (let re = 1; re <= MAX_REUSE; re++) {
+            const rval = r(mn, mx);
+            const rMin = rval === min;
+            lines.push(`${dEmoji} ↩️ Reuse ${re} **${rval}** [<:Blunt:1513768529718022254>Blunt] — cưa địch${rMin ? " *(Min — dừng)*" : re === MAX_REUSE ? " *(hết Reuse)*" : ""}`);
+            if (rMin) break;
+          }
+        }
+      }
+      return lines;
+    },
+  },
+  "solemn lament": {
+    name: "Solemn Lament",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    needsReuse: true,
+
+    promptArg: {
+    parse: (s) => parseInt(s, 10),
+    validate: (n) => Number.isInteger(n) && n >= 0,
+    errorMsg: "❌ Nhập số người đã chết (≥ 0).\n> VD: `-skill solemn lament 3`",
+    buildHeader: (deadCount, skill) =>
+      `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}] — **${deadCount} người đã chết**`,
+  },
+
+    roll(deadCount = 0) {
+      const MAX_REUSE = deadCount * 8;
+      const DICE_EMOJIS = [
+        `<:Dice1:1508173590078558369>`,`<:Dice2:1508173623691710625>`,`<:Dice3:1508173643518050395>`,
+        `<:Dice4:1508176464367845600>`,`<:Dice5:1508176500438990968>`,
+      ];
+      const getDEmoji = (i) => DICE_EMOJIS[Math.min(i, DICE_EMOJIS.length - 1)];
+      const lines = [];
+      if (deadCount === 0) {
+        const d1 = r(1,6);
+        lines.push(`${getDEmoji(0)} **${d1}** [<:Blunt:1513768529718022254>Blunt] — bắn vào mặt địch, giảm Stamina địch = ${d1 + 3}`);
+        lines.push(`*(Chưa có ai chết — không có Reuse)*`);
+        return lines;
+      }
+
+      // Roll tất cả hits trước
+      const hits = [];
+      for (let i = 0; i <= MAX_REUSE; i++) {
+        const val = r(1,6);
+        hits.push({ val, staminaDmg: val + 3 });
+      }
+      const totalStamina = hits.reduce((s, h) => s + h.staminaDmg, 0);
+      const totalDmg = hits.reduce((s, h) => s + h.val, 0);
+      const minHit = Math.min(...hits.map(h => h.val));
+      const maxHit = Math.max(...hits.map(h => h.val));
+
+      lines.push(`*(${deadCount} mạng đã ngã → ${MAX_REUSE} lần Reuse)*`);
+
+      // Hiện 3 hit đầu, gộp phần còn lại
+      const SHOW = 3;
+      const showCount = Math.min(SHOW, hits.length);
+      for (let i = 0; i < showCount; i++) {
+        const { val, staminaDmg } = hits[i];
+        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        const tail = i === hits.length - 1 ? " *(hết Reuse)*" : "";
+        lines.push(`${getDEmoji(i)}${label} **${val}** [<:Blunt:1513768529718022254>Blunt] — giảm Stamina địch = ${staminaDmg}${tail}`);
+      }
+      if (hits.length > SHOW) {
+        const restStamina = hits.slice(SHOW).reduce((s, h) => s + h.staminaDmg, 0);
+        const restDmg = hits.slice(SHOW).reduce((s, h) => s + h.val, 0);
+        lines.push(`*↩️ Reuse ${SHOW}–${MAX_REUSE}: [${hits.slice(SHOW).map(h => h.val).join(", ")}] — tổng ${restDmg} DMG, giảm ${restStamina} Stamina (hết Reuse)*`);
+      }
+
+      // Summary
+      lines.push(`\n📊 **Tổng kết** (${hits.length} hit)`);
+      lines.push(`> <:Blunt:1513768529718022254> Tổng DMG: **${totalDmg}** | Min: ${minHit} / Max: ${maxHit} / TB: ${(totalDmg / hits.length).toFixed(1)}`);
+      lines.push(`> <:TremorBurst:1513802464632246352> Tổng Stamina giảm: **${totalStamina}**`);
+
+      return lines;
+    },
+  },
+  "magic bullet": {
+    name: "Magic Bullet",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "1 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "???", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — bắn viên đạn vào địch`,
+        `*Sau khi dùng: mở lãnh địa Der Freischütz, dùng được skill của hắn trong 3 Turn tiếp theo [1 lần/Encounter]*`,
+        `*(Dùng: \`-skill flooding bullets\`, \`-skill magic bullet df\`, \`-skill inevitable bullet\`)*`,
+      ];
+    },
+  },
+  "flooding bullets": {
+    name: "Flooding Bullets",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796> (Der Freischütz)",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x (dmg = dice x2)",
+    roll() {
+      const d1 = r(4,8), d2 = r(4,8), d3 = r(4,8);
+      return [
+        `*[AOE] — Lượng dmg = số dice x2*`,
+        `<:Dice1:1508173590078558369> **${d1*2}** [<:Pierce:1513768511179329556>Pierce] — 3 vòng tròn ma thuật bắn vào tất cả địch`,
+        `<:Dice2:1508173623691710625> **${d2*2}** [<:Pierce:1513768511179329556>Pierce] — 3 vòng tròn ma thuật bắn vào tất cả địch`,
+        `<:Dice3:1508173643518050395> **${d3*2}** [<:Pierce:1513768511179329556>Pierce] — 3 vòng tròn ma thuật bắn vào tất cả địch, giảm 6 Stamina`,
+      ];
+    },
+  },
+  "magic bullet df": {
+    name: "Magic Bullet (Der Freischütz)",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796> (Der Freischütz)",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — rút súng bắn địch; hồi 1 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "inevitable bullet": {
+    name: "Inevitable Bullet",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796> (Der Freischütz)",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,9), d2 = r(5,9);
+      return [
+        `*[AOE]*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — 2 vòng tròn ma thuật bắn xuyên tất cả địch`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — 2 vòng tròn ma thuật bắn xuyên tất cả địch`,
+      ];
+    },
+  },
+  "our galaxy": {
+    name: "Our Galaxy",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,8), d2 = r(3,8), d3 = r(3,6);
+      return [
+        `*[AOE]*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — thả thiên thạch, hồi ${d1} HP`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — thả thiên thạch, hồi ${d2} HP`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — thả thiên thạch, hồi ${d3} HP`,
+      ];
+    },
+  },
+  "pleasure": {
+    name: "Pleasure",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const turnBonus = r(1,5);
+      const d1 = r(5,15);
+      const d2 = r(2,5), d3 = r(2,5), d4 = r(2,5);
+      return [
+        `<:Dice1:1508173590078558369> **${(d1 + turnBonus) * 2}** [<:Blunt:1513768529718022254>Blunt] — (dice + ${turnBonus} turn bonus) x2`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+  "laetitia": {
+    name: "Laetitia",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,18);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE] — triệu hồi trái tim khổng lồ phát nổ; địch dính dmg bị hoãn 1 hành động`,
+      ];
+    },
+  },
+  "sanguine desire": {
+    name: "Sanguine Desire",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(3,9), d3 = r(4,6);
+      const hasBleed = Math.random() < 0.5;
+      return [
+        `*Khi dùng: <:Bleed:1513762688226955285>Bleed tồn tại thêm 1 turn*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt]`,
+        `<:Dice3:1508173643518050395> **${hasBleed ? d3*2 : d3}** [<:Blunt:1513768529718022254>Blunt]${hasBleed ? " *(địch có Bleed: dmg x2)*" : " *(địch không có Bleed)*"}`,
+      ];
+    },
+  },
+
+  // ── Abnormality Pages (WAW) ──
+  "hornet": {
+    name: "Hornet",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
+    cost: "2 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,32);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — lao đến đâm xuyên địch, gây 5 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "green stem": {
+    name: "Green Stem",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
+    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x (dmg = dice x2)",
+    roll() {
+      const d1 = r(3,9), d2 = r(3,9), d3 = r(3,10);
+      return [
+        `*[AOE] — Lượng dmg = số dice x2*`,
+        `<:Dice1:1508173590078558369> **${d1*2}** [<:Blunt:1513768529718022254>Blunt] — gây dmg lên tất cả địch`,
+        `<:Dice2:1508173623691710625> **${d2*2}** [<:Blunt:1513768529718022254>Blunt] — gây dmg lên tất cả địch`,
+        `<:Dice3:1508173643518050395> **${d3*2}** [<:Blunt:1513768529718022254>Blunt] — gây dmg lên tất cả địch`,
+      ];
+    },
+  },
+  "faint aroma": {
+    name: "Faint Aroma",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
+    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
+    roll() {
+      const d1 = r(3,7), d2 = r(3,7), d3 = r(3,7);
+      const stagger = Math.random() < 0.4;
+      return [
+        `*[AOE] — Lượng dmg = số dice x2; +10 dmg nếu địch Stagger*`,
+        `<:Dice1:1508173590078558369> **${stagger ? d1*2+10 : d1*2}** [<:Slash:1513768633434640517>Slash]${stagger ? " *(Stagger +10)*" : ""}`,
+        `<:Dice2:1508173623691710625> **${stagger ? d2*2+10 : d2*2}** [<:Slash:1513768633434640517>Slash]${stagger ? " *(Stagger +10)*" : ""}`,
+        `<:Dice3:1508173643518050395> **${stagger ? d3*2+10 : d3*2}** [<:Slash:1513768633434640517>Slash]${stagger ? " *(Stagger +10)*" : ""}`,
+      ];
+    },
+  },
+  "black swan": {
+    name: "Black Swan",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
+    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8), d2 = r(9,18);
+      return [
+        `*[AOE]*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gầm lên, gây dmg`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gầm lên, gây dmg; địch dính trừ 2 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+
+  // ── Abnormality Pages (ALEPH) ──
+  "da capo": {
+    name: "Da Capo",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:ALEPH:1449759474268242021>",
+    cost: "5 <:Light:1513786082502770719>Light & 40 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
+    roll() {
+      const d1 = r(4,8), d2 = r(4,9), d3 = r(5,9);
+      return [
+        `*[AOE] — Lượng dmg = số dice x2*`,
+        `<:Dice1:1508173590078558369> **${d1*2}** [<:Blunt:1513768529718022254>Blunt] — Màn một: khiến tất cả địch mất 3 <:Light:1513786082502770719>Light`,
+        `<:Dice2:1508173623691710625> **${d2*2}** [<:Blunt:1513768529718022254>Blunt] — Màn hai: tất cả địch nhận 10 <:Bind:1513768025881317457>Bind`,
+        `<:Dice3:1508173643518050395> **${d3*2}** [<:Blunt:1513768529718022254>Blunt] — Màn cuối: tất cả địch nhận 2 Feeble`,
+      ];
+    },
+  },
+
+  // ── Frost Splinter (no tier tag) ──
+  "frost splinter": {
+    name: "Frost Splinter",
+    tags: "Abnormalities <:The_Library:1474374220023857192>",
+    cost: "6 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,12), d2 = r(8,13);
+      return [
+        `*[AOE]*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
+      ];
+    },
+  },
+
+  // ── MY HAIR COUPOOOOOOONS! / Nursefather ──
+  "my hair coupooooooons": {
+    name: "MY HAIR COUPOOOOOOONS!",
+    tags: "Tremor",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1.5x",
+    roll() {
+      const d1 = r(18,32);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AoE] [Guard Break] — <:TremorBurst:1513802464632246352>Tremor Burst và 7 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+  "proof of loyalty": {
+    name: "Proof of Loyalty",
+    tags: "Bleed",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(8,11);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — lùi rồi đấm xuống mặt đất, gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+      ];
+    },
+  },
+  "just a vengeance": {
+    name: "Just A Vengeance",
+    tags: "Bleed",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(4,6), d3 = r(5,7), d4 = r(12,16);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đạp địch ra xa, gây 2 <:Bind:1513768025881317457>Bind`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [AoE 2 người] — gây 3 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+
+  // ── Fairy (Degraded) skills ──
+  "degraded fairy": {
+    name: "Degraded Fairy",
+    tags: "Fairy <:Fairy:1513782007602216960>",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8), d2 = r(4,8);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Triệu hồi gai đâm kẻ thù gây 2 <:Fairy:1513782007602216960>Fairy`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Triệu hồi gai đâm kẻ thù gây 2 <:Fairy:1513782007602216960>Fairy`,
+        `${D2} Nhận 1 <:Light:1513786082502770719>Light nếu đánh dính kẻ thù`,
+      ];
+    },
+  },
+  "degraded pillar": {
+    name: "Degraded Pillar",
+    tags: "Fairy <:Fairy:1513782007602216960>",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,11);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] — Triệu hồi cây cột đập mặt kẻ thù gây 4 <:Fairy:1513782007602216960>Fairy`,
+      ];
+    },
+  },
+  "degraded lock": {
+    name: "Degraded Lock",
+    tags: "Fairy <:Fairy:1513782007602216960>",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,20);
+      return [
+        `${D1} **${d1}** [Undodgeable] — Xích kẻ thù lại gây 5 <:Fairy:1513782007602216960>Fairy và 1 **Chained** <:chained:1513782041307643984>Chained`,
+      ];
+    },
+  },
+  // Alias "ds"/"degradedshockwave" đã có sẵn từ trước nhưng key này chưa tồn tại —
+  // trước đây bị fuzzy-match nhầm sang "degraded fairy". Giờ điền đúng skill thật.
+  "degraded shockwave": {
+    name: "Degraded Shockwave",
+    tags: "Fairy <:Fairy:1513782007602216960>",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "0.66x",
+    roll() {
+      const d1 = r(5,10), d2 = r(10,20), d3 = r(15,30);
+      return [
+        `**[<:Blunt:1513768529718022254>Blunt] [AOE] [Uncancellable] [Guard Break]**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Giật điện, gây 6 <:Tremor:1513762737388257380>Tremor`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Giật điện, gây 6 <:Tremor:1513762737388257380>Tremor`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — Giật điện, gây 6 <:Tremor:1513762737388257380>Tremor, sau đó gây <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D3} *Nếu trước khi gây <:TremorBurst:1513802464632246352>Tremor Burst, kẻ địch có trên 10 <:Tremor:1513762737388257380>Tremor: gắn 6 <:Fairy:1513782007602216960>Fairy và gây 4 <:DiceDown:1513767826257874964>Dice Down cho kẻ địch*`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals ══════════════
+  "patrolling": {
+    name: "Patrolling", weaponOf: "Zweihander", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(7,10);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Chém kẻ địch, nhận 3 <:DefenseUp:1513767487894716497>Defense Up`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ địch, nhận 4 <:DefenseUp:1513767487894716497>Defense Up và gây 5 <:DefenseDown:1513767463337066576>Defense Down`,
+      ];
+    },
+  },
+  "bayonet combat": {
+    name: "Bayonet Combat", weaponOf: "Soldato Rifle", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(5,7), d3 = r(4,7);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Chém xuống bằng lưỡi súng, gây 2 <:Tremor:1513762737388257380>Tremor`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Chém lên, gây 2 <:Tremor:1513762737388257380>Tremor`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Lùi lại đâm, gây 2 <:Tremor:1513762737388257380>Tremor và nhận 1 viên đạn`,
+      ];
+    },
+  },
+  "shock round": {
+    name: "Shock Round", weaponOf: "Soldato Rifle", tags: "Weapon",
+    cost: "Tiêu 2 viên đạn", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(9,17);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Chém ngang bằng lưỡi súng, gây 4 <:Tremor:1513762737388257380>Tremor`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Đạn nổ thổi bay kẻ địch, gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "sharp cuts": {
+    name: "Sharp Cuts", weaponOf: "Blade Lineage Hwando", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8), d2 = r(4,8);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "thundercleaver": {
+    name: "Thundercleaver", weaponOf: "Kurokumo Katana", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "0.5x",
+    roll() {
+      const d1 = r(5,9), d2 = r(5,13), d3 = r(5,17);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+  "upstanding slash": {
+    name: "Upstanding Slash", weaponOf: "Mimicry Blade", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,10), d2 = r(9,15);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Chém ngang, gây 3 <:Bleed:1513762688226955285>Bleed (turn kế) và nhận 1 Imitation`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Chém dọc theo sau, gây 3 <:Bleed:1513762688226955285>Bleed (turn kế) và nhận 1 Imitation`,
+      ];
+    },
+  },
+  "great split vertical": {
+    name: "Great Split: Vertical", weaponOf: "Mimicry Blade", tags: "Weapon",
+    cost: "Tiêu 5 Imitation", cd: "—", diceMul: "2x",
+    roll() {
+      const d1 = r(15,26);
+      return [
+        `**[<:Slash:1513768633434640517>Slash] [Unblockable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Bổ dọc kẻ địch từ trên xuống, cắt đôi người chúng`,
+      ];
+    },
+  },
+  "great split horizontal": {
+    name: "Great Split: Horizontal", weaponOf: "Mimicry Blade", tags: "Weapon",
+    cost: "Tiêu 5 Imitation, cần bản thân dưới 30% HP", cd: "—", diceMul: "3x",
+    roll() {
+      const d1 = r(32,43);
+      return [
+        `**[<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] [AOE 4 người]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [AOE 4 người] — Vung Mimicry theo chiều ngang cắt đôi kẻ địch`,
+      ];
+    },
+  },
+  "excruciating study": {
+    name: "Excruciating Study", weaponOf: "Dieci Association Kata", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "0.5x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,7), d3 = r(7,10), d4 = r(10,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 4 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] — đập vào mặt kẻ thù, gây 3 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "unveil": {
+    name: "Unveil", weaponOf: "Dieci Association Key", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "0.8x",
+    roll() {
+      const d1 = r(4,4), d2 = r(4,8), d3 = r(4,12), d4 = r(4,16);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đập vào mặt kẻ thù, gây 1 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "scorching desperation": {
+    name: "Scorching Desperation", weaponOf: "The Crying Children", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,18);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tạo một cái cánh hất vào mặt kẻ thù, gây 7 <:Burn:1513762753691652177>Burn; bản thân giảm 15 Sanity`,
+      ];
+    },
+  },
+  "resonate": {
+    name: "Resonate", weaponOf: "Reverberation Scythe", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(4,8);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Xoay lưỡi hái một vòng; nếu kẻ địch có số <:Tremor:1513762737388257380>Tremor bằng số Dice này thì sẽ Stagger ngay`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Xoay lưỡi hái một vòng nữa`,
+      ];
+    },
+  },
+  "magic impact": {
+    name: "Magic Impact", weaponOf: "Yesterday's Promise", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,20);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tạo một cánh tay ma thuật đục vào mặt kẻ thù`,
+      ];
+    },
+  },
+  "beatdown": {
+    name: "Beatdown", weaponOf: "L'Heure du Loup", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(17,35);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Unclashable] — Đạp vào mặt kẻ thù, gây 4 <:Paralyze:1513763316479295548>Paralyze và 2 lần <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "overbreath": {
+    name: "Overbreath", weaponOf: "Shi Association Katana", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,28);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt về phía kẻ thù, gây 2 <:Bleed:1513762688226955285>Bleed và nhận 6 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "forming storm": {
+    name: "Forming Storm", weaponOf: "Liu Guan Dao", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,20);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Guard Break] [AOE 3 người] — Đập trường đao xuống tạo vùng lửa lớn, gắn 5 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+  "violent flame": {
+    name: "Violent Flame", weaponOf: "Liu Martial Arts", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(6,16);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 3 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đấm vào mặt kẻ thù, gây 6 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+  "dimensional rift": {
+    name: "Dimensional Rift", weaponOf: "WARP Corp. Dagger", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const hasCharge = Math.random() < 0.5; // placeholder cho ≥15 Charge
+      const d1 = hasCharge ? r(16,24) : r(6,12);
+      return [
+        hasCharge
+          ? `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — *(≥15 Charge: tiêu 15 Charge)* Dice 1 đổi thành [16~24], gây 6 <:Rupture:1513762812722155682>Rupture`
+          : `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Nhảy vọt không gian rồi cắt đứt kẻ địch, gây 3 <:Rupture:1513762812722155682>Rupture và nhận 4 Charge`,
+      ];
+    },
+  },
+  "dimensional rift gauntlets": {
+    name: "Dimensional Rift", weaponOf: "WARP Corp. Gauntlets", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const hasCharge = Math.random() < 0.5; // placeholder cho ≥15 Charge
+      const d1 = hasCharge ? r(12,16) + 5 : r(12,16);
+      return [
+        hasCharge
+          ? `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — *(≥15 Charge: +5 <:DiceUp:1513767795681398894>Dice Up)* Túm kẻ địch, dao không gian cắt đứt chúng, gây 3 <:Rupture:1513762812722155682>Rupture và nhận 3 Charge`
+          : `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Túm kẻ địch, dao không gian cắt đứt chúng, gây 3 <:Rupture:1513762812722155682>Rupture và nhận 3 Charge`,
+      ];
+    },
+  },
+  "the udjat": {
+    name: "The Udjat", weaponOf: "Udjat Khopesh", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,12), d2 = r(5,7), d3 = r(5,8);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Nhảy lên đâm xuống, nhận 2 Protection`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Vung kiếm ngang, nhận 1 Protection`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Tiếp tục vung ngang`,
+      ];
+    },
+  },
+  "moulinet": {
+    name: "Moulinet", weaponOf: "Seven Association Longsword", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(7,10), d3 = r(12,14);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Chém ngang, gây 1 <:Rupture:1513762812722155682>Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Vung kiếm lên, gây 1 <:Rupture:1513762812722155682>Rupture`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Các động tác tạo hình số 7 rồi nổ tung, gây 3 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "unyielding strike": {
+    name: "Unyielding Strike", weaponOf: "Augury Spear", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x (2x nếu kích <:TremorBurst:1513802464632246352>Tremor Burst)",
+    roll() {
+      const d1 = r(6,16);
+      return [
+        `*[Nếu địch ≥5 <:Tremor:1513762737388257380>Tremor trước khi gây dmg: thêm 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst kẻ địch]*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Lướt lên cường hóa tay rồi đấm kẻ địch, gây 5 <:Tremor:1513762737388257380>Tremor và nhận 1 Trigram`,
+      ];
+    },
+  },
+  "true trigram formation": {
+    name: "True Trigram Formation", weaponOf: "Augury Spear", tags: "Weapon",
+    cost: "Cần đủ 4 Trigram", cd: "—", diceMul: "1x (2x nếu kích <:TremorBurst:1513802464632246352>Tremor Burst)",
+    roll() {
+      const d1 = r(8,14), d2 = r(9,18);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — Đâm ngọn giáo về phía trước, gây 4 <:Tremor:1513762737388257380>Tremor. Tiêu toàn bộ Trigram; nếu địch ≥5 <:Tremor:1513762737388257380>Tremor sẽ <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Ngọn giáo biến thành vô số lưỡi nhọn đâm kẻ địch, gây 3 <:Paralyze:1513763316479295548>Paralyze. Nếu địch ≥7 <:Tremor:1513762737388257380>Tremor: nhận Shield HP bằng <:Tremor:1513762737388257380>Tremor trên người chúng`,
+      ];
+    },
+  },
+  "eliminate": {
+    name: "Eliminate", weaponOf: "Index Longsword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém ngang kẻ địch, gây 4 <:Rupture:1513762812722155682>Rupture. Nếu có **Unlocked Blade**: dùng tiếp Castigation`,
+      ];
+    },
+  },
+  "castigation": {
+    name: "Castigation", weaponOf: "Index Longsword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(4,10), d3 = r(4,10), d4 = r(1,4);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Lao lên chém kẻ địch, gây 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Lướt quanh chém liên tục`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Kết thúc bằng một đòn chém ngang`,
+        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Gây thêm bonus dmg = Dice x6, sau đó xóa stack **Unlocked Blade**`,
+      ];
+    },
+  },
+  "decapitation": {
+    name: "Decapitation", weaponOf: "Index Cleaver", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(15,22);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Bắn xích kéo kẻ địch lại gần rồi trảm đầu, gây 4 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "requiem": {
+    name: "Requiem", weaponOf: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,12), d2 = r(12,18);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — Gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — Gây 5 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi Coffin (Max 10) và +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi <:Sinking:1513762793436741652>Sinking trên địch (Max 8)`,
+      ];
+    },
+  },
+  "lament mourn and despair": {
+    name: "Lament, Mourn and Despair", weaponOf: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
+    cost: "Chỉ dùng khi có Dullahan", cd: "2 Turn", diceMul: "1x (Dice âm)",
+    roll() {
+      const d1 = r(12,24), d2 = r(24,27);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE] — Gây 1 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up/Coffin (Max 10), +1 <:DiceUp:1513767795681398894>Dice Up/<:Sinking:1513762793436741652>Sinking trên địch (Max 8), +3 <:DiceUp:1513767795681398894>Dice Up/Dullahan (Max 9)`,
+        `*[Turn End sau khi dùng] mất hết stack Dullahan*`,
+      ];
+    },
+  },
+  "promised suffering": {
+    name: "Promised Suffering", weaponOf: "Chains of Loyalty", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(6,8), d3 = r(7,10);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Túm kẻ địch quật ngã, gây 1 Fragile`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Tiếp tục, gây 1 Fragile`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — Đá thẳng vào mặt kết liễu, gây 2 Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Nếu địch ≥3 <:VengeanceMark:1513768136023740436>Vengeance Mark: +2 Fragile/hit và +5% Dmg/<:VengeanceMark:1513768136023740436>Vengeance Mark`,
+      ];
+    },
+  },
+  "murche defensive": {
+    name: "Murche Defensive", weaponOf: "Cinq Rapier", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,12), d2 = r(3,14);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ thù, nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ thù, nhận 4 <:Haste:1513768004222062632>Haste`,
+      ];
+    },
+  },
+  "viriscent pyrojade violet": {
+    name: "Viriscent Pyrojade Violet", weaponOf: "Viriscent Pyrojade Ring", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(2,4), d3 = r(10,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, nhận 5 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, gây 4 <:Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, gây 4 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+  "durandal": {
+    name: "Durandal", weaponOf: "Durandal", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(5,8), d3 = r(6,9);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — Chém kẻ địch một nhát`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Theo sau một nhát nữa`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Trảm xuống một đường, nhận 3 <:DiceUp:1513767795681398894>Dice Up đến hết turn`,
+      ];
+    },
+  },
+  "mook workshop": {
+    name: "Mook Workshop", weaponOf: "Mook Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    // maxUses: 3 = 1 lần gốc + tối đa 2 lần reuse (đúng theo mô tả "max 2 lần").
+    // Lệnh -skill sẽ tự clamp số lần roll theo field này thay vì SKILL_MAX_ROLLS chung.
+    maxUses: 3,
+    // isReuse = true cho lần roll thứ 2 trở đi (do -skill mook workshop <n> gọi).
+    // Theo mô tả: reuse mất hiệu ứng "nhận 1 Light" nhưng vẫn gây dmg 2 hit + Rupture như cũ.
+    roll(isReuse = false) {
+      const d1 = r(10,19);
+      const lightText = isReuse ? "" : " và nhận 1 <:Light:1513786082502770719>Light";
+      const reuseTag = isReuse ? " *(Reuse — tốn 1 <:Light:1513786082502770719>Light, không nhận Light)*" : "";
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit${lightText} và gây 4 <:Rupture:1513762812722155682>Rupture${reuseTag}`,
+      ];
+    },
+  },
+  "slay all": {
+    name: "Slay All", weaponOf: "Mook Workshop", tags: "Weapon",
+    cost: "Cần kẻ địch Airborne", cd: "2 Turn", diceMul: "2x", 
+    roll() {
+      const d1 = r(10,19);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [AOE 5 người] — Rút kiếm cắt đứt toàn bộ không gian xung quanh, gây dmg 6 hit`,
+      ];
+    },
+  },
+  "crystal atelier": {
+    name: "Crystal Atelier", weaponOf: "Crystal Atelier", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,11), d2 = r(7,11);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [AOE 2 người] — Đâm hai thanh kiếm vào kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] [AOE 2 người] — Trảm ngang người chúng`,
+      ];
+    },
+  },
+  "zelkova workshop": {
+    name: "Zelkova Workshop", weaponOf: "Zelkova Workshop", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,9), d2 = r(8,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Dùng rìu chặt đứt kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Dùng chùy kết liễu, gây 6 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "atelier logic shotgun": {
+    name: "Atelier Logic: Shotgun", weaponOf: "Atelier Logic", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,14);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Bóp cò Shotgun bắn kẻ địch, gây 3 <:Rupture:1513762812722155682>Rupture, sau đó đổi qua dạng Pistols`,
+      ];
+    },
+  },
+  "atelier logic pistols": {
+    name: "Atelier Logic: Pistols", weaponOf: "Atelier Logic", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,9), d2 = r(7,10);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Dùng Pistol bên trái bắn kẻ địch`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Kết thúc bằng Pistol bên phải, đổi về dạng Shotgun`,
+      ];
+    },
+  },
+  "old boys workshop": {
+    name: "Old Boys Workshop", weaponOf: "Old Boys Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,4), d2 = r(5,7), d3 = r(7,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đập búa xuống, gây 1 <:Tremor:1513762737388257380>Tremor`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Thêm 1 nhát búa, gây 1 <:Tremor:1513762737388257380>Tremor`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Tụ lực giáng đòn cuối, gây 5 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "wheels industry": {
+    name: "Wheel's Industry", weaponOf: "Wheel's Industry", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,24);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] [AOE 3 người] — Lao lên bổ xuống kẻ địch`,
+      ];
+    },
+  },
+  "allas workshop": {
+    name: "Allas Workshop", weaponOf: "Allas Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,18);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — Dùng ngọn thương đâm xuyên kẻ địch trong chớp mắt`,
+      ];
+    },
+  },
+  "ranga workshop": {
+    name: "Ranga Workshop", weaponOf: "Ranga Workshop", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,7), d2 = r(3,7), d3 = r(4,10);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Lao lên chém kẻ địch bằng dao, gây 3 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Dùng vuốt nhọn cấu xé, gây 3 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] — Kết liễu bằng một cú vung, gây 2 <:Bleed:1513762688226955285>Bleed (turn sau). Nếu có >5 stack Realization: kích toàn bộ <:Bleed:1513762688226955285>Bleed hiện tại trên địch (không giảm count)`,
+      ];
+    },
+  },
+  "open wound": {
+    name: "Open Wound", weaponOf: "Sharp Greatsword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,4), d2 = r(3,6);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 4 <:Rupture:1513762812722155682>Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 4 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "fallstar slayer": {
+    name: "Fallstar Slayer [落星一殺]", weaponOf: "Moonlit Azure Blade", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,9);
+      return [
+        `**[<:Slash:1513768633434640517>Slash] [Undodgeable]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch rồi tra kiếm, cắt đứt không gian. +1 <:DiceUp:1513767795681398894>Dice Up cho mỗi <:Poise:1513762945715142736>Poise trên người (Max 19)`,
+        `*[Sau đó] tiêu toàn bộ <:Poise:1513762945715142736>Poise, tăng base dmg cho Dice 1 = (tổng <:Poise:1513762945715142736>Poise tiêu thụ) x3*`,
+      ];
+    },
+  },
+  "chop up": {
+    name: "Chop Up", weaponOf: "Bug Arm", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(6,16);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Vung cánh tay bọ đâm vào tim kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục vung bổ chúng ra`,
+      ];
+    },
+  },
+  "sabre slash": {
+    name: "Sabre Slash", weaponOf: "Family Heir Sabre", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,11);
+      return [
+        `${D1} **${d1}** — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "remise": {
+    name: "Remise", weaponOf: "Family Heir Sabre", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(4,10);
+      return [
+        `${D1} **${d1}** — Gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "nightmare hunt": {
+    name: "Nightmare Hunt", weaponOf: "Family Heir Sabre", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(10,13), d3 = r(13,16), d4 = r(13,16);
+      return [
+        `${D1} **${d1}** — Gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** — Gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D3} **${d3}** — Gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D4} **${d4}** — Gây 3 <:Sinking:1513762793436741652>Sinking. Nếu địch ≥10 <:Sinking:1513762793436741652>Sinking: tiêu hết và +3 <:DiceUp:1513767795681398894>Dice Up cho bản thân turn này và sau`,
+      ];
+    },
+  },
+  "grappling": {
+    name: "Grappling", weaponOf: "Brawler", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,15);
+      return [
+        `*[Hakuda] Nếu xài Critical sau khi xài skill có tag Airborne: dice đổi thành [14~30]*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Quật ngã kẻ địch, gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst, nhận 1 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "stob": {
+    name: "Stob", weaponOf: "Dolch", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,9), d2 = r(11,15);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đâm vào bụng kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm tiếp, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+      ];
+    },
+  },
+  "thrust": {
+    name: "Thrust",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    needsReuse: true,
+    promptArg: {
+      label: "Light hiện tại",
+      parse: (s) => parseInt(s.trim(), 10),
+      validate: (v) => !isNaN(v) && v >= 2,
+      errorMsg:
+        "❓ **Thrust** cần nhập số Light hiện tại (tối thiểu 2).\n" +
+        "> Cú pháp: `-skill thrust <light>`\n" +
+        "> VD: `-skill thrust 4` → tự tính được Reuse tối đa (cap **9 lần**)\n" +
+        "> *Mỗi lần dùng net −1 <:Light:1513786082502770719>Light. Reuse được khi còn ≥2, tối đa 9 lần dù dư Light*",
+      buildHeader: (v, s) => {
+        // Cap 9 lần Reuse theo spec gốc ("Có thể Reuse tối đa tới 9 lần") — trước đây
+        // không có cap, light dư bao nhiêu là reuse hết bấy nhiêu (sai so với mô tả).
+        const reuseTimes = Math.min(9, Math.max(0, v - 2));
+        const finalLight = v - (reuseTimes + 1);
+        return reuseTimes === 0
+          ? `[Light: ${v}→${finalLight}] [Không đủ để Reuse] [CD: ${s.cd}]`
+          : `[Reuse: ${reuseTimes} lần${reuseTimes === 9 ? " (đã chạm cap)" : ""}] [Light: ${v}→${finalLight}] [Dice Up lần cuối: +${reuseTimes * 5} <:DiceUp:1513767795681398894>] [CD: ${s.cd}]`;
+      },
+    },
+    roll(light = 4) {
+      // Cap 9 lần Reuse theo spec gốc, dù light dư nhiều hơn mức cần cho 9 lần.
+      const reuseTimes = Math.min(9, Math.max(0, light - 2));
+      const DICE_EMOJIS = [D1, D2, D3, D4, D5];
+      const getEmoji = (i) => DICE_EMOJIS[Math.min(i, DICE_EMOJIS.length - 1)];
+      const L = "<:Light:1513786082502770719>Light";
+      const DU = "<:DiceUp:1513767795681398894>";
+      const PIERCE = "[<:Pierce:1513768511179329556>Pierce]";
+
+      const lines = [];
+      let curLight = light;
+
+      // ── Đòn gốc ─────────────────────────────────────────────────────────────
+      const d0 = r(3, 5);
+      curLight = curLight - 2 + 1; // tốn 2, nhận 1
+      lines.push(
+        `${D1} **${d0}** ${PIERCE} [Guard Break] — Nhận 1 ${L} *(còn **${curLight}** ${L})*` +
+        (reuseTimes > 0 ? ` | +5 ${DU} Dice Up cho Reuse tiếp theo` : "")
+      );
+
+      // ── Các lần Reuse ────────────────────────────────────────────────────────
+      for (let i = 1; i <= reuseTimes; i++) {
+        const diceUp = i * 5;
+        const base = r(3, 5);
+        const total = base + diceUp;
+        const emoji = getEmoji(i);
+        const isLast = i === reuseTimes;
+        curLight = curLight - 2 + 1;
+
+        lines.push(
+          `${emoji} ↩️ **Reuse ${i}** — **${total}** (${base} +${diceUp} ${DU}) ${PIERCE} [Guard Break] — Nhận 1 ${L} *(còn **${curLight}** ${L})*` +
+          (!isLast ? ` | +${(i + 1) * 5} ${DU} Dice Up cho Reuse tiếp theo` : "")
         );
       }
-    }
 
-    const header = diceList.length > 1
-      ? `${message.author} đã roll **${diceList.length} dice**:\n`
-      : `${message.author} `;
-    const footer = diceList.length > 1 ? `\n**Tổng cộng:** ${formatEmotionSummary(allTracked)}` : "";
-    const body = header + outputLines.join("\n") + footer;
-    message.reply(body.length > 2000 ? body.substring(0, 1990) + "\n…(bị cắt bớt)" : body);
-    return;
-  }
-
-  // ── -Caduceus ──
-  // Cú pháp:
-  //   -Caduceus [số lần]                              — roll ngẫu nhiên hoàn toàn
-  //   -Caduceus <Blunt|Pierce|Slash> [số lần] [karmic] — 75% ra đúng type (giảm theo Karmic Consequence)
-  // Công thức Karmic: chance = max(0, 75 - karmic / 2) %
-  if (message.content.toLowerCase().startsWith("-caduceus")) {
-    if (isOnCooldown(message.author.id, "caduceus", 2000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
-      return;
-    }
-    const CADUCEUS_MAX = 20;
-
-    // Tách pool theo type dựa vào nội dung string trong PRESCRIPT_TABLE
-    const TYPED_POOLS = {
-      blunt:  PRESCRIPT_TABLE.filter(e => e.includes("Blunt")),
-      pierce: PRESCRIPT_TABLE.filter(e => e.includes("Pierce")),
-      slash:  PRESCRIPT_TABLE.filter(e => e.includes("Slash")),
-    };
-    const TYPE_LABELS = { blunt: "Blunt", pierce: "Pierce", slash: "Slash" };
-    const TYPE_COLORS = { blunt: 0xe67e22, pierce: 0x3498db, slash: 0xe74c3c };
-    const TYPE_ICONS  = { blunt: "<:Blunt:1513768529718022254>", pierce: "<:Pierce:1513768511179329556>", slash: "<:Slash:1513768633434640517>"};
-
-    const arg = message.content.replace(/-caduceus/i, "").trim();
-    const tokens = arg.split(/\s+/);
-
-    // Kiểm tra token đầu có phải type không
-    const firstLower = (tokens[0] ?? "").toLowerCase();
-    const isTyped = firstLower in TYPED_POOLS;
-
-    if (isTyped) {
-      // -Caduceus <type> [times] [karmic]
-      const typeKey  = firstLower;
-      const timesRaw = parseInt(tokens[1], 10);
-      const times    = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
-      if (times > CADUCEUS_MAX) {
-        message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`);
-        return;
-      }
-      const karmicRaw = parseFloat(tokens[2]);
-      const karmic    = (!isNaN(karmicRaw) && karmicRaw >= 0) ? karmicRaw : 0;
-      const chance    = Math.max(0, 75 - karmic / 2); // % ra đúng type
-
-      const typePool = TYPED_POOLS[typeKey];
-      if (typePool.length === 0) {
-        message.reply(`❌ Không tìm thấy entry nào với type **${TYPE_LABELS[typeKey]}** trong Prescript Table.`);
-        return;
-      }
-
-      const results = Array.from({ length: times }, () => {
-        const useTypePool = Math.random() * 100 < chance;
-        const pool        = useTypePool ? typePool : PRESCRIPT_TABLE;
-        const entry       = pool[Math.floor(Math.random() * pool.length)];
-        // Đánh dấu dựa trên nội dung entry thực tế, không phải pool đã chọn
-        const isCorrectType = entry.includes(TYPE_LABELS[typeKey]);
-        const hitMark = isCorrectType ? " ✅" : " ❌";
-        return entry + hitMark;
-      });
-
-      // Đếm số lần ra đúng type
-      const hits = results.filter(r => r.endsWith("✅")).length;
-
-      message.reply({
-        embeds: [{
-          title: `${TYPE_ICONS[typeKey]} Prescript — ${TYPE_LABELS[typeKey]}${times > 1 ? ` × ${times}` : ""}`,
-          color: TYPE_COLORS[typeKey],
-          description:
-            `> **Tỷ lệ ra ${TYPE_LABELS[typeKey]}:** ${chance.toFixed(1)}%` +
-            (karmic > 0 ? ` *(Karmic Consequence: ${karmic} → −${(karmic / 2).toFixed(1)}%)*` : "") +
-            `\n> **Kết quả đúng type:** ${hits}/${times}\n\n` +
-            results.join("\n"),
-        }],
-      });
-      return;
-    }
-
-    // Mặc định: -Caduceus [số lần] (không typed)
-    const timesRaw = parseInt(tokens[0], 10);
-    const times    = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
-    if (times > CADUCEUS_MAX) {
-      message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`);
-      return;
-    }
-    const results = Array.from({ length: times }, () =>
-      PRESCRIPT_TABLE[Math.floor(Math.random() * PRESCRIPT_TABLE.length)]
-    );
-    message.reply({
-      embeds: [{
-        title: `🎲 Prescript${times > 1 ? ` × ${times}` : ""}`,
-        color: 0xe74c3c,
-        description: results.join("\n"),
-      }],
-    });
-    return;
-  }
-
-  // ── -skill ──
-  // Cú pháp: -skill <tên skill> | -skill list
-  if (/^-skill(\s|$)/i.test(message.content)) {
-    if (isOnCooldown(message.author.id, "skill", 2000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
-      return;
-    }
-    const rawInput = message.content.replace("-skill", "").trim();
-
-    // Cho phép thêm "dullahan" hoặc "no dullahan" / "nodullahan" ở cuối để buộc kết quả Dullahan on/off
-    let forceDullahan = false;
-    let input = rawInput;
-    const dullahanMatch = input.match(/\s*(dullahan)\s*$/i);
-    if (dullahanMatch) {
-      forceDullahan = true;
-      input = input.slice(0, dullahanMatch.index).trim();
-    }
-
-    // -skill list <keyword> [trang] — tìm skill theo keyword, có phân trang
-    // VD: -skill list slash | -skill list slash 2
-    if (/^list\s+[^\d]/i.test(input)) {
-      const kwPageMatch = input.replace(/^list\s+/i, "").trim().match(/^(.+?)\s+(\d+)$/);
-      const keyword = kwPageMatch ? kwPageMatch[1].trim() : input.replace(/^list\s+/i, "").trim();
-      const page = kwPageMatch ? parseInt(kwPageMatch[2], 10) : 1;
-      const result = buildSkillListResult({ keyword, page });
-      if (result.error) { message.reply(result.error); return; }
-      message.reply({ embeds: [result.embed] });
-      return;
-    }
-
-    // -skill list [trang]
-    // Cú pháp: -skill list | -skill list 2 | -skill list 3
-    if (!input || input.toLowerCase() === "list" || /^list\s+\d+$/i.test(input)) {
-      const pageMatch = input.match(/list\s+(\d+)/i);
-      const page = pageMatch ? parseInt(pageMatch[1], 10) : 1;
-      const result = buildSkillListResult({ page });
-      message.reply({ embeds: [result.embed] });
-      return;
-    }
-
-    // -skill <tên> <số lần> — roll skill đó nhiều lần liên tiếp trong 1 lệnh
-    // (VD: -skill durandal 2). CHỈ áp dụng cho skill KHÔNG có promptArg — vì những
-    // skill này (VD: sanguine pointilism) đã dùng số cuối cùng làm % reuse riêng,
-    // không được hiểu lầm thành count. Thử tách trước; nếu tên không khớp hoặc
-    // skill khớp lại có promptArg, fallback dùng input gốc (giữ hành vi cũ).
-    let rollCount = 1;
-    let skill = null;
-    const countMatch = input.match(/^(.+?)\s+(\d+)$/);
-    if (countMatch) {
-      const candidate = findSkill(countMatch[1].trim());
-      if (candidate && !candidate.promptArg) {
-        skill = candidate;
-        rollCount = parseInt(countMatch[2], 10);
-      }
-    }
-    if (!skill) {
-      skill = findSkill(input);
-    }
-    if (!skill) {
-      message.reply(`❌ Không tìm thấy skill: \`${input}\`\nDùng \`-skill list\` để xem danh sách.`);
-      return;
-    }
-
-    // promptArg skill dùng từ cuối cùng trong input làm arg (VD: "-skill thrust 4" → "4")
-    const parts = input.trim().split(/\s+/);
-    const promptArgRaw = parts[parts.length - 1];
-
-    const result = buildSkillRollResult({ skill, rollCount, promptArgRaw, forceDullahan });
-    if (result.error) { message.reply(result.error); return; }
-    message.reply({ embeds: [result.embed] });
-    return;
-  }
-
-  // ── -parry ──
-  if (message.content.startsWith("-parry")) {
-    if (isOnCooldown(message.author.id, "parry", 3000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
-      return;
-    }
-    const args = message.content.replace("-parry", "").trim().split(/\s+/);
-    const parsedRolls = parseInt(args[0]);
-    if (!isNaN(parsedRolls) && parsedRolls <= 0) {
-      message.reply("❌ Số lần roll phải lớn hơn 0.");
-      return;
-    }
-    let rolls = (!isNaN(parsedRolls) && Number.isFinite(parsedRolls) && parsedRolls > 0) ? parsedRolls : 1;
-    if (rolls > PARRY_MAX_ROLLS) {
-      message.reply(`❌ Số lần roll tối đa là ${PARRY_MAX_ROLLS}.`);
-      return;
-    }
-    const { successCount, failCount, lines } = runParryRolls(rolls);
-    const summary = `**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
-    const body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n${summary}`;
-    if (body.length > 2000) {
-      message.reply(body.substring(0, 1990) + "\n…(bị cắt bớt)");
-    } else {
-      message.reply(body);
-    }
-    return;
-  }
-
-  // ── -rtparry (Parry phản xạ thời gian thực — DM link, đo chính xác trên web) ──
-  if (message.content.startsWith("-rtparry")) {
-    const argStr = message.content.replace(/^-rtparry/i, "").trim();
-    let targetSkill = null;
-    if (argStr) {
-      targetSkill = findSkill(argStr);
-      if (!targetSkill) {
-        message.reply(`⚠️ Không tìm thấy skill **"${argStr}"**. Dùng \`-rtparry\` không kèm tên cho bản mặc định.`);
-        return;
-      }
-    }
-    // targetSkill = null nếu không kèm tên — KHÔNG tự chọn random skill (trước đây có
-    // làm vậy nhưng sai ý: "-rtparry" trần là bản mặc định đơn giản, không liên quan
-    // page cụ thể nào, chỉ "-rtparry <tên>" mới cần tra tốc độ Page thật).
-
-    if (isOnCooldown(message.author.id, "parryrt_web", 5000)) {
-      message.reply("⏳ Chờ vài giây trước khi thử lại nhé.");
-      return;
-    }
-    // Discord KHÔNG cho ephemeral với message thường (prefix) — chỉ interaction/slash
-    // mới ephemeral được. Nên prefix vẫn phải DM để giữ link riêng tư (không công khai
-    // trong channel, ai cầm link cũng chơi được thay được).
-    let sentMsg;
-    try {
-      sentMsg = await message.reply({
-        embeds: [{
-          title: "⚔️ Parry Real Time",
-          description: "📬 Đã gửi link qua **DM** cho bạn — mở DM để bắt đầu." +
-            (targetSkill ? `\n> Page: **${targetSkill.name}**` : ""),
-          color: 0xf39c12,
-          footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi bạn chơi xong" },
-        }],
-      });
-    } catch (err) {
-      log("error", "parryrt", message.author.id, err.message);
-      return;
-    }
-
-    const linkInfo = createRtparryToken({ userId: message.author.id, channelId: message.channel.id, messageId: sentMsg.id, skill: targetSkill });
-    if (!linkInfo) {
-      await sentMsg.edit({
-        embeds: [{
-          title: "⚔️ Parry Real Time",
-          description:
-            "⚠️ Bot chưa biết URL public của mình (thiếu env var `RENDER_EXTERNAL_URL` hoặc `PUBLIC_URL`).\n" +
-            "> Báo admin set 1 trong 2 biến này thì lệnh này mới hoạt động được.",
-          color: 0xe74c3c,
-        }],
-      }).catch(() => {});
-      return;
-    }
-
-    try {
-      await message.author.send({
-        embeds: [{ title: "⚔️ Parry Real Time", description: "Bấm nút dưới để mở Parry Real Time.", color: 0xf39c12 }],
-        components: [buildRtparryLinkButton(linkInfo.url)],
-      });
-    } catch (err) {
-      // DM thất bại (user tắt DM từ thành viên server) — báo lại trong channel, không
-      // để họ chờ vô vọng không biết vì sao không thấy gì. Dọn session vì link sẽ
-      // không ai dùng được nữa (không gửi đi được).
-      log("error", "parryrt_dm", message.author.id, err.message);
-      webParrySessions.delete(linkInfo.token);
-      await sentMsg.edit({
-        embeds: [{
-          title: "⚔️ Parry Real Time",
-          description:
-            "❌ Không gửi được DM cho bạn — có thể bạn đã tắt **\"Allow direct messages from server members\"**.\n" +
-            "> Bật lại trong Privacy Settings của server này rồi dùng lại lệnh này.",
-          color: 0xe74c3c,
-        }],
-      }).catch(() => {});
-    }
-    return;
-  }
-
-
-  // ── -daily ──
-  if (message.content.startsWith("-daily")) {
-    if (isOnCooldown(message.author.id, "daily", 3000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
-      return;
-    }
-    const userId = message.author.id;
-    try {
-      const result = await processDailyClaimForUser(userId);
-      if (result.alreadyClaimed) {
-        message.reply(
-          `${message.author}, bạn đã nhận daily hôm nay rồi.\n` +
-          `Thời gian còn lại đến reset: **${result.hours}h ${result.minutes}m ${result.seconds}s**.`
-        );
-      } else {
-        message.reply(result.replyMsg.replace("{USER}", message.author.toString()));
-      }
-    } catch (err) {
-      log("error", "daily", userId, err.message, { stack: err.stack });
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
-    }
-    return;
-  }
-
-  // ── -balance ──
-  if (message.content.startsWith("-balance")) {
-    if (isOnCooldown(message.author.id, "balance", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
-    const targetUser = message.mentions.users.first() ?? message.author;
-    try {
-      message.reply(await buildBalanceEmbed(targetUser));
-    } catch (err) {
-      log("error", "balance", targetUser.id, err.message);
-      message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
-    }
-    return;
-  }
-
-  // ── -inventory ──
-  if (message.content.startsWith("-inventory")) {
-    if (isOnCooldown(message.author.id, "inventory", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
-    const targetUser = message.mentions.users.first() ?? message.author;
-    try {
-      const reply = await fetchInventoryReply(targetUser);
-      if (!reply) {
-        message.reply(`📦 ${targetUser} không có gì trong kho.`);
-        return;
-      }
-      message.reply(reply);
-    } catch (err) {
-      log("error", "inventory", targetUser.id, err.message);
-      message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
-    }
-    return;
-  }
-
-  // ── -give ──
-  if (message.content.startsWith("-give")) {
-    if (isOnCooldown(message.author.id, "give", 3000)) {
-      message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
-      return;
-    }
-    const isAdmin = ADMIN_IDS.has(message.author.id);
-    const targetUser = message.mentions.users.first();
-    if (!targetUser) {
-      message.reply("❌ Hãy mention người nhận. Ví dụ: `-give @user book: Random Book count: 1`");
-      return;
-    }
-    if (targetUser.id === message.author.id) {
-      message.reply("❌ Không thể tặng cho chính mình.");
-      return;
-    }
-    const rawInput = message.content.replace("-give", "").replace(/<@!?\d+>/, "").trim();
-    const kv = parseKeyValues(rawInput);
-    // Dùng hàm helper để phân biệt "không nhập" (undefined→0) với "nhập sai" (NaN→error)
-    // tránh bug parseInt("abc") || 0 nuốt giá trị không hợp lệ thành 0 không báo lỗi.
-    function parseIntOrError(raw, fieldName) {
-      if (raw == null) return { value: 0, error: null };
-      const n = parseInt(raw, 10);
-      if (isNaN(n)) return { value: null, error: `❌ \`${fieldName}\` phải là số nguyên, nhận được: \`${raw}\`` };
-      return { value: n, error: null };
-    }
-    const expParsed  = parseIntOrError(kv["exp"],  "exp");
-    const ahnParsed  = parseIntOrError(kv["ahn"],  "ahn");
-    if (expParsed.error)  { message.reply(expParsed.error);  return; }
-    if (ahnParsed.error)  { message.reply(ahnParsed.error);  return; }
-    const expGain = expParsed.value;
-    const ahnGain = ahnParsed.value;
-    const bookRaw = kv["book"] ?? null;
-    const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
-    const itemRaw = kv["item"] ?? null;
-    const hasBook = !!bookRaw;
-    // Nếu có cả book lẫn item, dùng itemcount: riêng để tránh nhầm lẫn với count: của book.
-    // Nếu chỉ có item, itemcount: ưu tiên trước rồi mới fallback sang count:.
-    const itemCountRaw = kv["itemcount"] ?? (hasBook ? "1" : kv["count"] ?? "1");
-    const itemCount = Math.max(1, parseInt(itemCountRaw, 10) || 1);
-    const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
-
-    if (!isAdmin && (expGain !== 0 || gradeTarget !== null)) {
-      message.reply("❌ Bạn không thể tặng EXP cho người khác.");
-      return;
-    }
-    if (!isAdmin && ahnGain < 0) {
-      message.reply("❌ Không thể chuyển số Ahn âm.");
-      return;
-    }
-    if (gradeTarget !== null && (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN)) {
-      message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
-      return;
-    }
-    let bookName = null;
-    if (bookRaw) {
-      bookName = findBook(bookRaw);
-      if (!bookName) {
-        message.reply(`❌ Tên sách không hợp lệ: \`${bookRaw}\`\nDùng \`-books\` để xem danh sách sách hợp lệ.`);
-        return;
-      }
-    }
-    let itemName = null;
-    if (itemRaw) {
-      itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
-      if (!itemName) {
-        message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`\nDùng \`-items\` để xem danh sách vật phẩm hợp lệ.`);
-        return;
-      }
-    }
-    if (expGain === 0 && ahnGain === 0 && !bookName && !itemName && gradeTarget === null) {
-      message.reply("❌ Cần chỉ định ít nhất một trong: `ahn`, `book`, `item`" + (isAdmin ? ", `exp`, `grade`." : "."));
-      return;
-    }
-
-    // Thay vì thực hiện ngay, hiển thị preview + nút Xác nhận/Hủy để tránh
-    // chuyển nhầm người/nhầm số lượng (đặc biệt nguy hiểm với admin give exp/grade/ahn).
-    const previewLines = buildGivePreviewLines({ ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget });
-    const giveId = registerPendingGive(message.author.id, targetUser.id, isAdmin, {
-      ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
-    });
-    message.reply({
-      embeds: [{
-        title: "📦 Xác nhận chuyển đồ",
-        description:
-          `${message.author} muốn ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
-          previewLines.map(l => `> ${l}`).join("\n"),
-        color: 0xf0a500,
-        footer: { text: "Hết hạn sau 60 giây" },
-      }],
-      components: [buildGiveConfirmRow(giveId)],
-    });
-    return;
-  }
-
-  // ── -remove ──
-  if (message.content.startsWith("-remove")) {
-    if (isOnCooldown(message.author.id, "remove", 3000)) {
-      message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
-      return;
-    }
-    const isAdmin = ADMIN_IDS.has(message.author.id);
-    const mentionedUser = message.mentions.users.first();
-    let targetUser;
-    if (mentionedUser) {
-      if (!isAdmin && mentionedUser.id !== message.author.id) {
-        message.reply("❌ Bạn chỉ có thể xóa đồ của chính mình.");
-        return;
-      }
-      targetUser = mentionedUser;
-    } else {
-      targetUser = message.author;
-    }
-    const rawInput = message.content.replace("-remove", "").replace(/<@!?\d+>/, "").trim();
-    const kv = parseKeyValues(rawInput);
-    // parseInt || 0 nuốt NaN — validate trước để báo lỗi rõ ràng cho admin
-    function parseRemoveInt(raw, fieldName) {
-      if (raw == null) return { value: 0, error: null };
-      const n = parseInt(raw, 10);
-      if (isNaN(n)) return { value: null, error: `❌ \`${fieldName}\` phải là số nguyên, nhận được: \`${raw}\`` };
-      return { value: n, error: null };
-    }
-    const expParsed = parseRemoveInt(kv["exp"], "exp");
-    const ahnParsed = parseRemoveInt(kv["ahn"], "ahn");
-    if (expParsed.error) { message.reply(expParsed.error); return; }
-    if (ahnParsed.error) { message.reply(ahnParsed.error); return; }
-    const expRemove = expParsed.value;
-    const ahnRemove = ahnParsed.value;
-    const bookRaw = kv["book"] ?? null;
-    const bookCount = Math.max(1, parseInt(kv["count"] ?? "1", 10) || 1);
-    const itemRaw = kv["item"] ?? null;
-    const itemCount = Math.max(1, parseInt(kv["itemcount"] ?? kv["count"] ?? "1", 10) || 1);
-
-    if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
-      message.reply("❌ Bạn chỉ có thể tự xóa sách hoặc vật phẩm của mình.");
-      return;
-    }
-
-    const bookEntries = [];
-    if (bookRaw) {
-      const bookName = findBook(bookRaw);
-      if (!bookName) { message.reply(`❌ Tên sách không hợp lệ: \`${bookRaw}\``); return; }
-      bookEntries.push({ name: bookName, count: bookCount });
-    }
-    const itemEntries = [];
-    if (itemRaw) {
-      const itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
-      if (!itemName) { message.reply(`❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\``); return; }
-      itemEntries.push({ name: itemName, count: itemCount });
-    }
-
-    const booksRaw = kv["books"] ?? null;
-    if (booksRaw) {
-      const result = parseBatchEntries(booksRaw, findBook, "sách");
-      if (result.error) { message.reply(result.error); return; }
-      bookEntries.push(...result.entries);
-    }
-    const itemsRaw = kv["items"] ?? null;
-    if (itemsRaw) {
-      const findFn = isAdmin ? findItemAdmin : findItem;
-      const result = parseBatchEntries(itemsRaw, findFn, "vật phẩm");
-      if (result.error) { message.reply(result.error); return; }
-      itemEntries.push(...result.entries);
-    }
-
-    if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
-      message.reply("❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`, `books`, `items`.");
-      return;
-    }
-    try {
-      const changes = await withLock(targetUser.id, () => executeRemove({
-        actorId: message.author.id, targetId: targetUser.id,
-        isAdmin, expRemove, ahnRemove, bookEntries, itemEntries,
-      }));
-      const isSelf = targetUser.id === message.author.id;
-      const header = isSelf
-        ? `🗑️ ${message.author} đã xóa khỏi kho của mình:`
-        : `🗑️ ${message.author} (admin) đã xóa khỏi kho của ${targetUser}:`;
-      message.reply(header + "\n" + changes.map(c => `> ${c}`).join("\n"));
-    } catch (err) {
-      log("error", "remove", targetUser.id, err.message, { actor: message.author.id });
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
-    }
-    return;
-  }
-
-  // ── -setplayer ──
-  if (message.content.startsWith("-setplayer")) {
-    if (!ADMIN_IDS.has(message.author.id)) {
-      message.reply("❌ Bạn không có quyền dùng lệnh này.");
-      return;
-    }
-    const targetUsers = [...message.mentions.users.values()];
-    if (targetUsers.length === 0) {
-      message.reply(
-        "❌ Hãy mention ít nhất một người cần set. Ví dụ:\n" +
-        "`-setplayer @user1 @user2 exp: 100 ahn: 50000 books: Random Book x3, N Corp Book x1 items: Tên Item x2`"
+      // ── Tổng kết ─────────────────────────────────────────────────────────────
+      lines.push(
+        `📊 *Light còn lại: **${curLight}** ${L}` +
+        (reuseTimes > 0 ? ` | Dice Up lần cuối: **+${reuseTimes * 5}**` : "") +
+        `*`
       );
-      return;
-    }
-    const rawInput = message.content.replace("-setplayer", "").replace(/<@!?\d+>/g, "").trim();
-    const kv = parseKeyValues(rawInput);
-    const booksRaw = kv["books"] ?? null;
-    const bookEntries = [];
-    if (booksRaw) {
-      const parts = booksRaw.split(",").map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        const match = part.match(/^(.+?)\s+(\+?)x(\d+)$/i);
-        if (!match) {
-          message.reply(`❌ Định dạng sách sai: \`${part}\`\nĐúng: \`Tên Sách x<số>\` hoặc \`Tên Sách +x<số>\` (VD: \`Random Book x5\` hoặc \`Random Book +x3\`)`);
-          return;
-        }
-        const bookName = findBook(match[1].trim());
-        if (!bookName) {
-          message.reply(`❌ Tên sách không hợp lệ: \`${match[1].trim()}\`\nDùng \`-books\` để xem danh sách.`);
-          return;
-        }
-        bookEntries.push({ name: bookName, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
+
+      return lines;
+    },
+  },
+  "slice": {
+    name: "Slice", weaponOf: "Scythe of Sorrow", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(10,11);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên xoay lưỡi hái cắt mọi thứ`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục cắt, gắn 6 <:Sinking:1513762793436741652>Sinking (turn sau)`,
+      ];
+    },
+  },
+  "breakam slash": {
+    name: "Breakam Slash", weaponOf: "Breakam Zeztzer", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(8,20);
+      return [
+        `**[<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Phủ thanh kiếm năng lượng xanh rồi chém ngang cắt đứt kẻ địch`,
+      ];
+    },
+  },
+  "breakam bullet": {
+    name: "Breakam Bullet", weaponOf: "Breakam Zeztzer: Gun Mode", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(10,17);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unevadeable] [Guard Break] [AOE 3 người] — Tụ lực bắn một đường đạn cực mạnh vào đối phương`,
+      ];
+    },
+  },
+  "backflip & shoot": {
+    name: "Backflip & Shoot", weaponOf: "Double Handgun", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,9), d2 = r(7,10);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Nhảy lùi ra sau bắn kẻ địch`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Bắn tiếp lần thứ hai`,
+      ];
+    },
+  },
+  "blinkstep": {
+    name: "Blinkstep", weaponOf: "Mao Branch Sword", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,13);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch hai lần liên tiếp, gây 3 <:Rupture:1513762812722155682>Rupture. Nếu ≥5 <:Haste:1513768004222062632>Haste: tái sử dụng skill này một lần nữa`,
+      ];
+    },
+  },
+  "jack of all trades": {
+    name: "Jack of All Trades", weaponOf: "Thiên Cỏ Vạn", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,8), d2 = r(3,5), d3 = r(22,35), d4 = r(10,17);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Cung Void`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Dù-Khiên`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Đại Kiếm`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — Trường Thương`,
+      ];
+    },
+  },
+  "beam of nihil": {
+    name: "Beam Of Nihil", weaponOf: "Manifested E.G.O: Nihil", tags: "Weapon",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(24,40);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Unparriable] [AOE 2 người] — Tạo tia sáng năng lượng hư vô bắn vào kẻ địch. Nhận 7 <:Haste:1513768004222062632>Haste và gây 14 <:Bleed:1513762688226955285>Bleed, 8 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "abyssial life": {
+    name: "Abyssial Life", weaponOf: "Manifested E.G.O: Nihil", tags: "Weapon",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,5);
+      return [
+        `${D1} **${d1}** — Nhận số stack **Nihil** tương ứng. Mỗi Nihil: +10% Dmg, +2% Hút máu (Max 5, mất khi end turn)`,
+      ];
+    },
+  },
+  "meaningless struggle": {
+    name: "Meaningless Struggle (Phản Kháng Vô Nghĩa)", weaponOf: "Void-Scythe: Nihilism", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,18), d2 = r(21,30);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Uplift] — Hất tung vũ khí địch, áp 6 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Trúng đích, áp 2 Freeble (giảm 4 Dice mọi kỹ năng turn sau)`,
+      ];
+    },
+  },
+  "trailing blade": {
+    // Bản cập nhật mới nhất theo spec người dùng cung cấp — đè lên bản cũ (cũ chỉ có
+    // flavor "cắt mọi thứ"/"tiếp tục xoay", không có hiệu ứng Poise/Spectro Frazzle).
+    name: "Trailing Blade", weaponOf: "Ages of Harvest [Peach Blossom]", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10), d2 = r(3,12), d3 = r(8,11);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Điều khiển thanh kiếm xoay một vòng tròn xung quanh bản thân, cắt mọi thứ, nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay, nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Tiếp tục xoay, nhận 3 <:Poise:1513762945715142736>Poise và gây 2 **Spectro Frazzle**`,
+      ];
+    },
+  },
+  "overpower": {
+    name: "Overpower", weaponOf: "Fixer's Blade", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,15);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Đâm vào bụng kẻ địch rồi nhanh chóng vung bổ xuống, áp 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+      ];
+    },
+  },
+  "life taker": {
+    name: "Life Taker", weaponOf: "Havoc Scythe", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(17,26);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Vung lưỡi hái hút sinh lực kẻ địch, gây 5 Havoc Bane và hồi máu = 50% Dmg gây ra`,
+      ];
+    },
+  },
+  "instant of annihilation": {
+    name: "Instant of Annihilation", weaponOf: "Manifested E.G.O (Havoc)", tags: "Weapon",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,12), d2 = r(10,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Sải cánh bay lại gần kẻ địch rồi quật bằng cánh`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Tạo ngọn thương Havoc đâm chúng, gây 10 Havoc Bane`,
+      ];
+    },
+  },
+  "deadening abyss": {
+    name: "Deadening Abyss", weaponOf: "Manifested E.G.O (Havoc)", tags: "Weapon",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(21,30);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] [AOE 3 người] — Nổ năng lượng phía trước. +2 <:DiceUp:1513767795681398894>Dice Up cho mỗi Havoc Bane trên kẻ địch, sau đó tiêu toàn bộ`,
+      ];
+    },
+  },
+  "solemn lament for the living": {
+    name: "Solemn Lament for the Living", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,8), d2 = r(10,15);
+      return [
+        `*[Mỗi Dice có thể tốn 5 viên đạn The Living and The Departed để +1 <:DiceUp:1513767795681398894>Dice Up/Dice và +1 <:Sinking:1513762793436741652>Sinking mỗi viên]*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Bắn liên tục vào kẻ địch`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Lao tới bắn phát cuối, gây 3 <:Sinking:1513762793436741652>Sinking. Tùy theo <:Sinking:1513762793436741652>Sinking trên địch: 0 → -2 <:DiceDown:1513767826257874964>Dice Down | 1-19 → 6 <:Bind:1513768025881317457>Bind | ≥20 → 6 Fragile`,
+      ];
+    },
+  },
+  "kaen jujizan": {
+    name: "Kaen Jūjizan", weaponOf: "Kaenken Rekka", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x (2x nếu địch >10 <:Burn:1513762753691652177>Burn)",
+    roll() {
+      const d1 = r(6,20);
+      return [
+        `**[<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu]**`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch, triệu hồi rồng lửa cuốn vòng rồi tung chuỗi chém, gây 6 <:Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+  "crash hissatsu giri": {
+    name: "Crash Hissatsu Giri", weaponOf: "Kaenken Rekka", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1.75x",
+    roll() {
+      const d1 = r(24,32);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [True DMG] [Guard Break] [Chỉ dùng khi ở Primitive Dragon] — Triệu hồi Void Talon, kéo kẻ địch lại gần rồi tung một đòn chém`,
+      ];
+    },
+  },
+  "shinra banshozan": {
+    name: "Shinra Banshozan", weaponOf: "Kaenken Rekka", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1.75x",
+    roll() {
+      const d1 = r(24,32);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Elemental Dragon] — Tích tụ toàn bộ nguyên tố vào kiếm rồi chém kẻ địch, gây 7 Hex`,
+      ];
+    },
+  },
+  "barrage": {
+    name: "Barrage", weaponOf: "Star Platinum", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,15);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+      ];
+    },
+  },
+  "punishment": {
+    name: "Punishment", weaponOf: "Beak Mace", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,30);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Cây chùy biến thành vô số xúc tu nuốt chửng kẻ địch, gây 6 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+      ];
+    },
+  },
+  "piercing": {
+    name: "Piercing", weaponOf: "Sharp Spear", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt đâm xuyên người kẻ địch, gây 9 <:Bleed:1513762688226955285>Bleed (turn sau)`,
+      ];
+    },
+  },
+  "mighty critical finish": {
+    name: "Mighty Critical Finish", weaponOf: "Gashacon Breaker", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,19);
+      return [
+        `${D1} **${d1}** [Blunt/Slash] — Phủ năng lượng vào vũ khí rồi tấn công. Chắc chắn crit; dmg type đổi theo dạng vũ khí đang dùng`,
+      ];
+    },
+  },
+  "mighty critical strike": {
+    name: "Mighty Critical Strike", weaponOf: "Gamer Driver", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10), d2 = r(10,18);
+      return [
+        `**[<:Blunt:1513768529718022254>Blunt] — Chắc chắn crit**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Nhảy vào đá kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
+      ];
+    },
+  },
+  "mighty double critical strike": {
+    name: "Mighty Double Critical Strike", weaponOf: "Gamer Driver", tags: "Weapon",
+    cost: "Chỉ khi ở Level 20", cd: "2 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(5,10), d2 = r(10,18);
+      return [
+        `**[<:Blunt:1513768529718022254>Blunt] — Chắc chắn crit**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Cùng bản thể còn lại nhảy vào đá kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Cả hai liên tục đá rồi kết thúc bằng một đòn đá mạnh`,
+      ];
+    },
+  },
+
+  // ── Lævateinn ──
+  "laevateinn": {
+    name: "Lævateinn", tags: "Weapon",
+    weaponType: "??? → Heavy → Medium → Light",
+    weaponDmg: "??? → 30 [Blunt] → 35 [Blunt] → 20 [Slash] → 13 [Slash]",
+    passive: [
+      `**Rule Violation** — Mỗi 1 Turn: hai đòn tấn công đầu tiên bạn chịu từ kẻ thù phản 1/2 Dmg về cho chúng (Type: <:Blunt:1513768529718022254>Blunt; <:Slash:1513768633434640517>Slash từ Seal 2+). Mỗi đòn gây cho chúng 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. +10 Minimum Dice từ Follow Up Attack [Follow Up / Pounce]`,
+      `**Sealed Sword [Lævateinn]** — Khởi đầu là Heavy Weapon với 30 Base Dmg [<:Blunt:1513768529718022254>Blunt]. Mỗi khi dùng 1 Page của **Middle Syndicate**: nhận 1 Stack **Rising Fever**. Mọi Bonus Dmg <:Blunt:1513768529718022254>Blunt % chuyển sang Dmg Type tương ứng với đòn gây ra. Mỗi khi mở khoá một lớp phong ấn: thi triển ngay 1 đòn tấn công với số Dice bằng tổng lượng stack **Rising Fever** hiện có. Khi mở khoá phong ấn cuối: nhận hiệu ứng **Ridiculous Grit** duy trì đến hết Encounter.\n` +
+      `> — **10 Rising Fever** → Seal 1: Base Dmg 35 [<:Blunt:1513768529718022254>Blunt], +50% Dmg. Mọi đòn đánh áp 1 <:Bleed:1513762688226955285>Bleed + 1 <:Burn:1513762753691652177>Burn\n` +
+      `> — **20 Rising Fever** → Seal 2: Medium Weapon, Base Dmg 20 [<:Slash:1513768633434640517>Slash], +100% Dmg. Mọi đòn đánh áp 2 <:Bleed:1513762688226955285>Bleed + 2 <:Burn:1513762753691652177>Burn\n` +
+      `> — **30 Rising Fever** → Seal 3: Light Weapon, Base Dmg 13 [<:Slash:1513768633434640517>Slash], +200% Dmg. Mọi đòn đánh áp 4 <:Bleed:1513762688226955285>Bleed + 4 <:Burn:1513762753691652177>Burn. Toàn bộ đồng minh lẫn kẻ thù chịu 20 <:Burn:1513762753691652177>Burn vào đầu mỗi turn`,
+      `**Time to Revenge** — Nếu mục tiêu có từ 3 / 6 / 9 <:VengeanceMark:1513768136023740436>Vengeance Mark: tăng số lượng stack **Rising Fever** có thể nhận thêm 1 / 2 / 3. (Tối đa 2 lần mỗi turn)`,
+    ].join("\n"),
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên skill cụ thể để roll)*`]; },
+  },
+  "stomping": {
+    name: "Stomping", weaponOf: "Lævateinn", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,13), d2 = r(10,15);
+      return [
+        `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Dặm đất, gây 5 <:Fragile:1513763336167100536>Fragile`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Đá vào kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 1 Stack **Rising Fever**`,
+      ];
+    },
+  },
+  "ill gut you like a fish": {
+    name: "I'll Gut You Like a Fish", weaponOf: "Lævateinn [Seal 1+]", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(12,13), d3 = r(11,12);
+      return [
+        `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đá kẻ địch lên trời, gây 5 <:Fragile:1513763336167100536>Fragile`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Chém chúng bằng thanh kiếm, gây 5 <:Fragile:1513763336167100536>Fragile`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Cắt ngay lập tức, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 1 Stack **Rising Fever**`,
+      ];
+    },
+  },
+  "dont let somethin like this break you": {
+    name: "Don't Let Somethin' Like This Break You!", weaponOf: "Lævateinn [Seal 1+]", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,12), d2 = r(12,13), d3 = r(11,15);
+      return [
+        `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Bổ cự kiếm vào kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Quẹt ngang ngay lập tức`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Vung lên, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 2 Stack **Rising Fever**`,
+      ];
+    },
+  },
+  "gut stab laevateinn": {
+    name: "Gut Stab [Lævateinn]", weaponOf: "Lævateinn [Seal 2+]", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(12,13), d3 = r(7,7), d4 = r(8,8), d5 = r(10,13);
+      return [
+        `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch* [Unblockable]`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đá kẻ địch lên trời`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Quẹt ngang ngay lập tức`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Đâm thanh kiếm vào kẻ địch`,
+        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tiếp tục đâm liên tục`,
+        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Rút ra rồi kết thúc bằng một đòn đâm, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 2 Stack **Rising Fever**`,
+      ];
+    },
+  },
+  "stamp of vengeance maximum": {
+    name: "Stamp of Vengeance [Maximum]", weaponOf: "Lævateinn", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,12), d2 = r(7,8), d3 = r(13,15), d4 = r(16,24);
+      return [
+        `*+10% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Đá kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Ngay sau đó là một cú đá lên`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Lấy đà thêm một cú nữa`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] [Unevadeable] [Guard Break] — Nhảy lên trời rồi chốt hạ bằng một đòn chẻ bằng chân. Cho bản thân **3 Stack Rising Fever**`,
+      ];
+    },
+  },
+  "complete and total extermination laevateinn": {
+    name: "Complete and Total Extermination [Lævateinn]", weaponOf: "Lævateinn [Seal 3]", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10,12), d2 = r(12,13), d3 = r(13,15), d4 = r(18,24), d5 = r(30,35);
+      return [
+        `*+10% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
+        `*Skill này luôn dùng Dice cuối để clash; nếu clash thua, kẻ địch nhận 30% Dmg gốc*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Bổ kiếm vào kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Quẹt ngang ngay lập tức`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Vung lên, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Vung xuống một cú mạnh`,
+        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Unevadeable] [Guard Break] — Ném thanh kiếm găm vào lồng ngực rồi nhảy vào đá xuyên qua kẻ địch, kết liễu chúng`,
+      ];
+    },
+  },
+  "good girl your sacrifice for the family wont be forgotten": {
+    name: "Good Girl. Your Sacrifice for the Family Won't Be Forgotten.", weaponOf: "Lævateinn [Seal 3]", tags: "Weapon",
+    cost: "Chỉ dùng khi đồng minh dưới 20% HP (50% nếu từ Middle)", cd: "—", diceMul: "1x",
+    roll() {
+      const d1 = r(18,24);
+      return [
+        `*+10% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unclashable] [Undodgeable] [Unparriable] [Unblockable] — Khi đồng đội chuẩn bị chết, cắt cả hai ra, giết chết đồng minh và gây sát thương lên kẻ địch. Nhận 1 hiệu ứng **Revenge For My Family** duy trì 2 turn; nếu kích hoạt đủ 3 lần sẽ duy trì đến hết Encounter. Nếu đồng minh thuộc Middle Syndicate: kích hoạt vĩnh viễn`,
+      ];
+    },
+  },
+
+  // ══════════════ Poise / Slash ══════════════
+  "draw of the sword": {
+    name: "Draw of The Sword",
+    tags: "Poise",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,3), d2 = r(2,4);
+      return [
+        `*On Use — ngay khi sử dụng: nhận 2 <:Poise:1513762945715142736>Poise [<:Slash:1513768633434640517>Slash]*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise; tiêu thụ 6 <:Poise:1513762945715142736>Poise để nhận 2 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "acupuncture": {
+    name: "Acupuncture",
+    tags: "Poise",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,3), d2 = r(6,12), d3 = r(2,6);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 3 <:Poise:1513762945715142736>Poise và gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise; nếu bạn có ≥8 <:Poise:1513762945715142736>Poise nhận thêm 1 <:Light:1513786082502770719>Light`,
+      ];
+    },
+  },
+  "deep cuts": {
+    name: "Deep Cuts",
+    tags: "Poise/Haste",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(8,10), d3 = r(9,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — chém ngang cắt kẻ địch, nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — chém ngang cắt kẻ địch, nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — sau đó đâm sâu, nhận 4 <:Haste:1513768004222062632>Haste`,
+      ];
+    },
+  },
+  "preemptive strike": {
+    name: "Preemptive Strike",
+    tags: "Rupture",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1.1x",
+    roll() {
+      const d1 = r(7,10);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — chém dọc xuống, gây 4 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "opportunistic slash": {
+    name: "Opportunistic Slash",
+    tags: "Haste",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "2x",
+    roll() {
+      const d1 = r(5,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — lướt qua người kẻ địch rồi chém, nhận 3 <:Haste:1513768004222062632>Haste và gây 3 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+  "focused strikes": {
+    name: "Focused Strikes",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(5,8), d3 = r(8,12);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — chém ngang kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — chém ngang một lần nữa`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Guard Break] — kết thúc bằng một cú đâm tới`,
+      ];
+    },
+  },
+  "mutilate": {
+    name: "Mutilate",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "3x",
+    roll() {
+      const isProc = Math.random() < 0.2;
+      const d1 = isProc ? 30 : r(1,5);
+      return [
+        isProc
+          ? `*🔥 20% kích hoạt — Dice 1 trở thành [30~30]! [AOE 3 người]*`
+          : `*20% cơ hội đổi Dice 1 thành [30~30] [AOE 3 người]*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — lao tới chém kẻ địch liên tục${isProc ? " [AOE 3 người]" : ""}`,
+      ];
+    },
+  },
+
+  // ══════════════ Haste / Movement ══════════════
+  "fleet footsteps": {
+    name: "Fleet Footsteps",
+    tags: "Haste",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,10);
+      return [
+        `${D1} **${d1}** — dịch chuyển lại gần kẻ địch, né 1 đòn tấn công (không thể né Undodgeable), sau đó nhận 2 <:Haste:1513768004222062632>Haste`,
+      ];
+    },
+  },
+  "charge and cover": {
+    name: "Charge and Cover",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,7);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] — nhảy vụt lên đâm kẻ địch rồi lùi lại, né 1 đòn tấn công (không thể né Undodgeable) trong lúc gây Dmg`,
+      ];
+    },
+  },
+
+  // ══════════════ Blunt / Fragile / Tremor ══════════════
+  "alleyway counter": {
+    name: "Alleyway Counter",
+    tags: "Fragile",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,15);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — ngắt và counter một đòn của kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "right hook": {
+    name: "Right Hook",
+    tags: "Tremor",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — tung một cú móc hàm bằng tay phải, gây 4 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+  "sky kick": {
+    name: "Sky Kick",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,8);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đá kẻ địch lên trời gây **[Airborne]**`,
+      ];
+    },
+  },
+  "drop kick": {
+    name: "Drop Kick",
+    tags: "Fragile",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,15);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — lao vào Drop Kick kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "backstreets scramble": {
+    name: "Backstreets Scramble",
+    tags: "Fragile",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,5), d2 = r(6,10), d3 = r(7,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — móc hàm kẻ địch`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — móc hàm một lần nữa, đánh bay kẻ địch lên trời`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — nhảy lên đập chúng xuống, gây 5 <:Fragile:1513763336167100536>Fragile`,
+      ];
+    },
+  },
+  "stylish sweeps": {
+    name: "Stylish Sweeps",
+    tags: "Sinking",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,6), d2 = r(6,7), d3 = r(7,8);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — đá kẻ địch, gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — đá kẻ địch, gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đá kẻ địch, gây 3 <:Sinking:1513762793436741652>Sinking`,
+      ];
+    },
+  },
+  "shocking blow": {
+    name: "Shocking Blow",
+    tags: "Fragile",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,12);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đấm móc kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+
+  // ══════════════ Support / Pierce ══════════════
+  "onslaught command": {
+    name: "Onslaught Command",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,16);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gia tăng 4 <:DiceUp:1513767795681398894>Dice Up trong 2 Turn cho toàn bộ đồng đội`,
+      ];
+    },
+  },
+
+  // ══════════════ Paint Over ══════════════
+  "paint over": {
+    name: "Paint Over",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10), d2 = r(5,10);
+      return [
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gắn 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gắn 2 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+
+  // ══════════════ Mighty Attack ══════════════
+  "mighty attack": {
+    name: "Mighty Attack",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,8), d2 = r(6,8);
+      return [
+        `*Khi sử dụng: nhận 2 <:Attack_Power_Up:1375189059978133676>Attack Power Up và 2 <:Unopposed_Attack_Boost:1375796883351666738>Unopposed Attack Boost cho đến hết turn*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — lao vào đá kẻ địch, gây 2 <:Smoke:1513778039610282015>Smoke`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — kết thúc bằng một cú đấm, gây 2 <:Smoke:1513778039610282015>Smoke`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — Solemn Lament Pistols ══════════════
+  "celebration for the departed": {
+    name: "Celebration for the Departed", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "Tối thiểu 2 đạn", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,8), d2 = r(8,12);
+      return [
+        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 2 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+      ];
+    },
+  },
+    "the solemn lament for the living": {
+    name: "Solemn Lament for the Living", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "Tối thiểu 2 đạn", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(10,16);
+      return [
+        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 3 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+      ];
+    },
+  },
+  "goodbye now a sorrow in you": {
+    name: "Goodbye Now, a Sorrow In You", weaponOf: "Solemn Lament Pistols", tags: "Weapon",
+    cost: "Tối thiểu 4 đạn", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(7,10), d3 = r(10,13), d4 = r(13,16);
+      return [
+        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 5 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây **Butterfly**`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây **Butterfly**`,
+        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — +4% Dmg với mỗi 1 Count **Butterfly** kẻ địch có; xả toàn bộ đạn ở Dice này`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — Devil Sword Dante ══════════════
+  "overdrive": {
+    name: "Overdrive", weaponOf: "Devil Sword Dante", tags: "Weapon",
+    cost: "—", cd: "1 Turn sau khi tích xong", diceMul: "1.5x",
+    roll() {
+      const chargeturns = 1; // default 1 turn charge
+      const d1 = r(10,16);
+      return [
+        `*Tích tụ tối đa 3 Turn — mỗi turn tích thêm 1 Reuse; CD bắt đầu sau khi phóng*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — phóng kiếm khí từ năng lượng quỷ tích tụ`,
+      ];
+    },
+  },
+  "judgement": {
+    name: "Judgement", weaponOf: "Devil Sword Dante", tags: "Weapon",
+    cost: "— [Chỉ khi ở Sin Devil Trigger]", cd: "—", diceMul: "10x",
+    roll() {
+      return [
+        `*Chỉ khả dụng khi đang ở trạng thái **Sin Devil Trigger** [AOE tất cả]*`,
+        `${D1} **30** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] [Unparriable] [Unclashable] — tích tụ năng lượng rồi chém kẻ địch liên tục, kết thúc bằng một vụ nổ`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — Ebony & Ivory ══════════════
+  "charge shot": {
+    name: "Charge Shot", weaponOf: "Ebony & Ivory", tags: "Weapon",
+    cost: "—", cd: "1 Turn sau khi tích xong", diceMul: "1x",
+    roll() {
+      const chargeBonus = 0; // +10 Dice per extra turn charged, shown as note
+      const d1 = r(20,23);
+      return [
+        `*Tích tối thiểu 1 Turn, tối đa 3 Turn — mỗi turn tích thêm +10 Dice*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — bắn viên đạn chứa năng lượng quỷ tích tụ`,
+      ];
+    },
+  },
+  "jackpot": {
+    name: "Jackpot", weaponOf: "Ebony & Ivory", tags: "Weapon",
+    cost: "— [Chỉ khi dùng Charge Shot với Gunslinger Style]", cd: "—", diceMul: "2x",
+    roll() {
+      const isInstakill = Math.random() < 0.0777;
+      return [
+        `*Tích tụ 7 Turn — 7.77% cơ hội insta-kill kẻ địch*`,
+        isInstakill
+          ? `*💀 7.77% kích hoạt — INSTA-KILL!*`
+          : ``,
+        `${D1} **77** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Undodgeable] [Unparriable] [Unclashable] — bắn viên đạn quỷ tích tụ 7 turn${isInstakill ? " — **INSTA-KILL**" : ""}`,
+      ].filter(Boolean);
+    },
+  },
+
+  // ══════════════ EGO Pages — Manifested E.G.O ══════════════
+  "crescent divinity": {
+    name: "Crescent Divinity", weaponOf: "Manifested E.G.O", tags: "EGO Page",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,13);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — lướt xuyên qua người kẻ địch trong khi trên không, nhận 25 Forte`,
+      ];
+    },
+  },
+  "purge of light": {
+    name: "Purge of Light", weaponOf: "Manifested E.G.O", tags: "EGO Page",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(21,30);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE tất cả] [Unevadeable] [Guard Break] — tạo trường năng lượng cộng hưởng gây sát thương toàn bộ kẻ địch; đòn **Illuminous Epiphany** kế tiếp nhận 90% Dmg Up`,
+      ];
+    },
+  },
+
+  // ══════════════ Weapon Criticals — N Corp. E.G.O Gear: Soft Goldcasted Heart ══════════════
+  "contemptuous thing": {
+    name: "Contemptuous Thing", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,7), d2 = r(7,11);
+      return [
+        `*+1 Clash Power với mỗi Gaze/Contempt trên kẻ địch; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 10 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor cộng lại*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Tremor:1513762737388257380>Tremor và 1 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 1 **Gaze**`,
+      ];
+    },
+  },
+  "be awed": {
+    name: "Be Awed", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,10), d2 = r(10,16);
+      return [
+        `*+1 Clash Power với mỗi Gaze/Contempt trên kẻ địch; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 10 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor cộng lại*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Tremor:1513762737388257380>Tremor và 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 2 **Gaze**, 1 <:Tremor:1513762737388257380>Tremor và 1 <:Bleed:1513762688226955285>Bleed; nếu địch có ≥3 <:Tremor:1513762737388257380>Tremor thì <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "awe, contempt": {
+    name: "Awe, Contempt", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,9), d2 = r(9,13), d3 = r(13,17);
+      return [
+        `*+1 Clash Power với mỗi Gaze/Contempt; +1 <:DiceUp:1513767795681398894>Dice Up và 5% Dmg Up với mỗi 8 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor cộng lại; nếu địch có Gaze: +2 <:Bleed:1513762688226955285>Bleed và <:Tremor:1513762737388257380>Tremor mỗi Dice*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây 2 <:Tremor:1513762737388257380>Tremor và 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây 1 <:Tremor:1513762737388257380>Tremor và 1 <:Bleed:1513762688226955285>Bleed`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây thêm 10% Dmg với mỗi 1 Gaze trên kẻ địch, áp **Tremor-Hemorrhage** rồi <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+  "cascading gaze of awe underneath contempt": {
+    name: "Cascading Gaze of Awe Underneath Contempt", weaponOf: "Soft Goldcasted Heart", tags: "Weapon",
+    cost: "— [Dùng Awe, Contempt khi tất cả địch có 7 Gaze hoặc 1 Contempt]", cd: "—", diceMul: "1x",
+    roll() {
+      const d1 = r(14,28);
+      return [
+        `*[AOE 3 người] +1 Clash Power với mỗi Gaze/Contempt; +1 <:DiceUp:1513767795681398894>Dice Up và 5% Dmg Up với mỗi 8 <:Bleed:1513762688226955285>Bleed+<:Tremor:1513762737388257380>Tremor; nếu địch có Gaze: +10% Dmg với mỗi 1 Gaze; +200% Dmg Up nếu chỉ có 1 mục tiêu*`,
+        `${D1} Sau khi đòn kết thúc: tiêu thụ toàn bộ **Gaze** và **Contempt** trên kẻ địch trúng phải`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] [Undodgeable] — gây thêm 235% Dmg nếu địch có **Contempt**; gây 4 <:Tremor:1513762737388257380>Tremor và 4 <:Bleed:1513762688226955285>Bleed; áp **Tremor-Hemorrhage** rồi <:TremorBurst:1513802464632246352>Tremor Burst`,
+      ];
+    },
+  },
+};
+
+// ─── SKILL_ALIASES ────────────────────────────────────────────────────────────
+// Khai báo trước toàn bộ Object.assign bên dưới — nếu SKILL_ALIASES chưa tồn tại
+// thì Object.assign sẽ throw ReferenceError. Không được dời hay split block này.
+const SKILL_ALIASES = {
+  "faretheewell": "fare-thee well",
+  "fareewell": "fare-thee well",
+  "farewell": "fare-thee well",
+  "justagvengeance": "just a vengeance",
+  "jav": "just a vengeance",
+  "extractfuel": "extract fuel",
+  "stampofvengeance": "stamp of vengeance",
+  "sov": "stamp of vengeance",
+  "cate": "complete and total extermination",
+  "c&te": "complete and total extermination",
+  "completete": "complete and total extermination",
+  "followingtheflow": "following the flow",
+  "ftf": "following the flow",
+  "wib": "waltz in black",
+  "waltzblack": "waltz in black",
+  "wiw": "waltz in white",
+  "waltzwhite": "waltz in white",
+  "lightattack": "light attack",
+  "slashseries": "slash series",
+  "executeprescript": "execute prescript",
+  "ep": "execute prescript",
+  "willofthecity": "will of the city",
+  "wotc": "will of the city",
+  "dodgeandstrike": "dodge and strike",
+  "das": "dodge and strike",
+  "soulburn": "soulburn",
+  "infernoburst": "inferno burst",
+  "ib": "inferno burst",
+  "takethiskid": "take this kid",
+  "ttk": "take this kid",
+  "learnagainkid": "learn again kid",
+  "learnakaink": "learn again kid",
+  "lak": "learn again kid",
+  "catchbreath": "catch breath",
+  "cb": "catch breath",
+  "shadowcloudshattercleaver": "shadowcloud shattercleaver",
+  "scs": "shadowcloud shattercleaver",
+  "furioso": "furioso",
+  "weightofknowledge": "weight of knowledge",
+  "wok": "weight of knowledge",
+  "illuminatethyvacuity": "illuminate thy vacuity",
+  "itv": "illuminate thy vacuity",
+  "studiousdedication": "studious dedication",
+  "sd": "studious dedication",
+  "scorchknowledge": "scorch knowledge",
+  "sk": "scorch knowledge",
+  "excruiciatingstudy": "excruciating study",
+  "excruiatingstudy": "excruciating study",
+  "es": "excruciating study",
+  "sanguinepainting": "sanguine painting",
+  "sp": "sanguine painting",
+  "hematiccoloring": "hematic coloring",
+  "hc": "hematic coloring",
+  "sanguinepointilism": "sanguine pointilism",
+  "pointilism": "sanguine pointilism",
+  "perfecteddeathfist": "perfected death fist",
+  "pdf": "perfected death fist",
+  "ragingstorm": "raging storm",
+  "rs": "raging storm",
+  "fierywaltz": "fiery waltz",
+  "fw": "fiery waltz",
+  "redkick": "red kick",
+  "rk": "red kick",
+  "flowingflame": "flowing flame",
+  "ff": "flowing flame",
+  "fleetedge": "fleet edge",
+  "fe": "fleet edge",
+  "flowofthesword": "flow of the sword",
+  "fots": "flow of the sword",
+  "violentflame": "violent flame",
+  "vf": "violent flame",
+  "formingstorm": "forming storm",
+  "fs": "forming storm",
+  "extremeedge": "extreme edge",
+  "ee": "extreme edge",
+  "flyingsword": "flying sword",
+  "fsd": "flying sword",
+  "boundaryofdeath": "boundary of death",
+  "bod": "boundary of death",
+  "overbreath": "overbreath",
+  "ob": "overbreath",
+  "xuatluctoida": "xuất lực tối đa",
+  "xltd": "xuất lực tối đa",
+  "levelslash": "level slash",
+  "ls": "level slash",
+  "focusspirit": "focus spirit",
+  "fsp": "focus spirit",
+  "upstandingslash": "upstanding slash",
+  "us": "upstanding slash",
+  "greatsplitvertical": "great split vertical",
+  "gsv": "great split vertical",
+  "greatsplithorizontal": "great split horizontal",
+  "gsh": "great split horizontal",
+  "dimensionalriftdagger": "dimensional rift dagger",
+  "drd": "dimensional rift dagger",
+  "dimensionalriftgauntlets": "dimensional rift gauntlets",
+  "drg": "dimensional rift gauntlets",
+  "sharpcuts": "sharp cuts",
+  "sc": "sharp cuts",
+  "chargeshield": "charge shield",
+  "cs": "charge shield",
+  "overchargedripple": "overcharged ripple",
+  "ocr": "overcharged ripple",
+  "moonspittingdraw": "moon-splitting draw",
+  "moonsplittingdraw": "moon-splitting draw",
+  "msd": "moon-splitting draw",
+  "redplumblossomscatter": "red plum blossom scatter",
+  "rpbs": "red plum blossom scatter",
+  "yieldmyflesh": "yield my flesh",
+  "ymf": "yield my flesh",
+  "toclaimtheirbones": "to claim their bones",
+  "tctb": "to claim their bones",
+  // New skills
+  "dissecttarget": "dissect target",
+  "dt": "dissect target",
+  "sandsplit": "sand split",
+  "mirageincision": "mirage incision",
+  "mi": "mirage incision",
+  "khopeshswordplay": "khopesh swordplay",
+  "ks": "khopesh swordplay",
+  "bladewhirl": "blade whirl",
+  "bw": "blade whirl",
+  "clientprotection": "client protection",
+  "cp": "client protection",
+  "lawandorder": "law and order",
+  "lao": "law and order",
+  "augurycrusher": "augury crusher",
+  "auginfusion": "augury infusion",
+  "ai": "augury infusion",
+  "augurykick": "augury kick",
+  "ak": "augury kick",
+  "celestialsight": "celestial sight",
+  "lupineonslaught": "lupine onslaught",
+  "lo": "lupine onslaught",
+  "kickandstomps": "kick and stomps",
+  "kas": "kick and stomps",
+  "rapaciousassault": "rapacious assault",
+  "ra": "rapacious assault",
+  "pitchblackpulverizer": "pitch-black pulverizer",
+  "pbp": "pitch-black pulverizer",
+  "cloudcutter": "cloud cutter",
+  "cc": "cloud cutter",
+  "skyclearingcut": "sky clearing cut",
+  "scc": "sky clearing cut",
+  "darkcloudcleaver": "dark cloud cleaver",
+  "dcc": "dark cloud cleaver",
+  "soberup": "sober up",
+  "shadowcloudkick": "shadowcloud kick",
+  "sck": "shadowcloud kick",
+  "silentmist": "silent mist",
+  "somberprocuration": "somber procuration",
+  "spro": "somber procuration",
+  "trashdisposal": "trash disposal",
+  "td": "trash disposal",
+  "bladeflourish": "blade flourish",
+  "bf": "blade flourish",
+  // Degraded Fairy skills
+  "degradedfairy": "degraded fairy",
+  "dfa": "degraded fairy",          // "df" cũ đổi sang "dfa" để tránh nhầm với magic bullet df
+  "degradedpillar": "degraded pillar",
+  "dp": "degraded pillar",
+  "degradedlock": "degraded lock",
+  "dl": "degraded lock",
+  "degradedshockwave": "degraded shockwave",
+  "ds": "degraded shockwave",
+  "apocalypse": "apocalypse",
+  "apo": "apocalypse",
+  // Magic Bullet Der Freischütz aliases — "df" được dành riêng cho skill này
+  "df": "magic bullet df",
+  "mdf": "magic bullet df",
+  "mbdf": "magic bullet df",
+  "magicbulletdf": "magic bullet df",
+  // Lævateinn
+  "lævateinn": "laevateinn",
+  "la": "laevateinn",
+  "lapassive": "laevateinn",
+  "stomping": "stomping",
+  "illgutyoulikeafish": "ill gut you like a fish",
+  "ilgutfish": "ill gut you like a fish",
+  "igylaf": "ill gut you like a fish",
+  "dontletthisbreakme": "dont let somethin like this break you",
+  "dontletbreakyou": "dont let somethin like this break you",
+  "dlbky": "dont let somethin like this break you",
+  "gutstablaevateinn": "gut stab laevateinn",
+  "gutstabla": "gut stab laevateinn",
+  "gsla": "gut stab laevateinn",
+  "stampmaximum": "stamp of vengeance maximum",
+  "sovm": "stamp of vengeance maximum",
+  "stampmaxlaevateinn": "stamp of vengeance maximum",
+  "catelaevateinn": "complete and total extermination laevateinn",
+  "catela": "complete and total extermination laevateinn",
+  "goodgirl": "good girl your sacrifice for the family wont be forgotten",
+  "yoursacrifice": "good girl your sacrifice for the family wont be forgotten",
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── NEW SKILLS (thêm vào đây khi có skill mới) ─────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Weapon Criticals (mới) ──
+Object.assign(SKILLS, {
+
+  // ── Illusory Land of Great Void ──
+  "whirlwind": {
+    name: "Whirlwind", weaponOf: "Illusory Land of Great Void", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,10), d2 = r(10,14);
+      return [
+        `*Nếu turn trước không nhận sát thương: cả 2 Dice của Critical đều nhận 2 <:DiceUp:1513767795681398894>Dice Up*`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D2} **${d2}** — Gây 2 <:Sinking:1513762793436741652>Sinking và 2 <:Rupture:1513762812722155682>Rupture [<:Slash:1513768633434640517>Slash]`,
+      ];
+    },
+  },
+
+  // ── Lucent Historia ──
+  "designant.": {
+    name: "Designant.", weaponOf: "Lucent Historia", tags: "Weapon",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `*Bản thân và tất cả đồng đội nhận 30 Shield HP, rồi chỉ định một đồng đội hoặc chính bản thân.*`,
+        `*Người được chỉ định sẽ nhận Shield HP bằng 50% Max HP của người dùng và 1 <:DiceUp:1513767795681398894>Dice Up đến hết turn.*`,
+      ];
+    },
+  },
+  "astral quantization": {
+    name: "Astral Quantization", weaponOf: "Lucent Historia", tags: "Weapon",
+    cost: "—", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const dice = r(1, 50);
+      return [
+        `*Chỉ định một đồng đội có Shield HP. Cuối turn, gây sát thương lên một đối thủ bằng **${dice}%** DMG mà đồng đội đó đã gây ra trong turn này.*`,
+        `[<:Slash:1513768633434640517>Slash]`,
+      ];
+    },
+  },
+
+  // ── РАСКО́Л ──
+  "slay": {
+    name: "Slay", weaponOf: "РАСКО́Л", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6,8), d2 = r(8,10), d3 = r(10,12), d4 = r(12,14);
+      return [
+        `*Nếu bản thân dưới 0 Sanity: toàn bộ Dice nhận +1 <:DiceUp:1513767795681398894>Dice Up*`,
+        `*Nếu kẻ địch có ≥6 <:Bleed:1513762688226955285>Bleed: toàn bộ Dice nhận 20% Dmg Up*`,
+        `${D1} **${d1}** — Gây 1 <:Bleed:1513762688226955285>Bleed (turn kế) [<:Slash:1513768633434640517>Slash]`,
+        `${D2} **${d2}** — Gây 1 <:Bleed:1513762688226955285>Bleed (turn kế) [<:Slash:1513768633434640517>Slash]`,
+        `${D3} **${d3}** — Gây 1 <:Bleed:1513762688226955285>Bleed (turn kế) [<:Slash:1513768633434640517>Slash]`,
+        `${D4} **${d4}** — Gây 1 <:Bleed:1513762688226955285>Bleed (turn kế) [<:Slash:1513768633434640517>Slash]`,
+      ];
+    },
+  },
+
+  // ── Nyoibo ──
+  "one inch punch": {
+    name: "One Inch Punch", weaponOf: "Nyoibo [Tay không]", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,17);
+      return [
+        `${D1} **${d1}** — Chắc chắn Crit [<:Blunt:1513768529718022254>Blunt] [Guard Break]`,
+      ];
+    },
+  },
+  "power pole extend": {
+    name: "Power Pole: Extend", weaponOf: "Nyoibo [Gậy]", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "2x",
+    roll() {
+      const d2 = r(11,13);
+      return [
+        `${D2} **${d2}** — Phóng dài gậy như ý rồi càn quét kẻ địch [<:Blunt:1513768529718022254>Blunt] [AOE]`,
+      ];
+    },
+  },
+
+  // ── WALPURGISNACHT ──
+  "drilling stab": {
+    name: "Drilling Stab", weaponOf: "WALPURGISNACHT", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,9), d2 = r(11,13);
+      return [
+        `${D1} **${d1}** — Gây 10 <:Fragile:1513763336167100536>Fragile và 1 <:Paralyze:1513763316479295548>Paralyze [<:Pierce:1513768511179329556>Pierce]`,
+        `${D2} **${d2}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down [<:Pierce:1513768511179329556>Pierce]`,
+      ];
+    },
+  },
+
+  // ── EGO Pages (ZAYIN) ──
+  "crow's eye view": {
+    name: "Crow's Eye View", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(18,24);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down, 2 <:Bind:1513768025881317457>Bind và toàn bộ đồng minh nhận 3 <:Haste:1513768004222062632>Haste turn kế [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable]`,
+        `*[After Use] E.G.O Passive **Silence**: khi bị tấn công turn kế sẽ nhận 3 <:Bind:1513768025881317457>Bind và tăng 20% Dmg Up*`,
+        `*__Utter to me what you think the ideal is.__*`,
+      ];
+    },
+  },
+  "la sangre de sancho": {
+    name: "La Sangre De Sancho", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(14,26);
+      return [
+        `${D1} **${d1}** — Gây 8 <:Bleed:1513762688226955285>Bleed và hồi HP bằng 50% Damage gây ra`,
+        `*[After Use] E.G.O Passive **Immoderate Passion**: mỗi khi tấn công kẻ địch có <:Bleed:1513762688226955285>Bleed, hồi 3 HP*`,
+        `*__Gallop on, Rocinante! Justice shall prevail!__*`,
+      ];
+    },
+  },
+  "representation emitter": {
+    name: "Representation Emitter", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(19,23);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** — Đập cán chổi xuống mặt đất tạo xung chấn, sau đó hồi 12 Sanity cho 4 đồng minh có Sanity thấp nhất [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [AOE 3 người]`,
+        `*[After Use] E.G.O Passive **Ennui**: nếu kẻ địch bị Stagger, 3 đồng minh có Sanity thấp nhất hồi 20 Sanity*`,
+        `*__Faust knows all outcomes.__*`,
+      ];
+    },
+  },
+  "land of illusion": {
+    name: "Land of Illusion", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
+    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(15,25);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** — Gây 5 <:Sinking:1513762793436741652>Sinking, bản thân hồi 15 Sanity và đồng đội hồi 5 Sanity [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [AOE 3 người]`,
+        `*[After Use] E.G.O Passive **Ripple**: mỗi đầu turn, hồi 5 Sanity cho đồng đội ngẫu nhiên có Sanity thấp nhất*`,
+        `*__Let's visit the world of wonders.__*`,
+      ];
+    },
+  },
+
+  // ── Heat Skills ──
+  "dragon choke impact": {
+    name: "Dragon Choke Impact", tags: "Heat",
+    cost: "3 Heat Gauge", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(65,78), d2 = r(70,80), d3 = r(75,80);
+      return [
+        `${D1} **${d1}** — Tung combo đấm liên tiếp vào bụng và ngực đối thủ, gây 12 <:Tremor:1513762737388257380>Tremor [<:Blunt:1513768529718022254>Blunt]`,
+        `${D2} **${d2}** — Kết thúc bằng cú quật mạnh xuống đất, gây 10 <:Fragile:1513763336167100536>Fragile [<:Blunt:1513768529718022254>Blunt]`,
+        `*Nếu Heat Gauge ≥4: thêm ${D3} **${d3}** — gây <:TremorBurst:1513802464632246352>Tremor Burst (đối thủ không thể tấn công trong 1 turn kế)*`,
+      ];
+    },
+  },
+  "arm lock": {
+    name: "Arm Lock", tags: "Heat",
+    cost: "1 Heat Gauge", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(22,28);
+      return [
+        `${D1} **${d1}** — Khóa vai đối thủ, gây 6 <:Tremor:1513762737388257380>Tremor và **[Grab]** [<:Blunt:1513768529718022254>Blunt] [Unblockable]`,
+      ];
+    },
+  },
+  "inverted cross arm wrench": {
+    name: "Inverted Cross Arm Wrench", tags: "Heat",
+    cost: "2 Heat Gauge", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(40,55);
+      return [
+        `${D1} **${d1}** — Khóa tay theo thế Jiu-Jitsu, gây 8 <:Tremor:1513762737388257380>Tremor và **[Grab]** [<:Blunt:1513768529718022254>Blunt] [Unblockable]`,
+      ];
+    },
+  },
+  "knee break": {
+    name: "Knee Break", tags: "Heat",
+    cost: "1 Heat Gauge", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(20,23);
+      return [
+        `${D1} **${d1}** — Bẻ gối đối thủ, gây 6 <:Tremor:1513762737388257380>Tremor [<:Blunt:1513768529718022254>Blunt]`,
+        `*Nếu đối thủ bị **[Grab]**: gây <:TremorBurst:1513802464632246352>Tremor Burst và Dice 1 trở thành 2x Dice Mul*`,
+      ];
+    },
+  },
+  "true reverse drop": {
+    name: "True Reverse Drop", tags: "Heat",
+    cost: "2 Heat Gauge", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(15,17);
+      return [
+        `${D1} **${d1}** — Tóm lấy đối thủ từ phía trước, xoay người và quật ngửa xuống đất. Gây **[Grab]** cho turn này và turn sau, và gây 10 <:Fragile:1513763336167100536>Fragile [<:Blunt:1513768529718022254>Blunt]`,
+      ];
+    },
+  },
+  "crippling crossface": {
+    name: "Crippling Crossface", tags: "Heat",
+    cost: "2 Heat Gauge", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(42,56);
+      return [
+        `${D1} **${d1}** — Khóa tay + cổ, gây 10 <:Fragile:1513763336167100536>Fragile và **[Grab]** [<:Blunt:1513768529718022254>Blunt] [Unblockable]`,
+      ];
+    },
+  },
+  "midline triple thrust": {
+    name: "Midline Triple Thrust", tags: "Heat",
+    cost: "2 Heat Gauge", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(62,76);
+      return [
+        `${D1} **${d1}** — Ba cú đâm karate liên tiếp vào bụng, ngực, mặt. Gây tổng cộng 12 <:Tremor:1513762737388257380>Tremor và 10 <:Fragile:1513763336167100536>Fragile [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Undodgeable]`,
+      ];
+    },
+  },
+  "lightning back kick": {
+    name: "Lightning Back Kick", tags: "Heat",
+    cost: "2 Heat Gauge", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(44,59);
+      return [
+        `${D1} **${d1}** — Đá ngược bụng đối thủ, gây 8 <:Tremor:1513762737388257380>Tremor [<:Blunt:1513768529718022254>Blunt] [Undodgeable]`,
+        `*Nếu Heat ≥3: thêm 6 <:Tremor:1513762737388257380>Tremor và x1.5 Dice Mul*`,
+      ];
+    },
+  },
+  "aiki mugen throw": {
+    name: "Aiki Mugen Throw", tags: "Heat",
+    cost: "3 Heat Gauge", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(65,78), d2 = r(70,80);
+      return [
+        `${D1} **${d1}** — Loạt đòn ném Aiki-nage liên tiếp, gây 12 <:Tremor:1513762737388257380>Tremor và **[Grab]** [<:Blunt:1513768529718022254>Blunt] [Unblockable]`,
+        `${D2} **${d2}** — Kết thúc bằng cú quật mạnh, gây 10 <:Fragile:1513763336167100536>Fragile [<:Blunt:1513768529718022254>Blunt] [Guard Break]`,
+      ];
+    },
+  },
+  "head crash": {
+    name: "Head Crash", tags: "Heat",
+    cost: "2 Heat Gauge", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(40,55);
+      return [
+        `${D1} **${d1}** — Đập đầu đối thủ xuống đất, gây 8 <:Tremor:1513762737388257380>Tremor [<:Blunt:1513768529718022254>Blunt]`,
+        `*Nếu kẻ địch bị Stagger: thêm 10 <:Fragile:1513763336167100536>Fragile trước khi gây Dmg và 1.5x Dice Mul*`,
+      ];
+    },
+  },
+  "mounted punch rush": {
+    name: "Mounted Punch Rush", tags: "Heat",
+    cost: "3 Heat Gauge", cd: "5 Turn", diceMul: "1.5x",
+    roll() {
+      const d1 = r(65,78), d2 = r(68,80), d3 = r(70,80);
+      return [
+        `${D1} **${d1}** — Hạ gục đối thủ xuống đất [<:Blunt:1513768529718022254>Blunt]`,
+        `${D2} **${d2}** — Loạt đấm liên hoàn, gây 12 <:Tremor:1513762737388257380>Tremor [<:Blunt:1513768529718022254>Blunt]`,
+        `${D3} **${d3}** — Tung 1 đấm chí mạng, thêm 8 <:Fragile:1513763336167100536>Fragile và <:TremorBurst:1513802464632246352>Tremor Burst [<:Blunt:1513768529718022254>Blunt]`,
+      ];
+    },
+  },
+  "reverse lift up slam": {
+    name: "Reverse Lift Up Slam", tags: "Heat",
+    cost: "2 Heat Gauge", cd: "4 Turn", diceMul: "1.5x",
+    roll() {
+      const d1 = r(42,55);
+      return [
+        `${D1} **${d1}** — Nhấc đối thủ lên rồi quật mạnh xuống lưng. Gây 10 <:Tremor:1513762737388257380>Tremor và **[Grab]** [<:Blunt:1513768529718022254>Blunt]`,
+      ];
+    },
+  },
+
+  // ── Follow-Up Skills (kích hoạt sau đòn đánh thứ 4 mỗi turn) ──
+  "follow-up": {
+    name: "Follow-Up",
+    cost: "-", cd: "—", diceMul: "1x",
+    incompatibleWith: ["pounce"],
+    keywords: ["follow-up", "airborne", "blunt", "4th hit"],
+    roll() {
+      const d1 = r(10, 14);
+      return [
+        `*Kích hoạt sau đòn đánh thứ 4 mỗi turn — Không thể tồn tại chung với **Pounce***`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây [Airborne]`,
+      ];
+    },
+  },
+  "pounce": {
+    name: "Pounce",
+    cost: "-", cd: "—", diceMul: "1x",
+    incompatibleWith: ["follow-up"],
+    keywords: ["pounce", "blunt", "4th hit"],
+    roll() {
+      const d1 = r(8, 30);
+      return [
+        `*Kích hoạt sau đòn đánh thứ 4 mỗi turn — Không thể tồn tại chung với **Follow-Up***`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+      ];
+    },
+  },
+
+  // ── Weapon Criticals ──
+  "for justice": {
+    name: "For Justice!!!",
+    weaponOf: "Sueño Imposible",
+    weaponType: "Medium", weaponDmg: "12 <:Pierce:1513768511179329556>Pierce",
+    passive: "**Big Wound** — Khi kẻ địch trên 10 <:Bleed:1513762688226955285>Bleed: gây x1 cho Res dưới 1; nếu Res trên 1 tăng thêm 0,2 Res",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(6,9), d3 = r(9,12);
+      return [
+        `*Khi full Stamina: toàn bộ Dice của skill nhận được 2 <:DiceUp:1513767795681398894>Dice Up*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Bleed:1513762688226955285>Bleed vào turn kế`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed vào turn kế`,
+        `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed vào turn kế`,
+      ];
+    },
+  },
+  // ── Blade Lineage Hwando ──
+  "blade lineage hwando": {
+    name: "Blade Lineage Hwando", tags: "Weapon",
+    weaponType: "Medium", weaponDmg: "13 <:Slash:1513768633434640517>Slash",
+    passive: "**Poised** — Khi <:Poise:1513762945715142736>Poise ≥ 10: tiêu thụ một nửa <:Poise:1513762945715142736>Poise hiện có, cộng vào base dmg của đòn một lượng bằng số <:Poise:1513762945715142736>Poise đã tiêu thụ × 2",
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên skill cụ thể để roll)*`]; },
+  },
+  "striker's stance": {
+    name: "Striker's Stance",
+    weaponOf: "Blade Lineage Hwando",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6, 13);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Nhận 5 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "heel turn": {
+    name: "Heel Turn",
+    weaponOf: "Blade Lineage Hwando",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7, 9), d2 = r(9, 11);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Nhận 3 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Nhận 3 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+  "flank thrust": {
+    name: "Flank Thrust",
+    weaponOf: "Blade Lineage Hwando",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8, 10), d2 = r(10, 12), d3 = r(12, 14);
+      return [
+        `*3 Dice của đòn này được tăng thêm 0.7x Crit Mul*`,
+        `${D1} **${d1}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
+      ];
+    },
+  },
+
+  // Halberd VOGEL
+  "ravaging cut": {
+    name: "Ravaging Cut",
+    weaponOf: "Halberd VOGEL",
+    weaponType: "Heavy", weaponDmg: "25",
+    passive: "**Break the Shell** — Sau khi có một đồng minh Stagger hoặc chết: nhận 10% damage (max 3 lần)",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,8), d2 = r(8,11), d3 = r(11,14);
+      return [
+        `${D1} *Khi skill này clash thắng: nhận được 1 <:DiceUp:1513767795681398894>Dice Up cho toàn bộ Dice*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gắn 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gắn 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gắn 2 <:Rupture:1513762812722155682>Rupture`,
+      ];
+    },
+  },
+
+  // ── Scorch Propellant Round line (Savage Double/Triple Slash, Blasting Shatterslash, Tanglecleaver Flurry) ──
+  "savage double slash": {
+    name: "Savage Double Slash", tags: "Burn/Tremor",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(2,4), d2 = r(3,5);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **Scorch Propellant Round** sau khi sử dụng`,
+      ];
+    },
+  },
+  "savage triple slash": {
+    name: "Savage Triple Slash", tags: "Burn/Tremor",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(1,5), d2 = r(3,8), d3 = r(3,9);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Gây 2 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn, <:Tremor:1513762737388257380>Tremor và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **Scorch Propellant Round** sau khi sử dụng`,
+      ];
+    },
+  },
+  "blasting shatterslash": {
+    name: "Blasting Shatterslash", tags: "Burn/Tremor",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,6), d2 = r(4,8), d3 = r(8,11);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Tiêu 1 Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+      ];
+    },
+  },
+  "tanglecleaver flurry": {
+    name: "Tanglecleaver Flurry", tags: "Burn/Tremor",
+    cost: "5 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(5,7), d3 = r(5,5);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst *(nếu có trên hoặc bằng 15 Stack **Scorch Propellant Round**)*. Tiêu toàn bộ Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **Scorch Propellant Round** được xả`,
+      ];
+    },
+  },
+
+  // ── Tiantui Star's Blade [天退星刀] ──
+  "tiantui star's blade": {
+    name: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    weaponType: "Medium", weaponDmg: "14 [<:Slash:1513768633434640517>Slash]",
+    passive: "**Reloading Tiantui Star's Blade** — Khi sử dụng <:Shin:1507591140180754588>Shin và dùng **Tiantui Star's Blade Reload**, bạn nhận được và chuyển hóa toàn bộ **Tigermark Round** hiện có qua **Savage Tigermark Round**",
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "tiantui triple slash blast" hoặc "tiantui savage tigerslayer flurry")*`]; },
+  },
+  "triple slash blast": {
+    name: "Triple Slash Blast [爆]",
+    weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "1.75x",
+    roll() {
+      const d1 = r(10,15);
+      return [
+        `${D1} *Tiêu thụ toàn bộ **Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng. Nếu có trên hoặc bằng 6 **Tigermark Round**: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch`,
+      ];
+    },
+  },
+  "savage tigerslayer flurry": {
+    name: "Savage Tigerslayer's Perfected Flurry of Blades [超絕猛虎殺擊亂斬]",
+    weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    cost: "—", cd: "2 Turn", diceMul: "2.25x",
+    roll() {
+      const d1 = r(5,7), d2 = r(5,7), d3 = r(10,13), d4 = r(8,9), d5 = r(5,7), d6 = r(20,21);
+      return [
+        `*Điều kiện: dùng ngay sau **Triple Slash Blast [爆]** và có ít nhất 10 **Savage Tigermark Round** trên người*`,
+        `${D1} *Tiêu thụ toàn bộ **Savage Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn, 1 <:Tremor:1513762737388257380>Tremor tương ứng vào Dice cuối*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó tiếp tục chém, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Vận lực lấy đà lùi phía sau một chút rồi chém ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó bổ dọc xuống, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D5} **${d5}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Rồi vung ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
+        `${D6} **${d6}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [AOE 4 người] — Khuỵu gối xuống vận lực, nổ ga lần cuối nữa rồi nhảy bổ lên bổ thanh kiếm xuống kẻ địch, gây 6 <:Tremor:1513762737388257380>Tremor, <:Burn:1513762753691652177>Burn và <:TremorBurst:1513802464632246352>Tremor Burst 2 lần`,
+      ];
+    },
+  },
+  "tanglecleaver reload": {
+    name: "Tanglecleaver Reload",
+    weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,10);
+      return [
+        `*Chỉ sử dụng được khi dùng vũ khí **Tiantui Star's Blade [天退星刀]** và Outfit **The Thumb Capo IIII** (Page này không tốn slot)*`,
+        `${D1} **${d1}** — Ngắt một đòn của kẻ địch thông qua \`-rtparry\`, sau đó nạp **Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra *(nếu \`-rtparry\` thất bại thì vẫn nạp đạn được)*`,
+      ];
+    },
+  },
+
+  // ── Serum K (Singularity) ──
+  "serum k": {
+    name: "Serum K", tags: "Singularity",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,16);
+      const heal = d1 * 2 + 25;
+      return [
+        `${D1} **${d1}** — Hồi phục **${heal} HP** (= số dice × 2 + 25) và giải 3 Debuff bất kỳ của bản thân`,
+      ];
+    },
+  },
+
+  // ── Ages of Harvest [Peach Blossom] ──
+  "ages of harvest": {
+    name: "Ages of Harvest [Peach Blossom]", tags: "Weapon",
+    weaponType: "Light", weaponDmg: "1.7 [<:Slash:1513768633434640517>Slash]",
+    passive: [
+      `**Phi kiếm** — Đòn đánh thường chỉ tốn 1 Stamina thay vì 5 *(cần đánh thường trúng 20 lần để được 1 <:Light:1513786082502770719>Light)*`,
+      `**Divine Blessing** — Khi sử dụng kỹ năng từ Tacet Mark, đòn khạc luôn gây 1x Res lên kẻ địch nếu nó đang dưới 1x Res`,
+    ].join("\n"),
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "trailing blade")*`]; },
+  },
+
+  // ── Fused Blade of Ruined Mirror Worlds ──
+  // Weapon entry cho passive "Dullahan" — đã được nhiều skill khác (Beheading, Smackdown,
+  // v.v.) tham chiếu qua flavor text "Nếu đang dùng Fused Blade: nhận X Coffin" từ trước,
+  // nhưng chưa từng có entry chính thức. Critical thật (Requiem, Lament Mourn and Despair)
+  // đã tồn tại sẵn — chỉ update thêm tag [Unblockable]/[Undodgeable]/[Guard Break] còn thiếu.
+  "fused blade of ruined mirror worlds": {
+    name: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
+    weaponType: "Heavy", weaponDmg: "28 [<:Slash:1513768633434640517>Slash]",
+    passive: `**Dullahan** — Parry thành công khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan**. Khi có **Dullahan**: nhận 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
+    cost: "—", cd: "—", diceMul: "—",
+    roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "requiem" hoặc "lament mourn and despair")*`]; },
+  },
+
+  // ── Vengeance Retaliation ──
+  // Dice2 (khi CÓ nhận sát thương) KHÔNG có base — giá trị THUẦN từ công thức
+  // ceil(%HP mất × 2.5), tối đa 50 (tại mốc 20% HP, chính chủ xác nhận). Dice1 [2~4]
+  // chỉ dùng khi KHÔNG có sát thương nào (hpLossPct = 0). Hiệu ứng nền (5 Fragile,
+  // 6 Bleed, 3 Paralyze) áp dụng CẢ 2 nhánh; Dice2 cộng thêm 7 Fragile + 2 Paralyze
+  // (gộp thành 12 Fragile / 5 Paralyze cho gọn, Bleed giữ 6 vì không có bonus riêng).
+  "vengeance retaliation": {
+    name: "Vengeance Retaliation",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    promptArg: {
+      label: "% HP đã mất",
+      parse: (s) => parseFloat(s),
+      validate: (v) => !isNaN(v) && v >= 0 && v <= 100,
+      errorMsg:
+        "❓ **Vengeance Retaliation** cần nhập % HP đã mất kể từ lần dùng skill trước (0 nếu không mất gì).\n" +
+        "> Cú pháp: `-skill vengeance retaliation <%>`\n" +
+        "> VD: `-skill vr 0` (không mất dmg) | `-skill vr 15` (mất 15% HP)",
+      buildHeader: (v, s) => `[${s.cost}] [CD: ${s.cd}] [HP mất: ${v}%]`,
+    },
+    roll(hpLossPct = 0) {
+      const intro =
+        `*Lượt kế tiếp sẽ vào trạng thái khi nhận càng nhiều sát thương, sát thương đầu ra càng cao ` +
+        `(Mỗi 1% Mất tăng thêm 2.5 Dice Value cho Dice 2, làm tròn lên nếu lẻ) (Max: 20% Hp). ` +
+        `Lượt tiếp theo: Tụ lực vào nắm đấm tấn công kẻ địch.*`;
+      if (hpLossPct <= 0) {
+        const d1 = r(2, 4);
+        return [
+          intro,
+          `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Không có sát thương nào — gây 5 <:Fragile:1513763336167100536>Fragile, 6 <:Bleed:1513762688226955285>Bleed và 3 <:Paralyze:1513763316479295548>Paralyze turn kế`,
+        ];
       }
-    }
-    const itemsRaw = kv["items"] ?? null;
-    const itemEntries = [];
-    if (itemsRaw) {
-      const parts = itemsRaw.split(",").map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        const match = part.match(/^(.+?)\s+(\+?)x(\d+)$/i);
-        if (!match) {
-          message.reply(`❌ Định dạng vật phẩm sai: \`${part}\`\nĐúng: \`Tên Item x<số>\` hoặc \`Tên Item +x<số>\` (VD: \`Tên Item x2\` hoặc \`Tên Item +x2\`)`);
-          return;
-        }
-        const itemName = findItemAdmin(match[1].trim());
-        if (!itemName) {
-          message.reply(`❌ Tên vật phẩm không hợp lệ hoặc quá dài: \`${match[1].trim()}\``);
-          return;
-        }
-        itemEntries.push({ name: itemName, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
-      }
-    }
-    const expAddRaw = kv["exp"] ?? null;
-    const ahnAddRaw = kv["ahn"] ?? null;
-    const expIsAdd = expAddRaw && expAddRaw.startsWith("+");
-    const ahnIsAdd = ahnAddRaw && ahnAddRaw.startsWith("+");
-    const expValue = expAddRaw ? parseInt(expAddRaw.replace("+", ""), 10) || 0 : null;
-    const ahnValue = ahnAddRaw ? parseInt(ahnAddRaw.replace("+", ""), 10) || 0 : null;
-    const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
-    if (gradeTarget !== null && (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN)) {
-      message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
-      return;
-    }
-    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0) {
-      message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`, `items`.\n> Thêm `+` trước số để cộng thêm, VD: `exp: +50`");
-      return;
-    }
-
-    const results = await Promise.allSettled(
-      targetUsers.map(targetUser =>
-        withLock(targetUser.id, async () => {
-          const { data, slot } = await getPlayerDataWithSlot(targetUser.id);
-          data.books = data.books ?? {};
-          data.items = data.items ?? {};
-          const changes = [];
-          if (gradeTarget !== null) {
-            const expNeeded = calcExpForGrade(gradeTarget);
-            data.exp = expNeeded;
-            changes.push(`Grade → **Grade ${gradeTarget}** (EXP = **${expNeeded}**)`);
-          } else if (expValue !== null) {
-            if (expIsAdd) {
-              const before = data.exp ?? 0;
-              data.exp = clampExp(before + expValue);
-              changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]`);
-            } else {
-              data.exp = clampExp(expValue);
-              changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]`);
-            }
-          }
-          if (ahnValue !== null) {
-            if (ahnIsAdd) {
-              const before = data.ahn ?? 0;
-              data.ahn = Math.max(0, before + ahnValue);
-              changes.push(`Ahn +${formatNumber(ahnValue)} (${formatNumber(before)} → **${formatNumber(data.ahn)}**)`);
-            } else {
-              data.ahn = Math.max(0, ahnValue);
-              changes.push(`Ahn set → **${formatNumber(data.ahn)}**`);
-            }
-          }
-          if (bookEntries.length > 0) {
-            for (const { name, count, isAdd } of bookEntries) {
-              data.books[name] = isAdd ? (data.books[name] ?? 0) + count : count;
-            }
-            changes.push(`Sách:\n` + bookEntries.map(e => `> • 📚 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
-          }
-          if (itemEntries.length > 0) {
-            for (const { name, count, isAdd } of itemEntries) {
-              data.items[name] = isAdd ? (data.items[name] ?? 0) + count : count;
-            }
-            changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
-          }
-          await savePlayerData(targetUser.id, data, slot);
-          return changes;
-        })
-      )
-    );
-
-    const lines = results.map((r, i) => {
-      const user = targetUsers[i];
-      if (r.status === "fulfilled") {
-        const changes = r.value;
-        return `✅ **${user.username}**:\n` + changes.map(c => `> ${c}`).join("\n");
-      } else {
-        log("error", "setplayer", user.id, r.reason?.message, { actor: message.author.id });
-        return `❌ **${user.username}**: ${r.reason?.message ?? "Lỗi không xác định"}`;
-      }
-    });
-
-    const body = `📋 Kết quả \`-setplayer\` cho ${targetUsers.length} người:\n\n` + lines.join("\n\n");
-    if (body.length > 2000) {
-      const chunks = [];
-      let current = "";
-      for (const line of lines) {
-        if ((current + "\n\n" + line).length > 1900) {
-          chunks.push(current);
-          current = line;
-        } else {
-          current = current ? current + "\n\n" + line : line;
-        }
-      }
-      if (current) chunks.push(current);
-      await message.reply(chunks[0]);
-      for (let i = 1; i < chunks.length; i++) {
-        await message.channel.send(chunks[i]);
-      }
-    } else {
-      message.reply(body);
-    }
-    return;
-  }
-
-  // ── -use ──
-  if (message.content.startsWith("-use")) {
-    if (isOnCooldown(message.author.id, "use", 2000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
-      return;
-    }
-    const userId = message.author.id;
-    const rawInput = message.content.replace("-use", "").trim();
-    if (!rawInput) {
-      message.reply(
-        "❌ Cú pháp: `-use <tên vật phẩm> [count: <số>]`\n" +
-        "> VD: `-use Chipboard MK2` — craft 1 cái\n" +
-        "> VD: `-use Chipboard MK3 count: 5` — craft 5 cái\n" +
-        "> Dùng `-recipes` để xem công thức craft."
-      );
-      return;
-    }
-    const countMatch = rawInput.match(/\s+count:\s*(\d+)$/i);
-    const craftCount = countMatch ? Math.max(1, parseInt(countMatch[1], 10) || 1) : 1;
-    const itemInput = countMatch ? rawInput.slice(0, countMatch.index).trim() : rawInput;
-    const itemName = findItem(itemInput);
-    if (!itemName) {
-      message.reply(
-        `❌ Vật phẩm không hợp lệ: \`${itemInput}\`\n` +
-        `Dùng \`-items\` để xem danh sách, \`-recipes\` để xem công thức craft.`
-      );
-      return;
-    }
-    const recipe = CRAFT_RECIPES[itemName];
-    if (!recipe) {
-      message.reply(`❌ **${itemName}** không có công thức craft.\nDùng \`-recipes\` để xem các vật phẩm có thể craft.`);
-      return;
-    }
-    try {
-      // Tách Discord API call ra ngoài withLock: nếu message.reply chậm (network lag,
-      // rate limit), lock TTL có thể hết hạn trong khi vẫn đang giữ lock, cho phép
-      // concurrent operation trên cùng userId. executeCraft chỉ cần Redis — giữ trong lock.
-      const { outputLines, costLines } = await withLock(userId, () =>
-        executeCraft(userId, itemName, craftCount)
-      );
-      message.reply(
-        `⚒️ ${message.author} đã craft thành công!\n` +
-        `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
-        `> 📦 Nguyên liệu đã dùng:\n` +
-        costLines.map(l => `> ${l}`).join("\n")
-      );
-    } catch (err) {
-      log("error", "use", userId, err.message);
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`);
-    }
-    return;
-  }
-
-  // ── -recipes ──
-  if (message.content.startsWith("-recipes")) {
-    const recipeLines = Object.entries(CRAFT_RECIPES).map(([output, recipe]) => {
-      const inputStr = Object.entries(recipe.inputs).map(([mat, qty]) => `${qty}× ${mat}`).join(" + ");
-      const outputQty = recipe.output[output];
-      return `\`${inputStr}\` → **${outputQty}× ${output}**`;
-    });
-    message.reply({
-      embeds: [{
-        title: "⚒️ Công thức Craft",
-        color: 0xe74c3c,
-        description: recipeLines.join("\n"),
-        footer: { text: "Dùng -use <tên vật phẩm> [count: <số>] để craft" },
-      }],
-    });
-    return;
-  }
-
-  // ── -books ──
-  if (message.content.startsWith("-books")) {
-    const cols = 2;
-    const half = Math.ceil(VALID_BOOKS.length / cols);
-    const col1 = VALID_BOOKS.slice(0, half).map((b, i) => `\`${i + 1}.\` ${b}`);
-    const col2 = VALID_BOOKS.slice(half).map((b, i) => `\`${half + i + 1}.\` ${b}`);
-    message.reply({
-      embeds: [{
-        title: "📚 Danh sách sách hợp lệ",
-        color: 0x2ecc71,
-        fields: [
-          { name: "​", value: col1.join("\n"), inline: true },
-          { name: "​", value: col2.join("\n"), inline: true },
-        ],
-        footer: { text: `Tổng cộng ${VALID_BOOKS.length} loại sách` },
-      }],
-    });
-    return;
-  }
-
-  // ── -items ──
-  if (message.content.startsWith("-items")) {
-    const lines = VALID_ITEMS.map((item, i) => `\`${i + 1}.\` ${item}`);
-    message.reply({
-      embeds: [{
-        title: "🔩 Danh sách vật phẩm hợp lệ",
-        color: 0xe67e22,
-        description: lines.join("\n"),
-        footer: { text: `Tổng cộng ${VALID_ITEMS.length} loại vật phẩm` },
-      }],
-    });
-    return;
-  }
-
-  // ── -dothihelp ──
-  if (message.content.startsWith("-dothihelp")) {
-    const isAdmin = ADMIN_IDS.has(message.author.id);
-    const generalFields = [
-      { name: "📅 -daily", value: "Nhận phần thưởng điểm danh hàng ngày.\n> `5 EXP + 100k Ahn + 1 Random Book`\n> Streak 7 ngày: thêm `25 EXP + 400k Ahn + 1 Sealed Book Cache`", inline: false },
-      { name: "💼 -balance [@user]", value: "Xem thông tin Grade, EXP, Ahn và tổng kho của bạn hoặc người khác.\n> VD: `-balance` hoặc `-balance @user`", inline: false },
-      { name: "🎒 -inventory [@user]", value: "Xem chi tiết toàn bộ sách và vật phẩm trong kho.\n> VD: `-inventory` hoặc `-inventory @user`", inline: false },
-      { name: "🎁 -give @user [...]", value: ["Chuyển Ahn, sách hoặc vật phẩm cho người khác.", "> `ahn: <số>` — số Ahn muốn chuyển", "> `book: <tên> count: <số>` — sách muốn chuyển", "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển (dùng `itemcount` khi có cả book lẫn item, **bắt buộc** khi có cả hai)", "> VD: `-give @user ahn: 50000`", "> VD: `-give @user book: Random Book count: 2`", "> VD: `-give @user book: Random Book count: 1 item: Chipboard MK1 itemcount: 2`"].join("\n"), inline: false },
-      { name: "🗑️ -remove [...]", value: ["Tự xóa sách hoặc vật phẩm khỏi kho của mình.", "> `book: <tên> count: <số>` — xóa 1 loại sách", "> `item: <tên> itemcount: <số>` — xóa 1 loại vật phẩm", "> `books: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại sách cùng lúc", "> `items: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại vật phẩm cùng lúc", "> VD: `-remove books: Random Book x2, N Corp Book x1`"].join("\n"), inline: false },
-      { name: "⚒️ -use <tên vật phẩm> [count: <số>]", value: ["Craft vật phẩm bằng nguyên liệu trong kho.", "> VD: `-use Chipboard MK2` — craft 1 cái", "> VD: `-use Chipboard MK3 count: 5` — craft 5 cái cùng lúc"].join("\n"), inline: false },
-      { name: "📋 -recipes", value: "Xem toàn bộ công thức craft vật phẩm.", inline: false },
-      { name: "📖 -randombook [số]", value: "Mở Random Book để nhận sách ngẫu nhiên (tối đa 20 lần).\n> VD: `-randombook` hoặc `-randombook 5`", inline: false },
-      { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
-      { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
-      { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
-      { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 30 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
-      { name: "🎯 -rtparry", value: `Parry phản xạ thời gian thực! Bot gửi link riêng cho bạn (\`-rtparry\` qua DM, \`/rtparry\` qua ephemeral) — đo phản ứng chính xác 100% trên trình duyệt, không lẫn latency mạng.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ (${RTPARRY_WINDOW_MS}ms) = ❌ thất bại | Đúng lúc = ✅ thành công`, inline: false },
-      { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `dr: <% DR, VD: 90%>` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus: <Sanity của bản thân>` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise Count (1 Count = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
-      { name: "✨ -dmgbonus <số>", value: "Cho biết % Dmg Bonus thực tế sau khi bị bão hòa.\n> VD: `-dmgbonus 1000`", inline: false },
-      { name: "🛡️ -dr <số>", value: "Cho biết % Damage Reduction thực tế sau khi bị bão hòa.\n> VD: `-dr 1000`", inline: false },
-      { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
-      { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
-    ];
-    const adminFields = [
-      { name: "─────── 🔐 ADMIN ONLY ───────", value: "Các lệnh dưới đây chỉ dành cho admin.", inline: false },
-      { name: "🎁 -give @user (admin)", value: ["Admin có thể tặng EXP, set Grade, và dùng **bất kỳ tên item nào** không cần trong whitelist.", "> `exp: <số>` — tặng EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade trực tiếp", "> `item: <tên bất kỳ> itemcount: <số>` — không cần validate tên (tối đa 100 ký tự)", "> VD: `-give @user item: Sword of Dawn itemcount: 1`"].join("\n"), inline: false },
-      { name: "🗑️ -remove @user (admin)", value: ["Admin có thể xóa EXP, Ahn, sách, hoặc **item bất kỳ** của người khác.", "> `exp:` `ahn:` `book:` `item: <tên bất kỳ>` (tối đa 100 ký tự)", "> `books: <Tên> x<số>, ...` — xóa nhiều sách cùng lúc", "> `items: <Tên bất kỳ> x<số>, ...` — xóa nhiều item cùng lúc (tối đa 100 ký tự/tên)", "> VD: `-remove @user books: Random Book x2, N Corp Book x1`", "> VD: `-remove @user items: Sword of Dawn x1`"].join("\n"), inline: false },
-      { name: "⚙️ -setplayer @user [...]", value: ["Set hoặc cộng thêm dữ liệu của người chơi.", "> `exp: <số>` — set EXP | `exp: +<số>` — cộng thêm EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade", "> `ahn: <số>` — set Ahn | `ahn: +<số>` — cộng thêm Ahn", "> `books: <Tên> x<số>` — set | `+x<số>` — cộng thêm (phải hợp lệ)", "> `items: <Tên bất kỳ> x<số>` — set | `+x<số>` — cộng thêm (tối đa 100 ký tự/tên)", "> VD: `-setplayer @user exp: +50 ahn: +100000`", "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Durandal x2`"].join("\n"), inline: false },
-    ];
-    const fields = isAdmin ? [...generalFields, ...adminFields] : generalFields;
-    message.reply({
-      embeds: [{
-        title: "📖 Danh sách lệnh của bot",
-        color: isAdmin ? 0xe74c3c : 0x5865f2,
-        description: isAdmin ? "Hiển thị đầy đủ bao gồm lệnh admin vì bạn là **Admin** 🔐" : "Dùng các lệnh dưới đây để tương tác với bot.",
-        fields,
-        footer: { text: `EXP tối đa: ${EXP_MAX} (Grade 1 MAX)${isAdmin ? " • Admin mode" : ""}` },
-      }],
-    });
-    return;
-  }
-
-  // ── -chipboardcache ──
-  if (message.content.startsWith("-chipboardcache")) {
-    if (isOnCooldown(message.author.id, "chipboardcache", 3000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
-      return;
-    }
-    const userId = message.author.id;
-    const args = message.content.replace("-chipboardcache", "").trim().split(/\s+/);
-    const { count, error } = parseOpenCount(args[0], OPEN_COUNT_MAX);
-    if (error) { message.reply(error); return; }
-    try {
-      const { success, data, results, partial } = await handleOpenChipboardCache(userId, count);
-      if (!success) { message.reply("❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng."); return; }
-      const desc = buildRollDescription({ user: message.author, cacheType: "Chipboard Cache", results, remainingCount: data.items["Chipboard Cache"] ?? 0 });
-      message.reply({ embeds: [{ title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0xe67e22, description: desc, footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Chipboard Cache nên chỉ mở được ${results.length} lần.` } : undefined }] });
-    } catch (err) {
-      log("error", "chipboardcache", userId, err.message);
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
-    }
-    return;
-  }
-
-  // ── -randomsealedbook ── (phải đứng TRƯỚC -randombook)
-  if (message.content.startsWith("-randomsealedbook")) {
-    if (isOnCooldown(message.author.id, "randomsealedbook", 3000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
-      return;
-    }
-    const userId = message.author.id;
-    const args = message.content.replace("-randomsealedbook", "").trim().split(/\s+/);
-    const { count, error } = parseOpenCount(args[0], OPEN_COUNT_MAX);
-    if (error) { message.reply(error); return; }
-    try {
-      const { success, data, results, partial } = await handleOpenSealedBook(userId, count);
-      if (!success) { message.reply("❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng."); return; }
-      const desc = buildRollDescription({ user: message.author, cacheType: "Sealed Book Cache", results, remainingCount: data.books["Sealed Book Cache"] ?? 0 });
-      message.reply({ embeds: [{ title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x9b59b6, description: desc, footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Sealed Book Cache nên chỉ mở được ${results.length} lần.` } : undefined }] });
-    } catch (err) {
-      log("error", "randomsealedbook", userId, err.message);
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
-    }
-    return;
-  }
-
-  // ── -randombook ──
-  if (message.content.startsWith("-randombook")) {
-    if (isOnCooldown(message.author.id, "randombook", 3000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé.");
-      return;
-    }
-    const userId = message.author.id;
-    const args = message.content.replace("-randombook", "").trim().split(/\s+/);
-    const { count, error } = parseOpenCount(args[0], OPEN_COUNT_MAX);
-    if (error) { message.reply(error); return; }
-    try {
-      const { success, data, results, partial } = await handleOpenRandomBook(userId, count);
-      if (!success) { message.reply("❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng."); return; }
-      const desc = buildRollDescription({ user: message.author, cacheType: "Random Book", results, remainingCount: data.books["Random Book"] ?? 0 });
-      message.reply({ embeds: [{ title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`, color: 0x2ecc71, description: desc, footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Random Book nên chỉ mở được ${results.length} lần.` } : undefined }] });
-    } catch (err) {
-      log("error", "randombook", userId, err.message);
-      message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
-    }
-    return;
-  }
-
-  // ── -profile ──
-  if (message.content.startsWith("-profile")) {
-    if (isOnCooldown(message.author.id, "profile", 2000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
-      return;
-    }
-    const userId = message.author.id;
-    const args = message.content.replace("-profile", "").trim().split(/\s+/);
-    const sub = (args[0] ?? "").toLowerCase();
-
-    // -profile switch <1|2|3>
-    if (sub === "switch") {
-      const slot = parseInt(args[1], 10);
-      if (!slot || slot < 1 || slot > MAX_PROFILES) {
-        message.reply(`❌ Slot không hợp lệ. Dùng \`-profile switch <1-${MAX_PROFILES}>\` (VD: \`-profile switch 1\`).`);
-        return;
-      }
-      const currentSlot = await getActiveProfileSlot(userId);
-      if (slot === currentSlot) {
-        const names = await getProfileNames(userId);
-        message.reply(`ℹ️ Bạn đang ở **${resolveProfileLabel(names, slot)}** rồi.`);
-        return;
-      }
-      await setActiveProfileSlot(userId, slot);
-      const names = await getProfileNames(userId);
-      message.reply(`✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${resolveProfileLabel(names, slot)}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`);
-      return;
-    }
-
-    // -profile rename <tên>
-    if (sub === "rename") {
-      const rawName = args.slice(1).join(" ").trim();
-      if (rawName.length > PROFILE_NAME_MAX_LENGTH) {
-        message.reply(`❌ Tên profile tối đa ${PROFILE_NAME_MAX_LENGTH} ký tự.`);
-        return;
-      }
-      const currentSlot = await getActiveProfileSlot(userId);
-      await setProfileName(userId, currentSlot, rawName || null);
-      const newLabel = rawName || PROFILE_LABELS[currentSlot];
-      message.reply(rawName
-        ? `✅ Đã đặt tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** thành **"${newLabel}"**!`
-        : `✅ Đã reset tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** về mặc định **"${newLabel}"**.`
-      );
-      return;
-    }
-
-    // -profile info
-    if (sub === "info" || sub === "") {
-      const { embed, components } = await buildProfileInfoEmbed(
-        userId,
-        message.author.displayName ?? message.author.username,
-        `Dùng -profile switch <1-${MAX_PROFILES}> hoặc bấm nút bên dưới để đổi profile`
-      );
-      message.reply({ embeds: [embed], components });
-      return;
-    }
-
-    message.reply(`❌ Lệnh không hợp lệ. Dùng:\n> \`-profile info\` — xem tổng quan tất cả profile\n> \`-profile switch <1-${MAX_PROFILES}>\` — chuyển sang profile khác\n> \`-profile rename <tên>\` — đặt tên cho profile hiện tại`);
-    return;
-  }
-
-  // ── -math ──
-  if (message.content.startsWith("-math")) {
-    if (isOnCooldown(message.author.id, "math", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
-    const input = message.content.replace("-math", "").trim();
-    const kv = parseKeyValues(input);
-    const dmgStr = kv["dmg"] ?? "";
-    if (!dmgStr.trim()) {
-      message.reply(
-        "⚠️ Bạn chưa nhập `dmg:`. Vui lòng nhập công thức damage.\n" +
-        "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`\n" +
-        "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+<:Sinking:1513762793436741652>Sinking][+<:Rupture:1513762812722155682>Rupture][+<:Poise:1513762945715142736>Poise][+<:Butterfly:1516679919399338074>Living][+<:Butterfly:1516679919399338074>Departed][+Crit<n>]`\n" +
-        "> VD: `10x12P+1Living` — mỗi hit cộng 1 Count The Living, áp dụng từ hit kế tiếp"
-      );
-      return;
-    }
-    const bonusPct = parseFloat((kv["bonus"] ?? "0").replace("%", ""));
-    const sanityBonusPct = parseFloat((kv["sanitybonus"] ?? "0").replace("%", ""));
-    const critMul = parseFloat((kv["critmul"] ?? "1").replace("x", ""));
-    const poiseInit = parseInt(kv["poise"] ?? "0", 10) || 0;
-    const diceMul = parseFloat((kv["dicemul"] ?? "1").replace("x", ""));
-    const sinkingInit = parseInt(kv["sinking"] ?? "0", 10);
-    const ruptureInit = parseInt(kv["rupture"] ?? "0", 10);
-    const sanityInit = parseInt(kv["sanity"] ?? "0", 10);
-    const theLiving = parseInt(kv["living"] ?? "0", 10) || 0;
-    const theDeparted = parseInt(kv["departed"] ?? "0", 10) || 0;
-    const burnInit = parseInt(kv["burn"] ?? "0", 10) || 0;
-    const bleedInit = parseInt(kv["bleed"] ?? "0", 10) || 0;
-    const bleedActions = parseInt(kv["bleedactions"] ?? "1", 10) || 1;
-    const tremorInit = parseInt(kv["tremor"] ?? "0", 10) || 0;
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted, burnInit, bleedInit, bleedActions, tremorInit });
-    if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
-    const critDivStr = (kv["critdiv"] ?? "").trim().toLowerCase();
-    let critDiv = 0;
-    if (critDivStr === "yes" || critDivStr === "true" || critDivStr === "1") {
-      critDiv = 2;
-    } else {
-      const parsed = parseFloat(critDivStr);
-      if (!isNaN(parsed) && parsed > 1) critDiv = parsed;
-    }
-
-    message.reply(calcMath({
-      dmgStr,
-      resStr: kv["res"] ?? "",
-      drStr: kv["dr"] ?? "",
-      bonusPct,
-      sanityBonusPct,
-      critMul,
-      poiseInit,
-      critDiv,
-      sanityInit,
-      diceMul,
-      sinkingInit,
-      ruptureInit,
-      theLiving,
-      theDeparted,
-      burnInit,
-      bleedInit,
-      bleedActions,
-      tremorInit,
-    }));
-    return;
-  }
-
-  // ── -encounter ── (start / hit / status / end) — xem comment đầy đủ ở
-  // buildEncounterBoardEmbed phía trên về lý do tách biệt hoàn toàn khỏi Profile.
-  if (message.content.startsWith("-encounter")) {
-    const isAdmin = ADMIN_IDS.has(message.author.id);
-    const argStr = message.content.replace(/^-encounter/i, "").trim();
-    const subMatch = argStr.match(/^(\S+)\s*/);
-    const sub = (subMatch?.[1] ?? "").toLowerCase();
-    const rest = subMatch ? argStr.slice(subMatch[0].length).trim() : "";
-
-    if (sub === "start") {
-      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được tạo encounter."); return; }
-      const kv = parseKeyValues(rest);
-      const bossName = (kv["name"] ?? "").trim();
-      const hp = parseInt(kv["hp"] ?? "", 10);
-      if (!bossName || bossName.length > ENCOUNTER_BOSS_NAME_MAX_LENGTH || !Number.isFinite(hp) || hp <= 0) {
-        message.reply(
-          "⚠️ Cú pháp: `-encounter start name: <tên boss> hp: <số>` (tùy chọn thêm `stamina:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`)\n" +
-          `> Tên tối đa ${ENCOUNTER_BOSS_NAME_MAX_LENGTH} ký tự, hp phải là số nguyên dương.`
-        );
-        return;
-      }
-      const bossStamina = parseInt(kv["stamina"] ?? "", 10);
-      const bossWeapon = normalizeWeaponWeight(kv["weapon"] ?? "medium");
-      const bossResRaw = kv["res"] ?? "";
-      const bossRes = { B: 1, P: 1, S: 1 };
-      const resMatch = bossResRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi);
-      for (const m of resMatch) bossRes[m[2].toUpperCase()] = parseFloat(m[1]);
-      try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const existing = await getEncounter(message.channel.id);
-          if (existing) {
-            throw new Error(`Channel này đang có encounter **${existing.bossName}** chạy — dùng \`-encounter end\` trước.`);
-          }
-          const boss = createCombatant({
-            name: bossName, maxHp: hp,
-            maxStamina: Number.isFinite(bossStamina) && bossStamina > 0 ? bossStamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
-            weaponWeight: bossWeapon, resistance: bossRes,
-          });
-          const encounter = {
-            bossName, boss, players: {},
-            gmId: message.author.id, createdAt: Date.now(),
-            pendingAction: null,
-          };
-          await saveEncounter(message.channel.id, encounter);
-          await message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id) });
-        });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    if (sub === "join") {
-      const kv = parseKeyValues(rest);
-      const hp = parseInt(kv["hp"] ?? "", 10);
-      const stamina = parseInt(kv["stamina"] ?? "", 10);
-      if (!Number.isFinite(hp) || hp <= 0) {
-        message.reply(
-          "⚠️ Cú pháp: `-encounter join hp: <số>` (tùy chọn thêm `stamina:`/`light:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`)"
-        );
-        return;
-      }
-      const light = parseInt(kv["light"] ?? "", 10);
-      const weapon = normalizeWeaponWeight(kv["weapon"] ?? "medium");
-      const resRaw = kv["res"] ?? "";
-      const res = { B: 1, P: 1, S: 1 };
-      for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
-      try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
-          const wasJoined = !!encounter.players[message.author.id];
-          encounter.players[message.author.id] = createCombatant({
-            name: message.author.username, maxHp: hp,
-            maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
-            maxLight: Number.isFinite(light) && light > 0 ? light : ENCOUNTER_DEFAULT_MAX_LIGHT,
-            weaponWeight: weapon, resistance: res,
-          });
-          await saveEncounter(message.channel.id, encounter);
-          await message.reply({
-            content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.bossName}** với ${hp} HP.`,
-            components: buildEncounterActionPanel(message.channel.id),
-          });
-        });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    if (sub === "status") {
-      const encounter = await getEncounter(message.channel.id);
-      if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào. Dùng `-encounter start` để tạo."); return; }
-      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id) });
-      return;
-    }
-
-    if (sub === "end") {
-      const encounter = await getEncounter(message.channel.id);
-      if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
-      if (!isAdmin && message.author.id !== encounter.gmId) { message.reply("⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được kết thúc."); return; }
-      await deleteEncounter(message.channel.id);
-      message.reply(`✅ Đã kết thúc encounter **${encounter.bossName}**.`);
-      return;
-    }
-
-    if (sub === "endturn") {
-      try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới được kết thúc turn.");
-          advanceCombatantTurn(encounter.boss);
-          for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
-          await saveEncounter(message.channel.id, encounter);
-          await message.reply({
-            content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.`,
-            embeds: [buildEncounterBoardEmbed(encounter)],
-          });
-        });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    // ── hit: dùng Page/Skill (Light cost) lên BOSS — giữ nguyên cú pháp cũ, KHÔNG tự
-    // trừ Stamina (vì Page tốn Light, không tốn Stamina theo luật). Muốn M1 đánh
-    // thường (tốn Stamina) thì dùng `attack` ở dưới.
-    if (sub === "hit") {
-      const kv = parseKeyValues(rest);
-      const dmgStr = kv["dmg"] ?? "";
-      if (!dmgStr.trim()) {
-        message.reply(
-          "⚠️ Cú pháp: `-encounter hit dmg: <công thức>` (dùng cho Page/Skill — tốn Light tự khai báo riêng, KHÔNG tự trừ Stamina).\n" +
-          "> Muốn đánh thường (M1, tự trừ Stamina theo vũ khí) thì dùng `-encounter attack dmg: ...`\n" +
-          "> VD: `-encounter hit dmg: 50x2B+2Sinking res: 1.5xB bonus: 20`"
-        );
-        return;
-      }
-      const bonusPct = parseFloat((kv["bonus"] ?? "0").replace("%", ""));
-      const sanityBonusPct = parseFloat((kv["sanitybonus"] ?? "0").replace("%", ""));
-      const critMul = parseFloat((kv["critmul"] ?? "1").replace("x", ""));
-      const diceMul = parseFloat((kv["dicemul"] ?? "1").replace("x", ""));
-      if (isNaN(bonusPct) || isNaN(sanityBonusPct) || isNaN(critMul) || isNaN(diceMul)) {
-        message.reply("❌ bonus/sanitybonus/critmul/dicemul phải là số.");
-        return;
-      }
-      const critDivStr = (kv["critdiv"] ?? "").trim().toLowerCase();
-      let critDiv = 0;
-      if (critDivStr === "yes" || critDivStr === "true" || critDivStr === "1") critDiv = 2;
-      else { const p = parseFloat(critDivStr); if (!isNaN(p) && p > 1) critDiv = p; }
-
-      try {
-        const { embed, components } = await doPlayerHit(message.channel.id, message.author.id, message.author.toString(), dmgStr, {
-          resStr: kv["res"] ?? "", drStr: kv["dr"] ?? "", bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
-        });
-        await message.reply({ embeds: [embed], components });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    // ── attack: M1 (đánh thường) lên BOSS — tự TÍNH Stamina cần, trừ thật lúc GM
-    // xác nhận (xem doPlayerAttack — đã sửa để reject không làm mất Stamina oan).
-    if (sub === "attack") {
-      const kv = parseKeyValues(rest);
-      const dmgStr = kv["dmg"] ?? "";
-      if (!dmgStr.trim()) {
-        message.reply("⚠️ Cú pháp: `-encounter attack dmg: <công thức>` (M1 — tự trừ Stamina theo vũ khí của bạn).");
-        return;
-      }
-      try {
-        const { embed, components } = await doPlayerAttack(message.channel.id, message.author.id, message.author.toString(), dmgStr);
-        await message.reply({ embeds: [embed], components });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    // ── bossattack: GM cho boss đánh 1 player cụ thể — áp dụng thế thủ/Parry NGAY
-    // ở bước preview (read-only), CHỈ tiêu thụ charge/roll thật lúc confirm.
-    if (sub === "bossattack") {
-      if (!isAdmin) {
-        const enc = await getEncounter(message.channel.id);
-        if (!enc || message.author.id !== enc.gmId) { message.reply("⚠️ Chỉ GM/admin mới điều khiển được boss."); return; }
-      }
-      const kv = parseKeyValues(rest);
-      const dmgStr = kv["dmg"] ?? "";
-      const targetMention = message.mentions.users.first();
-      if (!dmgStr.trim() || !targetMention) {
-        message.reply("⚠️ Cú pháp: `-encounter bossattack @player dmg: <công thức>`");
-        return;
-      }
-      try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ xử lý xong trước.");
-          const target = encounter.players[targetMention.id];
-          if (!target) throw new Error(`<@${targetMention.id}> chưa tham gia encounter này.`);
-
-          const boss = encounter.boss;
-          const calcOpts = {
-            dmgStr, resStr: kv["res"] ?? combatantResStr(target), drStr: kv["dr"] ?? "",
-            poiseInit: boss.poise, sinkingInit: target.sinking,
-            ruptureInit: target.rupture, sanityInit: target.currentSanity,
-          };
-          const preview = calcMathCore(calcOpts);
-          const { finalDmg, note } = previewDefenseOutcome(target, preview.totalDmg);
-
-          encounter.pendingAction = {
-            direction: "bossToPlayer", attackerId: "boss", targetId: targetMention.id,
-            calcOpts, preview, finalDmg,
-          };
-          await saveEncounter(message.channel.id, encounter);
-
-          await message.reply({
-            embeds: [{
-              title: "🎯 Boss attack chờ GM xác nhận",
-              description:
-                `**${encounter.bossName}** đánh <@${targetMention.id}>: \`${dmgStr}\`\n` +
-                `> Dự kiến (chưa tính thế thủ): **${preview.totalDmg.toFixed(3)}** dmg` +
-                (note ? `\n> ${note}` : "") +
-                `\n> GM bấm nút dưới để áp dụng thật (thế thủ/Parry sẽ resolve lúc xác nhận).`,
-              color: 0xf39c12,
-            }],
-            components: [new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId(`encconfirm:${message.channel.id}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-              new ButtonBuilder().setCustomId(`encreject:${message.channel.id}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-            )],
-          });
-        });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    if (sub === "evade" || sub === "guard") {
-      try {
-        const msg = await doPlayerGuardEvade(message.channel.id, message.author.id, sub);
-        message.reply(msg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    if (sub === "parry") {
-      try {
-        const msg = await doPlayerParry(message.channel.id, message.author.id);
-        message.reply(msg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    message.reply(
-      "⚠️ Lệnh không hợp lệ. Dùng:\n" +
-      "> `-encounter start name: <tên> hp: <số>` (admin/GM)\n" +
-      "> `-encounter join hp: <số>` (player tham gia)\n" +
-      "> `-encounter attack dmg: <công thức>` — M1, tự trừ Stamina\n" +
-      "> `-encounter hit dmg: <công thức>` — Page/Skill lên boss\n" +
-      "> `-encounter bossattack @player dmg: <công thức>` (GM)\n" +
-      "> `-encounter evade` / `-encounter guard` / `-encounter parry`\n" +
-      "> `-encounter endturn` (GM) — hồi Stamina, đếm ngược Stagger/Panic\n" +
-      "> `-encounter status` · `-encounter end` (GM)"
-    );
-    return;
-  }
-
-  // ── -dmgbonus ──
-  // Cú pháp: -dmgbonus <số>  (hoặc -dmgbonus: <số>)
-  // Cho biết % Dmg Bonus thực tế (sau bão hòa) ứng với 1 số % raw.
-  if (message.content.startsWith("-dmgbonus")) {
-    if (isOnCooldown(message.author.id, "dmgbonus", 2000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
-      return;
-    }
-    const raw = message.content.replace("-dmgbonus", "").trim().replace(/^:/, "").trim();
-    const value = parseFloat(raw.replace("%", ""));
-    if (!raw || isNaN(value)) {
-      message.reply(
-        "❌ Cú pháp: `-dmgbonus <số>`\n" +
-        "> VD: `-dmgbonus 1000` → cho biết % Dmg Bonus thực tế sau khi bị bão hòa."
-      );
-      return;
-    }
-    const eff = saturateBonusPct(value);
-    const isSaturated = value > 100;
-    const display = isSaturated
-      ? `**${eff.toFixed(2)}%** effective *(raw: ${value.toFixed(2)}%)*`
-      : `${value.toFixed(2)}% *(chưa bị bão hòa)*`;
-    message.reply(`✨ **% Dmg Bonus:** ${display}`);
-    return;
-  }
-
-  // ── -dr ──
-  // Cú pháp: -dr <số>  (hoặc -dr: <số>)
-  // Cho biết % Damage Reduction thực tế (sau bão hòa) ứng với 1 số % raw.
-  if (message.content.startsWith("-dr")) {
-    if (isOnCooldown(message.author.id, "dr", 2000)) {
-      message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
-      return;
-    }
-    const raw = message.content.replace("-dr", "").trim().replace(/^:/, "").trim();
-    const value = parseFloat(raw.replace("%", ""));
-    if (!raw || isNaN(value)) {
-      message.reply(
-        "❌ Cú pháp: `-dr <% DR>`\n" +
-        "> VD: `-dr 1000` → cho biết % Damage Reduction thực tế sau khi bị bão hòa."
-      );
-      return;
-    }
-    const drMult = saturateDR(1 - value / 100);
-    const effPct = (1 - drMult) * 100;
-    const isSaturated = effPct.toFixed(2) !== value.toFixed(2);
-    const display = isSaturated
-      ? `${value.toFixed(2)}% raw → **${effPct.toFixed(2)}%** effective *(${drMult.toFixed(3)}x)*`
-      : `${value.toFixed(2)}% *(chưa bị bão hòa)*`;
-    message.reply(`🛡️ **Damage Reduction:** ${display}`);
-    return;
-  }
-
-  } catch (err) {
-    console.error("[messageCreate error]", err);
-    try { message.reply("❌ Có lỗi không mong muốn xảy ra.").catch(() => {}); } catch {}
-  }
+      const cappedPct = Math.min(hpLossPct, 20);
+      const d2 = Math.ceil(cappedPct * 2.5);
+      return [
+        intro,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — HP mất ${cappedPct}%${hpLossPct > 20 ? " *(vượt mốc, tính tối đa 20%)*" : ""} — gây 12 <:Fragile:1513763336167100536>Fragile, 6 <:Bleed:1513762688226955285>Bleed và 5 <:Paralyze:1513763316479295548>Paralyze turn kế`,
+      ];
+    },
+  },
 });
 
-// ─── BUTTON INTERACTIONS ──────────────────────────────────────────────────────
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  try {
-
-  // ── Nút phân trang inventory ──
-  if (interaction.customId.startsWith("invpage:")) {
-    const [, targetUserId, pageStr] = interaction.customId.split(":");
-    const page = parseInt(pageStr, 10);
-    // Chỉ chủ nhân của inventory được bấm Prev/Next — tránh người khác thao túng
-    // trang hiển thị trong embed (dù /inventory là public).
-    if (interaction.user.id !== targetUserId) {
-      return interaction.reply({
-        content: "⚠️ Chỉ chủ nhân của inventory này mới có thể chuyển trang.",
-        flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
-    }
-    try {
-      const targetUser = await client.users.fetch(targetUserId).catch(() => null);
-      if (!targetUser) {
-        return interaction.reply({ content: "❌ Không tìm thấy người dùng.", flags: MessageFlags.Ephemeral }).catch(() => {});
-      }
-      const reply = await fetchInventoryReply(targetUser, page);
-      if (!reply) {
-        return interaction.reply({ content: "📦 Kho hiện đã trống.", flags: MessageFlags.Ephemeral }).catch(() => {});
-      }
-      await interaction.update(reply);
-    } catch (err) {
-      log("error", "invpage button", interaction.user?.id ?? "unknown", err.message);
-      interaction.reply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    return;
-  }
-
-  // ── Nút xem thông tin item (từ select menu inventory) ──
-  if (interaction.customId.startsWith("invinfo:")) {
-    const parts = interaction.customId.split(":");
-    const targetUserId = parts[1];
-    const itemType = parts[2];
-    const itemName = parts.slice(3).join(":");
-    try {
-      const infoMap = {
-        "Random Book": "Mở ra 1 sách ngẫu nhiên từ pool thường.",
-        "Sealed Book Cache": "Mở ra 1 sách hiếm ngẫu nhiên từ pool sealed.",
-        "Chipboard Cache": "Mở ra Chipboard MK1–MK3 ngẫu nhiên.",
-      };
-      const recipe = CRAFT_RECIPES[itemName];
-      let desc = infoMap[itemName] ?? `${itemType === "book" ? "📚 Sách" : "🔩 Vật phẩm"}: **${itemName}**`;
-      if (recipe) {
-        const inputs = Object.entries(recipe.inputs).map(([k, v]) => `${v}× ${k}`).join(", ");
-        const outputs = Object.entries(recipe.output).map(([k, v]) => `${v}× ${k}`).join(", ");
-        desc += `\n> 🔨 Craft: ${inputs} → ${outputs}`;
-      }
-      const data = await getPlayerData(targetUserId);
-      const store = itemType === "book" ? (data.books ?? {}) : (data.items ?? {});
-      const count = store[itemName] ?? 0;
-      await interaction.reply({
-        embeds: [{ title: itemName, description: desc, color: 0x5865f2, footer: { text: `Số lượng trong kho: ${count}` } }],
-        flags: MessageFlags.Ephemeral,
-      });
-    } catch (err) {
-      log("error", "invinfo button", interaction.user?.id ?? "unknown", err.message);
-      interaction.reply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    return;
-  }
-
-  // ── Nút Mở (sách) / Craft (item) — từ select menu inventory ──
-  if (interaction.customId.startsWith("invact:")) {
-    const parts = interaction.customId.split(":");
-    const targetUserId = parts[1];
-    const itemType = parts[2];
-    const itemName = parts.slice(3).join(":");
-    if (interaction.user.id !== targetUserId) {
-      return interaction.reply({ content: "⚠️ Đây không phải inventory của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    // Mọi command khác (prefix + slash) đều có cooldown qua isOnCooldown — button này
-    // ban đầu thiếu, cho phép spam-click dồn áp lực lên Redis qua withLock retry.
-    if (isOnCooldown(interaction.user.id, "invact", 2000)) {
-      return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    try {
-      if (itemType === "book") {
-        const handlerMap = {
-          "Random Book": () => handleOpenRandomBook(targetUserId, 1),
-          "Sealed Book Cache": () => handleOpenSealedBook(targetUserId, 1),
-          "Chipboard Cache": () => handleOpenChipboardCache(targetUserId, 1),
-        };
-        const handler = handlerMap[itemName];
-        if (!handler) { await interaction.editReply({ content: "❌ Không thể mở loại sách này." }); return; }
-        const { success, data, results } = await handler();
-        if (!success) { await interaction.editReply({ content: `❌ Không có **${itemName}** trong kho.` }); return; }
-        await interaction.editReply({ content: `✅ Mở **${itemName}** → nhận được **${results[0]}**!\n> Còn lại: ${data.books[itemName] ?? 0}` });
-      } else {
-        if (!CRAFT_RECIPES[itemName]) { await interaction.editReply({ content: "❌ Vật phẩm này không thể craft." }); return; }
-        // Tách interaction.editReply ra ngoài withLock — nếu Discord API chậm, lock
-        // TTL có thể hết hạn trong khi vẫn đang giữ lock. executeCraft chỉ cần Redis.
-        const { outputLines, costLines } = await withLock(targetUserId, () =>
-          executeCraft(targetUserId, itemName, 1)
-        );
-        await interaction.editReply({ content: `✅ Craft thành công!\n${costLines.join("\n")}\n→ ${outputLines.join(", ")}` });
-      }
-    } catch (err) {
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra."}` });
-    }
-    return;
-  }
-
-  // ── Nút Xóa 1 — từ select menu inventory ──
-  if (interaction.customId.startsWith("invdel:")) {
-    const parts = interaction.customId.split(":");
-    const targetUserId = parts[1];
-    const itemType = parts[2];
-    const itemName = parts.slice(3).join(":");
-    if (interaction.user.id !== targetUserId) {
-      return interaction.reply({ content: "⚠️ Đây không phải inventory của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    if (isOnCooldown(interaction.user.id, "invdel", 2000)) {
-      return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    try {
-      const bookEntries = itemType === "book" ? [{ name: itemName, count: 1 }] : [];
-      const itemEntries = itemType === "item" ? [{ name: itemName, count: 1 }] : [];
-      await withLock(targetUserId, () => executeRemove({
-        actorId: targetUserId, targetId: targetUserId,
-        isAdmin: false, expRemove: 0, ahnRemove: 0, bookEntries, itemEntries,
-      }));
-      await interaction.editReply({ content: `🗑️ Đã xóa **1× ${itemName}** khỏi kho.` });
-    } catch (err) {
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra."}` });
-    }
-    return;
-  }
-
-  // ── Nút chuyển profile (từ /profile info hoặc -profile info) ──
-  if (interaction.customId.startsWith("profswitch:")) {
-    const [, targetUserId, slotStr] = interaction.customId.split(":");
-    const slot = parseInt(slotStr, 10);
-    if (interaction.user.id !== targetUserId) {
-      return interaction.reply({ content: "⚠️ Chỉ chủ nhân mới có thể đổi profile.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    if (isOnCooldown(interaction.user.id, "profswitch", 1500)) {
-      return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 1.5 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    try {
-      await setActiveProfileSlot(targetUserId, slot);
-      // Rebuild embed để nút của slot mới được disable đúng (đang dùng) và phản ánh data mới.
-      const { embed, components } = await buildProfileInfoEmbed(
-        targetUserId,
-        interaction.user.displayName ?? interaction.user.username,
-        `Dùng -profile switch <1-${MAX_PROFILES}> hoặc bấm nút bên dưới để đổi profile`
-      );
-      await interaction.update({ embeds: [embed], components });
-    } catch (err) {
-      log("error", "profswitch button", interaction.user?.id ?? "unknown", err.message);
-      interaction.reply({ content: "❌ Có lỗi xảy ra khi chuyển profile.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    return;
-  }
-
-  // ── Nút Xác nhận /give ──
-  if (interaction.customId.startsWith("giveconfirm:")) {
-    const giveId = interaction.customId.slice("giveconfirm:".length);
-    const pending = pendingGives.get(giveId);
-    if (!pending) {
-      return interaction.update({ content: "⚠️ Giao dịch đã hết hạn hoặc đã được xử lý.", embeds: [], components: [] }).catch(() => {});
-    }
-    if (interaction.user.id !== pending.senderId) {
-      return interaction.reply({ content: "⚠️ Chỉ người tạo lệnh /give mới được xác nhận.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    pendingGives.delete(giveId);
-    await interaction.deferUpdate();
-    try {
-      const { senderId, targetId, isAdmin, params } = pending;
-      const runGive = () => executeGive({ senderId, targetId, isAdmin, ...params });
-      const changes = await withDoubleLock(senderId, targetId, runGive);
-      await interaction.editReply({
-        content: `✅ <@${senderId}> đã ${isAdmin ? "tặng" : "chuyển"} cho <@${targetId}>:\n` + changes.map(c => `> ${c}`).join("\n"),
-        embeds: [], components: [],
-      });
-    } catch (err) {
-      log("error", "giveconfirm button", interaction.user?.id ?? "unknown", err.message);
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}`, embeds: [], components: [] }).catch(() => {});
-    }
-    return;
-  }
-
-  // ── Nút Hủy /give ──
-  if (interaction.customId.startsWith("givecancel:")) {
-    const giveId = interaction.customId.slice("givecancel:".length);
-    const pending = pendingGives.get(giveId);
-    if (pending && interaction.user.id !== pending.senderId) {
-      return interaction.reply({ content: "⚠️ Chỉ người tạo lệnh /give mới được hủy.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    pendingGives.delete(giveId);
-    await interaction.update({ content: "❌ Đã hủy giao dịch.", embeds: [], components: [] }).catch(() => {});
-    return;
-  }
-
-  // ── Nút action panel (Attack/Hit/Guard/Evade/Parry) ──────────────────────────
-  if (interaction.customId.startsWith("encact:")) {
-    const [, channelId, action] = interaction.customId.split(":");
-
-    if (action === "guard" || action === "evade") {
-      try {
-        const msg = await doPlayerGuardEvade(channelId, interaction.user.id, action);
-        await interaction.reply({ content: msg }).catch(() => {});
-      } catch (err) {
-        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
-      }
-      return;
-    }
-
-    if (action === "parry") {
-      try {
-        const msg = await doPlayerParry(channelId, interaction.user.id);
-        await interaction.reply({ content: msg }).catch(() => {});
-      } catch (err) {
-        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
-      }
-      return;
-    }
-
-    // attack/hit cần nhập công thức dmg — mở Modal (form nhập liệu) thay vì xử lý
-    // ngay, vì button không mang theo text tự do được. Modal submit xử lý ở listener
-    // riêng (xem "MODAL SUBMIT INTERACTIONS" phía dưới).
-    if (action === "attack" || action === "hit") {
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:${action}`)
-        .setTitle(action === "attack" ? "Đánh thường (M1)" : "Dùng Page/Skill");
-      const dmgInput = new TextInputBuilder()
-        .setCustomId("dmgStr")
-        .setLabel("Công thức dmg (giống /math)")
-        .setPlaceholder("VD: 50x2B+2Sinking")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
-      await interaction.showModal(modal).catch(() => {});
-      return;
-    }
-  }
-
-
-  if (interaction.customId.startsWith("encconfirm:") || interaction.customId.startsWith("encreject:")) {
-    const isConfirm = interaction.customId.startsWith("encconfirm:");
-    const channelId = interaction.customId.slice((isConfirm ? "encconfirm:" : "encreject:").length);
-    try {
-      await withLock(encounterKey(channelId), async () => {
-        const encounter = await getEncounter(channelId);
-        if (!encounter || !encounter.pendingAction) {
-          return interaction.reply({ content: "⚠️ Không có action nào chờ xác nhận (có thể đã xử lý rồi).", flags: MessageFlags.Ephemeral }).catch(() => {});
-        }
-        const isAdmin = ADMIN_IDS.has(interaction.user.id);
-        if (!isAdmin && interaction.user.id !== encounter.gmId) {
-          return interaction.reply({ content: "⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được xác nhận/từ chối.", flags: MessageFlags.Ephemeral }).catch(() => {});
-        }
-        const { direction, attackerId, targetId, calcOpts, preview, staminaCost } = encounter.pendingAction;
-        const attackerLabel = attackerId === "boss" ? `**${encounter.bossName}**` : `<@${attackerId}>`;
-        const targetLabel = targetId === "boss" ? `**${encounter.bossName}**` : `<@${targetId}>`;
-        const target = targetId === "boss" ? encounter.boss : encounter.players[targetId];
-
-        if (isConfirm) {
-          // QUAN TRỌNG: đây là lúc DUY NHẤT state thật của encounter bị thay đổi —
-          // lúc tạo pending action (-encounter hit/attack/bossattack) chỉ TÍNH TRƯỚC
-          // (preview), không áp dụng gì cả. Confirm mới thật sự trừ HP + ghi đè status
-          // mới + resolve thế thủ/Parry thật (roll d20 thật cho Parry ở ĐÂY, không
-          // phải lúc preview — xem comment ở resolveDefenseOutcome) + trừ Stamina của
-          // NGƯỜI TẤN CÔNG nếu là action loại attack (staminaCost chỉ có ở attack —
-          // xem doPlayerAttack — KHÔNG trừ lúc declare nữa để reject không làm mất
-          // Stamina oan).
-          let staminaNote = "";
-          if (staminaCost && attackerId !== "boss") {
-            const attacker = encounter.players[attackerId];
-            if (attacker) {
-              attacker.currentStamina = Math.max(0, attacker.currentStamina - staminaCost);
-              attacker.staminaUsedThisTurn += staminaCost;
-              checkStaggerPanic(attacker);
-              staminaNote = `\n> ${attackerLabel} -${staminaCost} Stamina` + (attacker.staggered ? ` — 💫 **Stagger**!` : "");
-            }
-          }
-          let finalDmg = preview.totalDmg;
-          let defenseNote = "";
-          if (direction === "bossToPlayer") {
-            const resolved = resolveDefenseOutcome(target, preview.totalDmg);
-            finalDmg = resolved.finalDmg;
-            if (resolved.note) defenseNote = `\n> ${resolved.note}`;
-          }
-          target.currentHp = Math.max(0, target.currentHp - finalDmg);
-          target.sinking = preview.finalSinking;
-          target.rupture = preview.finalRupture;
-          target.poise = preview.finalPoiseStacks;
-          target.currentSanity = preview.finalSanity;
-          checkStaggerPanic(target); // Sanity vừa đổi — check Panic; Stamina có thể vừa đổi từ Parry fail — check Stagger
-          encounter.pendingAction = null;
-          await saveEncounter(channelId, encounter);
-
-          await interaction.update({
-            embeds: [{
-              title: "✅ Action đã xác nhận",
-              description: `${attackerLabel} → ${targetLabel}: \`${calcOpts.dmgStr}\`\n> Gây **${finalDmg.toFixed(3)}** dmg thật${defenseNote}${staminaNote}`,
-              color: 0x2ecc71,
-            }],
-            components: [],
-          }).catch(() => {});
-          await interaction.channel.send({ embeds: [buildEncounterBoardEmbed(encounter)] }).catch(() => {});
-        } else {
-          encounter.pendingAction = null;
-          await saveEncounter(channelId, encounter);
-          await interaction.update({
-            embeds: [{
-              title: "❌ Action bị từ chối",
-              description: `${attackerLabel} → ${targetLabel} (\`${calcOpts.dmgStr}\`) đã bị GM từ chối — không có gì thay đổi (Stamina chưa từng bị trừ cho tới lúc xác nhận, nên không mất gì).`,
-              color: 0xe74c3c,
-            }],
-            components: [],
-          }).catch(() => {});
-        }
-      });
-    } catch (err) {
-      log("error", "encounterConfirm", interaction.user?.id ?? "unknown", err.message);
-      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-    return;
-  }
-
-  } catch (err) {
-    log("error", "buttonInteraction", interaction.user?.id ?? "unknown", err.message);
-    interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", flags: MessageFlags.Ephemeral }).catch(() => {});
-  }
+// ── Aliases mới (thêm vào đây khi có alias mới) ──
+Object.assign(SKILL_ALIASES, {
+  // Illusory Land of Great Void
+  "whirlwind": "whirlwind",
+  // Vengeance Retaliation
+  "vr": "vengeance retaliation",
+  "vengeanceretaliation": "vengeance retaliation",
+  // Lucent Historia
+  "designant": "designant.",
+  "astralquantization": "astral quantization",
+  "aq": "astral quantization",
+  // РАСКО́Л
+  "slay": "slay",
+  "raskol": "slay",
+  // Nyoibo
+  "oneinchpunch": "one inch punch",
+  "oip": "one inch punch",
+  "powerpolextend": "power pole extend",
+  "ppe": "power pole extend",
+  "powerpole": "power pole extend",
+  // WALPURGISNACHT
+  "drillingstab": "drilling stab",
+  "ds2": "drilling stab",
+  "walpurgis": "drilling stab",
+  // EGO Pages ZAYIN
+  "crowseyeview": "crow's eye view",
+  "cev": "crow's eye view",
+  "lasangre": "la sangre de sancho",
+  "sancho": "la sangre de sancho",
+  "lsds": "la sangre de sancho",
+  "repemitter": "representation emitter",
+  "re": "representation emitter",
+  "landofillusion": "land of illusion",
+  "loi": "land of illusion",
+  // Heat skills
+  "dragonchoke": "dragon choke impact",
+  "dci": "dragon choke impact",
+  "armlock": "arm lock",
+  "al": "arm lock",
+  "invertedcross": "inverted cross arm wrench",
+  "icaw": "inverted cross arm wrench",
+  "kneebreak": "knee break",
+  "kb": "knee break",
+  "truereversedrop": "true reverse drop",
+  "trd": "true reverse drop",
+  "cripplingcrossface": "crippling crossface",
+  "ccf": "crippling crossface",
+  "midlinetriplethrust": "midline triple thrust",
+  "mtt": "midline triple thrust",
+  "lightningbackkick": "lightning back kick",
+  "lbk": "lightning back kick",
+  "aikimugenthrow": "aiki mugen throw",
+  "amt": "aiki mugen throw",
+  "headcrash": "head crash",
+  "hc2": "head crash",
+  "mountedpunchrush": "mounted punch rush",
+  "mpr": "mounted punch rush",
+  "reverseliftupslam": "reverse lift up slam",
+  "rlus": "reverse lift up slam",
+  // Sueño Imposible
+  "forjustice": "for justice",
+  "fj": "for justice",
+  "sueñoimposible": "for justice",
+  "suenoimposible": "for justice",
+  "sueno": "for justice",
+  // Passive Skills
+  "followup": "follow-up",
+  "fu": "follow-up",
+  // Halberd VOGEL
+  "ravagingcut": "ravaging cut",
+  "rc": "ravaging cut",
+  "halberdvogel": "ravaging cut",
+  "vogel": "ravaging cut",
+  // Blade Lineage Hwando
+  "strikersstance": "striker's stance",
+  "ss2": "striker's stance",
+  "hwandoss": "striker's stance",
+  "heelturn": "heel turn",
+  "ht2": "heel turn",
+  "hwandoht": "heel turn",
+  "flankthrust": "flank thrust",
+  "ft2": "flank thrust",
+  "hwandoft": "flank thrust",
+  "hwando": "striker's stance",
 });
 
-// ─── MODAL SUBMIT INTERACTIONS (encounter attack/hit qua nút) ────────────────
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isModalSubmit()) return;
-  if (!interaction.customId.startsWith("encmodal:")) return;
-  const [, channelId, action] = interaction.customId.split(":");
-  const dmgStr = interaction.fields.getTextInputValue("dmgStr");
-  try {
-    if (action === "attack") {
-      const { embed, components } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr);
-      await interaction.reply({ embeds: [embed], components });
-    } else if (action === "hit") {
-      const { embed, components } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr);
-      await interaction.reply({ embeds: [embed], components });
-    }
-  } catch (err) {
-    log("error", "encModalSubmit", interaction.user?.id ?? "unknown", err.message);
-    await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+// ─── findSkill (giữ nguyên logic, chuyển từ index.js sang đây) ───────────────
+function findSkill(raw) {
+  const key = raw.toLowerCase().trim();
+  // 1. Tra SKILLS trực tiếp với key gốc (giữ nguyên space/dash)
+  if (SKILLS[key]) return SKILLS[key];
+  // 2. Tra alias: strip toàn bộ space, dash, dấu phẩy để map về canonical key.
+  //    replace(/[\s\-,]/g) đã xóa hết space rồi nên không cần replace(/\s+/g, " ") thêm
+  //    (thao tác thứ hai đó không bao giờ có tác dụng và chỉ gây hiểu nhầm về intent).
+  const aliasLookup = key.replace(/[\s\-,]/g, "");
+  const aliasKey = SKILL_ALIASES[aliasLookup];
+  if (aliasKey && SKILLS[aliasKey]) return SKILLS[aliasKey];
+  // 3. Fallback: tìm partial match trong SKILLS keys
+  const keyStripped = key.replace(/\s+\S+$/, "").trim();
+  for (const [k, v] of Object.entries(SKILLS)) {
+    if (k.includes(key) || (keyStripped && k.includes(keyStripped) && keyStripped.length >= 3)) return v;
   }
-});
-
-// ─── SELECT MENU INTERACTIONS (inventory) ────────────────────────────────────
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isStringSelectMenu()) return;
-  if (!interaction.customId.startsWith("invsel:")) return;
-  try {
-    const [, targetUserId] = interaction.customId.split(":");
-    // Chỉ chủ nhân inventory mới được chọn — tránh người khác thao túng select menu
-    // trên 1 message public (dù /inventory hiển thị công khai).
-    if (interaction.user.id !== targetUserId) {
-      return interaction.reply({
-        content: "⚠️ Chỉ chủ nhân inventory này mới có thể chọn.",
-        flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
-    }
-
-    const value = interaction.values[0]; // "book:Random Book" hoặc "item:Chipboard MK1"
-    const colonIdx = value.indexOf(":");
-    const itemType = value.slice(0, colonIdx);
-    const itemName = value.slice(colonIdx + 1);
-
-    const data = await getPlayerData(targetUserId);
-    const store = itemType === "book" ? (data.books ?? {}) : (data.items ?? {});
-    const currentCount = store[itemName] ?? 0;
-
-    const canOpen = itemType === "book" && ["Random Book", "Sealed Book Cache", "Chipboard Cache"].includes(itemName);
-    const canCraft = itemType === "item" && !!CRAFT_RECIPES[itemName];
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`invinfo:${targetUserId}:${itemType}:${itemName}`)
-        .setLabel("ℹ️ Xem info")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`invact:${targetUserId}:${itemType}:${itemName}`)
-        .setLabel(itemType === "book" ? "📖 Mở" : "⚙️ Craft")
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(!canOpen && !canCraft),
-      new ButtonBuilder()
-        .setCustomId(`invdel:${targetUserId}:${itemType}:${itemName}`)
-        .setLabel("🗑️ Xóa 1")
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(currentCount === 0),
-    );
-
-    await interaction.reply({
-      content: `**${itemName}** × ${currentCount}\nChọn hành động:`,
-      components: [row],
-      flags: MessageFlags.Ephemeral,
-    });
-  } catch (err) {
-    log("error", "invsel select", interaction.user?.id ?? "unknown", err.message);
-    interaction.reply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu.", flags: MessageFlags.Ephemeral }).catch(() => {});
-  }
-});
-
-// ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  try {
-
-  // ── /rtparry ── (tương đương -rtparry, nhưng link gửi qua EPHEMERAL thay vì DM —
-  // slash command mới ephemeral được, prefix message thường thì Discord không hỗ trợ.
-  // Cooldown dùng key "parryrt_web" THỦ CÔNG (không qua replyOnCooldown — hàm đó tự
-  // dùng interaction.commandName làm key, sẽ tạo cooldown RIÊNG cho slash command,
-  // cho phép spam đổi qua đổi lại -rtparry/`/rtparry` để né cooldown 5s).
-  if (interaction.commandName === "rtparry") {
-    const nameArg = interaction.options.getString("name");
-    let targetSkill = null;
-    if (nameArg) {
-      targetSkill = findSkill(nameArg);
-      if (!targetSkill) {
-        await interaction.reply({ content: `⚠️ Không tìm thấy skill **"${nameArg}"**. Bỏ trống \`name\` cho bản mặc định.`, flags: MessageFlags.Ephemeral }).catch(() => {});
-        return;
-      }
-    }
-    // targetSkill = null nếu bỏ trống name — KHÔNG tự chọn random skill, xem comment
-    // đầy đủ ở createRtparryToken().
-
-    if (isOnCooldown(interaction.user.id, "parryrt_web", 5000)) {
-      await interaction.reply({ content: "⏳ Chờ vài giây trước khi thử lại nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
-      return;
-    }
-
-    // Reply CÔNG KHAI trước (placeholder, sẽ edit lại khi có kết quả) — y như prefix,
-    // để channel vẫn thấy được thành tích. Message ephemeral KHÔNG fetch/edit lại
-    // được qua API channel thường (chỉ qua webhook token riêng, hết hạn sau interaction
-    // token ~15 phút — không đáng thêm phức tạp đó chỉ để né 1 placeholder công khai).
-    let sentMsg;
-    try {
-      await interaction.reply({
-        embeds: [{
-          title: "⚔️ Parry Real Time",
-          description: `${interaction.user} đang chơi Parry Real Time…` +
-            (targetSkill ? `\n> Page: **${targetSkill.name}**` : ""),
-          color: 0xf39c12,
-          footer: { text: "Kết quả sẽ tự hiện lại ở đây sau khi chơi xong" },
-        }],
-      });
-      sentMsg = await interaction.fetchReply();
-    } catch (err) {
-      log("error", "parryrt", interaction.user.id, err.message);
-      return;
-    }
-
-    const linkInfo = createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id, skill: targetSkill });
-    if (!linkInfo) {
-      await interaction.followUp({
-        embeds: [{
-          title: "⚔️ Parry Real Time",
-          description:
-            "⚠️ Bot chưa biết URL public của mình (thiếu env var `RENDER_EXTERNAL_URL` hoặc `PUBLIC_URL`).\n" +
-            "> Báo admin set 1 trong 2 biến này thì lệnh này mới hoạt động được.",
-          color: 0xe74c3c,
-        }],
-        flags: MessageFlags.Ephemeral,
-      }).catch(() => {});
-      return;
-    }
-
-    // Link riêng qua ephemeral — chỉ người gõ lệnh thấy, không cần DM, không ai
-    // khác trong channel bấm hộ được.
-    await interaction.followUp({
-      embeds: [{ title: "⚔️ Parry Real Time", description: "Bấm nút dưới để mở Parry Real Time.", color: 0xf39c12 }],
-      components: [buildRtparryLinkButton(linkInfo.url)],
-      flags: MessageFlags.Ephemeral,
-    }).catch(err => log("error", "parryrt_ephemeral", interaction.user.id, err.message));
-    return;
-  }
-
-  // ── /skill ── (tương đương -skill, dùng CHUNG buildSkillListResult/buildSkillRollResult
-  // để đảm bảo hành vi giống prefix 100% — không tự viết lại logic riêng ở đây)
-  if (interaction.commandName === "skill") {
-    if (await replyOnCooldown(interaction, 2000)) return;
-    const sub = interaction.options.getSubcommand();
-
-    if (sub === "list") {
-      await interaction.deferReply();
-      const keyword = interaction.options.getString("keyword");
-      const page = interaction.options.getInteger("page") ?? 1;
-      const result = buildSkillListResult({ keyword, page });
-      if (result.error) { await interaction.editReply({ content: result.error }); return; }
-      await interaction.editReply({ embeds: [result.embed] });
-      return;
-    }
-
-    if (sub === "roll") {
-      await interaction.deferReply();
-      const nameInput = interaction.options.getString("name") ?? "";
-      const rollCount = interaction.options.getInteger("count") ?? 1;
-      // "arg" dùng cho skill có promptArg (VD: Thrust cần nhập Light hiện tại qua arg).
-      const argInput = interaction.options.getString("arg");
-      const forceDullahan = interaction.options.getBoolean("dullahan") ?? false;
-
-      const skill = findSkill(nameInput);
-      if (!skill) {
-        await interaction.editReply({ content: `❌ Không tìm thấy skill: \`${nameInput}\`\nDùng \`/skill list\` để xem danh sách.` });
-        return;
-      }
-
-      const result = buildSkillRollResult({ skill, rollCount, promptArgRaw: argInput, forceDullahan });
-      if (result.error) { await interaction.editReply({ content: result.error }); return; }
-      await interaction.editReply({ embeds: [result.embed] });
-      return;
-    }
-    return;
-  }
-
-  if (interaction.commandName === "math") {
-    if (await replyOnCooldown(interaction, 2000)) return;
-    await interaction.deferReply();
-    const dmgStr = interaction.options.getString("dmg") ?? "";
-    if (!dmgStr.trim()) {
-      await interaction.editReply({
-        content:
-          "⚠️ Bạn chưa nhập `dmg`. Vui lòng nhập công thức damage.\n" +
-          "> VD: `10B`, `5x3B`, `8S+Crit50`, `1DiceB`"
-      });
-      return;
-    }
-    const poiseInit = interaction.options.getInteger("poise") ?? 0;
-    const critMul = interaction.options.getNumber("critmul") ?? 1;
-    const diceMul = interaction.options.getNumber("dicemul") ?? 1;
-    const sinkingInit = interaction.options.getInteger("sinking") ?? 0;
-    const ruptureInit = interaction.options.getInteger("rupture") ?? 0;
-    const sanityInit = interaction.options.getInteger("sanity") ?? 0;
-    const theLiving = interaction.options.getInteger("living") ?? 0;
-    const theDeparted = interaction.options.getInteger("departed") ?? 0;
-    const burnInit = interaction.options.getInteger("burn") ?? 0;
-    const bleedInit = interaction.options.getInteger("bleed") ?? 0;
-    const bleedActions = interaction.options.getInteger("bleedactions") ?? 1;
-    const tremorInit = interaction.options.getInteger("tremor") ?? 0;
-    const bonusPct = interaction.options.getNumber("bonus") ?? 0;
-    const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted, burnInit, bleedInit, bleedActions, tremorInit });
-    if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
-    const critDivOption = (interaction.options.getString("critdiv") ?? "").trim().toLowerCase() || null;
-    let critDivSlash = 0;
-    if (critDivOption === "yes" || critDivOption === "true" || critDivOption === "1") {
-      critDivSlash = 2;
-    } else if (typeof critDivOption === "string") {
-      const p = parseFloat(critDivOption);
-      if (!isNaN(p) && p > 1) critDivSlash = p;
-    }
-
-    await interaction.editReply(calcMath({
-      dmgStr,
-      resStr: interaction.options.getString("res") ?? "",
-      drStr: interaction.options.getString("dr") ?? "",
-      bonusPct,
-      sanityBonusPct,
-      critMul,
-      poiseInit,
-      critDiv: critDivSlash,
-      sanityInit,
-      diceMul,
-      sinkingInit,
-      ruptureInit,
-      theLiving,
-      theDeparted,
-      burnInit,
-      bleedInit,
-      bleedActions,
-      tremorInit,
-    }));
-    return;
-  }
-
-  if (interaction.commandName === "parry") {
-    if (await replyOnCooldown(interaction, 3000)) return;
-    await interaction.deferReply();
-    const rolls = Math.min(interaction.options.getInteger("rolls") ?? 1, PARRY_MAX_ROLLS);
-    const { successCount, failCount, lines } = runParryRolls(rolls);
-    let body = `**Parry ${rolls} lần:**\n${lines.join("\n")}\n**Kết quả tổng kết:**\n• Thành công: \`${successCount}\` lần\n• Thất bại: \`${failCount}\` lần`;
-    if (body.length > 2000) body = body.substring(0, 1990) + "\n…(bị cắt bớt)";
-    await interaction.editReply({ content: body });
-    return;
-  }
-
-  if (interaction.commandName === "daily") {
-    if (await replyOnCooldown(interaction, 3000)) return;
-    await interaction.deferReply();
-    try {
-      const result = await processDailyClaimForUser(interaction.user.id);
-      if (result.alreadyClaimed) {
-        await interaction.editReply({ content: `${interaction.user}, bạn đã nhận daily hôm nay rồi.\nThời gian còn lại đến reset: **${result.hours}h ${result.minutes}m ${result.seconds}s**.` });
-      } else {
-        await interaction.editReply({ content: result.replyMsg.replace("{USER}", interaction.user.toString()) });
-      }
-    } catch (err) {
-      log("error", "/daily", interaction.user.id, err.message);
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
-    }
-    return;
-  }
-
-  if (interaction.commandName === "randombook") {
-    if (await replyOnCooldown(interaction, 3000)) return;
-    await interaction.deferReply();
-    const userId = interaction.user.id;
-    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), OPEN_COUNT_MAX);
-    try {
-      const { success, data, results, partial } = await handleOpenRandomBook(userId, count);
-      if (!success) {
-        await interaction.editReply({ content: "❌ Bạn không có **Random Book** nào trong kho hoặc không đủ số lượng." });
-        return;
-      }
-      await interaction.editReply({
-        embeds: [{
-          title: `📖 Mở Random Book${results.length > 1 ? ` × ${results.length}` : ""}`,
-          color: 0x2ecc71,
-          description: buildRollDescription({
-            user: interaction.user,
-            cacheType: "Random Book",
-            results,
-            remainingCount: data.books["Random Book"] ?? 0,
-          }),
-          footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Random Book nên chỉ mở được ${results.length} lần.` } : undefined,
-        }],
-      });
-    } catch (err) {
-      log("error", "/randombook", userId, err.message);
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
-    }
-    return;
-  }
-
-  if (interaction.commandName === "randomsealedbook") {
-    if (await replyOnCooldown(interaction, 3000)) return;
-    await interaction.deferReply();
-    const userId = interaction.user.id;
-    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), OPEN_COUNT_MAX);
-    try {
-      const { success, data, results, partial } = await handleOpenSealedBook(userId, count);
-      if (!success) {
-        await interaction.editReply({ content: "❌ Bạn không có **Sealed Book Cache** nào trong kho hoặc không đủ số lượng." });
-        return;
-      }
-      await interaction.editReply({
-        embeds: [{
-          title: `🔮 Mở Sealed Book Cache${results.length > 1 ? ` × ${results.length}` : ""}`,
-          color: 0x9b59b6,
-          description: buildRollDescription({
-            user: interaction.user,
-            cacheType: "Sealed Book Cache",
-            results,
-            remainingCount: data.books["Sealed Book Cache"] ?? 0,
-          }),
-          footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Sealed Book Cache nên chỉ mở được ${results.length} lần.` } : undefined,
-        }],
-      });
-    } catch (err) {
-      log("error", "/randomsealedbook", userId, err.message);
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
-    }
-    return;
-  }
-
-  if (interaction.commandName === "chipboardcache") {
-    if (await replyOnCooldown(interaction, 3000)) return;
-    await interaction.deferReply();
-    const userId = interaction.user.id;
-    const count = Math.min(Math.max(1, interaction.options.getInteger("count") ?? 1), OPEN_COUNT_MAX);
-    try {
-      const { success, data, results, partial } = await handleOpenChipboardCache(userId, count);
-      if (!success) {
-        await interaction.editReply({ content: "❌ Bạn không có **Chipboard Cache** nào trong kho hoặc không đủ số lượng." });
-        return;
-      }
-      await interaction.editReply({
-        embeds: [{
-          title: `🔩 Mở Chipboard Cache${results.length > 1 ? ` × ${results.length}` : ""}`,
-          color: 0xe67e22,
-          description: buildRollDescription({
-            user: interaction.user,
-            cacheType: "Chipboard Cache",
-            results,
-            remainingCount: data.items["Chipboard Cache"] ?? 0,
-          }),
-          footer: partial ? { text: `⚠️ Bạn chỉ có ${results.length}/${count} Chipboard Cache nên chỉ mở được ${results.length} lần.` } : undefined,
-        }],
-      });
-    } catch (err) {
-      log("error", "/chipboardcache", userId, err.message);
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });
-    }
-    return;
-  }
-
-  if (interaction.commandName === "balance") {
-    if (await replyOnCooldown(interaction, 2000)) return;
-    await interaction.deferReply();
-    const targetUser = interaction.options.getUser("user") ?? interaction.user;
-    try {
-      await interaction.editReply(await buildBalanceEmbed(targetUser));
-    } catch (err) {
-      log("error", "/balance", targetUser.id, err.message);
-      await interaction.editReply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu." });
-    }
-    return;
-  }
-
-  if (interaction.commandName === "inventory") {
-    if (await replyOnCooldown(interaction, 2000)) return;
-    await interaction.deferReply();
-    const targetUser = interaction.options.getUser("user") ?? interaction.user;
-    try {
-      const reply = await fetchInventoryReply(targetUser);
-      if (!reply) {
-        await interaction.editReply({ content: `📦 ${targetUser} không có gì trong kho.` });
-        return;
-      }
-      await interaction.editReply(reply);
-    } catch (err) {
-      log("error", "/inventory", targetUser.id, err.message);
-      await interaction.editReply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu." });
-    }
-    return;
-  }
-
-  if (interaction.commandName === "use") {
-    if (await replyOnCooldown(interaction, 2000)) return; 
-    const userId = interaction.user.id;
-    await interaction.deferReply();
-    const itemInput = interaction.options.getString("item") ?? "";
-    const craftCount = Math.max(1, interaction.options.getInteger("count") ?? 1);
-    const itemName = findItem(itemInput);
-    if (!itemName) {
-      await interaction.editReply({ content: `❌ Vật phẩm không hợp lệ: \`${itemInput}\`\nDùng \`/items\` để xem danh sách, \`/recipes\` để xem công thức craft.` });
-      return;
-    }
-    const recipe = CRAFT_RECIPES[itemName];
-    if (!recipe) {
-      await interaction.editReply({ content: `❌ **${itemName}** không có công thức craft.\nDùng \`/recipes\` để xem các vật phẩm có thể craft.` });
-      return;
-    }
-    try {
-      // Tách interaction.editReply ra ngoài withLock: nếu Discord API chậm (network lag,
-      // rate limit), lock TTL có thể hết hạn trong khi vẫn đang giữ lock, cho phép
-      // concurrent operation trên cùng userId. executeCraft chỉ cần Redis — giữ trong lock.
-      const { outputLines, costLines } = await withLock(userId, () =>
-        executeCraft(userId, itemName, craftCount)
-      );
-      await interaction.editReply({
-        content:
-          `⚒️ ${interaction.user} đã craft thành công!\n` +
-          `> 🎁 Nhận được: ${outputLines.join(", ")}\n` +
-          `> 📦 Nguyên liệu đã dùng:\n` +
-          costLines.map(l => `> ${l}`).join("\n"),
-      });
-    } catch (err) {
-      log("error", "/use", userId, err.message);
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}` });
-    }
-    return;
-  }
-
-  if (interaction.commandName === "give") {
-    if (await replyOnCooldown(interaction, 3000)) return;
-    const isAdmin = ADMIN_IDS.has(interaction.user.id);
-    await interaction.deferReply();
-    const targetUser = interaction.options.getUser("user");
-    if (!targetUser) { await interaction.editReply({ content: "❌ Không tìm thấy người nhận." }); return; }
-    if (targetUser.id === interaction.user.id) { await interaction.editReply({ content: "❌ Không thể tặng cho chính mình." }); return; }
-
-    const ahnGain = interaction.options.getInteger("ahn") ?? 0;
-    const bookRaw = interaction.options.getString("book") ?? null;
-    const bookCount = Math.max(1, interaction.options.getInteger("bookcount") ?? 1);
-    const itemRaw = interaction.options.getString("item") ?? null;
-    const itemCount = Math.max(1, interaction.options.getInteger("itemcount") ?? 1);
-    const expGain = interaction.options.getInteger("exp") ?? 0;
-    const gradeTarget = interaction.options.getInteger("grade") ?? null;
-
-    if (!isAdmin && (expGain !== 0 || gradeTarget !== null)) {
-      await interaction.editReply({ content: "❌ Bạn không thể tặng EXP cho người khác." });
-      return;
-    }
-    if (!isAdmin && ahnGain < 0) { await interaction.editReply({ content: "❌ Không thể chuyển số Ahn âm." }); return; }
-
-    let bookName = null;
-    if (bookRaw) {
-      bookName = findBook(bookRaw);
-      if (!bookName) { await interaction.editReply({ content: `❌ Tên sách không hợp lệ: \`${bookRaw}\`` }); return; }
-    }
-    let itemName = null;
-    if (itemRaw) {
-      itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
-      if (!itemName) { await interaction.editReply({ content: `❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`` }); return; }
-    }
-    if (ahnGain === 0 && !bookName && !itemName && expGain === 0 && gradeTarget === null) {
-      await interaction.editReply({ content: "❌ Cần chỉ định ít nhất một trong: `ahn`, `book`, `item`" + (isAdmin ? ", `exp`, `grade`." : ".") });
-      return;
-    }
-
-    // Thay vì thực hiện ngay, hiển thị preview + nút Xác nhận/Hủy — nhất quán với
-    // prefix -give, tránh chuyển nhầm người/nhầm số lượng.
-    const previewLines = buildGivePreviewLines({ ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget });
-    const giveId = registerPendingGive(interaction.user.id, targetUser.id, isAdmin, {
-      ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
-    });
-    await interaction.editReply({
-      embeds: [{
-        title: "📦 Xác nhận chuyển đồ",
-        description:
-          `${interaction.user} muốn ${isAdmin ? "tặng" : "chuyển"} cho ${targetUser}:\n` +
-          previewLines.map(l => `> ${l}`).join("\n"),
-        color: 0xf0a500,
-        footer: { text: "Hết hạn sau 60 giây" },
-      }],
-      components: [buildGiveConfirmRow(giveId)],
-    });
-    return;
-  }
-
-  if (interaction.commandName === "remove") {
-    if (await replyOnCooldown(interaction, 3000)) return;
-    const isAdmin = ADMIN_IDS.has(interaction.user.id);
-    await interaction.deferReply();
-    const mentionedUser = interaction.options.getUser("user");
-    let targetUser;
-    if (mentionedUser) {
-      if (!isAdmin && mentionedUser.id !== interaction.user.id) {
-        await interaction.editReply({ content: "❌ Bạn chỉ có thể xóa đồ của chính mình." });
-        return;
-      }
-      targetUser = mentionedUser;
-    } else {
-      targetUser = interaction.user;
-    }
-
-    const expRemove = interaction.options.getInteger("exp") ?? 0;
-    const ahnRemove = interaction.options.getInteger("ahn") ?? 0;
-    const bookRaw = interaction.options.getString("book") ?? null;
-    const bookCount = Math.max(1, interaction.options.getInteger("bookcount") ?? 1);
-    const itemRaw = interaction.options.getString("item") ?? null;
-    const itemCount = Math.max(1, interaction.options.getInteger("itemcount") ?? 1);
-
-    if (!isAdmin && (expRemove !== 0 || ahnRemove !== 0)) {
-      await interaction.editReply({ content: "❌ Bạn chỉ có thể tự xóa sách hoặc vật phẩm của mình." });
-      return;
-    }
-
-    const bookEntries = [];
-    if (bookRaw) {
-      const bookName = findBook(bookRaw);
-      if (!bookName) { await interaction.editReply({ content: `❌ Tên sách không hợp lệ: \`${bookRaw}\`` }); return; }
-      bookEntries.push({ name: bookName, count: bookCount });
-    }
-    const booksRaw = interaction.options.getString("books") ?? null;
-    if (booksRaw) {
-      const result = parseBatchEntries(booksRaw, findBook, "sách");
-      if (result.error) { await interaction.editReply({ content: result.error }); return; }
-      bookEntries.push(...result.entries);
-    }
-    const itemEntries = [];
-    if (itemRaw) {
-      const itemName = isAdmin ? findItemAdmin(itemRaw) : findItem(itemRaw);
-      if (!itemName) { await interaction.editReply({ content: `❌ Tên vật phẩm không hợp lệ: \`${itemRaw}\`` }); return; }
-      itemEntries.push({ name: itemName, count: itemCount });
-    }
-    const itemsRaw = interaction.options.getString("items") ?? null;
-    if (itemsRaw) {
-      const findFn = isAdmin ? findItemAdmin : findItem;
-      const result = parseBatchEntries(itemsRaw, findFn, "vật phẩm");
-      if (result.error) { await interaction.editReply({ content: result.error }); return; }
-      itemEntries.push(...result.entries);
-    }
-
-    if (expRemove === 0 && ahnRemove === 0 && bookEntries.length === 0 && itemEntries.length === 0) {
-      await interaction.editReply({ content: "❌ Cần chỉ định ít nhất một trong: `exp`, `ahn`, `book`, `item`, `books`, `items`." });
-      return;
-    }
-
-    try {
-      const changes = await withLock(targetUser.id, () => executeRemove({
-        actorId: interaction.user.id, targetId: targetUser.id,
-        isAdmin, expRemove, ahnRemove, bookEntries, itemEntries,
-      }));
-      const isSelf = targetUser.id === interaction.user.id;
-      await interaction.editReply({
-        content: (isSelf ? `🗑️ ${interaction.user} đã xóa khỏi kho của mình:` : `🗑️ ${interaction.user} (admin) đã xóa khỏi kho của ${targetUser}:`) +
-          "\n" + changes.map(c => `> ${c}`).join("\n"),
-      });
-    } catch (err) {
-      log("error", "/remove", targetUser.id, err.message, { actor: interaction.user.id });
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra khi lưu dữ liệu."}` });
-    }
-    return;
-  }
-
-  // ── /profile ──
-  if (interaction.commandName === "profile") {
-    const userId = interaction.user.id;
-    const sub = interaction.options.getSubcommand();
-
-    if (sub === "switch") {
-      if (await replyOnCooldown(interaction, 2000)) return;
-      const slot = interaction.options.getInteger("slot");
-      const currentSlot = await getActiveProfileSlot(userId);
-      if (slot === currentSlot) {
-        const names = await getProfileNames(userId);
-        await interaction.reply({
-          content: `ℹ️ Bạn đang ở **${resolveProfileLabel(names, slot)}** rồi.`,
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      await setActiveProfileSlot(userId, slot);
-      const names = await getProfileNames(userId);
-      const label = resolveProfileLabel(names, slot);
-      await interaction.reply({
-        content: `✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${label}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    if (sub === "info") {
-      if (await replyOnCooldown(interaction, 2000)) return;
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const { embed, components } = await buildProfileInfoEmbed(
-        userId,
-        interaction.user.displayName ?? interaction.user.username,
-        "Bấm nút bên dưới để đổi profile"
-      );
-      await interaction.editReply({ embeds: [embed], components });
-      return;
-    }
-
-    if (sub === "rename") {
-      if (await replyOnCooldown(interaction, 2000)) return;
-      const currentSlot = await getActiveProfileSlot(userId);
-      const rawName = (interaction.options.getString("name") ?? "").trim();
-
-      // Validate
-      if (rawName.length > PROFILE_NAME_MAX_LENGTH) {
-        await interaction.reply({
-          content: `❌ Tên profile tối đa ${PROFILE_NAME_MAX_LENGTH} ký tự.`,
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      await setProfileName(userId, currentSlot, rawName || null);
-      const newLabel = rawName || PROFILE_LABELS[currentSlot];
-      await interaction.reply({
-        content: rawName
-          ? `✅ Đã đặt tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** thành **"${newLabel}"**!`
-          : `✅ Đã reset tên **${PROFILE_EMOJIS[currentSlot]} Profile ${currentSlot}** về mặc định **"${newLabel}"**.`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    return;
-  }
-  } catch (err) {
-    log("error", "interactionCreate", interaction.user?.id ?? "unknown", err.message, { cmd: interaction.commandName });
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
-  }
-});
-
-client.login(TOKEN);
-
-// ─── RTPARRY WEB PAGE ───────────────────────────────────────────────────────
-/** Render trang Parry Real Time — HTML/CSS/JS thuần, không phụ thuộc gì bên ngoài.
- *  performance.now() chạy hoàn toàn trên máy user, không qua round-trip server
- *  lúc đo — đây là điểm khác biệt cốt lõi so với bản -rtparry trong Discord. */
-function renderParryWebPage(token, windowMs, yellowMs, skillName) {
-  // Audio hook — CHƯA có file thật (user sẽ cung cấp sau), nên đọc từ env var, fallback
-  // rỗng. Client tự kiểm tra "có URL không" trước khi play — không lỗi gì nếu để trống,
-  // chỉ là chạy không có âm thanh (im lặng) cho tới khi set 2 biến này.
-  const soundYellowUrl = process.env.RTPARRY_SOUND_YELLOW_URL || "";
-  const soundGoUrl = process.env.RTPARRY_SOUND_GO_URL || "";
-
-  return `<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Parry Real Time</title>
-<style>
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
-  #stage {
-    height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 24px; user-select: none;
-    background: #2c2f33; color: #fff; cursor: pointer;
-  }
-  #stage.idle    { background: #2c2f33; }
-  #stage.waiting { background: #c0392b; }
-  #stage.yellow  { background: #f1c40f; color: #2c2f33; }
-  #stage.go      { background: #27ae60; }
-  #stage.early   { background: #8e44ad; }
-  #stage.missed  { background: #7f8c8d; }
-  #stage.done    { background: #2c2f33; cursor: default; }
-  h1 { font-size: clamp(22px, 7vw, 42px); margin: 0 0 12px; }
-  p  { font-size: clamp(15px, 4vw, 20px); max-width: 480px; opacity: 0.9; }
-  .big { font-size: clamp(36px, 12vw, 90px); font-weight: 800; margin: 8px 0; }
-  button.start {
-    margin-top: 16px; padding: 16px 32px; font-size: 18px; border: none; border-radius: 12px;
-    background: #5865f2; color: #fff; cursor: pointer;
-  }
-  .footer { position: fixed; bottom: 12px; font-size: 12px; opacity: 0.5; }
-</style>
-</head>
-<body>
-<div id="stage" class="idle">
-  <h1>⚔️ Parry Real Time</h1>
-  <p>${skillName ? `Page: <b>${skillName}</b><br>` : ""}Đỏ = chuẩn bị · Vàng = sắp tới · Xanh = BẤM NGAY (trong ${windowMs}ms)</p>
-  <button class="start" id="startBtn">Bắt đầu</button>
-</div>
-<div class="footer">Token: ${token.slice(0, 8)}… · Kết quả sẽ tự gửi vào Discord</div>
-<script>
-const TOKEN = ${JSON.stringify(token)};
-const WINDOW_MS = ${windowMs};
-const YELLOW_MS = ${yellowMs};
-const SOUND_YELLOW_URL = ${JSON.stringify(soundYellowUrl)};
-const SOUND_GO_URL = ${JSON.stringify(soundGoUrl)};
-const stage = document.getElementById("stage");
-const startBtn = document.getElementById("startBtn");
-let phase = "idle"; // idle | waiting | yellow | go | late | done
-let t0 = null;
-let timer = null;
-let yellowTimer = null;
-let goTimeoutTimer = null;
-let noClickTimer = null;
-
-function setPhase(p, html) {
-  phase = p;
-  stage.className = p === "late" ? "missed" : p; // dùng lại màu "missed" cho "late"
-  stage.innerHTML = html;
+  return null;
 }
 
-// Preload audio NGAY lúc trang load — KHÔNG đợi tới lúc cần phát mới tạo Audio() như
-// trước (đó là bug thật: tạo mới + bắt đầu fetch network đúng lúc màn vàng/xanh xuất
-// hiện, có thể làm việc tải/decode file cạnh tranh CPU với việc render màn hình ngay
-// lúc cần chính xác nhất — đặc biệt rõ với Page "fast" vì vàng chỉ kéo dài 50-150ms,
-// file có thể chưa tải xong khi cần chuyển xanh). Giờ tạo Audio() 1 lần, gọi .load()
-// chủ động ngay khi script chạy — lúc thật sự cần phát, file đã sẵn sàng từ trước.
-const yellowAudio = SOUND_YELLOW_URL ? new Audio(SOUND_YELLOW_URL) : null;
-const goAudio = SOUND_GO_URL ? new Audio(SOUND_GO_URL) : null;
-if (yellowAudio) { yellowAudio.preload = "auto"; yellowAudio.load(); }
-if (goAudio) { goAudio.preload = "auto"; goAudio.load(); }
+// ─── findByKeyword — dùng cho lệnh `-skill list <keyword>` ──────────────────
+// Tìm tất cả skill có keyword xuất hiện trong: name, tags, keywords[], passive,
+// hoặc trong nội dung roll() (emoji name được strip để match text thuần).
+function findByKeyword(keyword) {
+  const kw = keyword.toLowerCase().trim();
+  const results = [];
 
-// playSound — KHÔNG lỗi gì nếu chưa có audio (url rỗng) hoặc browser chặn autoplay.
-// User đã bấm "Bắt đầu" trước đó nên đã có user-gesture trong page, audio.play()
-// thường được phép sau đó, nhưng vẫn catch lỗi cho chắc (Safari/mobile có thể khác).
-// Dùng LẠI audio object đã preload (currentTime reset về 0 để phát lại từ đầu nếu
-// user chơi nhiều lần) — không tạo mới mỗi lần gọi.
-function playSound(audio) {
-  if (!audio) return;
-  try {
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-  } catch (e) {}
-}
+  for (const [, skill] of Object.entries(SKILLS)) {
+    // 1. Kiểm tra name
+    if (skill.name.toLowerCase().includes(kw)) { results.push(skill); continue; }
 
-function startRound() {
-  setPhase("waiting", "<h1>Chờ…</h1><p>ĐỪNG bấm vội — chờ qua VÀNG rồi tới XANH</p>");
-  const delay = 1200 + Math.random() * 2800; // 1.2s~4s, random để không đoán được nhịp
-  timer = setTimeout(() => {
-    // Màn VÀNG — thời gian giữ vàng (YELLOW_MS) phụ thuộc tốc độ Page đang luyện, suy
-    // ra từ cooldown thật của skill (xem inferPageSpeed phía server) — Page nhanh thì
-    // vàng gần như tức khắc chuyển xanh, Page chậm thì giữ vàng lâu hơn nhiều.
-    setPhase("yellow", "<h1>⚠️ Sắp tới!</h1>");
-    playSound(yellowAudio);
-    yellowTimer = setTimeout(() => {
-      // QUAN TRỌNG: setPhase() TRƯỚC, ghi t0 SAU — và không ghi ngay mà đợi qua
-      // double requestAnimationFrame. Trước đây ghi t0 = performance.now() NGAY
-      // LẬP TỨC rồi MỚI gọi setPhase() — nghĩa là t0 đo "lúc code bắt đầu chạy",
-      // không phải "lúc màn hình THẬT SỰ chuyển xanh". Giữa lúc yêu cầu đổi DOM
-      // (className + innerHTML) và lúc trình duyệt thực sự PAINT thay đổi đó lên
-      // màn hình luôn có 1 khoảng trễ (đợi tới vsync/frame kế tiếp, vài ms tới hơn
-      // chục ms tùy máy). requestAnimationFrame lồng đôi là kỹ thuật chuẩn để chờ
-      // tới khi chắc chắn frame chứa thay đổi đó ĐÃ được vẽ — rAF đầu tiên chạy
-      // ngay TRƯỚC frame kế tiếp (đổi màu vừa apply nhưng có thể chưa lên màn
-      // hình), rAF thứ hai (lồng trong rAF đầu) chạy ở frame SAU đó — lúc này chắc
-      // chắn frame xanh đã vẽ xong. t0 ghi ở đây mới đúng là "lúc xanh thật sự".
-      setPhase("go", "<div class='big'>BẤM NGAY!</div>");
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          t0 = performance.now();
-          // playSound() ĐẶT SAU khi đã chốt t0 — trước đây gọi TRƯỚC double rAF, nghĩa
-          // là việc khởi động audio (seek currentTime=0 + play()) có khả năng (dù nhỏ)
-          // chiếm main-thread đúng lúc rAF cần chạy, làm trễ thêm vài ms ngoài dự kiến.
-          // Giờ âm thanh phát SAU khi đã đo xong — đánh đổi vài ms lệch audio-visual
-          // (không đáng kể, tai người khó phân biệt) để đảm bảo việc ĐO không bị bất kỳ
-          // công việc nào khác chen vào.
-          playSound(goAudio);
-          // Đếm ngược WINDOW_MS cũng neo theo CHÍNH XÁC mốc t0 này — không phải
-          // mốc setTimeout fire — để 2 con số (thời điểm "xanh thật" và thời điểm
-          // "hết giờ") luôn khớp nhau, không lệch theo độ trễ rAF kể trên.
-          goTimeoutTimer = setTimeout(() => {
-            setPhase("late", "<h1>⌛ Trễ rồi!</h1><p>Vẫn bấm để xem bạn trễ bao nhiêu</p>");
-            // Failsafe: nếu sau đó vẫn không bấm luôn, tự submit "missed" thật (không
-            // số) sau 1 khoảng đủ dài — không để phiên treo vô hạn.
-            noClickTimer = setTimeout(() => submitResult(null, "missed"), 5000);
-          }, WINDOW_MS);
-        });
-      });
-    }, YELLOW_MS);
-  }, delay);
-}
+    // 2. Kiểm tra tags field
+    if (skill.tags && skill.tags.toLowerCase().includes(kw)) { results.push(skill); continue; }
 
-async function submitResult(reactionMs, resultType) {
-  clearTimeout(goTimeoutTimer);
-  clearTimeout(noClickTimer);
-  setPhase("done", "<h1>⏳ Đang gửi kết quả…</h1>");
-  try {
-    const res = await fetch("/rtparry/" + TOKEN + "/result", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reactionMs, resultType }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      const msgByType = {
-        success: "<h1>✅ " + Math.round(reactionMs) + "ms</h1><p>Kết quả đã gửi vào Discord. Có thể đóng tab này.</p>",
-        early:   "<h1>❌ Bấm sớm quá!</h1><p>Kết quả đã gửi vào Discord. Có thể đóng tab này.</p>",
-        missed:  "<h1>⌛ Bỏ lỡ!</h1><p>Kết quả đã gửi vào Discord. Có thể đóng tab này.</p>",
-      };
-      setPhase("done", msgByType[resultType] ?? msgByType.success);
-    } else {
-      setPhase("done", "<h1>⚠️ " + (data.error || "Có lỗi xảy ra") + "</h1><p>Link có thể đã hết hạn — quay lại Discord dùng <code>-rtparry</code> lại.</p>");
+    // 3. Kiểm tra keywords[] (field tùy chọn)
+    if (Array.isArray(skill.keywords) && skill.keywords.some(k => k.toLowerCase().includes(kw))) {
+      results.push(skill); continue;
     }
-  } catch (e) {
-    setPhase("done", "<h1>⚠️ Lỗi kết nối</h1><p>Không gửi được kết quả — kiểm tra mạng rồi thử lại.</p>");
-  }
-}
 
-startBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  startRound();
-});
+    // 4. Kiểm tra passive description
+    if (skill.passive && skill.passive.toLowerCase().includes(kw)) { results.push(skill); continue; }
 
-stage.addEventListener("click", () => {
-  if (phase === "waiting" || phase === "yellow") {
-    // Bấm sớm (kể cả lúc ĐÃ vàng nhưng chưa xanh) = THẤT BẠI THẬT — khớp đúng cảm giác
-    // Sekiro: thấy ký hiệu báo trước không có nghĩa được đỡ ngay, phải đợi đúng lúc đòn
-    // landing (xanh) mới đỡ được. Trước đây cho "thử lại tại chỗ" miễn phí ở phase
-    // "waiting", không báo server — nghĩa là spam-click suốt từ đầu KHÔNG BAO GIỜ bị
-    // tính fail. Giờ bấm sớm 1 lần (dù đỏ hay vàng) là kết thúc phiên luôn, y như bấm
-    // trễ (missed) hay bấm đúng lúc (success) — phải gõ -rtparry lại để có lượt mới.
-    clearTimeout(timer);
-    clearTimeout(yellowTimer);
-    submitResult(null, "early");
-  } else if ((phase === "go" || phase === "late") && t0 !== null) {
-    // "late" vẫn submit như "success" — server tự ép thành "missed" nếu reactionMs
-    // vượt windowMs (xem route POST), nhưng giờ có SỐ THẬT để hiển thị khi báo bỏ lỡ.
-    const reactionMs = performance.now() - t0;
-    submitResult(reactionMs, "success");
-  } else if (phase === "go") {
-    // Edge case cực hiếm: phase đã là "go" nhưng t0 chưa kịp set (đang chờ qua double
-    // rAF xác nhận đã paint xong, xem comment ở startRound). Click rơi đúng vào khe vài
-    // ms này thực tế gần như không thể xảy ra với phản xạ người thật — coi như bấm
-    // sớm để an toàn, tránh tính ra reactionMs vô nghĩa (performance.now() - null).
-    submitResult(null, "early");
-  }
-});
-</script>
-</body>
-</html>`;
-}
-
-
-// ─── EXPRESS SERVER ────────────────────────────────────────────────────────────
-app.get("/", (req, res) => botReady ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
-
-// GET /rtparry/:token — serve trang test phản xạ (chỉ nếu token còn hợp lệ).
-app.get("/rtparry/:token", (req, res) => {
-  const session = webParrySessions.get(req.params.token);
-  if (!session || session.expiresAt < Date.now()) {
-    return res.status(404).send(
-      "<!DOCTYPE html><html><body style='font-family:sans-serif;text-align:center;padding:40px;background:#2c2f33;color:#fff'>" +
-      "<h2>⚠️ Link đã hết hạn hoặc không hợp lệ</h2><p>Quay lại Discord và dùng <code>-rtparry</code> để lấy link mới.</p>" +
-      "</body></html>"
-    );
-  }
-  res.send(renderParryWebPage(req.params.token, session.windowMs, session.yellowMs, session.skillName));
-});
-
-// POST /rtparry/:token/result — nhận kết quả đo được TỪ TRÌNH DUYỆT user (đã tính
-// xong reactionMs bằng performance.now() phía client), rồi edit lại message Discord
-// gốc với kết quả thật, không lẫn latency.
-app.post("/rtparry/:token/result", async (req, res) => {
-  const session = webParrySessions.get(req.params.token);
-  if (!session || session.expiresAt < Date.now()) {
-    return res.status(404).json({ ok: false, error: "Link đã hết hạn hoặc đã được dùng." });
-  }
-  webParrySessions.delete(req.params.token); // single-use — dùng 1 lần là xoá ngay
-
-  const { reactionMs, resultType } = req.body ?? {};
-  // Validate input — đây là endpoint public, ai có token cũ (đã hết hạn nhưng đoán
-  // được) hoặc tự curl cũng gọi được, nên không tin tưởng giá trị gửi lên vô điều
-  // kiện. Tách riêng 2 loại: (a) dữ liệu hỏng hẳn (không phải number, NaN, âm, hoặc
-  // >10s — gần như chỉ xảy ra khi tự gọi API thô, không phải từ trang web thật) thì
-  // từ chối thẳng, message Discord giữ nguyên "đang chờ"; (b) số HỢP LỆ về kiểu dữ
-  // liệu nhưng QUÁ NHANH để là phản xạ con người thật — đây mới là case đáng quan
-  // tâm hơn, nên BÁO RÕ trong Discord (xem RTPARRY_MIN_HUMAN_MS) thay vì để message
-  // treo mãi "đang chờ kết quả" không bao giờ cập nhật.
-  const isNumberSane = typeof reactionMs === "number" && Number.isFinite(reactionMs) && reactionMs >= 0 && reactionMs < 10_000;
-  if (resultType === "success" && !isNumberSane) {
-    return res.status(400).json({ ok: false, error: "Dữ liệu không hợp lệ." });
-  }
-
-  // QUAN TRỌNG: client tự báo "success" không có nghĩa nó THẬT — JS phía client có
-  // thể bị sửa qua devtools/curl trực tiếp để bypass timeout WINDOW_MS và luôn báo
-  // "success" với bất kỳ reactionMs nào. Server PHẢI tự validate lại: nếu reactionMs
-  // vượt windowMs của session, ép về "missed" dù client gửi gì lên — đây chính là
-  // bug đã gặp (1077ms vẫn báo "thành công") vì trước đây hoàn toàn tin client.
-  let finalType = resultType;
-  if (resultType === "success" && reactionMs > session.windowMs) {
-    finalType = "missed";
-  } else if (resultType === "success" && reactionMs < RTPARRY_MIN_HUMAN_MS) {
-    // SÀN SINH LÝ HỌC: con người KHÔNG THỂ phản xạ thị giác dưới ~80ms dù luyện tập
-    // nhiều (giới hạn dẫn truyền thần kinh-cơ, không phải kỹ năng). Random delay
-    // 1.2-4s trước khi xanh chỉ chống được macro ĐOÁN timing cố định — không chống
-    // được script tự động kiểu MutationObserver theo dõi class đổi thành "go" rồi
-    // tự bắn click NGAY khi thấy (không đoán gì cả, phản ứng thật với sự kiện DOM)
-    // — loại này luôn ra reactionMs ~1-10ms bất kể random delay bao nhiêu. Không
-    // phải "chặn tuyệt đối mọi cheat" (vẫn có thể script giả lập delay 90-100ms để
-    // né), nhưng chặn được trường hợp lộ liễu nhất, chi phí gần như 0.
-    finalType = "rejected";
-  }
-
-  try {
-    const channel = await client.channels.fetch(session.channelId);
-    const msg = await channel.messages.fetch(session.messageId);
-
-    if (finalType === "early") {
-      await msg.edit({
-        embeds: [{
-          title: "⚔️ Parry Real Time — Web",
-          description: `<@${session.userId}> đã **bấm sớm quá**! ❌` + (session.skillName ? `\n> Page: **${session.skillName}**` : ""),
-          color: 0xe74c3c,
-          footer: { text: "Dùng -rtparry để thử lại" },
-        }],
-      });
-    } else if (finalType === "missed") {
-      // reactionMs có giá trị thật khi user CÓ bấm nhưng trễ (server tự ép success→missed
-      // vì vượt windowMs) — hiển thị số đó để họ biết chính xác trễ bao nhiêu. Chỉ khi
-      // reactionMs null (failsafe client tự submit vì không bấm luôn) mới hiện chung chung.
-      const lateMs = (typeof reactionMs === "number" && Number.isFinite(reactionMs)) ? Math.round(reactionMs) : null;
-      await msg.edit({
-        embeds: [{
-          title: "⚔️ Parry Real Time — Web",
-          description:
-            `<@${session.userId}> đã **bỏ lỡ** đòn! ❌\n` +
-            (lateMs !== null
-              ? `> Phản ứng: **${lateMs}ms** — chậm hơn cửa sổ **${session.windowMs}ms**`
-              : `> Cửa sổ parry: **${session.windowMs}ms** — không bấm kịp!`) +
-            (session.skillName ? `\n> Page: **${session.skillName}**` : ""),
-          color: 0xe74c3c,
-          footer: { text: "Dùng -rtparry để thử lại" },
-        }],
-      });
-    } else if (finalType === "rejected") {
-      await msg.edit({
-        embeds: [{
-          title: "⚔️ Parry Real Time — Web",
-          description:
-            `<@${session.userId}> kết quả **không hợp lệ** ⚠️\n` +
-            `> Phản ứng dưới **${RTPARRY_MIN_HUMAN_MS}ms** — nhanh hơn khả năng phản xạ thật của con người, không được tính.`,
-          color: 0x95a5a6,
-          footer: { text: "Dùng -rtparry để thử lại" },
-        }],
-      });
-    } else {
-      const ms = Math.round(reactionMs);
-      const rating =
-        // Mốc tính theo phản xạ thật (windowMs=250) — không còn latency Discord/CSS
-        // pha trộn vào nữa, nên hạ hẳn so với mốc cũ (100/200/300, vốn tính trên số
-        // đo bị thổi phồng do bug/latency). <120ms gần như chỉ người phản xạ rất tốt
-        // hoặc có luyện tập mới đạt được liên tục; 250ms là giới hạn cứng (window).
-        ms < 120 ? "🏆 **AMAZING!** Phản ứng SIÊU NHANH!" :
-        ms < 160 ? "⚡ **GREAT!** Phản ứng rất nhanh!"   :
-        ms < 200 ? "✅ **GOOD!** Phản ứng tốt!"          :
-                   "😅 **NOT BAD!** Vừa kịp!";
-      await msg.edit({
-        embeds: [{
-          title: "⚔️ Parry Real Time — Web",
-          description:
-            `<@${session.userId}> **PARRY THÀNH CÔNG!** ✅\n` +
-            `> ⚡ Phản ứng: **${ms}ms** — ${rating}\n` +
-            `> Cửa sổ parry: **${session.windowMs}ms**` + (session.skillName ? ` · Page: **${session.skillName}**` : ""),
-          color: 0x2ecc71,
-          footer: { text: "Dùng -rtparry để thử lại" },
-        }],
-      });
+    // 5. Kiểm tra nội dung roll() — strip Discord emoji code thành tên emoji
+    try {
+      const rollText = skill.roll()
+        .join(" ")
+        .replace(/<:([^:]+):\d+>/g, "$1") // <:Sinking:123> → Sinking
+        .toLowerCase();
+      if (rollText.includes(kw)) { results.push(skill); continue; }
+    } catch (_) {
+      // skill.roll() cần arg đặc biệt (có promptArg) → search errorMsg thay thế
+      if (skill.promptArg?.errorMsg?.toLowerCase().includes(kw)) { results.push(skill); continue; }
     }
-  } catch (err) {
-    log("error", "parryrt_web_result", session.userId, err.message);
-    // Vẫn trả ok cho client — họ đã đo xong, lỗi edit message Discord không phải
-    // lỗi của họ, không cần báo lỗi lên trang web.
   }
 
-  res.json({ ok: true });
-});
-
-app.use((req, res) => res.status(404).send("Not found."));
-app.use((err, req, res, next) => { console.error("[Express error]", err); res.status(500).send("Internal server error."); });
-
-const PORT = process.env.PORT || 10000;
-const server = app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system", `Server running on port ${PORT}`));
-
-// Clear timer khi process shutdown để tránh memory leak
-function gracefulShutdown(signal) {
-  log("info", "shutdown", "system", `${signal} received, shutting down.`);
-  clearInterval(cooldownCleanupTimer);
-  clearInterval(webParrySessionCleanupTimer);
-  server.close(() => process.exit(0));
+  return results;
 }
 
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
-
-process.on("uncaughtException", (err) => log("error", "uncaughtException", "system", err.message, { stack: err.stack }));
-process.on("unhandledRejection", (reason) => log("error", "unhandledRejection", "system", String(reason)));
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking };
