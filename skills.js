@@ -2410,8 +2410,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,24), d2 = r(24,27);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Gây 1 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up/Coffin (Max 10), +1 <:DiceUp:1513767795681398894>Dice Up/<:Sinking:1513762793436741652>Sinking trên địch (Max 8), +3 <:DiceUp:1513767795681398894>Dice Up/Dullahan (Max 9)`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE] — Gây 1 <:Sinking:1513762793436741652>Sinking, nhận 1 **Coffin**. +1 <:DiceUp:1513767795681398894>Dice Up/Coffin (Max 10), +1 <:DiceUp:1513767795681398894>Dice Up/<:Sinking:1513762793436741652>Sinking trên địch (Max 8), +3 <:DiceUp:1513767795681398894>Dice Up/Dullahan (Max 9)`,
         `*[Turn End sau khi dùng] mất hết stack Dullahan*`,
       ];
     },
@@ -3114,6 +3114,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(2,3), d2 = r(2,4);
       return [
+        `*On Use — ngay khi sử dụng: nhận 2 <:Poise:1513762945715142736>Poise [<:Slash:1513768633434640517>Slash]*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise`,
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — nhận 2 <:Poise:1513762945715142736>Poise; tiêu thụ 6 <:Poise:1513762945715142736>Poise để nhận 2 <:Light:1513786082502770719>Light`,
       ];
@@ -4221,9 +4222,49 @@ Object.assign(SKILLS, {
   "fused blade of ruined mirror worlds": {
     name: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
     weaponType: "Heavy", weaponDmg: "28 [<:Slash:1513768633434640517>Slash]",
-    passive: `**Dullahan** — Parry thành công khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan**. Khi có **Dullahan**: nhận 30% Dmg gây ra và nhận thêm 15% Dmg; mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
+    passive: `**Dullahan** — Parry thành công khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan**. Khi có **Dullahan**: nhận 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
     cost: "—", cd: "—", diceMul: "—",
     roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "requiem" hoặc "lament mourn and despair")*`]; },
+  },
+
+  // ── Vengeance Retaliation ──
+  // Dice2 (khi CÓ nhận sát thương) KHÔNG có base — giá trị THUẦN từ công thức
+  // ceil(%HP mất × 2.5), tối đa 50 (tại mốc 20% HP, chính chủ xác nhận). Dice1 [2~4]
+  // chỉ dùng khi KHÔNG có sát thương nào (hpLossPct = 0). Hiệu ứng nền (5 Fragile,
+  // 6 Bleed, 3 Paralyze) áp dụng CẢ 2 nhánh; Dice2 cộng thêm 7 Fragile + 2 Paralyze
+  // (gộp thành 12 Fragile / 5 Paralyze cho gọn, Bleed giữ 6 vì không có bonus riêng).
+  "vengeance retaliation": {
+    name: "Vengeance Retaliation",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    promptArg: {
+      label: "% HP đã mất",
+      parse: (s) => parseFloat(s),
+      validate: (v) => !isNaN(v) && v >= 0 && v <= 100,
+      errorMsg:
+        "❓ **Vengeance Retaliation** cần nhập % HP đã mất kể từ lần dùng skill trước (0 nếu không mất gì).\n" +
+        "> Cú pháp: `-skill vengeance retaliation <%>`\n" +
+        "> VD: `-skill vr 0` (không mất dmg) | `-skill vr 15` (mất 15% HP)",
+      buildHeader: (v, s) => `[${s.cost}] [CD: ${s.cd}] [HP mất: ${v}%]`,
+    },
+    roll(hpLossPct = 0) {
+      const intro =
+        `*Lượt kế tiếp sẽ vào trạng thái khi nhận càng nhiều sát thương, sát thương đầu ra càng cao ` +
+        `(Mỗi 1% Mất tăng thêm 2.5 Dice Value cho Dice 2, làm tròn lên nếu lẻ) (Max: 20% Hp). ` +
+        `Lượt tiếp theo: Tụ lực vào nắm đấm tấn công kẻ địch.*`;
+      if (hpLossPct <= 0) {
+        const d1 = r(2, 4);
+        return [
+          intro,
+          `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Không có sát thương nào — gây 5 <:Fragile:1513763336167100536>Fragile, 6 <:Bleed:1513762688226955285>Bleed và 3 <:Paralyze:1513763316479295548>Paralyze turn kế`,
+        ];
+      }
+      const cappedPct = Math.min(hpLossPct, 20);
+      const d2 = Math.ceil(cappedPct * 2.5);
+      return [
+        intro,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — HP mất ${cappedPct}%${hpLossPct > 20 ? " *(vượt mốc, tính tối đa 20%)*" : ""} — gây 12 <:Fragile:1513763336167100536>Fragile, 6 <:Bleed:1513762688226955285>Bleed và 5 <:Paralyze:1513763316479295548>Paralyze turn kế`,
+      ];
+    },
   },
 });
 
@@ -4231,6 +4272,9 @@ Object.assign(SKILLS, {
 Object.assign(SKILL_ALIASES, {
   // Illusory Land of Great Void
   "whirlwind": "whirlwind",
+  // Vengeance Retaliation
+  "vr": "vengeance retaliation",
+  "vengeanceretaliation": "vengeance retaliation",
   // Lucent Historia
   "designant": "designant.",
   "astralquantization": "astral quantization",
