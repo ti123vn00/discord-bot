@@ -608,6 +608,47 @@ const givePendingCleanupTimer = setInterval(() => {
     if (g.expiresAt < now) pendingGives.delete(id);
 }, 30_000);
 
+/** buildGivePreviewLines — tạo dòng preview hiển thị TRƯỚC khi confirm /give, mô tả
+ *  những gì SẮP được chuyển. Khác `changes` (trả về từ executeGive ở player-actions.js)
+ *  1 chút về cách diễn đạt — đây là dự kiến lúc CHƯA biết tổng số sau khi cộng vào
+ *  kho người nhận, executeGive mới biết số CUỐI vì nó đọc dữ liệu thật lúc confirm.
+ *
+ *  BUG ĐÃ SỬA: hàm này được gọi ở 2 nơi (-give prefix dòng ~2790 và /give slash dòng
+ *  ~4530) nhưng CHƯA TỪNG được định nghĩa — khiến MỌI lần `-give`/`/give` với input
+ *  hợp lệ đều throw ReferenceError ngay tại bước build preview, rơi vào catch-all
+ *  chung của messageCreate/interactionCreate, hiện "❌ Có lỗi không mong muốn xảy ra."
+ *  — tức KHÔNG AI chuyển được gì cả, dù input đúng 100% (VD: `ahn: 1`). */
+function buildGivePreviewLines({ ahnGain = 0, bookName = null, bookCount = 1, itemName = null, itemCount = 1, expGain = 0, gradeTarget = null }) {
+  const lines = [];
+  if (gradeTarget !== null) lines.push(`Grade → **Grade ${gradeTarget}**`);
+  else if (expGain !== 0) lines.push(`${expGain > 0 ? "+" : ""}${expGain} EXP`);
+  if (ahnGain !== 0) lines.push(`${ahnGain > 0 ? "+" : ""}${formatNumber(ahnGain)} Ahn`);
+  if (bookName) lines.push(`${bookCount}x **${bookName}**`);
+  if (itemName) lines.push(`${itemCount}x **${itemName}**`);
+  return lines;
+}
+
+/** registerPendingGive — lưu 1 giao dịch /give đang chờ xác nhận vào pendingGives,
+ *  trả về giveId để gắn vào customId của nút Xác nhận/Hủy (xem comment đầy đủ ở khai
+ *  báo pendingGives phía trên về shape lưu trữ — cũng là phần bị thiếu cùng lỗi với
+ *  buildGivePreviewLines ở trên). */
+function registerPendingGive(senderId, targetId, isAdmin, params) {
+  const giveId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  pendingGives.set(giveId, { senderId, targetId, isAdmin, params, expiresAt: Date.now() + GIVE_PENDING_TTL_MS });
+  return giveId;
+}
+
+/** buildGiveConfirmRow — ActionRow chứa nút Xác nhận/Hủy cho preview /give, gắn
+ *  giveId vào customId để 2 handler "giveconfirm:"/"givecancel:" tra lại đúng giao
+ *  dịch trong pendingGives. Cũng bị thiếu cùng lúc với 2 hàm phía trên — gọi /give
+ *  vẫn crash ở bước build components dù đã vá xong buildGivePreviewLines/registerPendingGive. */
+function buildGiveConfirmRow(giveId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`giveconfirm:${giveId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`givecancel:${giveId}`).setLabel("❌ Hủy").setStyle(ButtonStyle.Danger),
+  );
+}
+
 
 // ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
 function migratePlayerData(data) {
