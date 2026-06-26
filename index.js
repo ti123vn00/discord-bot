@@ -36,6 +36,7 @@ const {
   BURN_MAX,
   TREMOR_MAX,
   BLEED_MAX,
+  CHARGE_MAX,
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
@@ -326,7 +327,7 @@ const KNOWN_KEYS = new Set([
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
   "poise",
   "living", "departed",
-  "burn", "bleed", "bleedactions", "tremor",
+  "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
   "name", "hp", "weapon", "stamina", "light", // -encounter start/join/bossattack
 ]);
@@ -394,7 +395,7 @@ function saturateDR(mult) {
   return 1 - drEff / 100;
 }
 
-function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving = 0, theDeparted = 0, burnInit = 0, bleedInit = 0, bleedActions = 1, tremorInit = 0 }) {
+function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving = 0, theDeparted = 0, burnInit = 0, bleedInit = 0, bleedActions = 1, tremorInit = 0, chargeInit = 0 }) {
   const errors = [];
   if (isNaN(bonusPct))       errors.push("bonus phải là số");
   if (isNaN(sanityBonusPct)) errors.push("sanitybonus phải là số");
@@ -418,6 +419,7 @@ function validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, dice
   if (isNaN(bleedInit) || !Number.isInteger(bleedInit) || bleedInit < 0 || bleedInit > BLEED_MAX) errors.push(`Bleed phải từ 0–${BLEED_MAX}`);
   if (isNaN(bleedActions) || !Number.isInteger(bleedActions) || bleedActions < 0) errors.push("bleedactions phải là số nguyên ≥ 0");
   if (isNaN(tremorInit) || !Number.isInteger(tremorInit) || tremorInit < 0 || tremorInit > TREMOR_MAX) errors.push(`Tremor phải từ 0–${TREMOR_MAX}`);
+  if (isNaN(chargeInit) || !Number.isInteger(chargeInit) || chargeInit < 0 || chargeInit > CHARGE_MAX) errors.push(`Charge phải từ 0–${CHARGE_MAX}`);
   return errors;
 }
 
@@ -1090,6 +1092,7 @@ function calcMathCore(opts) {
                        // hành động (không phải lúc bị mình tấn công), /math không tự
                        // biết enemy hành động mấy lần nên cần nhập tay số này.
     tremorInit = 0,
+    chargeInit = 0,
   } = opts;
 
   const resValues = { B: 1, P: 1, S: 1 };
@@ -1108,8 +1111,26 @@ function calcMathCore(opts) {
   const drMult = hasDR ? saturateDR(1 - drRawPct / 100) : 1;
 
   const dmgValues = [];
+  // Poise/Charge/Burn/Bleed hỗ trợ CẢ +N (cộng) và -N (tiêu thụ/trừ) — VD Draw of the
+  // Sword: "Nhận 2 Poise. Tiêu thụ 6 Poise để nhận 2 Light" → dmgStr ghi "+2Poise-6Poise"
+  // trên CÙNG 1 hit. Sinking/Rupture/Living/Departed GIỮ NGUYÊN chỉ +N (không đổi) —
+  // không có yêu cầu hỗ trợ trừ cho 4 cái này, tránh động vào hành vi skill.js đang dùng.
   const damageRegex =
-    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|\+\d*Poise|\+\d*Living|\+\d*Departed|\+Crit\d+|\+TremorBurst)*)/gi;
+    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*Living|\+\d*Departed|\+Crit\d+|\+TremorBurst)*)/gi;
+  // sumSignedTag — tách riêng GAIN (tổng "+N<tag>") và CONSUME (tổng "-N<tag>", dạng
+  // số dương) trong effectsStr của 1 hit — KHÔNG gộp net ngay ở đây, vì cần biết riêng
+  // 2 phần để phát hiện "tiêu thụ không đủ" (VD: +2Poise-6Poise mà lúc áp dụng chỉ có
+  // 4 Poise sau gain thì thiếu 2, cần báo rõ thay vì chỉ lặng lẽ clamp về 0).
+  function sumSignedTag(effectsStr, tagName) {
+    if (!effectsStr) return { gain: 0, consume: 0 };
+    const re = new RegExp(`([+-])(\\d*)${tagName}`, "gi");
+    let gain = 0, consume = 0, m;
+    while ((m = re.exec(effectsStr)) !== null) {
+      const count = m[2] ? parseInt(m[2], 10) : 1;
+      if (m[1] === "-") consume += count; else gain += count;
+    }
+    return { gain, consume };
+  }
   while ((match = damageRegex.exec(dmgStr)) !== null) {
     const base = parseFloat(match[1]);
     const multiplier = match[2] ? parseInt(match[2]) : 1;
@@ -1119,7 +1140,6 @@ function calcMathCore(opts) {
     const effectsStr = match[6] || "";
     const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
     const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
-    const poiseMatch = effectsStr.match(/\+(\d+)?Poise/i);
     const livingMatch = effectsStr.match(/\+(\d+)?Living/i);
     const departedMatch = effectsStr.match(/\+(\d+)?Departed/i);
     // TremorBurst KHÔNG có số đếm (chỉ là cờ đánh dấu "đòn này có gắn Tremor Burst") —
@@ -1127,24 +1147,37 @@ function calcMathCore(opts) {
     const tremorBurst = /\+TremorBurst/i.test(effectsStr);
     const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
     const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
-    const poiseToApply = poiseMatch ? parseInt(poiseMatch[1] || "0") : 0;
     const livingToApply = livingMatch ? parseInt(livingMatch[1] || "1") : 0;
     const departedToApply = departedMatch ? parseInt(departedMatch[1] || "1") : 0;
+    // Poise/Charge/Burn/Bleed — giữ riêng gain/consume (không gộp net) để phát hiện
+    // thiếu hụt lúc áp dụng thật (xem comment ở khối "Apply stack mới" trong loop).
+    const poiseTag = sumSignedTag(effectsStr, "Poise");
+    const chargeTag = sumSignedTag(effectsStr, "Charge");
+    const burnTag = sumSignedTag(effectsStr, "Burn");
+    const bleedTag = sumSignedTag(effectsStr, "Bleed");
     for (let i = 0; i < multiplier; i++) {
-      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, livingToApply, departedToApply, tremorBurst, effectsStr });
+      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, livingToApply, departedToApply, tremorBurst, effectsStr });
     }
   }
   if (dmgValues.length === 0) {
-    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseToApply: 0, livingToApply: 0, departedToApply: 0, tremorBurst: false, effectsStr: "" });
+    const zeroTag = { gain: 0, consume: 0 };
+    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseTag: zeroTag, chargeTag: zeroTag, burnTag: zeroTag, bleedTag: zeroTag, livingToApply: 0, departedToApply: 0, tremorBurst: false, effectsStr: "" });
   }
 
   let sanity = sanityInit;
   let totalDmg = 0;
   let totalPoise = poiseInit;
+  let totalCharge = Math.min(Math.max(chargeInit, 0), CHARGE_MAX); // Charge: cộng/trừ qua dmg tag, KHÔNG có decay tự động (không như Poise crit-halve)
   let enemySinking = Math.min(sinkingInit, SINKING_MAX);
   let enemyTremor = Math.min(tremorInit, TREMOR_MAX);
   let totalTremorStaminaLoss = 0; // tích lũy từ các hit có +TremorBurst
   let enemyRupture = Math.min(ruptureInit, RUPTURE_MAX);
+  // Burn/Bleed giờ là biến THEO DÕI được (giống enemySinking/enemyRupture), KHÔNG còn
+  // là input tĩnh chỉ dùng 1 lần — vì dmg tag +N/-NBurn, +N/-NBleed có thể sửa số
+  // count NGAY TRONG lúc đang tính các hit, trước khi áp dụng công thức end-turn-tick
+  // (×2 dmg rồi giảm nửa cho Burn; ÷4×actions dmg rồi giảm nửa cho Bleed) ở CUỐI.
+  let enemyBurn = Math.min(Math.max(burnInit, 0), BURN_MAX);
+  let enemyBleed = Math.min(Math.max(bleedInit, 0), BLEED_MAX);
   let livingStacks = Math.min(theLiving, BUTTERFLY_LIVING_MAX);     // Count The Living hiện tại, có thể tăng qua +Living trong dmg
   let departedStacks = Math.min(theDeparted, BUTTERFLY_DEPARTED_MAX); // Count The Departed hiện tại, có thể tăng qua +Departed trong dmg
   let totalSanityHeal = 0;   // tích lũy từ The Living qua các hit
@@ -1155,7 +1188,7 @@ function calcMathCore(opts) {
   const instanceResults = [];
 
   for (const dmgObj of dmgValues) {
-    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseToApply, livingToApply, departedToApply, tremorBurst, effectsStr } = dmgObj;
+    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, livingToApply, departedToApply, tremorBurst, effectsStr } = dmgObj;
     const currentRes = resValues[dmgType] ?? 1.0;
     const currentDR  = drMult;
 
@@ -1232,8 +1265,28 @@ function calcMathCore(opts) {
 
     totalDmg += instanceDmg;
 
-    // Apply stack mới từ đòn này sau khi đã tính dmg xong
-    if (poiseToApply > 0) totalPoise = Math.min(totalPoise + poiseToApply, POISE_MAX);
+    // Apply stack mới từ đòn này sau khi đã tính dmg xong. Poise/Charge/Burn/Bleed áp
+    // GAIN trước (cộng, clamp max) RỒI MỚI CONSUME (trừ, không cho âm) — khớp đúng
+    // tường thuật "Nhận 2 Poise. Tiêu thụ 6 Poise" (cộng trước, trừ sau trên CÙNG 1
+    // hit). Nếu consume > số đang có SAU gain (VD: crit ở hit trước đã làm hao Poise,
+    // hit này gain không đủ bù) → shortfall > 0, được báo RÕ trong breakdown (xem
+    // dưới) thay vì lặng lẽ clamp về 0 như trước — đúng câu hỏi: "lỡ không đủ thì sao?"
+    const poiseAfterRawGain = Math.min(totalPoise + poiseTag.gain, POISE_MAX);
+    const poiseShortfall = Math.max(0, poiseTag.consume - poiseAfterRawGain);
+    totalPoise = Math.max(0, poiseAfterRawGain - poiseTag.consume);
+
+    const chargeAfterRawGain = Math.min(totalCharge + chargeTag.gain, CHARGE_MAX);
+    const chargeShortfall = Math.max(0, chargeTag.consume - chargeAfterRawGain);
+    totalCharge = Math.max(0, chargeAfterRawGain - chargeTag.consume);
+
+    const burnAfterRawGain = Math.min(enemyBurn + burnTag.gain, BURN_MAX);
+    const burnShortfall = Math.max(0, burnTag.consume - burnAfterRawGain);
+    enemyBurn = Math.max(0, burnAfterRawGain - burnTag.consume);
+
+    const bleedAfterRawGain = Math.min(enemyBleed + bleedTag.gain, BLEED_MAX);
+    const bleedShortfall = Math.max(0, bleedTag.consume - bleedAfterRawGain);
+    enemyBleed = Math.max(0, bleedAfterRawGain - bleedTag.consume);
+
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
     if (livingToApply > 0) livingStacks = Math.min(livingStacks + livingToApply, BUTTERFLY_LIVING_MAX);
@@ -1247,14 +1300,23 @@ function calcMathCore(opts) {
       if (totalPoise < POISE_RESET_THRESHOLD) totalPoise = 0;
     }
 
+    const poiseToApply = poiseTag.gain - poiseTag.consume; // net, dùng cho hiển thị +/-N gọn
+    const chargeToApply = chargeTag.gain - chargeTag.consume;
+    const burnToApply = burnTag.gain - burnTag.consume;
+    const bleedToApply = bleedTag.gain - bleedTag.consume;
+
     instanceResults.push({
       dmg, dmgType, didCrit, critChance, poiseOverflow,
       poiseStacksAfter: totalPoise,  // sau critDiv — giá trị thực dùng cho hit tiếp theo
       poiseAfterGain,                 // sau gain, trước critDiv — để hiển thị gain chính xác
+      poiseShortfall,
       instanceDmg, ruptureBonus, sinkingBonus,
       sinkingApplied: sinkingToApply,
       ruptureApplied: ruptureToApply,
       poiseApplied: poiseToApply,
+      chargeApplied: chargeToApply, chargeStacksAfter: totalCharge, chargeShortfall,
+      burnApplied: burnToApply, burnStacksAfter: enemyBurn, burnShortfall,
+      bleedApplied: bleedToApply, bleedStacksAfter: enemyBleed, bleedShortfall,
       effectsStr, isDice,
       departedBonus, livingHeal,
       livingApplied: livingToApply,
@@ -1270,25 +1332,25 @@ function calcMathCore(opts) {
 
   const critCount = instanceResults.filter((r) => r.didCrit).length;
 
-  // ── Burn (end-turn tick — KHÔNG liên quan tới hit loop ở trên) ──────────────
+  // ── Burn (end-turn tick) ─────────────────────────────────────────────────────
   // "1 burn count sẽ gây dmg = 2x count mỗi khi end turn, sau đó giảm 1 NỬA (không
-  // phải -1 như Sinking/Rupture), nếu đạt 0.5 thì hết." — đây là tính cho lúc KẾT
-  // THÚC TURN, độc lập hoàn toàn với damage của hit chính — vẫn tính được dù dmgStr
-  // rỗng (VD: chỉ muốn biết turn này Burn tick bao nhiêu).
-  const burnClamped = Math.min(burnInit, BURN_MAX);
-  const burnDmgThisTurn = burnClamped * 2;
-  let burnAfter = burnClamped / 2;
+  // phải -1 như Sinking/Rupture), nếu đạt 0.5 thì hết." — tính SAU khi đã áp dụng
+  // hết mọi +N/-NBurn từ các hit trong dmgStr (enemyBurn, không phải burnInit thô) —
+  // để skill có thể "gây thêm Burn" hoặc "tiêu thụ Burn" ngay trong cùng 1 lần roll,
+  // rồi mới tick cuối turn trên số liệu CUỐI CÙNG.
+  const burnDmgThisTurn = enemyBurn * 2;
+  let burnAfter = enemyBurn / 2;
   if (burnAfter <= 0.5) burnAfter = 0;
 
-  // ── Bleed (trigger mỗi lần ĐỊCH hành động — không phải lúc bị tấn công — RỒI
-  // giảm 1 nửa lúc end turn, đây là 2 thời điểm KHÁC NHAU) ────────────────────
-  // "1 bleed count gây dmg = 1/4 count mỗi khi địch hành động trong turn, giảm 1
-  // nửa sau end turn." — bleedActions = số lần địch hành động turn này (không tự
-  // suy ra được, phải nhập tay vì /math không mô phỏng hành động của địch).
-  const bleedClamped = Math.min(bleedInit, BLEED_MAX);
-  const bleedDmgPerAction = bleedClamped / 4;
+  // ── Bleed (trigger mỗi lần ĐỊCH hành động tấn công — không phải lúc bị tấn công
+  // — RỒI giảm 1 nửa lúc end turn, đây là 2 thời điểm KHÁC NHAU) ────────────────
+  // "1 bleed count gây dmg = 1/4 count mỗi khi địch hành động tấn công trong turn,
+  // giảm 1 nửa sau end turn." — bleedActions = số lần địch hành động turn này (không
+  // tự suy ra được, phải nhập tay vì /math không mô phỏng hành động của địch). Cũng
+  // tính trên enemyBleed SAU khi áp dụng +N/-NBleed từ dmgStr, giống Burn ở trên.
+  const bleedDmgPerAction = enemyBleed / 4;
   const bleedDmgThisTurn = bleedDmgPerAction * Math.max(0, bleedActions);
-  let bleedAfter = bleedClamped / 2;
+  let bleedAfter = enemyBleed / 2;
   if (bleedAfter <= 0.5) bleedAfter = 0;
 
   // Trả về TẤT CẢ biến cần cho phần display (calcMath) VÀ cho hệ thống khác (encounter)
@@ -1297,10 +1359,11 @@ function calcMathCore(opts) {
     // Input gốc (echo lại để display dùng, không cần destructure lại opts)
     dmgStr, resStr, drStr, bonusPct, sanityBonusPct, critMul, poiseInit, critDiv,
     sanityInit, diceMul, sinkingInit, ruptureInit, theLiving, theDeparted,
-    burnInit, bleedInit, bleedActions, tremorInit,
+    burnInit, bleedInit, bleedActions, tremorInit, chargeInit,
     // Kết quả tính toán — DÙNG ĐỂ LƯU LẠI cho encounter (số liệu mới sau hit này)
     totalDmg, finalSanity: sanity, finalPoiseStacks, finalSinking: enemySinking,
     finalRupture: enemyRupture, finalLivingStacks: livingStacks, finalDepartedStacks: departedStacks,
+    finalCharge: totalCharge,
     totalSanityHeal, totalDepartedDmg, critCount,
     // Burn/Bleed (end-turn tick) — KHÔNG cộng vào totalDmg, vì đây là dmg ở 1 THỜI
     // ĐIỂM KHÁC (end turn), không phải dmg của hit đang tính.
@@ -1318,9 +1381,10 @@ function calcMath(opts) {
   const {
     dmgStr, resStr, drStr, bonusPct, sanityBonusPct, critMul, poiseInit, critDiv,
     sanityInit, diceMul, sinkingInit, ruptureInit, theLiving, theDeparted,
-    burnInit, bleedInit, bleedActions, tremorInit,
+    burnInit, bleedInit, bleedActions, tremorInit, chargeInit,
     totalDmg, finalSanity: sanity, finalPoiseStacks, finalSinking: enemySinking,
     finalRupture: enemyRupture, finalLivingStacks: livingStacks, finalDepartedStacks: departedStacks,
+    finalCharge,
     totalSanityHeal, totalDepartedDmg, critCount,
     burnDmgThisTurn, finalBurn, bleedDmgThisTurn, finalBleed,
     totalTremorStaminaLoss, finalTremor,
@@ -1339,13 +1403,34 @@ function calcMath(opts) {
     if (r.sinkingApplied > 0) extraInfo += ` | áp ${r.sinkingApplied} <:Sinking:1513762793436741652>Sinking`;
     if (r.ruptureBonus > 0) extraInfo += ` | +${r.ruptureBonus} dmg từ <:Rupture:1513762812722155682>Rupture`;
     if (r.ruptureApplied > 0) extraInfo += ` | áp ${r.ruptureApplied} <:Rupture:1513762812722155682>Rupture`;
-    if (r.poiseApplied > 0) {
+    if (r.poiseApplied !== 0) {
+      const sign = r.poiseApplied > 0 ? "+" : "";
+      const label = r.poiseApplied > 0 ? "" : " (tiêu thụ)";
       if (critDiv > 1 && r.didCrit && r.poiseAfterGain !== r.poiseStacksAfter) {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} Counts`;
+        extraInfo += ` | ${sign}${r.poiseApplied} <:Poise:1513762945715142736>Poise${label}: ${r.poiseAfterGain} → ÷${critDiv} = ${r.poiseStacksAfter} Counts`;
       } else {
-        extraInfo += ` | +${r.poiseApplied} <:Poise:1513762945715142736>Poise → ${r.poiseStacksAfter} Counts`;
+        extraInfo += ` | ${sign}${r.poiseApplied} <:Poise:1513762945715142736>Poise${label} → ${r.poiseStacksAfter} Counts`;
       }
     }
+    if (r.poiseShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.poiseShortfall} <:Poise:1513762945715142736>Poise để tiêu thụ hết`;
+    if (r.chargeApplied !== 0) {
+      const sign = r.chargeApplied > 0 ? "+" : "";
+      const label = r.chargeApplied > 0 ? "" : " (tiêu thụ)";
+      extraInfo += ` | ${sign}${r.chargeApplied} <:Charge:1513762867558613033>Charge${label} → ${r.chargeStacksAfter} Counts`;
+    }
+    if (r.chargeShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.chargeShortfall} <:Charge:1513762867558613033>Charge để tiêu thụ hết`;
+    if (r.burnApplied !== 0) {
+      const sign = r.burnApplied > 0 ? "+" : "";
+      const label = r.burnApplied > 0 ? "" : " (tiêu thụ)";
+      extraInfo += ` | ${sign}${r.burnApplied} <:Burn:1513762753691652177>Burn${label} → ${r.burnStacksAfter} Counts`;
+    }
+    if (r.burnShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.burnShortfall} <:Burn:1513762753691652177>Burn để tiêu thụ hết`;
+    if (r.bleedApplied !== 0) {
+      const sign = r.bleedApplied > 0 ? "+" : "";
+      const label = r.bleedApplied > 0 ? "" : " (tiêu thụ)";
+      extraInfo += ` | ${sign}${r.bleedApplied} <:Bleed:1513762688226955285>Bleed${label} → ${r.bleedStacksAfter} Counts`;
+    }
+    if (r.bleedShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.bleedShortfall} <:Bleed:1513762688226955285>Bleed để tiêu thụ hết`;
     if (r.effectsStr && /\+Crit(\d+)/i.test(r.effectsStr)) {
       const critVal = r.effectsStr.match(/\+Crit(\d+)/i)[1];
       extraInfo += ` | +Crit${critVal}%`;
@@ -1435,9 +1520,10 @@ function calcMath(opts) {
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
-    { name: "<:Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 },
-    { name: "Bleed (end turn)", value: `${bleedDmgThisTurn.toFixed(2)} dmg (x${bleedActions} hành động) — count: ${bleedInit} → ${finalBleed}`, inline: true, showIf: bleedInit > 0 },
+    { name: "<:Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 || finalBurn > 0 || burnDmgThisTurn > 0 },
+    { name: "Bleed (end turn)", value: `${bleedDmgThisTurn.toFixed(2)} dmg (x${bleedActions} hành động) — count: ${bleedInit} → ${finalBleed}`, inline: true, showIf: bleedInit > 0 || finalBleed > 0 || bleedDmgThisTurn > 0 },
     { name: "<:Tremor:1513762737388257380>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 && totalTremorStaminaLoss > 0 },
+    { name: "<:Charge:1513762867558613033>Charge Stacks", value: `${chargeInit} → ${finalCharge}`, inline: true, showIf: chargeInit > 0 || finalCharge > 0 },
   ];
 
   return {
@@ -3392,7 +3478,8 @@ client.on("messageCreate", async (message) => {
     const bleedInit = parseInt(kv["bleed"] ?? "0", 10) || 0;
     const bleedActions = parseInt(kv["bleedactions"] ?? "1", 10) || 1;
     const tremorInit = parseInt(kv["tremor"] ?? "0", 10) || 0;
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted, burnInit, bleedInit, bleedActions, tremorInit });
+    const chargeInit = parseInt(kv["charge"] ?? "0", 10) || 0;
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted, burnInit, bleedInit, bleedActions, tremorInit, chargeInit });
     if (errors.length > 0) { message.reply(`❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}`); return; }
     const critDivStr = (kv["critdiv"] ?? "").trim().toLowerCase();
     let critDiv = 0;
@@ -3421,6 +3508,7 @@ client.on("messageCreate", async (message) => {
       burnInit,
       bleedInit,
       bleedActions,
+      chargeInit,
       tremorInit,
     }));
     return;
@@ -4304,9 +4392,10 @@ client.on("interactionCreate", async (interaction) => {
     const bleedInit = interaction.options.getInteger("bleed") ?? 0;
     const bleedActions = interaction.options.getInteger("bleedactions") ?? 1;
     const tremorInit = interaction.options.getInteger("tremor") ?? 0;
+    const chargeInit = interaction.options.getInteger("charge") ?? 0;
     const bonusPct = interaction.options.getNumber("bonus") ?? 0;
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
-    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted, burnInit, bleedInit, bleedActions, tremorInit });
+    const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted, burnInit, bleedInit, bleedActions, tremorInit, chargeInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
     const critDivOption = (interaction.options.getString("critdiv") ?? "").trim().toLowerCase() || null;
     let critDivSlash = 0;
@@ -4335,6 +4424,7 @@ client.on("interactionCreate", async (interaction) => {
       burnInit,
       bleedInit,
       bleedActions,
+      chargeInit,
       tremorInit,
     }));
     return;
