@@ -8,6 +8,7 @@ const {
   BURN_MAX,
   TREMOR_MAX,
   BLEED_MAX,
+  CHARGE_MAX,
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
@@ -121,7 +122,11 @@ const commands = [
     .addIntegerOption(opt =>
       opt.setName("tremor")
         .setDescription(`Tremor count hiện tại của địch — Tremor Burst trừ 5 Sta/count, giảm 1 nửa sau đó (tối đa ${TREMOR_MAX})`)
-        .setMinValue(0).setMaxValue(TREMOR_MAX).setRequired(false)),
+        .setMinValue(0).setMaxValue(TREMOR_MAX).setRequired(false))
+    .addIntegerOption(opt =>
+      opt.setName("charge")
+        .setDescription(`Charge stacks hiện tại trên bản thân — dùng dmg tag +N/-NCharge để cộng/tiêu thụ qua từng hit (tối đa ${CHARGE_MAX})`)
+        .setMinValue(0).setMaxValue(CHARGE_MAX).setRequired(false)),
 
 
   // ── /parry ──────────────────────────────────────────────────────────────────
