@@ -125,7 +125,7 @@ const commands = [
         .setMinValue(0).setMaxValue(TREMOR_MAX).setRequired(false))
     .addIntegerOption(opt =>
       opt.setName("charge")
-        .setDescription(`Charge stacks hiện tại trên bản thân — dùng dmg tag +N/-NCharge để cộng/tiêu thụ qua từng hit (tối đa ${CHARGE_MAX})`)
+        .setDescription(`Charge stacks trên bản thân — dùng tag +N/-NCharge trong dmg để cộng/trừ (tối đa ${CHARGE_MAX})`)
         .setMinValue(0).setMaxValue(CHARGE_MAX).setRequired(false)),
 
 
