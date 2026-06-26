@@ -24,6 +24,8 @@ module.exports = {
   BURN_MAX: 99,
   TREMOR_MAX: 99,
   BLEED_MAX: 99,
+  // /math: Charge stacks tối đa (trên bản thân, dùng để kích hoạt vũ khí/skill đặc biệt)
+  CHARGE_MAX: 99,
 
   // /parry: số lần roll tối đa mỗi lệnh
   PARRY_MAX_ROLLS: 30,
