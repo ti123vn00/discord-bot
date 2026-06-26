@@ -1111,19 +1111,29 @@ function calcMathCore(opts) {
   const drMult = hasDR ? saturateDR(1 - drRawPct / 100) : 1;
 
   const dmgValues = [];
-  // Poise/Charge/Burn/Bleed hỗ trợ CẢ +N (cộng) và -N (tiêu thụ/trừ) — VD Draw of the
-  // Sword: "Nhận 2 Poise. Tiêu thụ 6 Poise để nhận 2 Light" → dmgStr ghi "+2Poise-6Poise"
-  // trên CÙNG 1 hit. Sinking/Rupture/Living/Departed GIỮ NGUYÊN chỉ +N (không đổi) —
-  // không có yêu cầu hỗ trợ trừ cho 4 cái này, tránh động vào hành vi skill.js đang dùng.
+  // Poise/Charge/Burn/Bleed/Tremor hỗ trợ CẢ +N (cộng) và -N (tiêu thụ/trừ) — VD Draw
+  // of the Sword: "Nhận 2 Poise. Tiêu thụ 6 Poise để nhận 2 Light" → dmgStr ghi
+  // "+2Poise-6Poise" trên CÙNG 1 hit. Sinking/Rupture/Living/Departed GIỮ NGUYÊN chỉ
+  // +N (không đổi) — không có yêu cầu hỗ trợ trừ cho 4 cái này.
+  //
+  // QUAN TRỌNG: "TremorBurst" PHẢI đứng TRƯỚC "Tremor" trong alternation — vì
+  // "TremorBurst" CHỨA chuỗi "Tremor" làm tiền tố. Nếu "Tremor" được thử trước,
+  // regex sẽ khớp nhầm "+3Tremor" (trong "+3TremorBurst") rồi để lại "Burst" dư ra
+  // không khớp được gì cả → cả tag TremorBurst bị "nuốt mất" âm thầm, không lỗi gì
+  // nhưng hiệu ứng biến mất khỏi effectsStr hoàn toàn.
   const damageRegex =
-    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*Living|\+\d*Departed|\+Crit\d+|\+TremorBurst)*)/gi;
+    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*TremorBurst|[+-]\d*Tremor|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
   // sumSignedTag — tách riêng GAIN (tổng "+N<tag>") và CONSUME (tổng "-N<tag>", dạng
   // số dương) trong effectsStr của 1 hit — KHÔNG gộp net ngay ở đây, vì cần biết riêng
   // 2 phần để phát hiện "tiêu thụ không đủ" (VD: +2Poise-6Poise mà lúc áp dụng chỉ có
   // 4 Poise sau gain thì thiếu 2, cần báo rõ thay vì chỉ lặng lẽ clamp về 0).
-  function sumSignedTag(effectsStr, tagName) {
+  // excludeSuffix: negative lookahead để loại match bị "lẫn" vào tag dài hơn cùng tiền
+  // tố (VD tagName="Tremor", excludeSuffix="Burst" → "+3Tremor" trong "+3TremorBurst"
+  // KHÔNG được tính là gain Tremor, vì đó thực ra là số lần TremorBurst).
+  function sumSignedTag(effectsStr, tagName, excludeSuffix = null) {
     if (!effectsStr) return { gain: 0, consume: 0 };
-    const re = new RegExp(`([+-])(\\d*)${tagName}`, "gi");
+    const lookahead = excludeSuffix ? `(?!${excludeSuffix})` : "";
+    const re = new RegExp(`([+-])(\\d*)${tagName}${lookahead}`, "gi");
     let gain = 0, consume = 0, m;
     while ((m = re.exec(effectsStr)) !== null) {
       const count = m[2] ? parseInt(m[2], 10) : 1;
@@ -1142,26 +1152,28 @@ function calcMathCore(opts) {
     const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
     const livingMatch = effectsStr.match(/\+(\d+)?Living/i);
     const departedMatch = effectsStr.match(/\+(\d+)?Departed/i);
-    // TremorBurst KHÔNG có số đếm (chỉ là cờ đánh dấu "đòn này có gắn Tremor Burst") —
-    // khác Sinking/Rupture/Poise vốn có thể kèm số lượng tùy chọn.
-    const tremorBurst = /\+TremorBurst/i.test(effectsStr);
+    // TremorBurst — giờ CÓ số đếm tùy chọn ("+NTremorBurst" = kích hoạt chu kỳ
+    // dùng+giảm-nửa N LẦN trên CÙNG hit này, mặc định N=1 nếu không ghi số).
+    const tremorBurstMatch = effectsStr.match(/\+(\d*)TremorBurst/i);
+    const tremorBurstCount = tremorBurstMatch ? parseInt(tremorBurstMatch[1] || "1", 10) : 0;
     const sinkingToApply = sinkingMatch ? parseInt(sinkingMatch[1] || "1") : 0;
     const ruptureToApply = ruptureMatch ? parseInt(ruptureMatch[1] || "1") : 0;
     const livingToApply = livingMatch ? parseInt(livingMatch[1] || "1") : 0;
     const departedToApply = departedMatch ? parseInt(departedMatch[1] || "1") : 0;
-    // Poise/Charge/Burn/Bleed — giữ riêng gain/consume (không gộp net) để phát hiện
-    // thiếu hụt lúc áp dụng thật (xem comment ở khối "Apply stack mới" trong loop).
+    // Poise/Charge/Burn/Bleed/Tremor — giữ riêng gain/consume (không gộp net) để phát
+    // hiện thiếu hụt lúc áp dụng thật (xem comment ở khối "Apply stack mới" trong loop).
     const poiseTag = sumSignedTag(effectsStr, "Poise");
     const chargeTag = sumSignedTag(effectsStr, "Charge");
     const burnTag = sumSignedTag(effectsStr, "Burn");
     const bleedTag = sumSignedTag(effectsStr, "Bleed");
+    const tremorTag = sumSignedTag(effectsStr, "Tremor", "Burst");
     for (let i = 0; i < multiplier; i++) {
-      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, livingToApply, departedToApply, tremorBurst, effectsStr });
+      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, tremorTag, tremorBurstCount, livingToApply, departedToApply, effectsStr });
     }
   }
   if (dmgValues.length === 0) {
     const zeroTag = { gain: 0, consume: 0 };
-    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseTag: zeroTag, chargeTag: zeroTag, burnTag: zeroTag, bleedTag: zeroTag, livingToApply: 0, departedToApply: 0, tremorBurst: false, effectsStr: "" });
+    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseTag: zeroTag, chargeTag: zeroTag, burnTag: zeroTag, bleedTag: zeroTag, tremorTag: zeroTag, tremorBurstCount: 0, livingToApply: 0, departedToApply: 0, effectsStr: "" });
   }
 
   let sanity = sanityInit;
@@ -1188,7 +1200,7 @@ function calcMathCore(opts) {
   const instanceResults = [];
 
   for (const dmgObj of dmgValues) {
-    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, livingToApply, departedToApply, tremorBurst, effectsStr } = dmgObj;
+    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, tremorTag, tremorBurstCount, livingToApply, departedToApply, effectsStr } = dmgObj;
     const currentRes = resValues[dmgType] ?? 1.0;
     const currentDR  = drMult;
 
@@ -1228,19 +1240,6 @@ function calcMathCore(opts) {
       ruptureBonus = enemyRupture;
       instanceDmg += ruptureBonus;
       enemyRupture = Math.max(enemyRupture - 1, 0);
-    }
-
-    // ── Tremor Burst ───────────────────────────────────────────────────────────
-    // "Mỗi lần skill có Tremor Burst dùng lên địch sẽ trừ 5 sta tương ứng với mỗi 1
-    // tremor; giảm 1 nửa sau khi Tremor Burst" — đây là hiệu ứng tốn STAMINA của địch
-    // (không phải dmg), trigger MỖI HIT có tag +TremorBurst, dùng count HIỆN TẠI
-    // (trước khi giảm) rồi mới giảm 1 nửa — khác Sinking/Rupture giảm -1 mỗi hit.
-    let tremorStaminaLoss = 0;
-    if (tremorBurst && enemyTremor > 0) {
-      tremorStaminaLoss = enemyTremor * 5;
-      totalTremorStaminaLoss += tremorStaminaLoss;
-      enemyTremor = enemyTremor / 2;
-      if (enemyTremor <= 0.5) enemyTremor = 0;
     }
 
     // ── Butterfly: The Departed ───────────────────────────────────────────────
@@ -1287,6 +1286,26 @@ function calcMathCore(opts) {
     const bleedShortfall = Math.max(0, bleedTag.consume - bleedAfterRawGain);
     enemyBleed = Math.max(0, bleedAfterRawGain - bleedTag.consume);
 
+    // Tremor: GAIN/CONSUME (từ tag +N/-NTremor) áp dụng TRƯỚC, RỒI MỚI tới TremorBurst
+    // (dùng giá trị tremor đã cập nhật — nếu hit này VỪA gây thêm Tremor vừa Burst,
+    // Burst sẽ dùng được cả phần mới gây ra, khớp đúng tường thuật "gây X Tremor rồi
+    // Burst luôn" trong 1 hit).
+    const tremorAfterRawGain = Math.min(enemyTremor + tremorTag.gain, TREMOR_MAX);
+    const tremorShortfall = Math.max(0, tremorTag.consume - tremorAfterRawGain);
+    enemyTremor = Math.max(0, tremorAfterRawGain - tremorTag.consume);
+
+    // ── Tremor Burst — "+NTremorBurst" lặp lại chu kỳ (dùng×5 Sta rồi giảm nửa) N
+    // LẦN trên CÙNG hit này (mặc định N=1 nếu chỉ ghi "+TremorBurst" không số). Dừng
+    // sớm nếu tremor về 0 giữa chừng (không có gì để Burst tiếp).
+    let tremorStaminaLoss = 0;
+    for (let burstIdx = 0; burstIdx < tremorBurstCount; burstIdx++) {
+      if (enemyTremor <= 0) break;
+      tremorStaminaLoss += enemyTremor * 5;
+      enemyTremor = enemyTremor / 2;
+      if (enemyTremor <= 0.5) enemyTremor = 0;
+    }
+    totalTremorStaminaLoss += tremorStaminaLoss;
+
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
     if (livingToApply > 0) livingStacks = Math.min(livingStacks + livingToApply, BUTTERFLY_LIVING_MAX);
@@ -1304,6 +1323,7 @@ function calcMathCore(opts) {
     const chargeToApply = chargeTag.gain - chargeTag.consume;
     const burnToApply = burnTag.gain - burnTag.consume;
     const bleedToApply = bleedTag.gain - bleedTag.consume;
+    const tremorToApply = tremorTag.gain - tremorTag.consume;
 
     instanceResults.push({
       dmg, dmgType, didCrit, critChance, poiseOverflow,
@@ -1317,6 +1337,8 @@ function calcMathCore(opts) {
       chargeApplied: chargeToApply, chargeStacksAfter: totalCharge, chargeShortfall,
       burnApplied: burnToApply, burnStacksAfter: enemyBurn, burnShortfall,
       bleedApplied: bleedToApply, bleedStacksAfter: enemyBleed, bleedShortfall,
+      tremorApplied: tremorToApply, tremorStacksAfter: enemyTremor, tremorShortfall,
+      tremorStaminaLoss, tremorBurstCount,
       effectsStr, isDice,
       departedBonus, livingHeal,
       livingApplied: livingToApply,
@@ -1324,7 +1346,6 @@ function calcMathCore(opts) {
       livingStacksAfter: livingStacks,
       departedStacksAfter: departedStacks,
       sanityBonusUsed, // Sanity Bonus hiệu dụng đã dùng cho hit này
-      tremorStaminaLoss,
     });
   }
 
@@ -1442,7 +1463,16 @@ function calcMath(opts) {
     if (r.livingApplied > 0) extraInfo += ` | áp +${r.livingApplied} <:Butterfly:1516679919399338074>Living (${r.livingStacksAfter} Count)`;
     if (r.isDice && r.sanityBonusUsed > 0 && r.sanityBonusUsed !== sanityBonusPct)
       extraInfo += ` | Sanity: ${r.sanityBonusUsed} (+${r.sanityBonusUsed}% Dice)`;
-    if (r.tremorStaminaLoss > 0) extraInfo += ` | <:Tremor:1513762737388257380>Tremor Burst: -${r.tremorStaminaLoss} Sta địch`;
+    if (r.tremorApplied !== 0) {
+      const sign = r.tremorApplied > 0 ? "+" : "";
+      const label = r.tremorApplied > 0 ? "" : " (tiêu thụ)";
+      extraInfo += ` | ${sign}${r.tremorApplied} <:Tremor:1513762737388257380>Tremor${label} → ${r.tremorStacksAfter} Counts`;
+    }
+    if (r.tremorShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.tremorShortfall} <:Tremor:1513762737388257380>Tremor để tiêu thụ hết`;
+    if (r.tremorStaminaLoss > 0) {
+      const burstNote = r.tremorBurstCount > 1 ? ` (x${r.tremorBurstCount} lần)` : "";
+      extraInfo += ` | <:Tremor:1513762737388257380>Tremor Burst${burstNote}: -${r.tremorStaminaLoss} Sta địch → ${r.tremorStacksAfter} Counts`;
+    }
     return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
 
@@ -1522,7 +1552,7 @@ function calcMath(opts) {
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
     { name: "<:Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 || finalBurn > 0 || burnDmgThisTurn > 0 },
     { name: "Bleed (end turn)", value: `${bleedDmgThisTurn.toFixed(2)} dmg (x${bleedActions} hành động) — count: ${bleedInit} → ${finalBleed}`, inline: true, showIf: bleedInit > 0 || finalBleed > 0 || bleedDmgThisTurn > 0 },
-    { name: "<:Tremor:1513762737388257380>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 && totalTremorStaminaLoss > 0 },
+    { name: "<:Tremor:1513762737388257380>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 || finalTremor > 0 || totalTremorStaminaLoss > 0 },
     { name: "<:Charge:1513762867558613033>Charge Stacks", value: `${chargeInit} → ${finalCharge}`, inline: true, showIf: chargeInit > 0 || finalCharge > 0 },
   ];
 
@@ -1578,7 +1608,15 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     maxLight, currentLight: 0,
     weaponWeight: normalizeWeaponWeight(weaponWeight),
     resistance: resistance ?? { B: 1, P: 1, S: 1 },
-    sinking: 0, rupture: 0, poise: 0,
+    // 7 status effect — LƯU Ý quan trọng về AI mang gì: Poise/Charge là "trên bản
+    // thân" (self) — combatant này tự mang, áp dụng khi NÓ là người TẤN CÔNG.
+    // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch" (enemy) — combatant này
+    // mang khi NÓ là người BỊ TẤN CÔNG (target). Khi build calcOpts cho 1 action, phải
+    // lấy poiseInit/chargeInit từ COMBATANT TẤN CÔNG, còn sinkingInit/ruptureInit/
+    // burnInit/bleedInit/tremorInit từ COMBATANT BỊ TẤN CÔNG — KHÔNG lấy cả 7 từ cùng
+    // 1 bên (đây chính là bug đã sửa — trước đó poiseInit bị lấy nhầm từ boss/target
+    // dù player mới là người tấn công, tức người LẼ RA giữ Poise của hit đó).
+    sinking: 0, rupture: 0, poise: 0, charge: 0, burn: 0, bleed: 0, tremor: 0,
     staggered: false, staggerTurnsLeft: 0,
     panic: false, panicTurnsLeft: 0,
     // stance: thế thủ đang giữ — { type: "evade"|"guard", chargesLeft } | null. KHÔNG
@@ -1687,6 +1725,10 @@ function formatCombatantBlock(combatant, label) {
   if (combatant.sinking > 0) statusParts.push(`<:Sinking:1513762793436741652>${combatant.sinking}`);
   if (combatant.rupture > 0) statusParts.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
   if (combatant.poise > 0) statusParts.push(`<:Poise:1513762945715142736>${combatant.poise}`);
+  if (combatant.charge > 0) statusParts.push(`<:Charge:1513762867558613033>${combatant.charge}`);
+  if (combatant.burn > 0) statusParts.push(`<:Burn:1513762753691652177>${combatant.burn}`);
+  if (combatant.bleed > 0) statusParts.push(`<:Bleed:1513762688226955285>${combatant.bleed}`);
+  if (combatant.tremor > 0) statusParts.push(`<:Tremor:1513762737388257380>${combatant.tremor}`);
   if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
   if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
   if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
@@ -1780,10 +1822,15 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr) {
     if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
 
     const boss = encounter.boss;
+    // QUAN TRỌNG: Poise/Charge là "trên bản thân" → lấy từ PLAYER (người tấn công).
+    // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch" → lấy từ BOSS (bị tấn
+    // công). Trước đây lấy NHẦM cả 7 từ boss — sai hoàn toàn với Poise/Charge.
     const calcOpts = {
       dmgStr, resStr: combatantResStr(boss),
-      poiseInit: boss.poise, sinkingInit: boss.sinking,
-      ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
+      poiseInit: player.poise, chargeInit: player.charge,
+      sinkingInit: boss.sinking, ruptureInit: boss.rupture,
+      burnInit: boss.burn, bleedInit: boss.bleed, tremorInit: boss.tremor,
+      sanityInit: boss.currentSanity,
     };
     const preview = calcMathCore(calcOpts);
     const hitCount = preview.dmgValues.length;
@@ -1829,12 +1876,18 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, extra = {
     const encounter = await getEncounter(channelId);
     if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
     if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
+    const player = encounter.players[playerId];
+    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
     const boss = encounter.boss;
+    // QUAN TRỌNG: Poise/Charge lấy từ PLAYER (người dùng Page, "trên bản thân"),
+    // Sinking/Rupture/Burn/Bleed/Tremor lấy từ BOSS (bị tấn công, "trên người địch").
     const calcOpts = {
       dmgStr, resStr: resStr || combatantResStr(boss), drStr,
       bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
-      poiseInit: boss.poise, sinkingInit: boss.sinking,
-      ruptureInit: boss.rupture, sanityInit: boss.currentSanity,
+      poiseInit: player.poise, chargeInit: player.charge,
+      sinkingInit: boss.sinking, ruptureInit: boss.rupture,
+      burnInit: boss.burn, bleedInit: boss.bleed, tremorInit: boss.tremor,
+      sanityInit: boss.currentSanity,
     };
     const preview = calcMathCore(calcOpts);
 
@@ -3719,10 +3772,15 @@ client.on("messageCreate", async (message) => {
           if (!target) throw new Error(`<@${targetMention.id}> chưa tham gia encounter này.`);
 
           const boss = encounter.boss;
+          // QUAN TRỌNG: chiều này BOSS là người tấn công → Poise/Charge lấy từ BOSS.
+          // TARGET (player) là người bị tấn công → Sinking/Rupture/Burn/Bleed/Tremor
+          // lấy từ TARGET — ĐẢO NGƯỢC so với attack/hit (player tấn công boss).
           const calcOpts = {
             dmgStr, resStr: kv["res"] ?? combatantResStr(target), drStr: kv["dr"] ?? "",
-            poiseInit: boss.poise, sinkingInit: target.sinking,
-            ruptureInit: target.rupture, sanityInit: target.currentSanity,
+            poiseInit: boss.poise, chargeInit: boss.charge,
+            sinkingInit: target.sinking, ruptureInit: target.rupture,
+            burnInit: target.burn, bleedInit: target.bleed, tremorInit: target.tremor,
+            sanityInit: target.currentSanity,
           };
           const preview = calcMathCore(calcOpts);
           const { finalDmg, note } = previewDefenseOutcome(target, preview.totalDmg);
@@ -4110,6 +4168,9 @@ client.on("interactionCreate", async (interaction) => {
         const attackerLabel = attackerId === "boss" ? `**${encounter.bossName}**` : `<@${attackerId}>`;
         const targetLabel = targetId === "boss" ? `**${encounter.bossName}**` : `<@${targetId}>`;
         const target = targetId === "boss" ? encounter.boss : encounter.players[targetId];
+        // attacker — combatant GIỮ Poise/Charge ("trên bản thân") của action này. Khác
+        // với target (giữ Sinking/Rupture/Burn/Bleed/Tremor, "trên người địch").
+        const attacker = attackerId === "boss" ? encounter.boss : encounter.players[attackerId];
 
         if (isConfirm) {
           // QUAN TRỌNG: đây là lúc DUY NHẤT state thật của encounter bị thay đổi —
@@ -4122,12 +4183,12 @@ client.on("interactionCreate", async (interaction) => {
           // Stamina oan).
           let staminaNote = "";
           if (staminaCost && attackerId !== "boss") {
-            const attacker = encounter.players[attackerId];
-            if (attacker) {
-              attacker.currentStamina = Math.max(0, attacker.currentStamina - staminaCost);
-              attacker.staminaUsedThisTurn += staminaCost;
-              checkStaggerPanic(attacker);
-              staminaNote = `\n> ${attackerLabel} -${staminaCost} Stamina` + (attacker.staggered ? ` — 💫 **Stagger**!` : "");
+            const staminaAttacker = encounter.players[attackerId];
+            if (staminaAttacker) {
+              staminaAttacker.currentStamina = Math.max(0, staminaAttacker.currentStamina - staminaCost);
+              staminaAttacker.staminaUsedThisTurn += staminaCost;
+              checkStaggerPanic(staminaAttacker);
+              staminaNote = `\n> ${attackerLabel} -${staminaCost} Stamina` + (staminaAttacker.staggered ? ` — 💫 **Stagger**!` : "");
             }
           }
           let finalDmg = preview.totalDmg;
@@ -4138,11 +4199,27 @@ client.on("interactionCreate", async (interaction) => {
             if (resolved.note) defenseNote = `\n> ${resolved.note}`;
           }
           target.currentHp = Math.max(0, target.currentHp - finalDmg);
+          // 5 status "trên người địch" — áp vào TARGET (bên bị tấn công).
           target.sinking = preview.finalSinking;
           target.rupture = preview.finalRupture;
-          target.poise = preview.finalPoiseStacks;
+          target.burn = preview.finalBurn;
+          target.bleed = preview.finalBleed;
+          target.tremor = preview.finalTremor;
           target.currentSanity = preview.finalSanity;
-          checkStaggerPanic(target); // Sanity vừa đổi — check Panic; Stamina có thể vừa đổi từ Parry fail — check Stagger
+          // Tremor Burst rút STAMINA của TARGET (kẻ mang Tremor bị rút Sta, không phải
+          // người tấn công) — xem luật "Tremor Burst dùng lên địch sẽ trừ Sta tương
+          // ứng" — trước đây totalTremorStaminaLoss được TÍNH nhưng KHÔNG hề trừ vào
+          // Stamina của ai cả, thiếu bước áp dụng thật này.
+          if (preview.totalTremorStaminaLoss > 0) {
+            target.currentStamina = Math.max(0, target.currentStamina - preview.totalTremorStaminaLoss);
+          }
+          // 2 status "trên bản thân" — áp vào ATTACKER (bên tấn công), KHÔNG phải target.
+          if (attacker) {
+            attacker.poise = preview.finalPoiseStacks;
+            attacker.charge = preview.finalCharge;
+          }
+          checkStaggerPanic(target); // Sanity/Stamina target vừa đổi — check Panic/Stagger
+          if (attacker && attacker !== target) checkStaggerPanic(attacker); // Charge/Poise không ảnh hưởng Stamina/Sanity nên ít khi cần, nhưng check cho chắc nếu sau này có tương tác khác
           encounter.pendingAction = null;
           await saveEncounter(channelId, encounter);
 
