@@ -1296,13 +1296,13 @@ function calcMathCore(opts) {
 
     // ── Tremor Burst — "+NTremorBurst" lặp lại chu kỳ (dùng×5 Sta rồi giảm nửa) N
     // LẦN trên CÙNG hit này (mặc định N=1 nếu chỉ ghi "+TremorBurst" không số). Dừng
-    // sớm nếu tremor về 0 giữa chừng (không có gì để Burst tiếp).
+    // sớm nếu tremor về 0 giữa chừng (không có gì để Burst tiếp). LÀM TRÒN XUỐNG sau
+    // mỗi lần giảm nửa (VD: 7→3, không phải 3.5) — Math.floor thay vì chia thường.
     let tremorStaminaLoss = 0;
     for (let burstIdx = 0; burstIdx < tremorBurstCount; burstIdx++) {
       if (enemyTremor <= 0) break;
       tremorStaminaLoss += enemyTremor * 5;
-      enemyTremor = enemyTremor / 2;
-      if (enemyTremor <= 0.5) enemyTremor = 0;
+      enemyTremor = Math.floor(enemyTremor / 2);
     }
     totalTremorStaminaLoss += tremorStaminaLoss;
 
@@ -1355,13 +1355,12 @@ function calcMathCore(opts) {
 
   // ── Burn (end-turn tick) ─────────────────────────────────────────────────────
   // "1 burn count sẽ gây dmg = 2x count mỗi khi end turn, sau đó giảm 1 NỬA (không
-  // phải -1 như Sinking/Rupture), nếu đạt 0.5 thì hết." — tính SAU khi đã áp dụng
-  // hết mọi +N/-NBurn từ các hit trong dmgStr (enemyBurn, không phải burnInit thô) —
-  // để skill có thể "gây thêm Burn" hoặc "tiêu thụ Burn" ngay trong cùng 1 lần roll,
-  // rồi mới tick cuối turn trên số liệu CUỐI CÙNG.
+  // phải -1 như Sinking/Rupture)." — tính SAU khi đã áp dụng hết mọi +N/-NBurn từ các
+  // hit trong dmgStr (enemyBurn, không phải burnInit thô) — để skill có thể "gây thêm
+  // Burn" hoặc "tiêu thụ Burn" ngay trong cùng 1 lần roll, rồi mới tick cuối turn trên
+  // số liệu CUỐI CÙNG. LÀM TRÒN XUỐNG sau khi giảm nửa (VD: 7→3, không phải 3.5).
   const burnDmgThisTurn = enemyBurn * 2;
-  let burnAfter = enemyBurn / 2;
-  if (burnAfter <= 0.5) burnAfter = 0;
+  const burnAfter = Math.floor(enemyBurn / 2);
 
   // ── Bleed (trigger mỗi lần ĐỊCH hành động tấn công — không phải lúc bị tấn công
   // — RỒI giảm 1 nửa lúc end turn, đây là 2 thời điểm KHÁC NHAU) ────────────────
@@ -1369,10 +1368,10 @@ function calcMathCore(opts) {
   // giảm 1 nửa sau end turn." — bleedActions = số lần địch hành động turn này (không
   // tự suy ra được, phải nhập tay vì /math không mô phỏng hành động của địch). Cũng
   // tính trên enemyBleed SAU khi áp dụng +N/-NBleed từ dmgStr, giống Burn ở trên.
+  // LÀM TRÒN XUỐNG sau khi giảm nửa, giống Burn/Tremor.
   const bleedDmgPerAction = enemyBleed / 4;
   const bleedDmgThisTurn = bleedDmgPerAction * Math.max(0, bleedActions);
-  let bleedAfter = enemyBleed / 2;
-  if (bleedAfter <= 0.5) bleedAfter = 0;
+  const bleedAfter = Math.floor(enemyBleed / 2);
 
   // Trả về TẤT CẢ biến cần cho phần display (calcMath) VÀ cho hệ thống khác (encounter)
   // muốn lấy số liệu thuần để lưu lại — không lọc bớt, tránh sót biến nào cần dùng sau.
@@ -1471,7 +1470,7 @@ function calcMath(opts) {
     if (r.tremorShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.tremorShortfall} <:Tremor:1513762737388257380>Tremor để tiêu thụ hết`;
     if (r.tremorStaminaLoss > 0) {
       const burstNote = r.tremorBurstCount > 1 ? ` (x${r.tremorBurstCount} lần)` : "";
-      extraInfo += ` | <:Tremor:1513762737388257380>Tremor Burst${burstNote}: -${r.tremorStaminaLoss} Sta địch → ${r.tremorStacksAfter} Counts`;
+      extraInfo += ` | <:Fix_TremorBurst:1513802464632246352>Tremor Burst${burstNote}: -${r.tremorStaminaLoss} Sta địch → ${r.tremorStacksAfter} Counts`;
     }
     return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
@@ -1552,7 +1551,7 @@ function calcMath(opts) {
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
     { name: "<:Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 || finalBurn > 0 || burnDmgThisTurn > 0 },
     { name: "Bleed (end turn)", value: `${bleedDmgThisTurn.toFixed(2)} dmg (x${bleedActions} hành động) — count: ${bleedInit} → ${finalBleed}`, inline: true, showIf: bleedInit > 0 || finalBleed > 0 || bleedDmgThisTurn > 0 },
-    { name: "<:Tremor:1513762737388257380>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 || finalTremor > 0 || totalTremorStaminaLoss > 0 },
+    { name: "<:Fix_TremorBurst:1513802464632246352>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 || finalTremor > 0 || totalTremorStaminaLoss > 0 },
     { name: "<:Charge:1513762867558613033>Charge Stacks", value: `${chargeInit} → ${finalCharge}`, inline: true, showIf: chargeInit > 0 || finalCharge > 0 },
   ];
 
