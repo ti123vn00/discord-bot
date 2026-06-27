@@ -329,7 +329,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", // -encounter start/join/bossattack
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", // -encounter
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -657,6 +657,7 @@ function migratePlayerData(data) {
   if (data.books !== undefined || data.items !== undefined) {
     data.books = data.books ?? {};
     data.items = data.items ?? {};
+    data.unlockedSkillTree = data.unlockedSkillTree ?? [];
     return data;
   }
   const inv = data.inventory ?? {};
@@ -672,6 +673,7 @@ function migratePlayerData(data) {
   }
   data.books = books;
   data.items = items;
+  data.unlockedSkillTree = data.unlockedSkillTree ?? [];
   delete data.inventory;
   return data;
 }
@@ -770,7 +772,7 @@ async function getPlayerData(userId) {
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
       const raw = await withTimeout(redis.get(key));
-      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {} };
+      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [] };
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       return migratePlayerData(data);
     } catch (err) {
@@ -795,7 +797,7 @@ async function getPlayerDataWithSlot(userId) {
       const raw = await withTimeout(redis.get(key));
       const data = raw
         ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
-        : { exp: 0, ahn: 0, books: {}, items: {} };
+        : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [] };
       return { data, slot };
     } catch (err) {
       lastErr = err;
@@ -967,7 +969,7 @@ async function processDailyClaimForUser(userId) {
     const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
     let playerData = playerRaw
       ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
-      : { exp: 0, ahn: 0, books: {}, items: {} };
+      : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [] };
     playerData = migratePlayerData(playerData);
 
     const today = getVNDateString();
@@ -1121,8 +1123,15 @@ function calcMathCore(opts) {
   // regex sẽ khớp nhầm "+3Tremor" (trong "+3TremorBurst") rồi để lại "Burst" dư ra
   // không khớp được gì cả → cả tag TremorBurst bị "nuốt mất" âm thầm, không lỗi gì
   // nhưng hiệu ứng biến mất khỏi effectsStr hoàn toàn.
+  // QUAN TRỌNG: hỗ trợ multiplier "x<N>" ở CẢ 2 vị trí — TRƯỚC type letter (cú pháp
+  // gốc, VD "15x2B+3Poise") VÀ NGAY SAU type letter, TRƯỚC effects (cú pháp tự nhiên
+  // hay viết nhầm, VD "15Bx2+3Poise") — trước đây CHỈ hỗ trợ vị trí đầu, viết theo
+  // thứ tự sau sẽ làm "x2" bị bỏ qua (không nhân hit) RỒI "2" còn sót lại bị regex
+  // hiểu lầm thành 1 hit MỚI, sai hoàn toàn (VD "+3Poise" sau "x2" bị nuốt mất, biến
+  // "2+3Poise" thành hit giả "2 dmg +3% bonus Pierce"). Giờ khớp được CẢ 2, lấy bất
+  // kỳ bên nào có giá trị.
   const damageRegex =
-    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*TremorBurst|[+-]\d*Tremor|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
+    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])(?:x([\d.]+))?((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*TremorBurst|[+-]\d*Tremor|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
   // sumSignedTag — tách riêng GAIN (tổng "+N<tag>") và CONSUME (tổng "-N<tag>", dạng
   // số dương) trong effectsStr của 1 hit — KHÔNG gộp net ngay ở đây, vì cần biết riêng
   // 2 phần để phát hiện "tiêu thụ không đủ" (VD: +2Poise-6Poise mà lúc áp dụng chỉ có
@@ -1143,11 +1152,11 @@ function calcMathCore(opts) {
   }
   while ((match = damageRegex.exec(dmgStr)) !== null) {
     const base = parseFloat(match[1]);
-    const multiplier = match[2] ? parseInt(match[2]) : 1;
+    const multiplier = match[2] ? parseInt(match[2]) : (match[6] ? parseInt(match[6]) : 1);
     const extraPct = match[3] ? parseFloat(match[3]) : 0;
     const isDice = !!match[4];
     const dmgType = match[5] ? match[5].toUpperCase() : "B";
-    const effectsStr = match[6] || "";
+    const effectsStr = match[7] || "";
     const sinkingMatch = effectsStr.match(/\+(\d+)?Sinking/i);
     const ruptureMatch = effectsStr.match(/\+(\d+)?Rupture/i);
     const livingMatch = effectsStr.match(/\+(\d+)?Living/i);
@@ -1571,24 +1580,225 @@ function calcMath(opts) {
 // Encounter là model HOÀN TOÀN TÁCH BIỆT khỏi Profile — key theo channelId, không
 // theo userId nào cả. Chỉ 1 encounter active / channel (đơn giản, theo yêu cầu).
 //
-// Phiên bản đầy đủ: track CẢ 2 phía (boss + từng player) bằng 1 "Combatant" model
-// chung — HP/Stamina/Sanity/Light/Resistance/vũ khí/Sinking/Rupture/Poise/Stagger/
-// Panic/thế thủ — vì theo luật, Sinking/Rupture/Poise/Stagger/Panic áp dụng được
-// cho CẢ 2 bên (không chỉ riêng boss), không có lý do tách 2 model khác nhau.
-const ENCOUNTER_BOSS_NAME_MAX_LENGTH = 100;
+// THIẾT KẾ V2 (viết lại sau khi xem transcript trận đấu thật của nhóm) — khác V1
+// (1 boss duy nhất, Guard/Evade/Parry tự động qua nút, confirm từng hit riêng) ở
+// 3 điểm cốt lõi, đúng với cách nhóm thực tế chơi:
+//   1. NHIỀU quái cùng lúc (encounter.enemies — Map theo key ngắn do GM đặt, VD
+//      "mo"/"arnold"), không phải 1 "boss" duy nhất — vì 1 trận có thể có 3+ quái
+//      riêng biệt (mỗi con HP/Resistance/status effect khác nhau).
+//   2. Target CHỈ ĐỊNH theo từng lệnh (target: mo / target: mo,arnold / target: all)
+//      — vì 1 turn của player có thể đánh NHIỀU mục tiêu khác nhau (Roland: "Critical
+//      vào tên thứ hai + Thrust x5 vào tên thứ ba"), và AOE đánh nhiều quái cùng lúc.
+//   3. NHIỀU pending action xếp hàng (encounter.pendingActions — Array), KHÔNG còn
+//      giới hạn "chỉ 1 action chờ confirm" — vì 1 turn có thể gồm 5 skill khác nhau
+//      (Roland: "Light Dash + Charge and Cover + Opportunistic Slash + Sky Kick +
+//      m1x6") declare liên tiếp, rồi GM bấm "Confirm tất cả" 1 lần duy nhất.
+//   4. ĐÃ BỎ Guard/Evade/Parry tự động (nút + Stamina cố định) — transcript thật
+//      cho thấy né/phản đòn đến từ flavor effect của TỪNG SKILL CỤ THỂ (VD "Charge
+//      and Cover" tự ghi "né 1 đòn tấn công" trong hiệu ứng) hoặc qua -rtparry cho
+//      skill cần phản xạ thật — không có luật "Guard/Evade chung tốn X Stamina,
+//      chặn N hit theo vũ khí" nào cả, đó là cơ chế V1 tự đặt ra không khớp game.
+const ENCOUNTER_NAME_MAX_LENGTH = 100;
+const ENCOUNTER_KEY_MAX_LENGTH = 20;
 const ENCOUNTER_DEFAULT_MAX_STAMINA = 100;
 const ENCOUNTER_DEFAULT_MAX_LIGHT = 4;
 const ENCOUNTER_SANITY_MAX = 45; // luôn bắt đầu 0/45 mỗi trận theo luật
 const ENCOUNTER_STAMINA_REGEN_PER_TURN = 30;
-const ENCOUNTER_GUARD_DR_PCT = 90; // Guard giảm 90% dmg nhận
-const ENCOUNTER_PARRY_FAIL_STAMINA_LOSS = 40;
+const ENCOUNTER_PENDING_MAX = 20; // chặn spam — 1 turn thật khó vượt quá số này
+// ── EMOTION LEVEL — buff TẠM THỜI, KHÔNG cộng dồn vĩnh viễn ─────────────────
+// Mỗi mốc Level có Duration 3 turn — hết hạn thì rớt về Level 0 và vào CD 6 turn
+// (không lên lại được dù coin đủ). Đạt Level CAO HƠN khi mốc cũ còn active → THAY
+// THẾ ngay (reset duration theo mốc mới, KHÔNG vào CD vì vẫn đang active liên tục).
+// Coin KHÔNG reset về 0 khi lên level — bị TRỪ ĐÚNG NGƯỜI bằng mốc đã đạt, phần dư
+// tiếp tục tích lũy hướng tới mốc kế (khớp đúng "Coin: 1/5" sau khi vừa lên Lv1 từ
+// mốc 3, dư 1, hướng tới mốc 5 của Lv2 — xem transcript).
+const EMOTION_LEVEL_TABLE = [
+  null, // index 0 = không có level nào active, không dùng tới
+  { coinNeeded: 3, healPct: 5, diceUp: 1, maxLightBonus: 1 },
+  { coinNeeded: 5, healPct: 10, diceUp: 2, maxLightBonus: 2 },
+  { coinNeeded: 7, healPct: 15, diceUp: 3, maxLightBonus: 3 },
+  { coinNeeded: 9, healPct: 20, diceUp: 4, maxLightBonus: 4 },
+  { coinNeeded: 11, healPct: 25, diceUp: 5, maxLightBonus: 5 },
+];
+const EMOTION_LEVEL_DURATION_TURNS = 3;
+const EMOTION_LEVEL_COOLDOWN_TURNS = 6;
 
-// Stamina cost cho 1 lần M1 (đánh thường), theo độ nặng vũ khí.
+/** getMaxEmotionLevel — mặc định CHỈ lên được tới Level 2. Level 3 cần Ein Sof,
+ *  Level 4&5 cần Ohr Ein Sof (mở khóa CẢ 2 cùng lúc — không có unlock riêng cho 4). */
+function getMaxEmotionLevel(combatant) {
+  const perks = combatant.unlockedPerks ?? [];
+  if (perks.includes("Ohr Ein Sof")) return 5;
+  if (perks.includes("Ein Sof")) return 3;
+  return 2;
+}
+// Các cặp perk LOẠI TRỪ NHAU theo skill tree (không ai có cả 2 cùng lúc) — check
+// lúc -unlockskilltree, KHÔNG cho mở cái thứ 2 nếu đã có cái đầu trong cặp.
+const MUTUALLY_EXCLUSIVE_PERKS = [
+  ["Overbearing", "Steady Breathing"],
+  ["Follow-Up", "Pounce"],
+];
+function findExclusiveConflict(existingPerks, newPerk) {
+  for (const [a, b] of MUTUALLY_EXCLUSIVE_PERKS) {
+    if (newPerk === a && existingPerks.includes(b)) return b;
+    if (newPerk === b && existingPerks.includes(a)) return a;
+  }
+  return null;
+}
+
+function hasPerk(combatant, perkName) {
+  return (combatant.unlockedPerks ?? []).includes(perkName);
+}
+
+// ── SKILL TREE PERK ENGINE ───────────────────────────────────────────────────
+// Chỉ tự động hoá perk dựa trên hệ thống ĐÃ CÓ (HP%/Sanity/Stamina/Poise/Charge/
+// Rupture/Bleed/Tremor/Stagger/crit/Emotion Level/M1). Perk phụ thuộc Guard/Evade/
+// Parry/Clash/E.G.O/Shin (hệ thống CHƯA CÓ trong V2) CHỈ nằm trong unlockedPerks
+// dạng ghi chú — GM tự áp dụng tay, KHÔNG có logic nào ở đây cho chúng (theo đúng
+// quyết định: không thêm lại Guard/Evade/Parry chỉ để 1 nhánh skill tree có cái
+// để hóa vào).
+
+/** applyStatusMultiplierToDmgStr — viết lại TẤT CẢ "+N<tag>" trong dmgStr thành
+ *  "+ceil(N*multiplier)<tag>" — dùng cho perk dạng "Tăng X lần khả năng áp <status>"
+ *  (Tear To Shreds, A Beautiful Mess, Inner Ardor...). Multiplier=1 thì trả nguyên
+ *  dmgStr (không tốn chi phí regex nếu không cần). Chỉ sửa GAIN (+N), không đụng
+ *  CONSUME (-N) — vì luật chỉ nói "khả năng ÁP", không nói gì về tiêu thụ. */
+function applyStatusMultiplierToDmgStr(dmgStr, tagName, multiplier) {
+  if (multiplier === 1 || !dmgStr) return dmgStr;
+  return dmgStr.replace(new RegExp(`\\+(\\d*)${tagName}`, "gi"), (match, numStr) => {
+    const num = numStr ? parseInt(numStr, 10) : 1;
+    return `+${Math.ceil(num * multiplier)}${tagName}`;
+  });
+}
+
+/**
+ * computeAttackerPerkContext — tính TẤT CẢ hiệu ứng từ perk của BÊN TẤN CÔNG ảnh
+ * hưởng tới 1 đòn đánh lên 1 target cụ thể. Gọi TRƯỚC khi build calcOpts (để lấy
+ * bonusPct/critMul/critDiv đưa vào), và sau khi build dmgStr-đã-rewrite-multiplier
+ * (để đưa vào calcMathCore). isM1 phân biệt Kinetic Energy (chỉ áp cho M1, không
+ * áp cho Page/skill).
+ * @returns { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill }
+ */
+function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } = {}) {
+  let bonusPct = 0;
+  let critMul = 1;
+  let critDivOverride = null;
+  let instantKill = false;
+
+  // Battle Ignition: turn trước đánh ≥10 lần → +15% Dmg turn này
+  if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
+  // Backdraft: Stamina ≥50 (xấp xỉ "lúc turn start" bằng Stamina hiện tại, vì không
+  // lưu snapshot riêng lúc turn start) → +20% Dmg
+  if (hasPerk(attacker, "Backdraft") && attacker.currentStamina >= 50) bonusPct += 20;
+  // Death Comes For All: target có Rupture → +30% Dmg
+  if (hasPerk(attacker, "Death Comes For All") && target.rupture > 0) bonusPct += 30;
+  // Break and Punish: target bị Stagger → +20% Dmg
+  if (hasPerk(attacker, "Break and Punish") && target.staggered) bonusPct += 20;
+  // Kinetic Energy: CHỈ áp cho M1, cần ≥10 Charge → +10% Dmg
+  if (isM1 && hasPerk(attacker, "Kinetic Energy") && attacker.charge >= 10) bonusPct += 10;
+  // Wail: bản thân dưới -25 Sanity → +10% Dmg
+  if (hasPerk(attacker, "Wail") && attacker.currentSanity < -25) bonusPct += 10;
+  // Borderline Breakdown: mỗi -5 Sanity (âm) → +2% Dmg, tối đa 18%
+  if (hasPerk(attacker, "Borderline Breakdown") && attacker.currentSanity < 0) {
+    bonusPct += Math.min(18, Math.floor(-attacker.currentSanity / 5) * 2);
+  }
+  // Sharp Eyes: Crit dmg multiplier → 1.5x (thay 1.3x mặc định)
+  if (hasPerk(attacker, "Sharp Eyes")) critMul = 1.5;
+  // Steady Breathing: Poise crit chia 1.5 thay vì giảm nửa (critDiv override)
+  if (hasPerk(attacker, "Steady Breathing")) critDivOverride = 1.5;
+  // Overcharged Vessel: đang active (overchargedTurnsLeft > 0) → +N% Dmg đã tính
+  // sẵn lúc kích hoạt (xem -encounter overcharge). Dice Up bonus KHÔNG tự áp được
+  // (ảnh hưởng lúc roll skill tay qua -skill, không phải lúc tính dmgStr ở đây) —
+  // chỉ hiện trong status để player tự cộng tay lúc roll.
+  if ((attacker.overchargedTurnsLeft ?? 0) > 0) bonusPct += attacker.overchargedDmgBonusPct ?? 0;
+
+  // Claim Their Heart: target Stagger + dưới 15% HP → kết liễu ngay
+  if (hasPerk(attacker, "Claim Their Heart") && target.staggered && target.currentHp > 0 && target.currentHp < target.maxHp * 0.15) {
+    instantKill = true;
+  }
+
+  // Multiplier áp status — viết lại dmgStr TRƯỚC khi đưa vào calcMathCore.
+  let dmgStrRewritten = dmgStr;
+  if (hasPerk(attacker, "Tear To Shreds")) dmgStrRewritten = applyStatusMultiplierToDmgStr(dmgStrRewritten, "Rupture", 1.5);
+  if (hasPerk(attacker, "A Beautiful Mess") && target.bleed >= 7) dmgStrRewritten = applyStatusMultiplierToDmgStr(dmgStrRewritten, "Bleed", 1.5);
+  if (hasPerk(attacker, "Cry On Deaf Ears") && attacker.currentSanity < -25) dmgStrRewritten = applyStatusMultiplierToDmgStr(dmgStrRewritten, "Sinking", 1.5);
+  if (hasPerk(attacker, "Inner Ardor")) {
+    const burnMul = attacker.emotionLevel >= 2 ? 2 : attacker.emotionLevel === 1 ? 1.5 : 1;
+    dmgStrRewritten = applyStatusMultiplierToDmgStr(dmgStrRewritten, "Burn", burnMul);
+  }
+  // Biting Embrace/Shockwave: target Stagger + hit có gây Rupture/Tremor → +5 nữa.
+  // Chỉ áp khi dmgStr THỰC SỰ có tag tương ứng (không tự thêm tag mới nếu hit gốc
+  // không nhắm tới status đó).
+  if (target.staggered) {
+    if (hasPerk(attacker, "Biting Embrace") && /\+\d*Rupture/i.test(dmgStrRewritten)) {
+      dmgStrRewritten = dmgStrRewritten.replace(/\+(\d*)Rupture/gi, (m, n) => `+${(n ? parseInt(n, 10) : 1) + 5}Rupture`);
+    }
+    if (hasPerk(attacker, "Shockwave") && /\+\d*TremorBurst/i.test(dmgStrRewritten) === false && /[+-]\d*Tremor/i.test(dmgStrRewritten)) {
+      dmgStrRewritten = dmgStrRewritten.replace(/\+(\d*)Tremor(?!Burst)/gi, (m, n) => `+${(n ? parseInt(n, 10) : 1) + 5}Tremor`);
+    }
+    if (hasPerk(attacker, "Wasted Hours, Lying Down") && /\+TremorBurst/i.test(dmgStrRewritten)) {
+      // Gấp đôi Tremor Burst lên Stagger — nhân số LẦN burst (TremorBurst count), không phải tăng count Tremor.
+      dmgStrRewritten = dmgStrRewritten.replace(/\+(\d*)TremorBurst/gi, (m, n) => `+${(n ? parseInt(n, 10) : 1) * 2}TremorBurst`);
+    }
+  }
+
+  return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill };
+}
+
+/** computeDefenderDmgReduction — % giảm dmg NHẬN VÀO của bên BỊ tấn công, dựa trên
+ *  perk tự thân (Smoldering Resolve). No Will To Break (E.G.O) KHÔNG tự động vì
+ *  Manifest E.G.O chưa là hệ thống có thật — chỉ ghi chú trong unlockedPerks. */
+function computeDefenderDmgReduction(defender) {
+  let reductionPct = 0;
+  if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
+  return reductionPct;
+}
+
+/**
+ * applyEmotionDelta — cộng/trừ Emotion Coin, xử lý TOÀN BỘ logic lên level (heal%
+ * HP, set Duration hoặc permanent nếu có Light Body, tính lại maxLight, Emotion
+ * Surge refill Light). Coin KHÔNG reset khi lên level — bị trừ ĐÚNG mốc đã đạt,
+ * phần dư tiếp tục tích lũy hướng tới mốc kế (xem comment đầy đủ ở EMOTION_LEVEL_TABLE).
+ *
+ * Điều kiện được lên level mới:
+ *   - ĐANG có level active (emotionLevel > 0): luôn được lên CAO HƠN ngay khi đủ
+ *     coin (thay thế mốc cũ, reset Duration theo mốc mới — KHÔNG vào CD vì vẫn
+ *     đang active liên tục, không có khoảng "tắt" giữa 2 mốc).
+ *   - KHÔNG có level active (emotionLevel === 0): chỉ được lên nếu đã hết CD
+ *     (emotionLevelCooldownLeft <= 0) — dù coin đủ, vẫn bị khoá trong lúc CD.
+ * KHÔNG tự xuống level khi coin giảm — level chỉ rớt qua hết Duration (xem
+ * advanceCombatantTurn), không liên quan gì tới coin hiện có lúc đó.
+ * @returns {string[]} note để hiển thị (VD "🆙 Emotion Level 2! (+10.00 HP...)")
+ */
+function applyEmotionDelta(combatant, delta) {
+  const notes = [];
+  if (!delta) return notes;
+  combatant.emotionCoin = (combatant.emotionCoin ?? 0) + delta;
+  const maxLevel = getMaxEmotionLevel(combatant);
+  while (
+    combatant.emotionLevel < maxLevel &&
+    (combatant.emotionLevel > 0 || (combatant.emotionLevelCooldownLeft ?? 0) <= 0) &&
+    combatant.emotionCoin >= EMOTION_LEVEL_TABLE[combatant.emotionLevel + 1].coinNeeded
+  ) {
+    const nextLevel = combatant.emotionLevel + 1;
+    const tier = EMOTION_LEVEL_TABLE[nextLevel];
+    combatant.emotionCoin -= tier.coinNeeded;
+    combatant.emotionLevel = nextLevel;
+    combatant.emotionLevelCooldownLeft = 0; // đang active — không còn CD nào treo nữa
+    combatant.emotionLevelTurnsLeft = hasPerk(combatant, "Light Body") ? Infinity : EMOTION_LEVEL_DURATION_TURNS;
+    const healAmount = Math.round(combatant.maxHp * tier.healPct / 100 * 100) / 100;
+    combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + healAmount);
+    combatant.maxLight = combatant.baseMaxLight + tier.maxLightBonus;
+    if (hasPerk(combatant, "Emotion Surge")) combatant.currentLight = combatant.maxLight;
+    else combatant.currentLight = Math.min(combatant.currentLight, combatant.maxLight);
+    notes.push(`🆙 Emotion Level ${nextLevel}! (+${healAmount.toFixed(2)} HP, +${tier.diceUp} Dice Up khi dùng skill, Max Light → ${combatant.maxLight})`);
+  }
+  return notes;
+}
+
+// Stamina cost cho 1 lần M1 (đánh thường), theo độ nặng vũ khí — vẫn giữ (khác với
+// Guard/Evade/Parry đã bỏ, đây là luật riêng đã xác nhận từ trước, không mâu thuẫn
+// với transcript — Rover's sheet vẫn cho thấy Stamina bị trừ + hồi 30/turn đúng).
 const WEAPON_STAMINA_COST = { light: 5, medium: 10, heavy: 20 };
-// Số hit M1 mà 1 lần Guard/Evade/Parry chặn được, theo độ nặng vũ khí CỦA NGƯỜI TẤN
-// CÔNG (không phải người thủ) — "Guard/evade/parry các đòn đánh thường của Light
-// weapon thì 1 lần sẽ guard/evade/parry được 4 hit còn Medium là 2, Heavy là 1".
-const WEAPON_GUARD_CHARGES = { light: 4, medium: 2, heavy: 1 };
 
 function normalizeWeaponWeight(w) {
   const x = (w ?? "").trim().toLowerCase();
@@ -1597,14 +1807,24 @@ function normalizeWeaponWeight(w) {
   return "medium"; // default — bao gồm cả khi gõ "medium"/"m"/để trống
 }
 
-/** Combatant — dùng CHUNG cho cả boss và mỗi player trong encounter. */
+/** Chuẩn hoá key ngắn cho enemy (VD "Mo" → "mo") — dùng làm định danh trong lệnh,
+ *  KHÔNG dùng tên hiển thị đầy đủ (VD "Mo (Brother of Iron)") để gõ lệnh cho nhanh. */
+function normalizeEnemyKey(k) {
+  return (k ?? "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+/** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
 function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", resistance = null }) {
   return {
     name,
     maxHp, currentHp: maxHp,
     maxStamina, currentStamina: maxStamina,
     maxSanity: ENCOUNTER_SANITY_MAX, currentSanity: 0,
-    maxLight, currentLight: 0,
+    // baseMaxLight: giá trị GỐC, KHÔNG đổi — maxLight (effective) = baseMaxLight +
+    // bonus từ Emotion Level đang active (xem EMOTION_LEVEL_TABLE.maxLightBonus),
+    // tính lại mỗi khi Level thay đổi (lên/hết hạn) — xem applyEmotionDelta/
+    // advanceCombatantTurn. Tách riêng để KHÔNG mất giá trị gốc khi Level hết hạn.
+    baseMaxLight: maxLight, maxLight, currentLight: 0,
     weaponWeight: normalizeWeaponWeight(weaponWeight),
     resistance: resistance ?? { B: 1, P: 1, S: 1 },
     // 7 status effect — LƯU Ý quan trọng về AI mang gì: Poise/Charge là "trên bản
@@ -1612,22 +1832,45 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch" (enemy) — combatant này
     // mang khi NÓ là người BỊ TẤN CÔNG (target). Khi build calcOpts cho 1 action, phải
     // lấy poiseInit/chargeInit từ COMBATANT TẤN CÔNG, còn sinkingInit/ruptureInit/
-    // burnInit/bleedInit/tremorInit từ COMBATANT BỊ TẤN CÔNG — KHÔNG lấy cả 7 từ cùng
-    // 1 bên (đây chính là bug đã sửa — trước đó poiseInit bị lấy nhầm từ boss/target
-    // dù player mới là người tấn công, tức người LẼ RA giữ Poise của hit đó).
+    // burnInit/bleedInit/tremorInit từ COMBATANT BỊ TẤN CÔNG.
     sinking: 0, rupture: 0, poise: 0, charge: 0, burn: 0, bleed: 0, tremor: 0,
     staggered: false, staggerTurnsLeft: 0,
     panic: false, panicTurnsLeft: 0,
-    // stance: thế thủ đang giữ — { type: "evade"|"guard", chargesLeft } | null. KHÔNG
-    // tự hết theo turn (theo luật là hết theo SỐ HIT chặn được, không phải thời gian) —
-    // chỉ bị xoá khi charges về 0 sau khi đỡ đòn, hoặc bị ghi đè bởi 1 lần tuyên bố mới.
-    stance: null,
-    // parryRoll: kết quả d20 đã roll, chờ bị tấn công để so sánh — cũng KHÔNG tự hết
-    // theo turn, chỉ tiêu thụ khi có 1 đòn tấn công thật được áp dụng vào combatant này.
-    parryRoll: null,
     // staminaUsedThisTurn: để tính Light gain ("đánh đủ 20 sta M1 trong turn → +1
     // Light turn sau") — reset về 0 mỗi lần endturn.
     staminaUsedThisTurn: 0,
+    // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
+    // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
+    // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã
+    // mở khóa Light Body — "kéo dài tới hết encounter"). emotionLevelCooldownLeft:
+    // số turn còn lại của CD SAU KHI 1 level hết hạn (trong CD thì KHÔNG lên lại
+    // được dù coin đủ, dù về 0).
+    emotionLevel: 0, emotionCoin: 0, emotionLevelTurnsLeft: 0, emotionLevelCooldownLeft: 0,
+    // unlockedPerks: COPY từ profile (data.unlockedSkillTree) lúc -encounter join —
+    // KHÔNG tự khai trực tiếp ở đây nữa (đã chuyển sang -unlockskilltree, lưu vĩnh
+    // viễn trên profile thay vì tạm trong encounter — xem comment ở lệnh đó).
+    unlockedPerks: [],
+    // buffs/debuffs: list TỰ DO (text do GM/player khai, KHÔNG tự tính/tự hết hạn) —
+    // vì hiệu ứng buff quá đa dạng giữa các skill, không có cách tự động hoá an toàn.
+    // Mỗi entry: { text, addedAt }. Xem -encounter buff/debuff/unbuff.
+    buffs: [], debuffs: [],
+    // skillCooldowns: { skillKey: số turn còn lại }. Set khi attack/hit có skill:
+    // reference VÀ skill đó có cd (cooldown) > 0 theo skills.js — decrement mỗi
+    // endturn, xoá khi về 0. Dùng để CHẶN spam lại skill đang cooldown.
+    skillCooldowns: {},
+    // ── Skill Tree tracking (xem PERK_DEFS) — các field dưới đây CHỈ phục vụ phần
+    // perk TỰ ĐỘNG hoá được (dựa trên HP%/Sanity/Stamina/Poise/Charge/Rupture/Bleed/
+    // Tremor/Stagger/crit/Emotion Level/M1 — hệ thống ĐÃ CÓ). Perk phụ thuộc Guard/
+    // Evade/Parry/Clash/E.G.O/Shin (hệ thống CHƯA CÓ) chỉ nằm trong unlockedPerks
+    // dạng ghi chú, GM tự áp dụng tay — KHÔNG có field riêng nào ở đây cho chúng.
+    attacksThisTurn: 0, lastTurnAttackCount: 0, // Battle Ignition
+    followUpUsedThisTurn: false, // Follow-Up/Pounce — CHUNG 1 cờ vì 2 perk loại trừ nhau + đều chỉ 1 lần/turn
+    bleedFirstHitUsedThisTurn: false, // Craving Synergy/Thirst/Break the Dams — "đòn đánh ĐẦU TIÊN mỗi turn"
+    breakTheDamsCdLeft: 0, // CD 3 turn riêng cho Break the Dams
+    m1AttackCount: 0, // tổng M1 đã đánh (không reset theo turn) — cho Overbearing/Blessed Sparks "mỗi đòn thứ 2"
+    poiseReductionPending: 0, // Smoke Overload — số Poise ĐÁNG LẼ bị giảm do crit, dồn lại chờ end turn mới trừ thật
+    overchargedTurnsLeft: 0, overchargedDiceUpBonus: 0, overchargedDmgBonusPct: 0, // Overcharged Vessel
+    manifestedEGO: false, firstManifestEGOUsed: false, // Comeback Time/No Will To Break — chỉ TRACK trạng thái, KHÔNG tự kích hoạt (Manifest E.G.O tự nó là hệ thống chưa có, đây chỉ là cờ GM tự set tay qua buff)
   };
 }
 
@@ -1649,7 +1892,18 @@ function checkStaggerPanic(combatant) {
     combatant.staggerTurnsLeft = 1;
     combatant.currentStamina = 0;
   }
-  if (combatant.currentSanity <= -ENCOUNTER_SANITY_MAX && !combatant.panic) {
+  // Negative Thoughts (Gloom, [30 Points]): "Chỉ bị Panic ở +45 Sanity" — đảo
+  // NGƯỢC chiều ngưỡng Panic hoàn toàn (thay vì -45). Các phần KHÁC của perk này
+  // (đảo dice bonus từ Sanity, nguồn hồi Sanity thành giảm, thắng/thua Clash) PHỤ
+  // THUỘC Clash hoặc đụng quá sâu vào core calcMathCore — để GM tự áp dụng tay,
+  // CHỈ phần ngưỡng Panic này được code (đủ contained, không rủi ro cho player khác).
+  if (hasPerk(combatant, "Negative Thoughts")) {
+    if (combatant.currentSanity >= ENCOUNTER_SANITY_MAX && !combatant.panic) {
+      combatant.panic = true;
+      combatant.panicTurnsLeft = 1;
+      combatant.currentSanity = ENCOUNTER_SANITY_MAX;
+    }
+  } else if (combatant.currentSanity <= -ENCOUNTER_SANITY_MAX && !combatant.panic) {
     combatant.panic = true;
     combatant.panicTurnsLeft = 1;
     combatant.currentSanity = -ENCOUNTER_SANITY_MAX;
@@ -1657,9 +1911,17 @@ function checkStaggerPanic(combatant) {
 }
 
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
- *  Panic, tính Light gain. Gọi cho TỪNG combatant (boss + mọi player) khi -encounter
- *  endturn được gọi. */
+ *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
+ *  -encounter endturn được gọi. */
 function advanceCombatantTurn(combatant) {
+  // Burn/Bleed — giảm 1 nửa THẬT (làm tròn xuống) — CHỈ Ở ĐÂY, 1 lần/turn thật.
+  // Trước đây bị giảm nhầm trong confirm handler (mỗi hit), xem comment đầy đủ ở
+  // đó. Damage thực tế từ Burn/Bleed end-turn-tick (×2 dmg cho Burn, ÷4×actions
+  // cho Bleed) CHƯA tự trừ vào HP ở đây — vẫn là khoảng trống đã ghi nhận từ trước
+  // (cần track số "hành động" của địch mới tính được Bleed dmg chính xác, là việc
+  // khác) — /math vẫn dùng để tính số riêng nếu GM cần.
+  combatant.burn = Math.floor((combatant.burn ?? 0) / 2);
+  combatant.bleed = Math.floor((combatant.bleed ?? 0) / 2);
   if (combatant.staggered) {
     combatant.staggerTurnsLeft -= 1;
     if (combatant.staggerTurnsLeft <= 0) {
@@ -1681,7 +1943,58 @@ function advanceCombatantTurn(combatant) {
   if (combatant.staminaUsedThisTurn >= 20 && combatant.currentLight < combatant.maxLight) {
     combatant.currentLight += 1;
   }
+  // Light Dash perk (mở khóa từ Skill Tree) — +2 Light mỗi turn start, CỘNG THÊM
+  // (không thay thế) cơ chế +1 Light từ staminaUsedThisTurn>=20 phía trên.
+  if (hasPerk(combatant, "Light Dash")) {
+    combatant.currentLight = Math.min(combatant.maxLight, combatant.currentLight + 2);
+  }
   combatant.staminaUsedThisTurn = 0;
+  // Emotion Level — đếm ngược Duration (Infinity nếu có Light Body = không bao giờ
+  // hết tới khi encounter kết thúc). Hết Duration → rớt về Level 0, maxLight về lại
+  // baseMaxLight, vào CD EMOTION_LEVEL_COOLDOWN_TURNS turn (không lên lại được dù
+  // coin đủ — xem applyEmotionDelta). Nếu KHÔNG có level active, đếm ngược CD nếu có.
+  if (combatant.emotionLevel > 0 && Number.isFinite(combatant.emotionLevelTurnsLeft)) {
+    combatant.emotionLevelTurnsLeft -= 1;
+    if (combatant.emotionLevelTurnsLeft <= 0) {
+      combatant.emotionLevel = 0;
+      combatant.maxLight = combatant.baseMaxLight;
+      combatant.currentLight = Math.min(combatant.currentLight, combatant.maxLight);
+      combatant.emotionLevelCooldownLeft = EMOTION_LEVEL_COOLDOWN_TURNS;
+    }
+  } else if ((combatant.emotionLevelCooldownLeft ?? 0) > 0) {
+    combatant.emotionLevelCooldownLeft -= 1;
+  }
+  // Giảm cooldown skill — xoá hẳn khi về 0 (không giữ key rác trong object).
+  if (combatant.skillCooldowns) {
+    for (const sk of Object.keys(combatant.skillCooldowns)) {
+      combatant.skillCooldowns[sk] -= 1;
+      if (combatant.skillCooldowns[sk] <= 0) delete combatant.skillCooldowns[sk];
+    }
+  }
+  // ── Skill Tree — reset/đếm ngược các cờ/CD theo turn ─────────────────────────
+  // Battle Ignition: "turn TRƯỚC đánh ≥10 lần" — shift count turn này thành "turn
+  // trước" cho lần check kế tiếp, rồi reset bộ đếm turn mới.
+  combatant.lastTurnAttackCount = combatant.attacksThisTurn ?? 0;
+  combatant.attacksThisTurn = 0;
+  // Follow-Up/Pounce + Craving Synergy/Thirst/Break the Dams ("đòn đầu tiên mỗi
+  // turn") — đều là cờ 1 LẦN/turn, reset về false mỗi turn mới.
+  combatant.followUpUsedThisTurn = false;
+  combatant.bleedFirstHitUsedThisTurn = false;
+  if ((combatant.breakTheDamsCdLeft ?? 0) > 0) combatant.breakTheDamsCdLeft -= 1;
+  // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
+  // ngay) — giờ mới trừ THẬT lúc end turn.
+  if ((combatant.poiseReductionPending ?? 0) > 0) {
+    combatant.poise = Math.max(0, combatant.poise - combatant.poiseReductionPending);
+    combatant.poiseReductionPending = 0;
+  }
+  // Overcharged Vessel: hết Duration 3 turn thì mất hẳn bonus Dice Up/Dmg đã kích hoạt.
+  if ((combatant.overchargedTurnsLeft ?? 0) > 0) {
+    combatant.overchargedTurnsLeft -= 1;
+    if (combatant.overchargedTurnsLeft <= 0) {
+      combatant.overchargedDiceUpBonus = 0;
+      combatant.overchargedDmgBonusPct = 0;
+    }
+  }
 }
 
 function encounterKey(channelId) {
@@ -1702,10 +2015,45 @@ async function deleteEncounter(channelId) {
   await withTimeout(redis.del(encounterKey(channelId)));
 }
 
-/** Build embed "bảng" hiển thị trạng thái encounter hiện tại — gọi lại mỗi khi
- *  start/hit-confirm/status để luôn phản ánh đúng state mới nhất đã lưu. */
-/** Render 1 dòng trạng thái cho 1 combatant (boss hoặc player) — dùng chung để
- *  không lặp code giữa phần hiện boss và phần hiện từng player. */
+/** resolveCombatant — tra 1 "id" (key enemy HOẶC userId player) thành combatant
+ *  thật + label hiển thị + loại ("enemy"|"player"). Dùng chung cho mọi nơi cần tra
+ *  1 bên cụ thể (không phải multi-target — xem resolveTargets cho multi-target). */
+function resolveCombatant(encounter, id) {
+  if (encounter.enemies[id]) return { combatant: encounter.enemies[id], label: `**${encounter.enemies[id].name}**`, type: "enemy" };
+  if (encounter.players[id]) return { combatant: encounter.players[id], label: `<@${id}>`, type: "player" };
+  return null;
+}
+
+/** resolveTargets — parse chuỗi target ("mo" / "mo,arnold" / "all" / "@mention" lúc
+ *  đã resolve thành userId) thành LIST các { id, combatant, label, type } — dùng cho
+ *  attack/hit (target: enemy, có thể nhiều — AOE) và enemyattack (target: player, có
+ *  thể nhiều). "all" nghĩa là TẤT CẢ enemy (cho attack/hit) hoặc TẤT CẢ player (cho
+ *  enemyattack) — diễn giải theo allowedType truyền vào.
+ *  @param allowedType "enemy" | "player" — loại entity được phép chọn làm target
+ *  @throws Error nếu target rỗng hoặc có key không tìm thấy */
+function resolveTargets(encounter, targetStr, allowedType) {
+  const pool = allowedType === "enemy" ? encounter.enemies : encounter.players;
+  const poolLabel = allowedType === "enemy" ? "enemy" : "player";
+  const trimmed = (targetStr ?? "").trim();
+  if (!trimmed) throw new Error(`Cần chỉ định target: (VD: \`target: mo\` hoặc \`target: all\`).`);
+  if (trimmed.toLowerCase() === "all") {
+    const ids = Object.keys(pool);
+    if (ids.length === 0) throw new Error(`Chưa có ${poolLabel} nào trong encounter để chọn "all".`);
+    return ids.map(id => ({ id, combatant: pool[id], label: allowedType === "enemy" ? `**${pool[id].name}**` : `<@${id}>`, type: allowedType }));
+  }
+  const keys = trimmed.split(",").map(s => allowedType === "enemy" ? normalizeEnemyKey(s) : s.trim().replace(/[<@!>]/g, ""));
+  const results = [];
+  const notFound = [];
+  for (const k of keys) {
+    if (pool[k]) results.push({ id: k, combatant: pool[k], label: allowedType === "enemy" ? `**${pool[k].name}**` : `<@${k}>`, type: allowedType });
+    else notFound.push(k);
+  }
+  if (notFound.length > 0) throw new Error(`Không tìm thấy ${poolLabel}: ${notFound.join(", ")} — dùng \`-encounter status\` để xem danh sách.`);
+  return results;
+}
+
+/** Render 1 dòng trạng thái cho 1 combatant (enemy hoặc player) — dùng chung để
+ *  không lặp code giữa phần hiện enemy và phần hiện từng player. */
 function formatCombatantBlock(combatant, label) {
   const hpPct = combatant.maxHp > 0 ? Math.max(0, combatant.currentHp / combatant.maxHp) : 0;
   const filled = Math.round(hpPct * 10);
@@ -1720,6 +2068,22 @@ function formatCombatantBlock(combatant, label) {
     `> Stamina: **${combatant.currentStamina}/${combatant.maxStamina}** | Sanity: **${combatant.currentSanity}/${combatant.maxSanity}** | Light: **${combatant.currentLight}/${combatant.maxLight}**`,
     `> Res: **${resLine}** | Vũ khí: **${combatant.weaponWeight}**`,
   ];
+  const lvl = combatant.emotionLevel ?? 0;
+  const maxLvl = getMaxEmotionLevel(combatant);
+  let emotionLine = `> Emotion Level **${lvl}**`;
+  if (lvl < maxLvl) emotionLine += ` [Coin: ${combatant.emotionCoin ?? 0}/${EMOTION_LEVEL_TABLE[lvl + 1].coinNeeded}]`;
+  else emotionLine += ` (MAX) [Coin: ${combatant.emotionCoin ?? 0}]`;
+  if (lvl > 0) {
+    emotionLine += !Number.isFinite(combatant.emotionLevelTurnsLeft)
+      ? ` — 🔆 vĩnh viễn (Light Body)`
+      : ` — còn ${combatant.emotionLevelTurnsLeft} turn`;
+  } else if ((combatant.emotionLevelCooldownLeft ?? 0) > 0) {
+    emotionLine += ` — ⏳ CD còn ${combatant.emotionLevelCooldownLeft} turn`;
+  }
+  lines.push(emotionLine);
+  if ((combatant.unlockedPerks ?? []).length > 0) lines.push(`> ✨ Perk: ${combatant.unlockedPerks.join(", ")}`);
+  if ((combatant.overchargedTurnsLeft ?? 0) > 0) lines.push(`> ⚡ **Overcharged** — +${combatant.overchargedDiceUpBonus} Dice Up, +${combatant.overchargedDmgBonusPct}% Dmg — còn ${combatant.overchargedTurnsLeft} turn`);
+  if ((combatant.breakTheDamsCdLeft ?? 0) > 0) lines.push(`> ⏳ Break the Dams CD — còn ${combatant.breakTheDamsCdLeft} turn`);
   const statusParts = [];
   if (combatant.sinking > 0) statusParts.push(`<:Sinking:1513762793436741652>${combatant.sinking}`);
   if (combatant.rupture > 0) statusParts.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
@@ -1731,250 +2095,378 @@ function formatCombatantBlock(combatant, label) {
   if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
   if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
   if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
-  if (combatant.stance) lines.push(`> 🛡️ Đang ${combatant.stance.type === "guard" ? "Guard" : "Evade"} — còn chặn được ${combatant.stance.chargesLeft} hit`);
-  if (combatant.parryRoll !== null) lines.push(`> 🗡️ Đang chờ Parry (đã roll **${combatant.parryRoll}**)`);
+  if ((combatant.buffs ?? []).length > 0) lines.push(`> 🟢 Buff: ${combatant.buffs.map(b => b.text).join(" | ")}`);
+  if ((combatant.debuffs ?? []).length > 0) lines.push(`> 🔴 Debuff: ${combatant.debuffs.map(d => d.text).join(" | ")}`);
+  const cds = Object.entries(combatant.skillCooldowns ?? {});
+  if (cds.length > 0) lines.push(`> ⏱️ CD: ${cds.map(([k, v]) => `${k} (${v}T)`).join(" | ")}`);
   return lines.join("\n");
 }
 
-/** Preview (READ-ONLY, không sửa target) — dùng để hiện dự kiến trong pending action.
- *  Parry không roll thật ở đây (vì random — roll ở preview rồi roll lại lúc confirm
- *  sẽ ra 2 kết quả khác nhau, gây hiểu nhầm) — chỉ báo "sẽ roll lúc confirm". */
-function previewDefenseOutcome(target, rawDmg) {
-  if (target.parryRoll !== null) {
-    return { finalDmg: null, note: `🗡️ Target đang chờ Parry (đã roll **${target.parryRoll}**) — kết quả thật sẽ roll khi GM xác nhận` };
-  }
-  if (target.stance?.type === "evade") {
-    return { finalDmg: 0, note: `🛡️ Target đang Evade — dự kiến đỡ được, KHÔNG nhận dmg (còn ${target.stance.chargesLeft} charge)` };
-  }
-  if (target.stance?.type === "guard") {
-    return { finalDmg: rawDmg * (1 - ENCOUNTER_GUARD_DR_PCT / 100), note: `🛡️ Target đang Guard — dự kiến giảm ${ENCOUNTER_GUARD_DR_PCT}% dmg (còn ${target.stance.chargesLeft} charge)` };
-  }
-  return { finalDmg: rawDmg, note: null };
-}
-
-/** Resolve THẬT (SỬA target) — CHỈ gọi lúc GM xác nhận, không gọi lúc preview. Roll
- *  d20 thật cho Parry, tiêu charge Guard/Evade, trừ Stamina nếu Parry thất bại. */
-function resolveDefenseOutcome(target, rawDmg) {
-  if (target.parryRoll !== null) {
-    const bossRoll = 1 + Math.floor(Math.random() * 20);
-    const playerRoll = target.parryRoll;
-    target.parryRoll = null;
-    if (playerRoll >= bossRoll) {
-      return { finalDmg: 0, note: `🗡️ Parry THÀNH CÔNG! (roll ${playerRoll} vs ${bossRoll}) — không nhận dmg` };
-    }
-    target.currentStamina = Math.max(0, target.currentStamina - ENCOUNTER_PARRY_FAIL_STAMINA_LOSS);
-    checkStaggerPanic(target);
-    return { finalDmg: rawDmg, note: `🗡️ Parry THẤT BẠI! (roll ${playerRoll} vs ${bossRoll}) — mất ${ENCOUNTER_PARRY_FAIL_STAMINA_LOSS} Stamina, ăn full dmg` };
-  }
-  if (target.stance?.type === "evade") {
-    target.stance.chargesLeft -= 1;
-    const note = `🛡️ Evade thành công (còn ${Math.max(0, target.stance.chargesLeft)} charge)`;
-    if (target.stance.chargesLeft <= 0) target.stance = null;
-    return { finalDmg: 0, note };
-  }
-  if (target.stance?.type === "guard") {
-    const reduced = rawDmg * (1 - ENCOUNTER_GUARD_DR_PCT / 100);
-    target.stance.chargesLeft -= 1;
-    const note = `🛡️ Guard — giảm ${ENCOUNTER_GUARD_DR_PCT}% dmg (còn ${Math.max(0, target.stance.chargesLeft)} charge)`;
-    if (target.stance.chargesLeft <= 0) target.stance = null;
-    return { finalDmg: reduced, note };
-  }
-  return { finalDmg: rawDmg, note: null };
-}
-
-/** Action panel — 5 nút cho player bấm thay vì gõ lệnh text. Attack/Hit cần nhập
- *  công thức dmg nên mở Modal (form nhập liệu) khi bấm; Guard/Evade/Parry không
- *  cần nhập gì nên thực thi NGAY khi bấm. */
+/** Action panel — 2 nút cho player bấm thay vì gõ lệnh text (Attack/Hit cần nhập
+ *  công thức dmg + target nên mở Modal). Đã bỏ Guard/Evade/Parry (xem comment đầu
+ *  file ENCOUNTER SYSTEM — không khớp luật thật). */
 function buildEncounterActionPanel(channelId) {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`encact:${channelId}:attack`).setLabel("⚔️ Đánh thường").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`encact:${channelId}:hit`).setLabel("📖 Dùng Page").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:guard`).setLabel("🛡️ Guard").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:evade`).setLabel("💨 Evade").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:parry`).setLabel("🗡️ Parry").setStyle(ButtonStyle.Secondary),
     ),
   ];
 }
 
+/** parseSkillCooldownTurns — đọc field cd của skill ("2 Turn", "1 Turn sau khi...",
+ *  "—", "???", text mô tả riêng) → số turn cooldown. Chỉ parse được dạng "<N> Turn"
+ *  ở đầu chuỗi — các dạng đặc biệt (text, "—", "???") trả về 0 (không track tự động
+ *  được, không chặn gì cả — GM tự nhớ luật riêng cho skill đó nếu cần).
+ */
+function parseSkillCooldownTurns(cdStr) {
+  const m = (cdStr ?? "").match(/^(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * resolveSkillVerification — xử lý 2 cách GM verify dmgStr người chơi tự gõ:
+ *   1. skill: <tên skill> — bot TỰ ROLL skill đó NGAY (dùng buildSkillRollResult có
+ *      sẵn, CHẠY THẬT calcMathCore/RNG, không phải tham chiếu tĩnh) → dice value THẬT
+ *      không thể gian lận, + tự tính Emotion Coin delta luôn (tái dùng side-channel
+ *      startEmotionTracking đã có sẵn cho -skill thường) + enforce/set cooldown.
+ *      HẠN CHẾ: skill có promptArg (cần input riêng, VD: Thrust cần Light hiện tại)
+ *      CHƯA hỗ trợ qua đường này — phải dùng -skill riêng rồi dán ref: thay vào đó,
+ *      vì promptArg cần GM/player tự nhập số bổ sung không có trong attack/hit.
+ *   2. ref: <message link hoặc ID> — fetch lại message ĐÃ roll trước đó (qua -skill
+ *      riêng), hiện snippet + link nhảy tới cho GM tự xem, KHÔNG tự verify được gì
+ *      (chỉ là tiện cho GM, không suy ra được Emotion Coin/cooldown từ đây).
+ * Cả 2 đều OPTIONAL và ĐỘC LẬP — có thể dùng 1, cả 2, hoặc không cái nào (lúc đó GM
+ * chỉ dựa vào dmgStr suông, như trước).
+ * @returns { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink }
+ * @throws Error nếu skill không tìm thấy/đang cooldown/cần promptArg, hoặc ref: sai định dạng/không fetch được
+ */
+async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw) {
+  let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0;
+  let refSnippet = null, refLink = null;
+
+  if (skillNameRaw && skillNameRaw.trim()) {
+    const skill = findSkill(skillNameRaw.trim());
+    if (!skill) throw new Error(`Không tìm thấy skill "${skillNameRaw}" — dùng \`-skill list\` để xem danh sách.`);
+    if (skill.promptArg) throw new Error(`Skill "${skill.name}" cần input đặc biệt (VD: Light hiện tại) — chưa roll trực tiếp qua encounter được. Dùng \`-skill ${skillNameRaw}\` riêng rồi dán link message đó vào ref: thay vào đó.`);
+    skillKey = skillNameRaw.trim().toLowerCase();
+    const existingCd = attacker.skillCooldowns?.[skillKey] ?? 0;
+    if (existingCd > 0) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
+    const rollResult = buildSkillRollResult({ skill, rollCount: 1 });
+    if (rollResult.error) throw new Error(rollResult.error);
+    skillRollEmbed = rollResult.embed;
+    emotionDelta = rollResult.totalEmotionDelta ?? 0;
+    cooldownTurns = parseSkillCooldownTurns(skill.cd);
+  }
+
+  if (refRaw && refRaw.trim()) {
+    const idMatch = refRaw.trim().match(/(\d{15,20})\s*$/); // lấy ID số ở CUỐI chuỗi — khớp cả link đầy đủ và ID thô
+    if (!idMatch) throw new Error(`ref: không hợp lệ — cần message ID hoặc link Discord (VD: dán link "Copy Message Link" của message roll skill).`);
+    try {
+      const channel = await client.channels.fetch(channelId);
+      const fetchedMsg = await channel.messages.fetch(idMatch[1]);
+      refLink = fetchedMsg.url ?? `https://discord.com/channels/@me/${channelId}/${idMatch[1]}`;
+      const embedDesc = fetchedMsg.embeds?.[0]?.description;
+      refSnippet = (embedDesc ?? fetchedMsg.content ?? "(không có nội dung text)").slice(0, 300);
+    } catch {
+      throw new Error(`Không tìm được message ref: "${refRaw}" — kiểm tra lại link/ID (phải là message trong CHANNEL này).`);
+    }
+  }
+
+  return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink };
+}
+
 /**
  * doPlayerAttack — logic CHUNG cho `-encounter attack` (text) và nút "Đánh thường"
- * (qua Modal). QUAN TRỌNG: KHÔNG trừ Stamina ở đây — chỉ TÍNH TRƯỚC stamina cần và
- * lưu vào pendingAction.staminaCost, trừ THẬT lúc GM xác nhận (xem encconfirm
- * handler). Trước đây trừ ngay lúc declare — nghĩa là GM từ chối (VD: vì lý do gõ
- * sai công thức) vẫn làm player mất Stamina oan, dù hành động đó không có hiệu lực
- * gì cả. Giờ: declare chỉ KIỂM TRA đủ Stamina không (báo lỗi sớm nếu thiếu), CHƯA
- * trừ; confirm mới trừ thật — khớp đúng nguyên tắc "không gì là thật cho tới khi
- * GM xác nhận" đã áp dụng cho HP/status từ trước.
- * @returns {{ embed, components }}
+ * (qua Modal). target có thể là 1 hoặc nhiều enemy (AOE) — mỗi enemy được tính
+ * RIÊNG (gọi calcMathCore riêng cho từng enemy, vì mỗi enemy có resistance/Sinking/
+ * Rupture/Burn/Bleed/Tremor RIÊNG, crit cũng roll ĐỘC LẬP cho từng enemy dù cùng 1
+ * đòn AOE). KHÔNG trừ Stamina ở đây — chỉ TÍNH TRƯỚC và lưu vào pendingActions, trừ
+ * THẬT lúc GM xác nhận (xem encconfirmall handler) — để reject không làm mất Stamina
+ * oan. staminaCost chỉ tính 1 LẦN cho cả action dù đánh nhiều target (1 đòn M1 chỉ
+ * tốn Stamina 1 lần, không phải nhân theo số target).
+ * @returns {{ embed }}
  * @throws Error nếu input/điều kiện không hợp lệ
  */
-async function doPlayerAttack(channelId, playerId, playerMention, dmgStr) {
+async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, targetStr, verifyOpts = {}) {
   if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw } = verifyOpts;
+  const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
     const encounter = await getEncounter(channelId);
     if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
     const player = encounter.players[playerId];
     if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-    if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
     if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
+    if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
 
-    const boss = encounter.boss;
-    // QUAN TRỌNG: Poise/Charge là "trên bản thân" → lấy từ PLAYER (người tấn công).
-    // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch" → lấy từ BOSS (bị tấn
-    // công). Trước đây lấy NHẦM cả 7 từ boss — sai hoàn toàn với Poise/Charge.
-    const calcOpts = {
-      dmgStr, resStr: combatantResStr(boss),
-      poiseInit: player.poise, chargeInit: player.charge,
-      sinkingInit: boss.sinking, ruptureInit: boss.rupture,
-      burnInit: boss.burn, bleedInit: boss.bleed, tremorInit: boss.tremor,
-      sanityInit: boss.currentSanity,
-    };
-    const preview = calcMathCore(calcOpts);
-    const hitCount = preview.dmgValues.length;
+    // skill:/ref: — xem comment đầy đủ ở resolveSkillVerification. Gọi TRƯỚC khi
+    // build preview vì có thể throw (skill không tồn tại/đang cooldown) — fail sớm,
+    // tránh tính toán dư.
+    const verify = await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
+
+    const targets = resolveTargets(encounter, targetStr, "enemy");
+    // QUAN TRỌNG: Poise/Charge là "trên bản thân" → lấy từ PLAYER (người tấn công),
+    // dùng CHUNG cho mọi target trong AOE (vẫn là 1 người tấn công, 1 lượng Poise).
+    // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch" → lấy RIÊNG cho từng
+    // target — tính calcMathCore riêng từng enemy.
+    const previews = targets.map(t => {
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true });
+      const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      const calcOpts = {
+        dmgStr: perkCtx.dmgStrRewritten, resStr: combatantResStr(t.combatant),
+        bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul,
+        critDiv: perkCtx.critDivOverride ?? undefined,
+        poiseInit: player.poise, chargeInit: player.charge,
+        sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
+        burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
+        sanityInit: t.combatant.currentSanity,
+      };
+      const preview = calcMathCore(calcOpts);
+      // Defender reduction (Smoldering Resolve) áp NGAY ở preview để hiển thị đúng
+      // số dự kiến — KHÔNG sửa preview.totalDmg gốc (giữ nguyên cho breakdown), chỉ
+      // tính finalDmgAfterReduction riêng để show + dùng lại lúc confirm.
+      const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill };
+    });
+    const hitCount = previews[0].preview.dmgValues.length;
     const staminaCost = WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
     if (player.currentStamina < staminaCost) {
       throw new Error(`Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
     }
 
-    encounter.pendingAction = {
-      direction: "playerToBoss", attackerId: playerId, targetId: "boss",
-      calcOpts, preview, finalDmg: preview.totalDmg,
-      staminaCost, // CHỈ attack có field này — đánh dấu cho encconfirm biết cần trừ Stamina người tấn công lúc confirm
-    };
+    const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    encounter.pendingActions = encounter.pendingActions ?? [];
+    encounter.pendingActions.push({
+      id: pendingId, kind: "attack",
+      attackerId: playerId, attackerType: "player",
+      targets: previews.map(p => ({ targetId: p.target.id, targetType: "enemy", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
+      dmgStr, staminaCost, isM1: true,
+      // Lưu lại kết quả verify — encconfirmall áp dụng emotionDelta + set cooldown
+      // THẬT lúc confirm (không phải lúc declare — khớp nguyên tắc "chưa gì là thật
+      // cho tới khi GM xác nhận"). refLink/refSnippet/skillRollEmbed chỉ để HIỂN THỊ.
+      // emotionDelta = TỔNG của delta tự roll skill (Max/Min dice) + manualCoin (GM/
+      // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
+      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
+      skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
+    });
     await saveEncounter(channelId, encounter);
 
+    const targetLines = previews.map(p => {
+      let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
+      if (p.defReductionPct > 0) line += ` *(đã giảm ${p.defReductionPct}% từ perk Smoldering Resolve, gốc ${p.preview.totalDmg.toFixed(3)})*`;
+      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (Claim Their Heart — Stagger + dưới 15% HP)`;
+      return line;
+    }).join("\n");
+    let verifyNote = "";
+    if (verify.skillKey) verifyNote += `\n> 🎲 Đã tự roll skill **${verify.skillKey}** kèm theo (xem embed dưới) — Emotion Coin ${verify.emotionDelta >= 0 ? "+" : ""}${verify.emotionDelta} (tự động), CD ${verify.cooldownTurns} turn nếu confirm.`;
+    if (manualCoin) verifyNote += `\n> 🪙 Coin tự khai (Clash/kill/...): ${manualCoin >= 0 ? "+" : ""}${manualCoin}`;
+    if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
     result = {
       embed: {
-        title: "🎯 M1 chờ GM xác nhận",
+        title: "🎯 M1 đã thêm vào hàng chờ",
         description:
-          `${playerMention} đánh thường (${hitCount} hit) lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
-          `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg\n` +
-          `> Sẽ trừ **${staminaCost} Stamina** NẾU được GM xác nhận (từ chối thì không mất gì).\n` +
-          `> GM bấm nút dưới để áp dụng thật vào encounter.`,
+          `${playerMention} đánh thường (${hitCount} hit) lên ${targets.length > 1 ? `${targets.length} mục tiêu` : targets[0].label}: \`${dmgStr}\`\n` +
+          `${targetLines}\n` +
+          `> Sẽ trừ **${staminaCost} Stamina** NẾU được GM xác nhận.${verifyNote}\n` +
+          `> Dùng \`-encounter pending\` để xem hàng chờ, GM bấm "Confirm tất cả" khi xong turn.`,
         color: 0xf39c12,
       },
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`encconfirm:${channelId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`encreject:${channelId}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-      )],
+      skillRollEmbed: verify.skillRollEmbed,
     };
   });
   return result;
 }
 
 /** doPlayerHit — logic CHUNG cho `-encounter hit` (text) và nút "Dùng Page". Page
- *  tốn Light (player tự khai báo/quản lý riêng), KHÔNG đụng tới Stamina — đúng yêu
- *  cầu giữ rõ ranh giới: chỉ M1/Guard/Evade tốn Stamina, Page không. */
-async function doPlayerHit(channelId, playerId, playerMention, dmgStr, extra = {}) {
+ *  tốn Light (player tự khai báo/quản lý riêng), KHÔNG đụng tới Stamina. Hỗ trợ
+ *  multi-target AOE giống doPlayerAttack. */
+async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr, extra = {}) {
   if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
-  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul = 1, diceMul = 1, critDiv = 0 } = extra;
+  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul = 1, diceMul = 1, critDiv = 0, skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw } = extra;
+  const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
     const encounter = await getEncounter(channelId);
     if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
-    if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ GM xử lý xong trước.");
     const player = encounter.players[playerId];
     if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-    const boss = encounter.boss;
-    // QUAN TRỌNG: Poise/Charge lấy từ PLAYER (người dùng Page, "trên bản thân"),
-    // Sinking/Rupture/Burn/Bleed/Tremor lấy từ BOSS (bị tấn công, "trên người địch").
-    const calcOpts = {
-      dmgStr, resStr: resStr || combatantResStr(boss), drStr,
-      bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
-      poiseInit: player.poise, chargeInit: player.charge,
-      sinkingInit: boss.sinking, ruptureInit: boss.rupture,
-      burnInit: boss.burn, bleedInit: boss.bleed, tremorInit: boss.tremor,
-      sanityInit: boss.currentSanity,
-    };
-    const preview = calcMathCore(calcOpts);
+    if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
 
-    encounter.pendingAction = {
-      direction: "playerToBoss", attackerId: playerId, targetId: "boss",
-      calcOpts, preview, finalDmg: preview.totalDmg,
-    };
+    const verify = await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
+
+    const targets = resolveTargets(encounter, targetStr, "enemy");
+    const previews = targets.map(t => {
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false });
+      const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      const calcOpts = {
+        dmgStr: perkCtx.dmgStrRewritten, resStr: resStr || combatantResStr(t.combatant), drStr,
+        bonusPct: bonusPct + perkCtx.bonusPct, sanityBonusPct,
+        critMul: perkCtx.critMul !== 1 ? perkCtx.critMul : critMul, diceMul,
+        critDiv: perkCtx.critDivOverride ?? critDiv,
+        poiseInit: player.poise, chargeInit: player.charge,
+        sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
+        burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
+        sanityInit: t.combatant.currentSanity,
+      };
+      const preview = calcMathCore(calcOpts);
+      const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill };
+    });
+
+    const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    encounter.pendingActions = encounter.pendingActions ?? [];
+    encounter.pendingActions.push({
+      id: pendingId, kind: "hit",
+      attackerId: playerId, attackerType: "player",
+      targets: previews.map(p => ({ targetId: p.target.id, targetType: "enemy", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
+      dmgStr,
+      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
+      skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
+    });
     await saveEncounter(channelId, encounter);
 
+    const targetLines = previews.map(p => {
+      let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
+      if (p.defReductionPct > 0) line += ` *(đã giảm ${p.defReductionPct}% từ perk Smoldering Resolve, gốc ${p.preview.totalDmg.toFixed(3)})*`;
+      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (Claim Their Heart — Stagger + dưới 15% HP)`;
+      return line;
+    }).join("\n");
+    let verifyNote = "";
+    if (verify.skillKey) verifyNote += `\n> 🎲 Đã tự roll skill **${verify.skillKey}** kèm theo (xem embed dưới) — Emotion Coin ${verify.emotionDelta >= 0 ? "+" : ""}${verify.emotionDelta} (tự động), CD ${verify.cooldownTurns} turn nếu confirm.`;
+    if (manualCoin) verifyNote += `\n> 🪙 Coin tự khai (Clash/kill/...): ${manualCoin >= 0 ? "+" : ""}${manualCoin}`;
+    if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
     result = {
       embed: {
-        title: "🎯 Action chờ GM xác nhận",
+        title: "🎯 Action đã thêm vào hàng chờ",
         description:
-          `${playerMention} dùng Page lên **${encounter.bossName}**: \`${dmgStr}\`\n` +
-          `> Dự kiến: **${preview.totalDmg.toFixed(3)}** dmg\n` +
-          `> GM bấm nút dưới để áp dụng thật vào encounter.`,
+          `${playerMention} dùng Page lên ${targets.length > 1 ? `${targets.length} mục tiêu` : targets[0].label}: \`${dmgStr}\`\n` +
+          `${targetLines}${verifyNote}\n` +
+          `> Dùng \`-encounter pending\` để xem hàng chờ, GM bấm "Confirm tất cả" khi xong turn.`,
         color: 0xf39c12,
       },
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`encconfirm:${channelId}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`encreject:${channelId}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-      )],
+      skillRollEmbed: verify.skillRollEmbed,
     };
   });
   return result;
 }
 
-/** doPlayerGuardEvade — logic CHUNG cho -encounter guard/evade (text) và nút
- *  Guard/Evade. KHÔNG qua pending/confirm (thực thi NGAY) — vì đây là tuyên bố thế
- *  thủ của RIÊNG player đó, không cần GM duyệt số liệu gì cả (không có damage math
- *  nào để sai ở đây). */
-async function doPlayerGuardEvade(channelId, playerId, type) {
-  let message;
+/** doEnemyAttack — GM cho 1 enemy đánh 1 hoặc nhiều player (AOE) — logic gương với
+ *  doPlayerAttack/doPlayerHit nhưng đảo chiều self/enemy (enemy là người tấn công →
+ *  Poise/Charge từ enemy; player(s) là target → 5 status kia từ TỪNG player riêng). */
+async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, verifyOpts = {}) {
+  if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw } = verifyOpts;
+  const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
+  let result;
   await withLock(encounterKey(channelId), async () => {
     const encounter = await getEncounter(channelId);
     if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-    const player = encounter.players[playerId];
-    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-    const cost = type === "evade" ? 20 : 10;
-    if (player.currentStamina < cost) throw new Error(`Không đủ Stamina (cần ${cost}, còn ${player.currentStamina}).`);
-    player.currentStamina -= cost;
-    checkStaggerPanic(player);
-    const charges = WEAPON_GUARD_CHARGES[encounter.boss.weaponWeight];
-    player.stance = { type, chargesLeft: charges };
+    const isAdmin = ADMIN_IDS.has(gmUserId);
+    if (!isAdmin && gmUserId !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
+    const ekey = normalizeEnemyKey(enemyKey);
+    const enemy = encounter.enemies[ekey];
+    if (!enemy) throw new Error(`Không tìm thấy enemy "${enemyKey}" — dùng \`-encounter status\` để xem danh sách.`);
+    if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — xử lý trước.`);
+
+    const verify = await resolveSkillVerification(channelId, enemy, skillNameRaw, refRaw);
+
+    const targets = resolveTargets(encounter, targetStr, "player");
+    // QUAN TRỌNG: chiều này ENEMY là người tấn công → Poise/Charge lấy từ ENEMY.
+    // TARGET (player) là người bị tấn công → 5 status kia lấy từ TỪNG TARGET riêng.
+    const previews = targets.map(t => {
+      const perkCtx = computeAttackerPerkContext(enemy, t.combatant, dmgStr, { isM1: false });
+      const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      const calcOpts = {
+        dmgStr: perkCtx.dmgStrRewritten, resStr: combatantResStr(t.combatant),
+        bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
+        poiseInit: enemy.poise, chargeInit: enemy.charge,
+        sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
+        burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
+        sanityInit: t.combatant.currentSanity,
+      };
+      const preview = calcMathCore(calcOpts);
+      const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill };
+    });
+
+    const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    encounter.pendingActions = encounter.pendingActions ?? [];
+    encounter.pendingActions.push({
+      id: pendingId, kind: "enemyattack",
+      attackerId: ekey, attackerType: "enemy",
+      targets: previews.map(p => ({ targetId: p.target.id, targetType: "player", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
+      dmgStr,
+      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
+      skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
+    });
     await saveEncounter(channelId, encounter);
-    message = `🛡️ <@${playerId}> vào thế **${type === "evade" ? "Evade" : "Guard"}** (-${cost} Stamina, chặn được ${charges} hit tới).`;
+
+    const targetLines = previews.map(p => {
+      let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
+      if (p.defReductionPct > 0) line += ` *(đã giảm ${p.defReductionPct}% từ perk Smoldering Resolve, gốc ${p.preview.totalDmg.toFixed(3)})*`;
+      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (Claim Their Heart — Stagger + dưới 15% HP)`;
+      return line;
+    }).join("\n");
+    let verifyNote = "";
+    if (verify.skillKey) verifyNote += `\n> 🎲 Đã tự roll skill **${verify.skillKey}** kèm theo (xem embed dưới) — Emotion Coin ${verify.emotionDelta >= 0 ? "+" : ""}${verify.emotionDelta} (tự động), CD ${verify.cooldownTurns} turn nếu confirm.`;
+    if (manualCoin) verifyNote += `\n> 🪙 Coin tự khai (Clash/kill/...): ${manualCoin >= 0 ? "+" : ""}${manualCoin}`;
+    if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
+    result = {
+      embed: {
+        title: "🎯 Enemy attack đã thêm vào hàng chờ",
+        description:
+          `**${enemy.name}** đánh ${targets.length > 1 ? `${targets.length} player` : targets[0].label}: \`${dmgStr}\`\n` +
+          `${targetLines}${verifyNote}\n` +
+          `> Dùng \`-encounter pending\` để xem hàng chờ, "Confirm tất cả" khi xong.`,
+        color: 0xf39c12,
+      },
+      skillRollEmbed: verify.skillRollEmbed,
+    };
   });
-  return message;
+  return result;
 }
 
-/** doPlayerParry — logic CHUNG cho -encounter parry (text) và nút Parry. 0 Stamina,
- *  roll d20 ngay, lưu lại chờ đòn tới (xem previewDefenseOutcome/resolveDefenseOutcome). */
-async function doPlayerParry(channelId, playerId) {
-  let message;
-  await withLock(encounterKey(channelId), async () => {
-    const encounter = await getEncounter(channelId);
-    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-    const player = encounter.players[playerId];
-    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
-    if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
-    const roll = 1 + Math.floor(Math.random() * 20);
-    player.parryRoll = roll;
-    await saveEncounter(channelId, encounter);
-    message = `🗡️ <@${playerId}> chuẩn bị Parry — roll được **${roll}** (0 Stamina). Chờ đòn tới để so kết quả.`;
-  });
-  return message;
-}
-
+/** buildEncounterBoardEmbed — hiện TẤT CẢ enemy + TẤT CẢ player + danh sách pending
+ *  action đang chờ (rút gọn, không hiện hết chi tiết — xem `-encounter pending` cho
+ *  đầy đủ). */
 function buildEncounterBoardEmbed(encounter) {
-  const blocks = [formatCombatantBlock(encounter.boss, `⚔️ ${encounter.bossName}`)];
-  const playerIds = Object.keys(encounter.players);
-  for (const pid of playerIds) {
+  const blocks = [];
+  for (const ekey of Object.keys(encounter.enemies)) {
+    blocks.push(formatCombatantBlock(encounter.enemies[ekey], `⚔️ ${encounter.enemies[ekey].name} (${ekey})`));
+  }
+  for (const pid of Object.keys(encounter.players)) {
     blocks.push(formatCombatantBlock(encounter.players[pid], `<@${pid}>`));
   }
-  if (encounter.pendingAction) {
-    const { direction, attackerId, targetId, calcOpts, preview, finalDmg } = encounter.pendingAction;
-    const attackerLabel = attackerId === "boss" ? encounter.bossName : `<@${attackerId}>`;
-    const targetLabel = targetId === "boss" ? encounter.bossName : `<@${targetId}>`;
-    const dmgToShow = typeof finalDmg === "number" ? finalDmg : preview.totalDmg;
-    blocks.push(`⏳ **${attackerLabel}** → **${targetLabel}**: \`${calcOpts.dmgStr}\` → dự kiến **${dmgToShow.toFixed(3)}** dmg (chờ GM xác nhận)`);
+  const pending = encounter.pendingActions ?? [];
+  if (pending.length > 0) {
+    blocks.push(`⏳ **${pending.length} action đang chờ GM xác nhận** — dùng \`-encounter pending\` để xem chi tiết.`);
   }
+  const allDead = Object.keys(encounter.enemies).length > 0 && Object.values(encounter.enemies).every(e => e.currentHp <= 0);
   return {
-    title: `Encounter Board`,
-    description: blocks.join("\n\n"),
-    color: encounter.boss.currentHp <= 0 ? 0x555555 : 0xe74c3c,
-    footer: { text: "-encounter attack/bossattack/evade/guard/parry/endturn — xem -encounter help để biết hết lệnh" },
+    title: `Encounter: ${encounter.name}`,
+    description: blocks.join("\n\n") || "*(chưa có enemy/player nào)*",
+    color: allDead ? 0x555555 : 0xe74c3c,
+    footer: { text: "-encounter attack/hit/enemyattack/pending/confirmall/endturn — xem -encounter help để biết hết lệnh" },
   };
+}
+
+/** buildPendingListText — danh sách đầy đủ pending action cho `-encounter pending`. */
+function buildPendingListText(encounter) {
+  const pending = encounter.pendingActions ?? [];
+  if (pending.length === 0) return "✅ Không có action nào đang chờ.";
+  return pending.map((p, i) => {
+    const attackerLabel = p.attackerType === "enemy" ? `**${encounter.enemies[p.attackerId]?.name ?? p.attackerId}**` : `<@${p.attackerId}>`;
+    const targetLines = p.targets.map(t => {
+      const label = t.targetType === "enemy" ? `**${encounter.enemies[t.targetId]?.name ?? t.targetId}**` : `<@${t.targetId}>`;
+      return `${label} (${t.preview.totalDmg.toFixed(3)} dmg)`;
+    }).join(", ");
+    let verifyNote = "";
+    if (p.skillKey) verifyNote += ` | 🎲 đã roll skill **${p.skillKey}** (xem embed lúc declare)`;
+    if (p.refLink) verifyNote += ` | 🔗 [tham chiếu](${p.refLink})`;
+    return `**#${i + 1}** [${p.kind}] ${attackerLabel} → ${targetLines}: \`${p.dmgStr}\`${verifyNote}`;
+  }).join("\n");
 }
 
 
@@ -2421,6 +2913,7 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
         color: skill.embedColor ?? 0x5865f2,
         description: header + "\n\n" + annotateLinesWithEmotion(lines, tracked),
       },
+      totalEmotionDelta: tracked.reduce((sum, t) => sum + t.delta, 0),
     };
   }
 
@@ -2469,6 +2962,7 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
       color: 0x5865f2,
       description,
     },
+    totalEmotionDelta: allTracked.reduce((sum, t) => sum + t.delta, 0),
   };
 }
 
@@ -3226,6 +3720,55 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // ── -unlockskilltree / -ununlockskilltree ──────────────────────────────────
+  // Lưu trên PROFILE (vĩnh viễn, theo slot đang active), KHÔNG còn lưu tạm trong
+  // encounter (mất khi encounter kết thúc) như bản unlockperk cũ — vì đây là Point
+  // thật đã tốn trong game, phải tồn tại qua mọi trận đấu, giống Grade/EXP. Admin
+  // only — giống -setplayer, vì đây là tài nguyên cần GM duyệt, không phải thứ
+  // player tự cấp cho mình.
+  if (message.content.startsWith("-unlockskilltree") || message.content.startsWith("-ununlockskilltree")) {
+    if (!ADMIN_IDS.has(message.author.id)) {
+      message.reply("❌ Bạn không có quyền dùng lệnh này.");
+      return;
+    }
+    const isUnlock = message.content.startsWith("-unlockskilltree");
+    const targetUsers = [...message.mentions.users.values()];
+    const rawInput = message.content.replace(/^-(un)?unlockskilltree/, "").replace(/<@!?\d+>/g, "").trim();
+    const perkName = rawInput.replace(/^text:\s*/i, "").trim();
+    if (targetUsers.length === 0 || !perkName) {
+      message.reply(
+        `❌ Cú pháp: \`-${isUnlock ? "" : "un"}unlockskilltree @user <tên perk>\`\n` +
+        "> VD: `-unlockskilltree @user Ein Sof`"
+      );
+      return;
+    }
+    try {
+      const results = [];
+      for (const user of targetUsers) {
+        const { data, slot } = await getPlayerDataWithSlot(user.id);
+        data.unlockedSkillTree = data.unlockedSkillTree ?? [];
+        if (isUnlock) {
+          if (data.unlockedSkillTree.includes(perkName)) { results.push(`⚠️ ${user.username}: đã có "${perkName}" rồi.`); continue; }
+          const conflict = findExclusiveConflict(data.unlockedSkillTree, perkName);
+          if (conflict) { results.push(`❌ ${user.username}: "${perkName}" loại trừ với "${conflict}" đã có sẵn — không thể có cả 2 (dùng \`-ununlockskilltree\` xoá "${conflict}" trước nếu muốn đổi).`); continue; }
+          data.unlockedSkillTree.push(perkName);
+          await savePlayerData(user.id, data, slot);
+          results.push(`✅ ${user.username}: mở khóa "${perkName}".`);
+        } else {
+          const idx = data.unlockedSkillTree.indexOf(perkName);
+          if (idx === -1) { results.push(`⚠️ ${user.username}: chưa có "${perkName}".`); continue; }
+          data.unlockedSkillTree.splice(idx, 1);
+          await savePlayerData(user.id, data, slot);
+          results.push(`✅ ${user.username}: đã xoá "${perkName}".`);
+        }
+      }
+      message.reply(results.join("\n"));
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
   // ── -use ──
   if (message.content.startsWith("-use")) {
     if (isOnCooldown(message.author.id, "use", 2000)) {
@@ -3578,39 +4121,71 @@ client.on("messageCreate", async (message) => {
     if (sub === "start") {
       if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được tạo encounter."); return; }
       const kv = parseKeyValues(rest);
-      const bossName = (kv["name"] ?? "").trim();
-      const hp = parseInt(kv["hp"] ?? "", 10);
-      if (!bossName || bossName.length > ENCOUNTER_BOSS_NAME_MAX_LENGTH || !Number.isFinite(hp) || hp <= 0) {
-        message.reply(
-          "⚠️ Cú pháp: `-encounter start name: <tên boss> hp: <số>` (tùy chọn thêm `stamina:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`)\n" +
-          `> Tên tối đa ${ENCOUNTER_BOSS_NAME_MAX_LENGTH} ký tự, hp phải là số nguyên dương.`
-        );
+      const name = (kv["name"] ?? "").trim();
+      if (!name || name.length > ENCOUNTER_NAME_MAX_LENGTH) {
+        message.reply(`⚠️ Cú pháp: \`-encounter start name: <tên trận>\` (tối đa ${ENCOUNTER_NAME_MAX_LENGTH} ký tự). Thêm enemy sau bằng \`-encounter addenemy\`.`);
         return;
       }
-      const bossStamina = parseInt(kv["stamina"] ?? "", 10);
-      const bossWeapon = normalizeWeaponWeight(kv["weapon"] ?? "medium");
-      const bossResRaw = kv["res"] ?? "";
-      const bossRes = { B: 1, P: 1, S: 1 };
-      const resMatch = bossResRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi);
-      for (const m of resMatch) bossRes[m[2].toUpperCase()] = parseFloat(m[1]);
       try {
         await withLock(encounterKey(message.channel.id), async () => {
           const existing = await getEncounter(message.channel.id);
-          if (existing) {
-            throw new Error(`Channel này đang có encounter **${existing.bossName}** chạy — dùng \`-encounter end\` trước.`);
-          }
-          const boss = createCombatant({
-            name: bossName, maxHp: hp,
-            maxStamina: Number.isFinite(bossStamina) && bossStamina > 0 ? bossStamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
-            weaponWeight: bossWeapon, resistance: bossRes,
-          });
+          if (existing) throw new Error(`Channel này đang có encounter **${existing.name}** chạy — dùng \`-encounter end\` trước.`);
           const encounter = {
-            bossName, boss, players: {},
+            name, enemies: {}, players: {},
             gmId: message.author.id, createdAt: Date.now(),
-            pendingAction: null,
+            pendingActions: [],
           };
           await saveEncounter(message.channel.id, encounter);
-          await message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id) });
+          await message.reply({
+            content: `✅ Đã tạo encounter **${name}**. Dùng \`-encounter addenemy key: <key> name: <tên> hp: <số>\` để thêm enemy.`,
+            embeds: [buildEncounterBoardEmbed(encounter)],
+          });
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "addenemy") {
+      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được thêm enemy."); return; }
+      const kv = parseKeyValues(rest);
+      const key = normalizeEnemyKey(kv["key"] ?? "");
+      const name = (kv["name"] ?? "").trim();
+      const hp = parseInt(kv["hp"] ?? "", 10);
+      if (!key || key.length > ENCOUNTER_KEY_MAX_LENGTH || !/^[a-z0-9]+$/.test(key) || !name || !Number.isFinite(hp) || hp <= 0) {
+        message.reply(
+          "⚠️ Cú pháp: `-encounter addenemy key: <key ngắn a-z0-9> name: <tên đầy đủ> hp: <số>` (tùy chọn `stamina:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`/`perks: <tên1>,<tên2>`)\n" +
+          "> VD: `-encounter addenemy key: mo name: Mo (Brother of Iron) hp: 240`\n" +
+          "> Enemy không có profile nên perk phải gán trực tiếp qua `perks:` ở đây (player thì dùng `-unlockskilltree` riêng, lưu trên profile)."
+        );
+        return;
+      }
+      const stamina = parseInt(kv["stamina"] ?? "", 10);
+      const weapon = normalizeWeaponWeight(kv["weapon"] ?? "medium");
+      const resRaw = kv["res"] ?? "";
+      const res = { B: 1, P: 1, S: 1 };
+      for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
+      const perksRaw = (kv["perks"] ?? "").trim();
+      const perksList = perksRaw ? perksRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
+          if (encounter.players[key]) throw new Error(`Key "${key}" đang trùng với 1 player đã join — đổi key khác.`);
+          const wasExisting = !!encounter.enemies[key];
+          encounter.enemies[key] = createCombatant({
+            name, maxHp: hp,
+            maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
+            weaponWeight: weapon, resistance: res,
+          });
+          encounter.enemies[key].unlockedPerks = perksList;
+          await saveEncounter(message.channel.id, encounter);
+          await message.reply({
+            content: `✅ ${wasExisting ? "Đã cập nhật lại" : "Đã thêm"} enemy **${name}** (key: \`${key}\`) với ${hp} HP.` +
+              (perksList.length > 0 ? ` (Perk: ${perksList.join(", ")})` : ""),
+            embeds: [buildEncounterBoardEmbed(encounter)],
+          });
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -3644,9 +4219,28 @@ client.on("messageCreate", async (message) => {
             maxLight: Number.isFinite(light) && light > 0 ? light : ENCOUNTER_DEFAULT_MAX_LIGHT,
             weaponWeight: weapon, resistance: res,
           });
+          // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
+          // encounter này — snapshot lúc join, giống cách HP/Stamina/vũ khí cũng
+          // được "chốt" lúc join (không tự đồng bộ real-time nếu admin unlock thêm
+          // GIỮA lúc encounter đang chạy — phải join lại để cập nhật, y hệt nguyên
+          // tắc đang áp dụng cho mọi field khác).
+          const profileData = await getPlayerData(message.author.id);
+          const joined = encounter.players[message.author.id];
+          joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
+          // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
+          // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
+          // refill Light/Poise/Sanity mỗi lần gõ lại join).
+          const startNotes = [];
+          if (!wasJoined) {
+            if (hasPerk(joined, "Here We Go Again")) { joined.currentLight = Math.min(joined.maxLight, 3); startNotes.push("+3 Light (Here We Go Again)"); }
+            if (hasPerk(joined, "Adrenaline Rush")) { joined.poise = Math.min(POISE_MAX, 10); startNotes.push("+10 Poise (Adrenaline Rush)"); }
+            if (hasPerk(joined, "No Mind To Cure")) { joined.currentSanity = -25; startNotes.push("-25 Sanity (No Mind To Cure)"); }
+          }
           await saveEncounter(message.channel.id, encounter);
           await message.reply({
-            content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.bossName}** với ${hp} HP.`,
+            content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.name}** với ${hp} HP.` +
+              (joined.unlockedPerks.length > 0 ? ` (Perk từ profile: ${joined.unlockedPerks.join(", ")})` : "") +
+              (startNotes.length > 0 ? `\n> 🆙 ${startNotes.join(", ")}` : ""),
             components: buildEncounterActionPanel(message.channel.id),
           });
         });
@@ -3663,12 +4257,89 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    if (sub === "pending") {
+      const encounter = await getEncounter(message.channel.id);
+      if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
+      const pending = encounter.pendingActions ?? [];
+      message.reply({
+        embeds: [{
+          title: `⏳ Pending Actions (${pending.length})`,
+          description: buildPendingListText(encounter),
+          color: 0xf39c12,
+        }],
+        components: pending.length > 0 ? [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`encconfirmall:${message.channel.id}`).setLabel("✅ Confirm tất cả").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`encrejectall:${message.channel.id}`).setLabel("❌ Reject tất cả").setStyle(ButtonStyle.Danger),
+        )] : [],
+      });
+      return;
+    }
+
+    // ── buff/debuff: thêm 1 dòng TỰ DO vào danh sách buff/debuff của 1 combatant
+    // (enemy hoặc player) — KHÔNG tự tính/tự hết hạn (xem comment ở createCombatant).
+    // target: có thể là key enemy, userId, hoặc "me" (chính người gõ lệnh).
+    if (sub === "buff" || sub === "debuff") {
+      const kv = parseKeyValues(rest);
+      const targetRaw = (kv["target"] ?? "").trim();
+      const text = (kv["text"] ?? "").trim();
+      if (!targetRaw || !text) {
+        message.reply(`⚠️ Cú pháp: \`-encounter ${sub} target: <key/userId/me> text: <mô tả>\`\n> VD: \`-encounter buff target: me text: 3 Haste + 10% dmg slash\``);
+        return;
+      }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
+          const resolved = resolveCombatant(encounter, targetId);
+          if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          const listKey = sub === "buff" ? "buffs" : "debuffs";
+          resolved.combatant[listKey] = resolved.combatant[listKey] ?? [];
+          resolved.combatant[listKey].push({ text, addedAt: Date.now() });
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`✅ Đã thêm ${sub === "buff" ? "🟢 buff" : "🔴 debuff"} cho ${resolved.label}: "${text}"`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "unbuff" || sub === "undebuff") {
+      const kv = parseKeyValues(rest);
+      const targetRaw = (kv["target"] ?? "").trim();
+      const index = parseInt(kv["index"] ?? "", 10);
+      if (!targetRaw || !Number.isFinite(index) || index < 1) {
+        message.reply(`⚠️ Cú pháp: \`-encounter ${sub} target: <key/userId/me> index: <số thứ tự trong -encounter status, bắt đầu từ 1>\``);
+        return;
+      }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
+          const resolved = resolveCombatant(encounter, targetId);
+          if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          const listKey = sub === "unbuff" ? "buffs" : "debuffs";
+          const list = resolved.combatant[listKey] ?? [];
+          if (index > list.length) throw new Error(`${resolved.label} chỉ có ${list.length} ${listKey === "buffs" ? "buff" : "debuff"} — không có #${index}.`);
+          const removed = list.splice(index - 1, 1)[0];
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`✅ Đã xoá ${listKey === "buffs" ? "🟢 buff" : "🔴 debuff"} #${index} của ${resolved.label}: "${removed.text}"`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+
     if (sub === "end") {
       const encounter = await getEncounter(message.channel.id);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
       if (!isAdmin && message.author.id !== encounter.gmId) { message.reply("⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được kết thúc."); return; }
       await deleteEncounter(message.channel.id);
-      message.reply(`✅ Đã kết thúc encounter **${encounter.bossName}**.`);
+      message.reply(`✅ Đã kết thúc encounter **${encounter.name}**.`);
       return;
     }
 
@@ -3678,11 +4349,27 @@ client.on("messageCreate", async (message) => {
           const encounter = await getEncounter(message.channel.id);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới được kết thúc turn.");
-          advanceCombatantTurn(encounter.boss);
+          if ((encounter.pendingActions ?? []).length > 0) throw new Error(`Còn ${encounter.pendingActions.length} action chưa xử lý — dùng \`-encounter pending\` để confirm/reject hết trước khi qua turn.`);
+          // Shrouded Power (Pride) — check TRƯỚC khi advanceCombatantTurn (vì Stagger
+          // có thể tự hết NGAY trong lượt advance này) — bất kỳ enemy nào ĐANG Stagger
+          // lúc turn kết thúc → player có perk này nhận +4 Poise.
+          const anyEnemyStaggered = Object.values(encounter.enemies).some(e => e.staggered);
+          const shroudedNotes = [];
+          if (anyEnemyStaggered) {
+            for (const pid of Object.keys(encounter.players)) {
+              const pl = encounter.players[pid];
+              if (hasPerk(pl, "Shrouded Power")) {
+                pl.poise = Math.min(POISE_MAX, pl.poise + 4);
+                shroudedNotes.push(`<@${pid}> +4 Poise (Shrouded Power)`);
+              }
+            }
+          }
+          for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
           for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
           await saveEncounter(message.channel.id, encounter);
           await message.reply({
-            content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.`,
+            content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
+              (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : ""),
             embeds: [buildEncounterBoardEmbed(encounter)],
           });
         });
@@ -3692,17 +4379,19 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // ── hit: dùng Page/Skill (Light cost) lên BOSS — giữ nguyên cú pháp cũ, KHÔNG tự
-    // trừ Stamina (vì Page tốn Light, không tốn Stamina theo luật). Muốn M1 đánh
-    // thường (tốn Stamina) thì dùng `attack` ở dưới.
+    // ── hit: dùng Page/Skill (Light cost) lên 1 hoặc nhiều enemy (AOE qua target:
+    // mo,arnold hoặc target: all) — KHÔNG tự trừ Stamina (Page tốn Light, tự khai
+    // báo riêng). Thêm vào hàng chờ pendingActions, KHÔNG còn confirm ngay từng cái.
     if (sub === "hit") {
       const kv = parseKeyValues(rest);
       const dmgStr = kv["dmg"] ?? "";
-      if (!dmgStr.trim()) {
+      const targetStr = kv["target"] ?? "";
+      if (!dmgStr.trim() || !targetStr.trim()) {
         message.reply(
-          "⚠️ Cú pháp: `-encounter hit dmg: <công thức>` (dùng cho Page/Skill — tốn Light tự khai báo riêng, KHÔNG tự trừ Stamina).\n" +
-          "> Muốn đánh thường (M1, tự trừ Stamina theo vũ khí) thì dùng `-encounter attack dmg: ...`\n" +
-          "> VD: `-encounter hit dmg: 50x2B+2Sinking res: 1.5xB bonus: 20`"
+          "⚠️ Cú pháp: `-encounter hit target: <key hoặc key1,key2 hoặc all> dmg: <công thức>`\n" +
+          "> VD: `-encounter hit target: mo dmg: 50x2B+2Sinking res: 1.5xB bonus: 20`\n" +
+          "> VD AOE: `-encounter hit target: mo,arnold dmg: 30Bx2`\n" +
+          "> Tùy chọn `skill: <tên skill>` (tự roll thật + check cooldown + tự tính Emotion Coin) hoặc `ref: <link message>` (tham chiếu roll đã có) để GM dễ verify."
         );
         return;
       }
@@ -3720,112 +4409,124 @@ client.on("messageCreate", async (message) => {
       else { const p = parseFloat(critDivStr); if (!isNaN(p) && p > 1) critDiv = p; }
 
       try {
-        const { embed, components } = await doPlayerHit(message.channel.id, message.author.id, message.author.toString(), dmgStr, {
+        const { embed, skillRollEmbed } = await doPlayerHit(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {
           resStr: kv["res"] ?? "", drStr: kv["dr"] ?? "", bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"],
         });
-        await message.reply({ embeds: [embed], components });
+        await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
       return;
     }
 
-    // ── attack: M1 (đánh thường) lên BOSS — tự TÍNH Stamina cần, trừ thật lúc GM
-    // xác nhận (xem doPlayerAttack — đã sửa để reject không làm mất Stamina oan).
+    // ── attack: M1 (đánh thường) lên 1 hoặc nhiều enemy — tự TÍNH Stamina cần, trừ
+    // thật lúc GM confirmall (không trừ lúc declare — reject không mất Stamina oan).
     if (sub === "attack") {
       const kv = parseKeyValues(rest);
       const dmgStr = kv["dmg"] ?? "";
-      if (!dmgStr.trim()) {
-        message.reply("⚠️ Cú pháp: `-encounter attack dmg: <công thức>` (M1 — tự trừ Stamina theo vũ khí của bạn).");
+      const targetStr = kv["target"] ?? "";
+      if (!dmgStr.trim() || !targetStr.trim()) {
+        message.reply(
+          "⚠️ Cú pháp: `-encounter attack target: <key hoặc key1,key2 hoặc all> dmg: <công thức>` (M1 — tự trừ Stamina theo vũ khí của bạn).\n" +
+          "> VD: `-encounter attack target: mo dmg: 20B`\n" +
+          "> Tùy chọn `skill: <tên skill>` hoặc `ref: <link message>` để GM dễ verify."
+        );
         return;
       }
       try {
-        const { embed, components } = await doPlayerAttack(message.channel.id, message.author.id, message.author.toString(), dmgStr);
-        await message.reply({ embeds: [embed], components });
+        const { embed, skillRollEmbed } = await doPlayerAttack(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"],
+        });
+        await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
       return;
     }
 
-    // ── bossattack: GM cho boss đánh 1 player cụ thể — áp dụng thế thủ/Parry NGAY
-    // ở bước preview (read-only), CHỈ tiêu thụ charge/roll thật lúc confirm.
-    if (sub === "bossattack") {
-      if (!isAdmin) {
-        const enc = await getEncounter(message.channel.id);
-        if (!enc || message.author.id !== enc.gmId) { message.reply("⚠️ Chỉ GM/admin mới điều khiển được boss."); return; }
-      }
+    // ── enemyattack: GM cho 1 enemy đánh 1 hoặc nhiều player (AOE qua target:
+    // <id1>,<id2> hoặc target: all).
+    if (sub === "enemyattack") {
       const kv = parseKeyValues(rest);
+      const enemyKey = kv["key"] ?? "";
       const dmgStr = kv["dmg"] ?? "";
-      const targetMention = message.mentions.users.first();
-      if (!dmgStr.trim() || !targetMention) {
-        message.reply("⚠️ Cú pháp: `-encounter bossattack @player dmg: <công thức>`");
+      const targetStr = kv["target"] ?? (message.mentions.users.first()?.id ?? "");
+      if (!enemyKey.trim() || !dmgStr.trim() || !targetStr.trim()) {
+        message.reply(
+          "⚠️ Cú pháp: `-encounter enemyattack key: <enemy key> target: <@player hoặc all> dmg: <công thức>`\n" +
+          "> VD: `-encounter enemyattack key: mo target: all dmg: 20x3P` (AOE cả party)\n" +
+          "> Tùy chọn `skill: <tên skill>` hoặc `ref: <link message>`."
+        );
         return;
       }
+      try {
+        const { embed, skillRollEmbed } = await doEnemyAttack(message.channel.id, message.author.id, enemyKey, dmgStr, targetStr, {
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"],
+        });
+        await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── followup: Follow-Up (Wrath, [10~14] Blunt + Airborne) HOẶC Pounce (Sloth,
+    // [8~30] Blunt) — 2 perk LOẠI TRỪ NHAU (không ai có cả 2), điều kiện kích hoạt
+    // GIỐNG NHAU: turn này đã tiêu ≥20 Stamina qua đánh thường, CHỈ 1 LẦN/turn.
+    if (sub === "followup") {
+      const kv = parseKeyValues(rest);
+      const targetStr = kv["target"] ?? "";
+      if (!targetStr.trim()) { message.reply("⚠️ Cú pháp: `-encounter followup target: <key/all>`"); return; }
+      try {
+        const encounter = await getEncounter(message.channel.id);
+        if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+        const player = encounter.players[message.author.id];
+        if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+        const hasFollowUp = hasPerk(player, "Follow-Up");
+        const hasPounce = hasPerk(player, "Pounce");
+        if (!hasFollowUp && !hasPounce) throw new Error("Bạn chưa mở khóa perk Follow-Up hoặc Pounce.");
+        if (player.staminaUsedThisTurn < 20) throw new Error(`Cần tiêu ≥20 Stamina qua đánh thường trong turn này trước (hiện tại: ${player.staminaUsedThisTurn}).`);
+        if (player.followUpUsedThisTurn) throw new Error("Đã dùng Follow-Up/Pounce trong turn này rồi — chỉ 1 lần/turn.");
+        const dmgStr = hasFollowUp ? `${r(10, 14)}B` : `${r(8, 30)}B`;
+        const { embed } = await doPlayerHit(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {});
+        // Đánh dấu đã dùng NGAY lúc declare (không đợi confirm) — chấp nhận sai số
+        // nhỏ này (nếu GM reject thì vẫn coi như đã dùng) để tránh phải thêm field
+        // riêng theo dõi pending cho 1 trường hợp hiếm.
+        await withLock(encounterKey(message.channel.id), async () => {
+          const enc2 = await getEncounter(message.channel.id);
+          if (enc2?.players[message.author.id]) {
+            enc2.players[message.author.id].followUpUsedThisTurn = true;
+            await saveEncounter(message.channel.id, enc2);
+          }
+        });
+        await message.reply({ embeds: [{ title: hasFollowUp ? "⚡ Follow-Up!" : "🐾 Pounce!", description: `Tung đòn theo sau: \`${dmgStr}\`${hasFollowUp ? " — kẻ địch rơi vào **[Airborne]** (tự narrate, không phải status hệ thống)" : ""}`, color: 0xf39c12 }] });
+        await message.channel.send({ embeds: [embed] });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── overcharge: Overcharged Vessel (Envy) — tiêu TOÀN BỘ Charge hiện tại (cần
+    // ≥10), mỗi 10 Charge tiêu = +1 Dice Up và +5% Dmg trong 3 turn.
+    if (sub === "overcharge") {
       try {
         await withLock(encounterKey(message.channel.id), async () => {
           const encounter = await getEncounter(message.channel.id);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          if (encounter.pendingAction) throw new Error("Đang có 1 action khác chờ GM xác nhận — chờ xử lý xong trước.");
-          const target = encounter.players[targetMention.id];
-          if (!target) throw new Error(`<@${targetMention.id}> chưa tham gia encounter này.`);
-
-          const boss = encounter.boss;
-          // QUAN TRỌNG: chiều này BOSS là người tấn công → Poise/Charge lấy từ BOSS.
-          // TARGET (player) là người bị tấn công → Sinking/Rupture/Burn/Bleed/Tremor
-          // lấy từ TARGET — ĐẢO NGƯỢC so với attack/hit (player tấn công boss).
-          const calcOpts = {
-            dmgStr, resStr: kv["res"] ?? combatantResStr(target), drStr: kv["dr"] ?? "",
-            poiseInit: boss.poise, chargeInit: boss.charge,
-            sinkingInit: target.sinking, ruptureInit: target.rupture,
-            burnInit: target.burn, bleedInit: target.bleed, tremorInit: target.tremor,
-            sanityInit: target.currentSanity,
-          };
-          const preview = calcMathCore(calcOpts);
-          const { finalDmg, note } = previewDefenseOutcome(target, preview.totalDmg);
-
-          encounter.pendingAction = {
-            direction: "bossToPlayer", attackerId: "boss", targetId: targetMention.id,
-            calcOpts, preview, finalDmg,
-          };
+          const player = encounter.players[message.author.id];
+          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+          if (!hasPerk(player, "Overcharged Vessel")) throw new Error("Bạn chưa mở khóa perk Overcharged Vessel.");
+          if (player.charge < 10) throw new Error(`Cần ≥10 Charge để kích hoạt (hiện tại: ${player.charge}).`);
+          const tiers = Math.floor(player.charge / 10);
+          player.overchargedDiceUpBonus = tiers;
+          player.overchargedDmgBonusPct = tiers * 5;
+          player.overchargedTurnsLeft = 3;
+          player.charge = 0;
           await saveEncounter(message.channel.id, encounter);
-
-          await message.reply({
-            embeds: [{
-              title: "🎯 Boss attack chờ GM xác nhận",
-              description:
-                `**${encounter.bossName}** đánh <@${targetMention.id}>: \`${dmgStr}\`\n` +
-                `> Dự kiến (chưa tính thế thủ): **${preview.totalDmg.toFixed(3)}** dmg` +
-                (note ? `\n> ${note}` : "") +
-                `\n> GM bấm nút dưới để áp dụng thật (thế thủ/Parry sẽ resolve lúc xác nhận).`,
-              color: 0xf39c12,
-            }],
-            components: [new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId(`encconfirm:${message.channel.id}`).setLabel("✅ Xác nhận").setStyle(ButtonStyle.Success),
-              new ButtonBuilder().setCustomId(`encreject:${message.channel.id}`).setLabel("❌ Từ chối").setStyle(ButtonStyle.Danger),
-            )],
-          });
+          message.reply(`⚡ **Overcharged!** Tiêu ${tiers * 10} Charge → +${tiers} Dice Up, +${tiers * 5}% Dmg trong 3 turn.`);
         });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    if (sub === "evade" || sub === "guard") {
-      try {
-        const msg = await doPlayerGuardEvade(message.channel.id, message.author.id, sub);
-        message.reply(msg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    if (sub === "parry") {
-      try {
-        const msg = await doPlayerParry(message.channel.id, message.author.id);
-        message.reply(msg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -3834,14 +4535,19 @@ client.on("messageCreate", async (message) => {
 
     message.reply(
       "⚠️ Lệnh không hợp lệ. Dùng:\n" +
-      "> `-encounter start name: <tên> hp: <số>` (admin/GM)\n" +
-      "> `-encounter join hp: <số>` (player tham gia)\n" +
-      "> `-encounter attack dmg: <công thức>` — M1, tự trừ Stamina\n" +
-      "> `-encounter hit dmg: <công thức>` — Page/Skill lên boss\n" +
-      "> `-encounter bossattack @player dmg: <công thức>` (GM)\n" +
-      "> `-encounter evade` / `-encounter guard` / `-encounter parry`\n" +
-      "> `-encounter endturn` (GM) — hồi Stamina, đếm ngược Stagger/Panic\n" +
-      "> `-encounter status` · `-encounter end` (GM)"
+      "> `-encounter start name: <tên trận>` (admin/GM)\n" +
+      "> `-encounter addenemy key: <key> name: <tên> hp: <số>` (admin/GM)\n" +
+      "> `-encounter join hp: <số>` (player tham gia — tự copy Skill Tree đã mở từ profile)\n" +
+      "> `-encounter attack target: <key/all> dmg: <công thức> [skill: <tên>] [ref: <link>] [coin: <số>]` — M1, tự trừ Stamina\n" +
+      "> `-encounter hit target: <key/all> dmg: <công thức> [skill:] [ref:] [coin:]` — Page/Skill\n" +
+      "> `-encounter enemyattack key: <enemy> target: <@player/all> dmg: <công thức> [skill:] [ref:] [coin:]` (GM)\n" +
+      "> `-encounter pending` — xem hàng chờ, confirm/reject tất cả\n" +
+      "> `-encounter buff/debuff target: <key/me> text: <mô tả>` · `-encounter unbuff/undebuff target: <key/me> index: <số>`\n" +
+      "> `-encounter endturn` (GM) — hồi Stamina, đếm ngược Stagger/Panic/cooldown\n" +
+      "> `-encounter status` · `-encounter end` (GM)\n" +
+      "> `-encounter followup target: <key>` — Follow-Up/Pounce (cần ≥20 Sta tiêu turn này, 1 lần/turn)\n" +
+      "> `-encounter overcharge` — Overcharged Vessel (tiêu hết Charge ≥10 đổi Dice Up/Dmg 3 turn)\n" +
+      "> Skill Tree (Ein Sof/Light Body/...) dùng lệnh riêng `-unlockskilltree @user <perk>` (admin, lưu vĩnh viễn trên profile)"
     );
     return;
   }
@@ -4110,142 +4816,228 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.customId.startsWith("encact:")) {
     const [, channelId, action] = interaction.customId.split(":");
 
-    if (action === "guard" || action === "evade") {
-      try {
-        const msg = await doPlayerGuardEvade(channelId, interaction.user.id, action);
-        await interaction.reply({ content: msg }).catch(() => {});
-      } catch (err) {
-        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
-      }
-      return;
-    }
-
-    if (action === "parry") {
-      try {
-        const msg = await doPlayerParry(channelId, interaction.user.id);
-        await interaction.reply({ content: msg }).catch(() => {});
-      } catch (err) {
-        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
-      }
-      return;
-    }
-
-    // attack/hit cần nhập công thức dmg — mở Modal (form nhập liệu) thay vì xử lý
-    // ngay, vì button không mang theo text tự do được. Modal submit xử lý ở listener
-    // riêng (xem "MODAL SUBMIT INTERACTIONS" phía dưới).
+    // attack/hit cần nhập công thức dmg + target — mở Modal (form nhập liệu) thay vì
+    // xử lý ngay, vì button không mang theo text tự do được. Modal submit xử lý ở
+    // listener riêng (xem "MODAL SUBMIT INTERACTIONS" phía dưới).
     if (action === "attack" || action === "hit") {
       const modal = new ModalBuilder()
         .setCustomId(`encmodal:${channelId}:${action}`)
         .setTitle(action === "attack" ? "Đánh thường (M1)" : "Dùng Page/Skill");
+      const targetInput = new TextInputBuilder()
+        .setCustomId("targetStr")
+        .setLabel("Target (key enemy, key1,key2, hoặc all)")
+        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
       const dmgInput = new TextInputBuilder()
         .setCustomId("dmgStr")
         .setLabel("Công thức dmg (giống /math)")
         .setPlaceholder("VD: 50x2B+2Sinking")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(targetInput),
+        new ActionRowBuilder().addComponents(dmgInput),
+      );
       await interaction.showModal(modal).catch(() => {});
       return;
     }
   }
 
 
-  if (interaction.customId.startsWith("encconfirm:") || interaction.customId.startsWith("encreject:")) {
-    const isConfirm = interaction.customId.startsWith("encconfirm:");
-    const channelId = interaction.customId.slice((isConfirm ? "encconfirm:" : "encreject:").length);
+  if (interaction.customId.startsWith("encconfirmall:") || interaction.customId.startsWith("encrejectall:")) {
+    const isConfirm = interaction.customId.startsWith("encconfirmall:");
+    const channelId = interaction.customId.slice((isConfirm ? "encconfirmall:" : "encrejectall:").length);
     try {
       await withLock(encounterKey(channelId), async () => {
         const encounter = await getEncounter(channelId);
-        if (!encounter || !encounter.pendingAction) {
+        if (!encounter || (encounter.pendingActions ?? []).length === 0) {
           return interaction.reply({ content: "⚠️ Không có action nào chờ xác nhận (có thể đã xử lý rồi).", flags: MessageFlags.Ephemeral }).catch(() => {});
         }
         const isAdmin = ADMIN_IDS.has(interaction.user.id);
         if (!isAdmin && interaction.user.id !== encounter.gmId) {
           return interaction.reply({ content: "⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được xác nhận/từ chối.", flags: MessageFlags.Ephemeral }).catch(() => {});
         }
-        const { direction, attackerId, targetId, calcOpts, preview, staminaCost } = encounter.pendingAction;
-        const attackerLabel = attackerId === "boss" ? `**${encounter.bossName}**` : `<@${attackerId}>`;
-        const targetLabel = targetId === "boss" ? `**${encounter.bossName}**` : `<@${targetId}>`;
-        const target = targetId === "boss" ? encounter.boss : encounter.players[targetId];
-        // attacker — combatant GIỮ Poise/Charge ("trên bản thân") của action này. Khác
-        // với target (giữ Sinking/Rupture/Burn/Bleed/Tremor, "trên người địch").
-        const attacker = attackerId === "boss" ? encounter.boss : encounter.players[attackerId];
 
+        const resultLines = [];
         if (isConfirm) {
           // QUAN TRỌNG: đây là lúc DUY NHẤT state thật của encounter bị thay đổi —
-          // lúc tạo pending action (-encounter hit/attack/bossattack) chỉ TÍNH TRƯỚC
-          // (preview), không áp dụng gì cả. Confirm mới thật sự trừ HP + ghi đè status
-          // mới + resolve thế thủ/Parry thật (roll d20 thật cho Parry ở ĐÂY, không
-          // phải lúc preview — xem comment ở resolveDefenseOutcome) + trừ Stamina của
-          // NGƯỜI TẤN CÔNG nếu là action loại attack (staminaCost chỉ có ở attack —
-          // xem doPlayerAttack — KHÔNG trừ lúc declare nữa để reject không làm mất
-          // Stamina oan).
-          let staminaNote = "";
-          if (staminaCost && attackerId !== "boss") {
-            const staminaAttacker = encounter.players[attackerId];
-            if (staminaAttacker) {
-              staminaAttacker.currentStamina = Math.max(0, staminaAttacker.currentStamina - staminaCost);
-              staminaAttacker.staminaUsedThisTurn += staminaCost;
-              checkStaggerPanic(staminaAttacker);
-              staminaNote = `\n> ${attackerLabel} -${staminaCost} Stamina` + (staminaAttacker.staggered ? ` — 💫 **Stagger**!` : "");
-            }
-          }
-          let finalDmg = preview.totalDmg;
-          let defenseNote = "";
-          if (direction === "bossToPlayer") {
-            const resolved = resolveDefenseOutcome(target, preview.totalDmg);
-            finalDmg = resolved.finalDmg;
-            if (resolved.note) defenseNote = `\n> ${resolved.note}`;
-          }
-          target.currentHp = Math.max(0, target.currentHp - finalDmg);
-          // 5 status "trên người địch" — áp vào TARGET (bên bị tấn công).
-          target.sinking = preview.finalSinking;
-          target.rupture = preview.finalRupture;
-          target.burn = preview.finalBurn;
-          target.bleed = preview.finalBleed;
-          target.tremor = preview.finalTremor;
-          target.currentSanity = preview.finalSanity;
-          // Tremor Burst rút STAMINA của TARGET (kẻ mang Tremor bị rút Sta, không phải
-          // người tấn công) — xem luật "Tremor Burst dùng lên địch sẽ trừ Sta tương
-          // ứng" — trước đây totalTremorStaminaLoss được TÍNH nhưng KHÔNG hề trừ vào
-          // Stamina của ai cả, thiếu bước áp dụng thật này.
-          if (preview.totalTremorStaminaLoss > 0) {
-            target.currentStamina = Math.max(0, target.currentStamina - preview.totalTremorStaminaLoss);
-          }
-          // 2 status "trên bản thân" — áp vào ATTACKER (bên tấn công), KHÔNG phải target.
-          if (attacker) {
-            attacker.poise = preview.finalPoiseStacks;
-            attacker.charge = preview.finalCharge;
-          }
-          checkStaggerPanic(target); // Sanity/Stamina target vừa đổi — check Panic/Stagger
-          if (attacker && attacker !== target) checkStaggerPanic(attacker); // Charge/Poise không ảnh hưởng Stamina/Sanity nên ít khi cần, nhưng check cho chắc nếu sau này có tương tác khác
-          encounter.pendingAction = null;
-          await saveEncounter(channelId, encounter);
+          // lúc declare (-encounter attack/hit/enemyattack) chỉ TÍNH TRƯỚC (preview),
+          // không áp dụng gì cả. Xử lý TUẦN TỰ từng pending action theo đúng thứ tự
+          // đã declare (FIFO) — quan trọng vì action sau có thể phụ thuộc trạng thái
+          // (HP/status) do action trước vừa đổi (VD: 2 player cùng đánh 1 enemy).
+          for (const p of encounter.pendingActions) {
+            const attacker = resolveCombatant(encounter, p.attackerId);
+            if (!attacker) { resultLines.push(`⚠️ Bỏ qua 1 action — không tìm thấy attacker ${p.attackerId} (có thể đã rời encounter).`); continue; }
 
-          await interaction.update({
-            embeds: [{
-              title: "✅ Action đã xác nhận",
-              description: `${attackerLabel} → ${targetLabel}: \`${calcOpts.dmgStr}\`\n> Gây **${finalDmg.toFixed(3)}** dmg thật${defenseNote}${staminaNote}`,
-              color: 0x2ecc71,
-            }],
-            components: [],
-          }).catch(() => {});
-          await interaction.channel.send({ embeds: [buildEncounterBoardEmbed(encounter)] }).catch(() => {});
+            // Stamina cost (chỉ attack mới có) — trừ 1 LẦN cho action này, KHÔNG
+            // nhân theo số target (1 đòn M1 chỉ tốn Stamina 1 lần dù AOE).
+            let staminaNote = "";
+            if (p.staminaCost && attacker.type === "player") {
+              attacker.combatant.currentStamina = Math.max(0, attacker.combatant.currentStamina - p.staminaCost);
+              attacker.combatant.staminaUsedThisTurn += p.staminaCost;
+              checkStaggerPanic(attacker.combatant);
+              staminaNote = ` (-${p.staminaCost} Sta${attacker.combatant.staggered ? " 💫Stagger!" : ""})`;
+            }
+
+            const targetDmgLines = [];
+            for (const t of p.targets) {
+              const targetResolved = resolveCombatant(encounter, t.targetId);
+              if (!targetResolved) { targetDmgLines.push(`⚠️ target ${t.targetId} không còn tồn tại`); continue; }
+              const target = targetResolved.combatant;
+              const hadRuptureBeforeHit = target.rupture > 0; // Defenseless cần biết TRƯỚC khi finalRupture ghi đè
+              const bleedBeforeHit = target.bleed; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
+              let finalDmg = t.preview.totalDmg * (1 - (t.defReductionPct ?? 0) / 100);
+              let killNote = "";
+              if (t.instantKill) { finalDmg = target.currentHp; killNote = " ☠️KẾT LIỄU"; }
+              let bleedOverride = null; // Break the Dams — giữ bleed KHÔNG bị giảm turn này nếu trigger
+              let perkNote = "";
+              // Craving Synergy/Thirst/Break the Dams — CHỈ đòn đánh ĐẦU TIÊN của
+              // ATTACKER lên TARGET ĐANG có Bleed mỗi turn (chung 1 cờ — trigger cả 3
+              // nếu đủ điều kiện riêng từng cái, vì đều là "tận dụng đòn đầu turn").
+              if (attacker.type === "player" && !attacker.combatant.bleedFirstHitUsedThisTurn && bleedBeforeHit > 0) {
+                let usedThisHit = false;
+                if (hasPerk(attacker.combatant, "Break the Dams") && bleedBeforeHit >= 7 && (attacker.combatant.breakTheDamsCdLeft ?? 0) <= 0) {
+                  finalDmg += bleedBeforeHit;
+                  // Lấy bleedStacksAfter của hit CUỐI (trước khi end-turn-tick giảm nửa) thay cho finalBleed — "giữ count không giảm turn này".
+                  const lastHit = t.preview.instanceResults[t.preview.instanceResults.length - 1];
+                  bleedOverride = lastHit?.bleedStacksAfter ?? bleedBeforeHit;
+                  attacker.combatant.breakTheDamsCdLeft = 3;
+                  perkNote += ` [💥Break the Dams +${bleedBeforeHit}dmg]`;
+                  usedThisHit = true;
+                }
+                if (hasPerk(attacker.combatant, "Thirst")) {
+                  const healAmt = Math.floor(bleedBeforeHit / 2);
+                  attacker.combatant.currentHp = Math.min(attacker.combatant.maxHp, attacker.combatant.currentHp + healAmt);
+                  bleedOverride = 0; // "tiêu thụ chúng" — Thirst LUÔN thắng nếu cả 2 cùng trigger (hiếm khi xảy ra)
+                  perkNote += ` [🩸Thirst +${healAmt}HP bản thân, tiêu thụ Bleed]`;
+                  usedThisHit = true;
+                }
+                if (hasPerk(attacker.combatant, "Craving Synergy") && bleedBeforeHit > 5) {
+                  attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight, attacker.combatant.currentLight + 1);
+                  perkNote += ` [✨Craving Synergy +1 Light]`;
+                  usedThisHit = true;
+                }
+                if (usedThisHit) attacker.combatant.bleedFirstHitUsedThisTurn = true;
+              }
+              target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              // 5 status "trên người địch" — áp vào TARGET (bên bị tấn công).
+              target.sinking = t.preview.finalSinking;
+              target.rupture = t.preview.finalRupture;
+              // QUAN TRỌNG: dùng burnStacksAfter/bleedStacksAfter (giá trị NGAY SAU
+              // gain/consume từ dmgStr, TRƯỚC khi calcMathCore áp công thức "cuối
+              // turn") — KHÔNG dùng finalBurn/finalBleed (đã bị giảm nửa SẴN, vì
+              // calcMathCore coi MỌI lần gọi là "nếu turn kết thúc NGAY bây giờ").
+              // Trước đây dùng finalBurn/finalBleed khiến Burn/Bleed bị giảm nửa
+              // NGAY SAU MỖI HIT thay vì chỉ 1 lần thật mỗi -encounter endturn — sai
+              // hoàn toàn với luật, và làm hỏng cả Break the Dams/Craving Synergy/
+              // Thirst (chúng cần biết bleed CHƯA bị giảm khi check điều kiện). Halving
+              // THẬT giờ chỉ xảy ra trong advanceCombatantTurn (xem comment ở đó).
+              const lastHitForStatus = t.preview.instanceResults[t.preview.instanceResults.length - 1];
+              target.burn = lastHitForStatus?.burnStacksAfter ?? target.burn;
+              target.bleed = bleedOverride ?? (lastHitForStatus?.bleedStacksAfter ?? target.bleed);
+              target.tremor = t.preview.finalTremor;
+              target.currentSanity = t.preview.finalSanity;
+              // Tremor Burst rút STAMINA của TARGET (kẻ mang Tremor bị rút Sta).
+              if (t.preview.totalTremorStaminaLoss > 0) {
+                target.currentStamina = Math.max(0, target.currentStamina - t.preview.totalTremorStaminaLoss);
+              }
+              // Defenseless (perk của ATTACKER): gây dmg lên target ĐANG có Rupture → -5 Stamina target.
+              if (hasPerk(attacker.combatant, "Defenseless") && hadRuptureBeforeHit) {
+                target.currentStamina = Math.max(0, target.currentStamina - 5);
+              }
+              // Convert Physical Trauma (perk của TARGET/defender): bị tấn công trúng → +1 Charge.
+              if (hasPerk(target, "Convert Physical Trauma")) {
+                target.charge = Math.min(CHARGE_MAX, target.charge + 1);
+              }
+              checkStaggerPanic(target);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${perkNote}`);
+            }
+            // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
+            // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
+            // có thể khác nhau giữa các target — LẤY target ĐẦU TIÊN làm đại diện
+            // (đơn giản hoá có chủ đích, vì luật không nói rõ Poise tính sao khi 1
+            // swing AOE trúng nhiều địch — báo với GM nếu cần khác đi).
+            if (p.targets.length > 0) {
+              const firstPreview = p.targets[0].preview;
+              // Smoke Overload: crit trúng KHÔNG giảm Poise ngay — dồn lại
+              // (poiseReductionPending), trừ thật lúc end turn (xem advanceCombatantTurn).
+              // Tính phần ĐÃ bị calcMathCore giảm (poiseAfterGain - poiseStacksAfter
+              // mỗi hit có crit) rồi CỘNG TRẢ LẠI cho Poise ngay bây giờ, dồn phần đó
+              // vào pending để trừ sau — thay vì sửa calcMathCore (tránh đụng logic
+              // dùng chung cho /math thường).
+              if (hasPerk(attacker.combatant, "Smoke Overload")) {
+                const totalReducedThisAction = firstPreview.instanceResults.reduce(
+                  (sum, r) => sum + Math.max(0, (r.poiseAfterGain ?? 0) - (r.poiseStacksAfter ?? 0)), 0
+                );
+                attacker.combatant.poise = Math.min(POISE_MAX, firstPreview.finalPoiseStacks + totalReducedThisAction);
+                attacker.combatant.poiseReductionPending = (attacker.combatant.poiseReductionPending ?? 0) + totalReducedThisAction;
+              } else {
+                attacker.combatant.poise = firstPreview.finalPoiseStacks;
+              }
+              attacker.combatant.charge = firstPreview.finalCharge;
+            }
+            // Battle Ignition/Overbearing/Blessed Sparks: đếm M1 (chỉ attack mới có
+            // p.isM1=true, hit/Page không tính) — tăng cả "turn này" (cho Battle
+            // Ignition turn SAU) và "tổng" (cho Overbearing/Blessed Sparks "mỗi đòn
+            // thứ 2", không reset theo turn). PHẢI ĐẶT SAU khối gán Poise/Charge từ
+            // preview phía trên — trước đây đặt TRƯỚC nên bị preview ghi đè mất ngay,
+            // Overbearing/Blessed Sparks không bao giờ thấy hiệu lực thật.
+            if (p.isM1 && attacker.type === "player") {
+              attacker.combatant.attacksThisTurn = (attacker.combatant.attacksThisTurn ?? 0) + 1;
+              attacker.combatant.m1AttackCount = (attacker.combatant.m1AttackCount ?? 0) + 1;
+              if (attacker.combatant.m1AttackCount % 2 === 0) {
+                const poiseGain = { light: 1, medium: 2, heavy: 4 }[attacker.combatant.weaponWeight];
+                if (hasPerk(attacker.combatant, "Overbearing")) {
+                  attacker.combatant.poise = Math.min(POISE_MAX, attacker.combatant.poise + poiseGain);
+                }
+                if (hasPerk(attacker.combatant, "Blessed by the Sparks")) {
+                  attacker.combatant.charge = Math.min(CHARGE_MAX, attacker.combatant.charge + poiseGain);
+                }
+              }
+            }
+            checkStaggerPanic(attacker.combatant);
+
+            // skill:/ref: verify — set cooldown + áp Emotion Coin delta THẬT lúc
+            // confirm (xem comment đầy đủ ở resolveSkillVerification/doPlayerAttack).
+            let verifyNote = "";
+            if (p.skillKey && p.cooldownTurns > 0) {
+              attacker.combatant.skillCooldowns = attacker.combatant.skillCooldowns ?? {};
+              attacker.combatant.skillCooldowns[p.skillKey] = p.cooldownTurns;
+              verifyNote += ` [CD ${p.skillKey}: ${p.cooldownTurns}T]`;
+            }
+            if (p.emotionDelta) {
+              const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta);
+              verifyNote += ` [Coin ${p.emotionDelta >= 0 ? "+" : ""}${p.emotionDelta}]`;
+              if (levelNotes.length > 0) verifyNote += " " + levelNotes.join(" ");
+            }
+
+            resultLines.push(`${attacker.label}${staminaNote}${verifyNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
+          }
         } else {
-          encounter.pendingAction = null;
-          await saveEncounter(channelId, encounter);
-          await interaction.update({
-            embeds: [{
-              title: "❌ Action bị từ chối",
-              description: `${attackerLabel} → ${targetLabel} (\`${calcOpts.dmgStr}\`) đã bị GM từ chối — không có gì thay đổi (Stamina chưa từng bị trừ cho tới lúc xác nhận, nên không mất gì).`,
-              color: 0xe74c3c,
-            }],
-            components: [],
-          }).catch(() => {});
+          for (const p of encounter.pendingActions) {
+            const attacker = resolveCombatant(encounter, p.attackerId);
+            resultLines.push(`${attacker?.label ?? p.attackerId} (\`${p.dmgStr}\`) — đã reject`);
+          }
+        }
+
+        encounter.pendingActions = [];
+        await saveEncounter(channelId, encounter);
+
+        await interaction.update({
+          embeds: [{
+            title: isConfirm ? "✅ Đã xác nhận tất cả" : "❌ Đã reject tất cả",
+            description: resultLines.join("\n") || "*(không có gì)*",
+            color: isConfirm ? 0x2ecc71 : 0xe74c3c,
+          }],
+          components: [],
+        }).catch(() => {});
+        if (isConfirm) {
+          await interaction.channel.send({ embeds: [buildEncounterBoardEmbed(encounter)] }).catch(() => {});
         }
       });
     } catch (err) {
-      log("error", "encounterConfirm", interaction.user?.id ?? "unknown", err.message);
+      log("error", "encounterConfirmAll", interaction.user?.id ?? "unknown", err.message);
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     return;
@@ -4263,13 +5055,14 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.customId.startsWith("encmodal:")) return;
   const [, channelId, action] = interaction.customId.split(":");
   const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+  const targetStr = interaction.fields.getTextInputValue("targetStr");
   try {
     if (action === "attack") {
-      const { embed, components } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr);
-      await interaction.reply({ embeds: [embed], components });
+      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr);
+      await interaction.reply({ embeds: [embed] });
     } else if (action === "hit") {
-      const { embed, components } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr);
-      await interaction.reply({ embeds: [embed], components });
+      const { embed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr);
+      await interaction.reply({ embeds: [embed] });
     }
   } catch (err) {
     log("error", "encModalSubmit", interaction.user?.id ?? "unknown", err.message);
