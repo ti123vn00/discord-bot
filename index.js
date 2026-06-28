@@ -1690,7 +1690,13 @@ function applyStatusMultiplierToDmgStr(dmgStr, tagName, multiplier) {
  */
 function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } = {}) {
   let bonusPct = 0;
-  let critMul = 1;
+  // BUG ĐÃ SỬA: trước đây critMul khởi tạo = 1 (không có bonus crit dmg nào trừ
+  // khi có Sharp Eyes) — SAI hoàn toàn so với luật ("crit dmg [1,3x]" là mặc định
+  // CHO MỌI NGƯỜI, không phải đặc quyền của 1 perk). Mọi crit từ trước tới giờ
+  // (M1/Page/enemy) ĐỀU không có bonus dmg nào trừ khi attacker có Sharp Eyes —
+  // lỗi không bị phát hiện vì mọi test crit trước đó đều dùng Sharp Eyes (che mất
+  // bug, vì 1.5x luôn được set ĐÚNG bất kể giá trị khởi tạo là gì).
+  let critMul = 1.3;
   let critDivOverride = null;
   let instantKill = false;
 
@@ -2736,7 +2742,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
  *  multi-target AOE giống doPlayerAttack. */
 async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr, extra = {}) {
   if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
-  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul = 1, diceMul = 1, critDiv = 0, skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw } = extra;
+  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul: manualCritMul, diceMul = 1, critDiv = 0, skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw } = extra;
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
@@ -2761,7 +2767,12 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // comment đầy đủ ở doPlayerAttack) — sanityBonusPct (tham số tự gõ tay nếu
         // có) CỘNG THÊM vào, không thay thế, để vẫn linh hoạt cho trường hợp đặc biệt.
         sanityBonusPct: player.currentSanity + sanityBonusPct,
-        critMul: perkCtx.critMul !== 1 ? perkCtx.critMul : critMul, diceMul,
+        // critMul: ưu tiên giá trị NGƯỜI DÙNG GÕ TAY (critmul: ...) nếu có — còn
+        // không thì lấy từ perk context (giờ ĐÃ đúng default 1.3x, xem comment đầy
+        // đủ ở computeAttackerPerkContext — trước đây so sánh "!== 1" để biết "có
+        // perk đổi không", giờ default đã là 1.3 nên cách so sánh đó SAI, phải check
+        // trực tiếp xem người dùng có gõ critmul: hay không).
+        critMul: manualCritMul ?? perkCtx.critMul, diceMul,
         critDiv: perkCtx.critDivOverride ?? critDiv,
         poiseInit: player.poise, chargeInit: player.charge,
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
@@ -4749,7 +4760,9 @@ client.on("messageCreate", async (message) => {
     }
     const bonusPct = parseFloat((kv["bonus"] ?? "0").replace("%", ""));
     const sanityBonusPct = parseFloat((kv["sanitybonus"] ?? "0").replace("%", ""));
-    const critMul = parseFloat((kv["critmul"] ?? "1").replace("x", ""));
+    // Default 1.3x (mặc định crit dmg theo luật) — KHÔNG phải 1 (bug cũ đã sửa, xem
+    // comment đầy đủ ở computeAttackerPerkContext).
+    const critMul = parseFloat((kv["critmul"] ?? "1.3").replace("x", ""));
     const poiseInit = parseInt(kv["poise"] ?? "0", 10) || 0;
     const diceMul = parseFloat((kv["dicemul"] ?? "1").replace("x", ""));
     const sinkingInit = parseInt(kv["sinking"] ?? "0", 10);
@@ -5185,9 +5198,12 @@ client.on("messageCreate", async (message) => {
       }
       const bonusPct = parseFloat((kv["bonus"] ?? "0").replace("%", ""));
       const sanityBonusPct = parseFloat((kv["sanitybonus"] ?? "0").replace("%", ""));
-      const critMul = parseFloat((kv["critmul"] ?? "1").replace("x", ""));
+      // KHÔNG default "1" — để undefined nếu người dùng không gõ critmul:, vậy
+      // doPlayerHit mới biết đây là "không gõ tay" và rơi về perkCtx.critMul (mặc
+      // định 1.3x đúng luật) thay vì ép cứng về 1 (bug cũ, xem comment ở doPlayerHit).
+      const critMul = kv["critmul"] ? parseFloat(kv["critmul"].replace("x", "")) : undefined;
       const diceMul = parseFloat((kv["dicemul"] ?? "1").replace("x", ""));
-      if (isNaN(bonusPct) || isNaN(sanityBonusPct) || isNaN(critMul) || isNaN(diceMul)) {
+      if (isNaN(bonusPct) || isNaN(sanityBonusPct) || (critMul !== undefined && isNaN(critMul)) || isNaN(diceMul)) {
         message.reply("❌ bonus/sanitybonus/critmul/dicemul phải là số.");
         return;
       }
@@ -6314,7 +6330,7 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     const poiseInit = interaction.options.getInteger("poise") ?? 0;
-    const critMul = interaction.options.getNumber("critmul") ?? 1;
+    const critMul = interaction.options.getNumber("critmul") ?? 1.3;
     const diceMul = interaction.options.getNumber("dicemul") ?? 1;
     const sinkingInit = interaction.options.getInteger("sinking") ?? 0;
     const ruptureInit = interaction.options.getInteger("rupture") ?? 0;
