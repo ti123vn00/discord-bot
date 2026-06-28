@@ -267,6 +267,16 @@ const SKILLS = {
       ];
     },
   },
+  "light dash": {
+    name: "Light Dash",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "—",
+    roll() {
+      return [
+        `*Không có Dice — page chỉ tự áp hiệu ứng lên bản thân*`,
+        `Lướt tới vị trí kẻ thù đồng thời hồi cho bản thân 2 <:Light:1513786082502770719>Light và né một đòn tấn công của kẻ địch (không thể né Undodgeable)`,
+      ];
+    },
+  },
   "take this kid": {
     name: "Take this, Kid",
     cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
