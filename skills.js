@@ -4423,4 +4423,4 @@ function findByKeyword(keyword) {
   return results;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking };
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
