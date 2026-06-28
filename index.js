@@ -660,6 +660,9 @@ function migratePlayerData(data) {
     data.unlockedSkillTree = data.unlockedSkillTree ?? [];
     data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
     data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
+    data.equippedWeapon = data.equippedWeapon ?? null;
+    data.equippedOutfit = data.equippedOutfit ?? null;
+    data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
     return data;
   }
   const inv = data.inventory ?? {};
@@ -678,6 +681,9 @@ function migratePlayerData(data) {
   data.unlockedSkillTree = data.unlockedSkillTree ?? [];
   data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
   data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
+  data.equippedWeapon = data.equippedWeapon ?? null;
+  data.equippedOutfit = data.equippedOutfit ?? null;
+  data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
   delete data.inventory;
   return data;
 }
@@ -776,7 +782,7 @@ async function getPlayerData(userId) {
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
       const raw = await withTimeout(redis.get(key));
-      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null] };
+      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       return migratePlayerData(data);
     } catch (err) {
@@ -801,7 +807,7 @@ async function getPlayerDataWithSlot(userId) {
       const raw = await withTimeout(redis.get(key));
       const data = raw
         ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
-        : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null] };
+        : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
       return { data, slot };
     } catch (err) {
       lastErr = err;
@@ -973,7 +979,7 @@ async function processDailyClaimForUser(userId) {
     const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
     let playerData = playerRaw
       ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
-      : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null] };
+      : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
     playerData = migratePlayerData(playerData);
 
     const today = getVNDateString();
@@ -1483,7 +1489,7 @@ function calcMath(opts) {
     if (r.tremorShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.tremorShortfall} <:Tremor:1513762737388257380>Tremor để tiêu thụ hết`;
     if (r.tremorStaminaLoss > 0) {
       const burstNote = r.tremorBurstCount > 1 ? ` (x${r.tremorBurstCount} lần)` : "";
-      extraInfo += ` | <:Fix_TremorBurst:1513802464632246352>Tremor Burst${burstNote}: -${r.tremorStaminaLoss} Sta địch → ${r.tremorStacksAfter} Counts`;
+      extraInfo += ` | <:TremorBurst:1513802464632246352>Tremor Burst${burstNote}: -${r.tremorStaminaLoss} Sta địch → ${r.tremorStacksAfter} Counts`;
     }
     return `#${i + 1}[${r.dmgType}](${rateStr}) ${critLabel} → ${r.instanceDmg.toFixed(2)}${extraInfo}`;
   });
@@ -1564,7 +1570,7 @@ function calcMath(opts) {
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
     { name: "<:Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 || finalBurn > 0 || burnDmgThisTurn > 0 },
     { name: "Bleed (end turn)", value: `${bleedDmgThisTurn.toFixed(2)} dmg (x${bleedActions} hành động) — count: ${bleedInit} → ${finalBleed}`, inline: true, showIf: bleedInit > 0 || finalBleed > 0 || bleedDmgThisTurn > 0 },
-    { name: "<:Fix_TremorBurst:1513802464632246352>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 || finalTremor > 0 || totalTremorStaminaLoss > 0 },
+    { name: "<:TremorBurst:1513802464632246352>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 || finalTremor > 0 || totalTremorStaminaLoss > 0 },
     { name: "<:Charge:1513762867558613033>Charge Stacks", value: `${chargeInit} → ${finalCharge}`, inline: true, showIf: chargeInit > 0 || finalCharge > 0 },
   ];
 
@@ -3192,6 +3198,9 @@ function parseBatchEntries(raw, findFn, entityLabel) {
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
 const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking } = require("./skills");
+const { findWeapon, buildWeaponCriticalResult } = require("./weapon");
+const { findOutfit } = require("./outfit");
+const { findAccessory, buildFuriosoResult } = require("./accessory");
 
 /** isEgoSkill — check skill.tags có chứa "EGO"/"E.G.O" không (case-insensitive,
  *  bỏ qua dấu chấm/khoảng trắng) — dùng để phân biệt Page thường vs E.G.O Page lúc
@@ -4317,6 +4326,137 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // ── equipweapon/unequipweapon — lưu TÊN vũ khí (tra lại qua findWeapon() mỗi lần
+  // cần dùng, KHÔNG lưu cả object — tránh dữ liệu cũ kẹt lại nếu weapon.js sau này
+  // sửa số liệu). Tự phục vụ, không admin-gated (chọn trang bị là lựa chọn cá nhân).
+  if (message.content.startsWith("-equipweapon")) {
+    const rawInput = message.content.replace("-equipweapon", "").trim();
+    if (!rawInput) { message.reply("⚠️ Cú pháp: `-equipweapon <tên vũ khí>` (VD: `-equipweapon durandal`)"); return; }
+    try {
+      const weapon = findWeapon(rawInput);
+      if (!weapon) throw new Error(`Không tìm thấy vũ khí "${rawInput}" trong weapon.js.`);
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      data.equippedWeapon = weapon.name;
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(`✅ Đã equip vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage}).`);
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-unequipweapon")) {
+    try {
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const removed = data.equippedWeapon;
+      data.equippedWeapon = null;
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(removed ? `✅ Đã gỡ vũ khí **${removed}**.` : "⚠️ Chưa equip vũ khí nào.");
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-equipoutfit")) {
+    const rawInput = message.content.replace("-equipoutfit", "").trim();
+    if (!rawInput) { message.reply("⚠️ Cú pháp: `-equipoutfit <tên outfit>` (VD: `-equipoutfit black suit`)"); return; }
+    try {
+      const outfit = findOutfit(rawInput);
+      if (!outfit) throw new Error(`Không tìm thấy outfit "${rawInput}" trong outfit.js.`);
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      data.equippedOutfit = outfit.name;
+      await savePlayerData(message.author.id, data, slot);
+      const r = outfit.resistance;
+      message.reply(`✅ Đã equip outfit **${outfit.name}** (Res: ${r.B}xB ${r.P}xP ${r.S}xS${outfit.speedRange ? `, Speed ${outfit.speedRange.min}~${outfit.speedRange.max}` : ""}).`);
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-unequipoutfit")) {
+    try {
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const removed = data.equippedOutfit;
+      data.equippedOutfit = null;
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(removed ? `✅ Đã gỡ outfit **${removed}**.` : "⚠️ Chưa equip outfit nào.");
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-equipaccessory")) {
+    const rawInput = message.content.replace("-equipaccessory", "").trim();
+    const m = rawInput.match(/^([1-3])\s+(.+)$/);
+    if (!m) { message.reply("⚠️ Cú pháp: `-equipaccessory <slot 1-3> <tên accessory>` (VD: `-equipaccessory 1 perfect cube`)"); return; }
+    const slotNum = parseInt(m[1], 10);
+    try {
+      const accessory = findAccessory(m[2].trim());
+      if (!accessory) throw new Error(`Không tìm thấy accessory "${m[2].trim()}" trong accessory.js.`);
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+      data.equippedAccessories[slotNum - 1] = accessory.name;
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(`✅ Đã equip accessory **${accessory.name}** vào slot #${slotNum}.`);
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-unequipaccessory")) {
+    const rawInput = message.content.replace("-unequipaccessory", "").trim();
+    const slotNum = parseInt(rawInput, 10);
+    if (!Number.isFinite(slotNum) || slotNum < 1 || slotNum > 3) { message.reply("⚠️ Cú pháp: `-unequipaccessory <slot 1-3>`"); return; }
+    try {
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+      const removed = data.equippedAccessories[slotNum - 1];
+      data.equippedAccessories[slotNum - 1] = null;
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(removed ? `✅ Đã gỡ accessory **${removed}** khỏi slot #${slotNum}.` : `⚠️ Slot #${slotNum} đang trống.`);
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  // ── -equipment: xem Weapon/Outfit/3 Accessory hiện tại ─────────────────────
+  if (message.content.startsWith("-equipment")) {
+    try {
+      const { data } = await getPlayerDataWithSlot(message.author.id);
+      const weapon = data.equippedWeapon ? findWeapon(data.equippedWeapon) : null;
+      const outfit = data.equippedOutfit ? findOutfit(data.equippedOutfit) : null;
+      const accessories = (data.equippedAccessories ?? [null, null, null]).map(n => n ? findAccessory(n) : null);
+      const lines = [];
+      lines.push(`**⚔️ Vũ khí:** ${weapon ? `${weapon.name} (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage})` : "*(trống)*"}`);
+      if (weapon?.passives?.length) lines.push(...weapon.passives.map(p => `> *${p.name}*: ${p.desc}`));
+      lines.push("");
+      lines.push(`**🧥 Outfit:** ${outfit ? `${outfit.name} (Res: ${outfit.resistance.B}xB ${outfit.resistance.P}xP ${outfit.resistance.S}xS)` : "*(trống)*"}`);
+      if (outfit?.keypage?.length) lines.push(...outfit.keypage.map(k => `> ${k}`));
+      lines.push("");
+      lines.push("**💍 Accessory:**");
+      accessories.forEach((a, i) => {
+        lines.push(`**#${i + 1}** ${a ? a.name : "*(trống)*"}`);
+        if (a?.passives?.length) lines.push(...a.passives.map(p => `> *${p.name}*: ${p.desc}`));
+      });
+      message.reply({
+        embeds: [{
+          title: "🎒 Trang bị hiện tại",
+          description: lines.join("\n"),
+          color: 0x5865f2,
+          footer: { text: "-equipweapon/-equipoutfit/-equipaccessory <slot> <tên> · -unequip... để gỡ" },
+        }],
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
   // ── -use ──
   if (message.content.startsWith("-use")) {
     if (isOnCooldown(message.author.id, "use", 2000)) {
@@ -4750,18 +4890,24 @@ client.on("messageCreate", async (message) => {
       const stamina = parseInt(kv["stamina"] ?? "", 10);
       if (!Number.isFinite(hp) || hp <= 0) {
         message.reply(
-          "⚠️ Cú pháp: `-encounter join hp: <số>` (tùy chọn thêm `stamina:`/`light:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`/`speedrange: <min>~<max>`)"
+          "⚠️ Cú pháp: `-encounter join hp: <số>` (tùy chọn thêm `stamina:`/`light:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`/`speedrange: <min>~<max>` — nếu đã `-equipweapon`/`-equipoutfit` thì KHÔNG cần gõ weapon:/res:/speedrange: nữa, tự lấy từ đó; gõ tay sẽ ĐÈ lên giá trị từ trang bị)"
         );
         return;
       }
       const light = parseInt(kv["light"] ?? "", 10);
-      const weapon = normalizeWeaponWeight(kv["weapon"] ?? "medium");
+      // Lấy profile TRƯỚC để biết Weapon/Outfit đã equip (nếu có) — làm GIÁ TRỊ MẶC
+      // ĐỊNH cho weapon:/res:/speedrange: khi KHÔNG gõ tay tham số đó. Gõ tay vẫn
+      // ĐÈ LÊN trang bị (linh hoạt cho trường hợp đặc biệt, không bắt buộc equip).
+      const profileDataForDefaults = await getPlayerData(message.author.id);
+      const equippedWeaponObj = profileDataForDefaults.equippedWeapon ? findWeapon(profileDataForDefaults.equippedWeapon) : null;
+      const equippedOutfitObj = profileDataForDefaults.equippedOutfit ? findOutfit(profileDataForDefaults.equippedOutfit) : null;
+      const weapon = normalizeWeaponWeight(kv["weapon"] ?? equippedWeaponObj?.weight ?? "medium");
       const resRaw = kv["res"] ?? "";
-      const res = { B: 1, P: 1, S: 1 };
+      const res = equippedOutfitObj ? { ...equippedOutfitObj.resistance } : { B: 1, P: 1, S: 1 };
       for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
       const speedRangeMatch = (kv["speedrange"] ?? "").match(/(\d+)\s*[~\-]\s*(\d+)/);
-      const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : 3;
-      const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : 6;
+      const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : (equippedOutfitObj?.speedRange?.min ?? 3);
+      const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : (equippedOutfitObj?.speedRange?.max ?? 6);
       try {
         await withLock(encounterKey(message.channel.id), async () => {
           const encounter = await getEncounter(message.channel.id);
@@ -4777,8 +4923,9 @@ client.on("messageCreate", async (message) => {
           // encounter này — snapshot lúc join, giống cách HP/Stamina/vũ khí cũng
           // được "chốt" lúc join (không tự đồng bộ real-time nếu admin unlock thêm
           // GIỮA lúc encounter đang chạy — phải join lại để cập nhật, y hệt nguyên
-          // tắc đang áp dụng cho mọi field khác).
-          const profileData = await getPlayerData(message.author.id);
+          // tắc đang áp dụng cho mọi field khác). Dùng LẠI profileDataForDefaults
+          // đã fetch ở trên (tránh gọi Redis 2 lần + tránh race condition).
+          const profileData = profileDataForDefaults;
           const joined = encounter.players[message.author.id];
           joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
           // Snapshot 5 Page + 5 E.G.O Page đã equip trên profile — dùng để build
@@ -4797,8 +4944,12 @@ client.on("messageCreate", async (message) => {
             if (hasPerk(joined, "No Mind To Cure")) { joined.currentSanity = -25; startNotes.push("-25 Sanity (No Mind To Cure)"); }
           }
           await saveEncounter(message.channel.id, encounter);
+          const equipNotes = [];
+          if (equippedWeaponObj && !kv["weapon"]) equipNotes.push(`Vũ khí: ${equippedWeaponObj.name} (${equippedWeaponObj.weight})`);
+          if (equippedOutfitObj && !kv["res"]) equipNotes.push(`Outfit: ${equippedOutfitObj.name} (Res ${res.B}xB ${res.P}xP ${res.S}xS)`);
           await message.reply({
             content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.name}** với ${hp} HP.` +
+              (equipNotes.length > 0 ? `\n> 🎒 Tự lấy từ trang bị: ${equipNotes.join(", ")}` : "") +
               (joined.unlockedPerks.length > 0 ? ` (Perk từ profile: ${joined.unlockedPerks.join(", ")})` : "") +
               (startNotes.length > 0 ? `\n> 🆙 ${startNotes.join(", ")}` : ""),
             components: buildEncounterActionPanel(message.channel.id, joined, message.author.id),
