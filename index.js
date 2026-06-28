@@ -329,7 +329,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", // -encounter
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", // -encounter
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -1686,6 +1686,11 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
 
   // Battle Ignition: turn trước đánh ≥10 lần → +15% Dmg turn này
   if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
+  // Manifested E.G.O đang active: +30% Dmg M1+skill bản thân gây ra — cơ chế GỐC
+  // của game (không phải Skill Tree perk), không cần hasPerk gate.
+  if (attacker.manifestedEGO) bonusPct += 30;
+  // Chấn thương nặng "Mất tay": -50% sát thương gây ra — cơ chế GỐC, không cần unlock.
+  if ((attacker.injuries ?? []).includes("Mất tay")) bonusPct -= 50;
   // Backdraft: Stamina ≥50 (xấp xỉ "lúc turn start" bằng Stamina hiện tại, vì không
   // lưu snapshot riêng lúc turn start) → +20% Dmg
   if (hasPerk(attacker, "Backdraft") && attacker.currentStamina >= 50) bonusPct += 20;
@@ -1745,11 +1750,11 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
 }
 
 /** computeDefenderDmgReduction — % giảm dmg NHẬN VÀO của bên BỊ tấn công, dựa trên
- *  perk tự thân (Smoldering Resolve). No Will To Break (E.G.O) KHÔNG tự động vì
- *  Manifest E.G.O chưa là hệ thống có thật — chỉ ghi chú trong unlockedPerks. */
+ *  perk tự thân (Smoldering Resolve) + trạng thái Manifested E.G.O (No Will To Break). */
 function computeDefenderDmgReduction(defender) {
   let reductionPct = 0;
   if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
+  if (hasPerk(defender, "No Will To Break") && defender.manifestedEGO) reductionPct += 20;
   return reductionPct;
 }
 
@@ -1799,6 +1804,13 @@ function applyEmotionDelta(combatant, delta) {
 // Guard/Evade/Parry đã bỏ, đây là luật riêng đã xác nhận từ trước, không mâu thuẫn
 // với transcript — Rover's sheet vẫn cho thấy Stamina bị trừ + hồi 30/turn đúng).
 const WEAPON_STAMINA_COST = { light: 5, medium: 10, heavy: 20 };
+// 1 lần Guard/Evade/Parry chặn được BAO NHIÊU HIT của 1 đòn ĐÁNH THƯỜNG (M1), tính
+// theo vũ khí của BÊN TẤN CÔNG (không phải bên thủ) — luật xác nhận trực tiếp:
+// "Guard/evade/parry các đòn đánh thường của Light weapon thì 1 lần sẽ guard/evade/
+// parry được 4 hit còn đối với Medium là 2, Heavy là 1". CHỈ áp dụng cho M1 — Page/
+// Skill (kind "hit"/enemy dùng skill) vẫn coi 1 charge = chặn cả action, vì luật chỉ
+// nói rõ về "đòn đánh thường", không nói gì về skill có hit-count khác biệt.
+const WEAPON_DEFENSE_HITS = { light: 4, medium: 2, heavy: 1 };
 
 function normalizeWeaponWeight(w) {
   const x = (w ?? "").trim().toLowerCase();
@@ -1814,7 +1826,7 @@ function normalizeEnemyKey(k) {
 }
 
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
-function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", resistance = null }) {
+function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
   return {
     name,
     maxHp, currentHp: maxHp,
@@ -1870,8 +1882,114 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     m1AttackCount: 0, // tổng M1 đã đánh (không reset theo turn) — cho Overbearing/Blessed Sparks "mỗi đòn thứ 2"
     poiseReductionPending: 0, // Smoke Overload — số Poise ĐÁNG LẼ bị giảm do crit, dồn lại chờ end turn mới trừ thật
     overchargedTurnsLeft: 0, overchargedDiceUpBonus: 0, overchargedDmgBonusPct: 0, // Overcharged Vessel
-    manifestedEGO: false, firstManifestEGOUsed: false, // Comeback Time/No Will To Break — chỉ TRACK trạng thái, KHÔNG tự kích hoạt (Manifest E.G.O tự nó là hệ thống chưa có, đây chỉ là cờ GM tự set tay qua buff)
+    // Manifested E.G.O — Duration = Emotion Level hiện tại × 3 turn (Lv1=3, Lv2=6,
+    // suy ra Lv3=9/Lv4=12/Lv5=15 theo cùng quy luật — chỉ Lv1/2 được xác nhận trực
+    // tiếp). CD 5 turn SAU KHI hết hiệu lực. -30 Sanity lúc kích hoạt. Active: +3
+    // Dice Up (chỉ hiển thị, không tự áp vào roll skill — như mọi nguồn Dice Up
+    // khác) + 30% Dmg M1+skill bản thân gây ra.
+    manifestedEGO: false, manifestedEGOTurnsLeft: 0, manifestedEGOCooldownLeft: 0, firstManifestEGOUsed: false,
+    // Chấn thương — nhận dmg >30% Max HP trong 1 đòn → roll 10% nặng/40% nhẹ/50%
+    // không gì. injuries: list các chấn thương ĐANG có (có thể nhiều, KHÔNG tự hết
+    // — chỉ GM xoá tay nếu chữa lành, xem -encounter healinjury). daseStacks riêng
+    // (Choáng) vì cộng dồn nhiều stack mới phát huy tác dụng, khác các chấn thương
+    // khác (chỉ cần CÓ là đủ).
+    injuries: [], dazedStacks: 0,
+    // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
+    // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
+    // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
+    // -encounter haste/bind (KHÔNG qua dmgStr tag như 7 status cũ, vì chưa rõ luật
+    // gain/consume chi tiết đủ để tích hợp sâu vào calcMathCore như Poise/Sinking...).
+    speedRangeMin: speedRangeMin, speedRangeMax: speedRangeMax,
+    haste: 0, bind: 0,
+    currentSpeed: null, // null = chưa roll turn này — set bởi -encounter rollspeed
+    // Guard/Evade — hành động phòng thủ CHUNG (không cần skill cụ thể), dùng TỰ DO
+    // bao nhiêu lần cũng được (chỉ giới hạn bởi Stamina) — 1 charge chặn ĐƯỢC SỐ HIT
+    // theo vũ khí của BÊN TẤN CÔNG M1 (Light=4 hit/charge, Medium=2, Heavy=1 — đúng
+    // luật thật, xem WEAPON_DEFENSE_HITS). Ưu tiên Evade trước nếu có cả 2.
+    guardCharges: 0, evadeCharges: 0,
+    // parryRolls: mỗi lần dùng -encounter parry sẽ roll d20 NGAY và đẩy vào đây — 1
+    // phần tử = 1 lần parry sẵn sàng, KHÔNG phải số nguyên đơn giản như guard/evade
+    // (vì mỗi lần parry có kết quả roll RIÊNG, ăn/thua phụ thuộc so với roll của bên
+    // tấn công lúc CONFIRM, không phải lúc declare).
+    parryRolls: [],
+    // Shin/Mang — hi sinh 25 Sanity/turn (CHẶN nếu Sanity hiện tại ≤ -10) để nhận
+    // Shin (-0.2x mọi Res BẢN THÂN — dễ ăn dmg hơn) + Mang (+10%/+10% mỗi vòng kích
+    // hoạt liên tiếp Dmg M1+skill TRONG TURN, gây True Dmg — Res mục tiêu < 1x bị
+    // ép về 1x). shinMangRounds KHÔNG tự reset (giả định "vòng" = số lần kích hoạt
+    // liên tiếp tự track, không tự suy ra "liên tiếp" qua nhiều turn — GM tự theo
+    // dõi nếu cần đúng nghĩa "liên tiếp không gián đoạn").
+    shinMangActive: false, shinMangRounds: 0, shinMangUsedThisTurn: false,
   };
+}
+
+/** rollSpeedValue — roll trong Range Speed của combatant, cộng Haste trừ Bind
+ *  ("1 Haste +1 Speed, 1 Bind -1 Speed" theo update mới). */
+function rollSpeedValue(combatant) {
+  const base = combatant.speedRangeMin + Math.floor(Math.random() * (combatant.speedRangeMax - combatant.speedRangeMin + 1));
+  return base + (combatant.haste ?? 0) - (combatant.bind ?? 0);
+}
+
+/**
+ * determineTurnOrder — roll Speed cho TẤT CẢ combatant, sắp xếp giảm dần quyết
+ * định thứ tự hành động. Khi bằng Speed:
+ *   - CÙNG PHE (player-player hoặc enemy-enemy) → KHÔNG tự roll lại — đánh dấu
+ *     "tiedWith" để GM/player tự thoả thuận ai trước (giữ thứ tự hiện tại làm
+ *     fallback nếu không ai lên tiếng).
+ *   - KHÁC PHE (có cả player VÀ enemy cùng Speed) → reroll NGAY giữa các bên đang
+ *     tie cho tới khi hết tie (lặp, chặn tối đa 20 lần phòng hờ — gần như không
+ *     thể chạm trần này với range hữu hạn của dice thật).
+ * Lưu kết quả vào encounter.turnOrder để dùng cho hiển thị/tham chiếu Clash sau này.
+ */
+function determineTurnOrder(encounter) {
+  const entries = [];
+  for (const ekey of Object.keys(encounter.enemies)) {
+    const c = encounter.enemies[ekey];
+    c.currentSpeed = rollSpeedValue(c);
+    entries.push({ id: ekey, type: "enemy", combatant: c });
+  }
+  for (const pid of Object.keys(encounter.players)) {
+    const c = encounter.players[pid];
+    c.currentSpeed = rollSpeedValue(c);
+    entries.push({ id: pid, type: "player", combatant: c });
+  }
+
+  let guard = 0;
+  while (guard++ < 20) {
+    const bySpeed = new Map();
+    for (const e of entries) {
+      const list = bySpeed.get(e.combatant.currentSpeed) ?? [];
+      list.push(e);
+      bySpeed.set(e.combatant.currentSpeed, list);
+    }
+    let rerolled = false;
+    for (const group of bySpeed.values()) {
+      if (group.length < 2) continue;
+      if (new Set(group.map(e => e.type)).size > 1) {
+        for (const e of group) e.combatant.currentSpeed = rollSpeedValue(e.combatant);
+        rerolled = true;
+      }
+    }
+    if (!rerolled) break;
+  }
+
+  entries.sort((a, b) => b.combatant.currentSpeed - a.combatant.currentSpeed);
+  const order = entries.map((e, i) => ({
+    id: e.id, type: e.type, speed: e.combatant.currentSpeed,
+    tiedWith: entries.filter((o, j) => j !== i && o.combatant.currentSpeed === e.combatant.currentSpeed).map(o => o.id),
+  }));
+  encounter.turnOrder = order;
+  return order;
+}
+
+/** buildTurnOrderText — hiện danh sách thứ tự turn đã roll, kèm cảnh báo hoà cùng phe. */
+function buildTurnOrderText(encounter) {
+  const order = encounter.turnOrder ?? [];
+  if (order.length === 0) return "Chưa roll Speed — dùng `-encounter rollspeed`.";
+  return order.map((e, i) => {
+    const label = e.type === "enemy" ? `**${encounter.enemies[e.id]?.name ?? e.id}**` : `<@${e.id}>`;
+    const tieNote = e.tiedWith.length > 0 ? ` ⚖️ *(hoà Speed — tự thoả thuận thứ tự với ${e.tiedWith.length} người khác cùng phe)*` : "";
+    return `**#${i + 1}** ${label} — Speed **${e.speed}**${tieNote}`;
+  }).join("\n");
 }
 
 /** Đổi { B, P, S } resistance object thành resStr cho calcMathCore — Stagger thì
@@ -1879,7 +1997,25 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
 function combatantResStr(combatant) {
   if (combatant.staggered) return "2xB 2xP 2xS";
   const r = combatant.resistance;
+  // Shin (đang active): -0,2x mọi Res BẢN THÂN khi combatant này là bên BỊ TẤN
+  // CÔNG (defender) — dễ ăn dmg hơn, đánh đổi lấy Mang +Dmg.
+  if (combatant.shinMangActive) {
+    return `${Math.max(0, r.B - 0.2)}xB ${Math.max(0, r.P - 0.2)}xP ${Math.max(0, r.S - 0.2)}xS`;
+  }
   return `${r.B}xB ${r.P}xP ${r.S}xS`;
+}
+
+/** trueDmgResStr — dùng khi BÊN TẤN CÔNG có Mang active: ép Res của TARGET tối
+ *  thiểu 1x cho mọi loại dmg (nếu target có Res < 1x ở loại đó, coi như đúng 1x —
+ *  "True Dmg" — không khuếch đại nếu Res target ĐÃ ≥1x, chỉ neutralize phần KHÁNG
+ *  dưới 1x). Gọi THAY combatantResStr(target) khi attacker.shinMangActive — đã bao
+ *  gồm luôn phần Shin của TARGET (nếu target cũng có Shin active, áp dụng giảm 0.2x
+ *  TRƯỚC rồi mới clamp min 1x, đúng thứ tự "Res hiệu lực sau Shin" mới là Res thật
+ *  để so sánh với True Dmg). */
+function trueDmgResStr(target) {
+  const base = combatantResStr(target); // đã áp Shin/Stagger của target nếu có
+  const matches = [...base.matchAll(/([\d.]+)x([BPS])/g)];
+  return matches.map(([, val, type]) => `${Math.max(1, parseFloat(val))}x${type}`).join(" ");
 }
 
 /** Kiểm tra + set Stagger (Stamina=0) / Panic (Sanity=-45) sau khi 1 combatant vừa
@@ -1889,7 +2025,9 @@ function combatantResStr(combatant) {
 function checkStaggerPanic(combatant) {
   if (combatant.currentStamina <= 0 && !combatant.staggered) {
     combatant.staggered = true;
-    combatant.staggerTurnsLeft = 1;
+    // Choáng (chấn thương nhẹ, từ 2 stack trở lên): lần Stagger này kéo dài 2 turn
+    // thay vì 1.
+    combatant.staggerTurnsLeft = (combatant.dazedStacks ?? 0) >= 2 ? 2 : 1;
     combatant.currentStamina = 0;
   }
   // Negative Thoughts (Gloom, [30 Points]): "Chỉ bị Panic ở +45 Sanity" — đảo
@@ -1913,13 +2051,64 @@ function checkStaggerPanic(combatant) {
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
  *  -encounter endturn được gọi. */
+const MINOR_INJURIES = ["Gãy tay", "Gãy chân", "Gãy Xương", "Choáng"];
+const SEVERE_INJURIES = ["Mất tay", "Mất Chân", "Vết thương lớn"];
+
+/**
+ * rollInjury — gọi MỖI LẦN 1 combatant nhận dmg trong 1 đòn DUY NHẤT vượt quá 30%
+ * Max HP của họ. Roll: 10% chấn thương NẶNG, 40% NHẸ, 50% không gì. Áp dụng hiệu
+ * ứng NGAY (maxHp giảm, dazedStacks tăng) — các hiệu ứng còn lại (dice penalty
+ * parry/clash, chặn evade, -50% dmg gây ra) được CHECK riêng ở những nơi liên quan
+ * (xem comment ở computeAttackerPerkContext/-encounter evade/parry/clash).
+ * @returns tên chấn thương vừa nhận, hoặc null nếu không bị gì.
+ */
+/** getParryClashPenalty — tổng penalty dice Parry/Clash từ TẤT CẢ chấn thương đang
+ *  có (Gãy tay -5, Gãy chân -3, Mất Chân -10 — cộng dồn nếu có nhiều). */
+function getParryClashPenalty(combatant) {
+  const injuries = combatant.injuries ?? [];
+  let penalty = 0;
+  if (injuries.includes("Gãy tay")) penalty += 5;
+  if (injuries.includes("Gãy chân")) penalty += 3;
+  if (injuries.includes("Mất Chân")) penalty += 10;
+  return penalty;
+}
+
+function rollInjury(combatant, dmgDealtThisHit) {
+  if (dmgDealtThisHit <= combatant.maxHp * 0.3) return null;
+  const roll = Math.random();
+  let injuryName;
+  if (roll < 0.10) injuryName = SEVERE_INJURIES[Math.floor(Math.random() * SEVERE_INJURIES.length)];
+  else if (roll < 0.50) injuryName = MINOR_INJURIES[Math.floor(Math.random() * MINOR_INJURIES.length)];
+  else return null;
+
+  combatant.injuries = combatant.injuries ?? [];
+  if (injuryName === "Choáng") {
+    combatant.dazedStacks = (combatant.dazedStacks ?? 0) + 1;
+    combatant.injuries.push(`Choáng (stack ${combatant.dazedStacks})`);
+  } else if (injuryName === "Gãy Xương") {
+    combatant.maxHp = Math.max(1, combatant.maxHp - 30);
+    combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);
+    combatant.injuries.push("Gãy Xương (-30 Max HP)");
+  } else if (injuryName === "Vết thương lớn") {
+    combatant.maxHp = Math.max(1, combatant.maxHp - 100);
+    combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);
+    combatant.injuries.push("Vết thương lớn (-100 Max HP)");
+  } else {
+    combatant.injuries.push(injuryName);
+  }
+  return injuryName;
+}
+
 function advanceCombatantTurn(combatant) {
-  // Burn/Bleed — giảm 1 nửa THẬT (làm tròn xuống) — CHỈ Ở ĐÂY, 1 lần/turn thật.
-  // Trước đây bị giảm nhầm trong confirm handler (mỗi hit), xem comment đầy đủ ở
-  // đó. Damage thực tế từ Burn/Bleed end-turn-tick (×2 dmg cho Burn, ÷4×actions
-  // cho Bleed) CHƯA tự trừ vào HP ở đây — vẫn là khoảng trống đã ghi nhận từ trước
-  // (cần track số "hành động" của địch mới tính được Bleed dmg chính xác, là việc
-  // khác) — /math vẫn dùng để tính số riêng nếu GM cần.
+  combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
+  // Burn — gây dmg = count×2 lúc CUỐI turn, SAU ĐÓ mới giảm nửa (đúng thứ tự luật:
+  // "gây dmg... sau đó giảm nó đi 1 nửa"). Bleed dmg = count/4 mỗi khi CHÍNH kẻ
+  // mang Bleed hành động tấn công — xử lý ở CONFIRM HANDLER (mỗi lần attacker thực
+  // hiện attack/hit/enemyattack), KHÔNG ở đây — chỉ giảm nửa COUNT của Bleed ở đây.
+  if ((combatant.burn ?? 0) > 0) {
+    const burnDmg = combatant.burn * 2;
+    combatant.currentHp = Math.max(0, combatant.currentHp - burnDmg);
+  }
   combatant.burn = Math.floor((combatant.burn ?? 0) / 2);
   combatant.bleed = Math.floor((combatant.bleed ?? 0) / 2);
   if (combatant.staggered) {
@@ -1979,8 +2168,23 @@ function advanceCombatantTurn(combatant) {
   // Follow-Up/Pounce + Craving Synergy/Thirst/Break the Dams ("đòn đầu tiên mỗi
   // turn") — đều là cờ 1 LẦN/turn, reset về false mỗi turn mới.
   combatant.followUpUsedThisTurn = false;
+  // Shin/Mang chỉ active TRONG TURN đã kích hoạt — hết turn thì tắt hẳn (phải dùng
+  // lại -encounter shinmang, tốn thêm 25 Sanity, nếu muốn duy trì turn sau).
+  combatant.shinMangActive = false;
+  combatant.shinMangUsedThisTurn = false;
   combatant.bleedFirstHitUsedThisTurn = false;
   if ((combatant.breakTheDamsCdLeft ?? 0) > 0) combatant.breakTheDamsCdLeft -= 1;
+  // Manifest E.G.O — đếm ngược Duration (Level×3 turn), hết thì tắt + vào CD 5 turn.
+  // Nếu KHÔNG active, đếm ngược CD nếu có.
+  if (combatant.manifestedEGO) {
+    combatant.manifestedEGOTurnsLeft -= 1;
+    if (combatant.manifestedEGOTurnsLeft <= 0) {
+      combatant.manifestedEGO = false;
+      combatant.manifestedEGOCooldownLeft = 5;
+    }
+  } else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) {
+    combatant.manifestedEGOCooldownLeft -= 1;
+  }
   // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
   // ngay) — giờ mới trừ THẬT lúc end turn.
   if ((combatant.poiseReductionPending ?? 0) > 0) {
@@ -2061,13 +2265,22 @@ function formatCombatantBlock(combatant, label) {
   const r = combatant.resistance;
   const resLine = combatant.staggered
     ? `2x/2x/2x (STAGGER, gốc ${r.B}xB ${r.P}xP ${r.S}xS)`
-    : `${r.B}xB ${r.P}xP ${r.S}xS`;
+    : combatant.shinMangActive
+      ? `${Math.max(0, r.B - 0.2)}xB ${Math.max(0, r.P - 0.2)}xP ${Math.max(0, r.S - 0.2)}xS (gốc ${r.B}xB ${r.P}xP ${r.S}xS, đang Shin -0,2x)`
+      : `${r.B}xB ${r.P}xP ${r.S}xS`;
   const lines = [
     `**${label}**${combatant.currentHp <= 0 ? " — ĐÃ HẠ! 💀" : ""}`,
     `${hpBar} **${Math.max(0, Math.round(combatant.currentHp * 100) / 100)}/${combatant.maxHp}** HP`,
     `> Stamina: **${combatant.currentStamina}/${combatant.maxStamina}** | Sanity: **${combatant.currentSanity}/${combatant.maxSanity}** | Light: **${combatant.currentLight}/${combatant.maxLight}**`,
     `> Res: **${resLine}** | Vũ khí: **${combatant.weaponWeight}**`,
+    `> Speed Range: **${combatant.speedRangeMin}~${combatant.speedRangeMax}**${combatant.currentSpeed !== null ? ` | Speed turn này: **${combatant.currentSpeed}**` : ""}${combatant.haste > 0 ? ` | <:Haste:1375181763994849333>${combatant.haste}` : ""}${combatant.bind > 0 ? ` | <:Fix_Bind:1513768025881317457>${combatant.bind}` : ""}`,
   ];
+  if ((combatant.guardCharges ?? 0) > 0 || (combatant.evadeCharges ?? 0) > 0) {
+    const parts = [];
+    if (combatant.guardCharges > 0) parts.push(`🛡️ Guard sẵn sàng x${combatant.guardCharges}`);
+    if (combatant.evadeCharges > 0) parts.push(`💨 Evade sẵn sàng x${combatant.evadeCharges}`);
+    lines.push(`> ${parts.join(" | ")}`);
+  }
   const lvl = combatant.emotionLevel ?? 0;
   const maxLvl = getMaxEmotionLevel(combatant);
   let emotionLine = `> Emotion Level **${lvl}**`;
@@ -2084,6 +2297,10 @@ function formatCombatantBlock(combatant, label) {
   if ((combatant.unlockedPerks ?? []).length > 0) lines.push(`> ✨ Perk: ${combatant.unlockedPerks.join(", ")}`);
   if ((combatant.overchargedTurnsLeft ?? 0) > 0) lines.push(`> ⚡ **Overcharged** — +${combatant.overchargedDiceUpBonus} Dice Up, +${combatant.overchargedDmgBonusPct}% Dmg — còn ${combatant.overchargedTurnsLeft} turn`);
   if ((combatant.breakTheDamsCdLeft ?? 0) > 0) lines.push(`> ⏳ Break the Dams CD — còn ${combatant.breakTheDamsCdLeft} turn`);
+  if (combatant.shinMangActive) lines.push(`> 🌑 **Shin/Mang active** (vòng ${combatant.shinMangRounds}) — -0,2x Res bản thân, +${combatant.shinMangRounds * 10}% Dmg M1+skill, True Dmg`);
+  if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill`);
+  else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) lines.push(`> ⏳ Manifest E.G.O CD — còn ${combatant.manifestedEGOCooldownLeft} turn`);
+  if ((combatant.injuries ?? []).length > 0) lines.push(`> 🩻 Chấn thương: ${combatant.injuries.join(", ")}`);
   const statusParts = [];
   if (combatant.sinking > 0) statusParts.push(`<:Sinking:1513762793436741652>${combatant.sinking}`);
   if (combatant.rupture > 0) statusParts.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
@@ -2214,9 +2431,18 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const previews = targets.map(t => {
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true });
       const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      // Mang (Shin/Mang, đang active): True Dmg — Res target dưới 1x bị ép về 1x;
+      // +10%/vòng Dmg M1+skill turn này.
+      const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
       const calcOpts = {
-        dmgStr: perkCtx.dmgStrRewritten, resStr: combatantResStr(t.combatant),
-        bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul,
+        dmgStr: perkCtx.dmgStrRewritten,
+        resStr: player.shinMangActive ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant),
+        bonusPct: perkCtx.bonusPct + mangBonusPct, critMul: perkCtx.critMul,
+        // Sanity dice bonus ("+1 Sanity = +1% dice value, -1 Sanity = -1%") LUÔN tự
+        // áp dụng từ Sanity HIỆN TẠI của người tấn công — KHÔNG phải tham số tự gõ
+        // tay (trước đây M1 hoàn toàn THIẾU dòng này, /hit thì có nhưng phải tự gõ
+        // — cả 2 đều sai, vì luật nói đây là cơ chế MẶC ĐỊNH không cần khai báo).
+        sanityBonusPct: player.currentSanity,
         critDiv: perkCtx.critDivOverride ?? undefined,
         poiseInit: player.poise, chargeInit: player.charge,
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
@@ -2300,9 +2526,15 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     const previews = targets.map(t => {
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false });
       const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
       const calcOpts = {
-        dmgStr: perkCtx.dmgStrRewritten, resStr: resStr || combatantResStr(t.combatant), drStr,
-        bonusPct: bonusPct + perkCtx.bonusPct, sanityBonusPct,
+        dmgStr: perkCtx.dmgStrRewritten,
+        resStr: resStr || (player.shinMangActive ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant)), drStr,
+        bonusPct: bonusPct + perkCtx.bonusPct + mangBonusPct,
+        // Tự động cộng Sanity HIỆN TẠI của người dùng Page vào dice bonus (xem
+        // comment đầy đủ ở doPlayerAttack) — sanityBonusPct (tham số tự gõ tay nếu
+        // có) CỘNG THÊM vào, không thay thế, để vẫn linh hoạt cho trường hợp đặc biệt.
+        sanityBonusPct: player.currentSanity + sanityBonusPct,
         critMul: perkCtx.critMul !== 1 ? perkCtx.critMul : critMul, diceMul,
         critDiv: perkCtx.critDivOverride ?? critDiv,
         poiseInit: player.poise, chargeInit: player.charge,
@@ -2381,6 +2613,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten, resStr: combatantResStr(t.combatant),
         bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
+        sanityBonusPct: enemy.currentSanity,
         poiseInit: enemy.poise, chargeInit: enemy.charge,
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
@@ -2433,6 +2666,9 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
  *  đầy đủ). */
 function buildEncounterBoardEmbed(encounter) {
   const blocks = [];
+  if ((encounter.turnOrder ?? []).length > 0) {
+    blocks.push(`🎲 **Thứ tự Turn**\n${buildTurnOrderText(encounter)}`);
+  }
   for (const ekey of Object.keys(encounter.enemies)) {
     blocks.push(formatCombatantBlock(encounter.enemies[ekey], `⚔️ ${encounter.enemies[ekey].name} (${ekey})`));
   }
@@ -2914,6 +3150,11 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
         description: header + "\n\n" + annotateLinesWithEmotion(lines, tracked),
       },
       totalEmotionDelta: tracked.reduce((sum, t) => sum + t.delta, 0),
+      // firstDiceValue — dùng cho Clash ("luôn luôn lấy dice ĐẦU TIÊN để clash") —
+      // tái dùng side-channel tracking CÓ SẴN (không regex parse text, không sửa
+      // 303 skill roll() — tracked[0] LÀ giá trị r() đầu tiên gọi trong roll(),
+      // đúng thứ tự Dice1 luôn được tính trước theo cách roll() của mọi skill viết).
+      firstDiceValue: tracked[0]?.result ?? null,
     };
   }
 
@@ -2963,6 +3204,7 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
       description,
     },
     totalEmotionDelta: allTracked.reduce((sum, t) => sum + t.delta, 0),
+    firstDiceValue: allTracked[0]?.result ?? null,
   };
 }
 
@@ -4168,6 +4410,9 @@ client.on("messageCreate", async (message) => {
       for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
       const perksRaw = (kv["perks"] ?? "").trim();
       const perksList = perksRaw ? perksRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+      const speedRangeMatch = (kv["speedrange"] ?? "").match(/(\d+)\s*[~\-]\s*(\d+)/);
+      const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : 3;
+      const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : 6;
       try {
         await withLock(encounterKey(message.channel.id), async () => {
           const encounter = await getEncounter(message.channel.id);
@@ -4177,7 +4422,7 @@ client.on("messageCreate", async (message) => {
           encounter.enemies[key] = createCombatant({
             name, maxHp: hp,
             maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
-            weaponWeight: weapon, resistance: res,
+            weaponWeight: weapon, resistance: res, speedRangeMin, speedRangeMax,
           });
           encounter.enemies[key].unlockedPerks = perksList;
           await saveEncounter(message.channel.id, encounter);
@@ -4199,7 +4444,7 @@ client.on("messageCreate", async (message) => {
       const stamina = parseInt(kv["stamina"] ?? "", 10);
       if (!Number.isFinite(hp) || hp <= 0) {
         message.reply(
-          "⚠️ Cú pháp: `-encounter join hp: <số>` (tùy chọn thêm `stamina:`/`light:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`)"
+          "⚠️ Cú pháp: `-encounter join hp: <số>` (tùy chọn thêm `stamina:`/`light:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`/`speedrange: <min>~<max>`)"
         );
         return;
       }
@@ -4208,6 +4453,9 @@ client.on("messageCreate", async (message) => {
       const resRaw = kv["res"] ?? "";
       const res = { B: 1, P: 1, S: 1 };
       for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
+      const speedRangeMatch = (kv["speedrange"] ?? "").match(/(\d+)\s*[~\-]\s*(\d+)/);
+      const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : 3;
+      const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : 6;
       try {
         await withLock(encounterKey(message.channel.id), async () => {
           const encounter = await getEncounter(message.channel.id);
@@ -4217,7 +4465,7 @@ client.on("messageCreate", async (message) => {
             name: message.author.username, maxHp: hp,
             maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
             maxLight: Number.isFinite(light) && light > 0 ? light : ENCOUNTER_DEFAULT_MAX_LIGHT,
-            weaponWeight: weapon, resistance: res,
+            weaponWeight: weapon, resistance: res, speedRangeMin, speedRangeMax,
           });
           // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
           // encounter này — snapshot lúc join, giống cách HP/Stamina/vũ khí cũng
@@ -4243,6 +4491,52 @@ client.on("messageCreate", async (message) => {
               (startNotes.length > 0 ? `\n> 🆙 ${startNotes.join(", ")}` : ""),
             components: buildEncounterActionPanel(message.channel.id),
           });
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── rollspeed: roll Speed cho TẤT CẢ combatant, quyết định thứ tự turn (xem
+    // determineTurnOrder — xử lý tie cùng phe/khác phe khác nhau theo update mới).
+    if (sub === "rollspeed") {
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới roll thứ tự turn.");
+          if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length < 1) throw new Error("Chưa có combatant nào để roll.");
+          determineTurnOrder(encounter);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply({ embeds: [{ title: "🎲 Thứ tự Turn", description: buildTurnOrderText(encounter), color: 0x3498db }] });
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── haste/bind: chỉnh tay (GM/player) — 1 Haste +1 Speed, 1 Bind -1 Speed (xem
+    // comment ở createCombatant — chưa tích hợp qua dmgStr tag như 7 status cũ).
+    if (sub === "haste" || sub === "bind") {
+      const kv = parseKeyValues(rest);
+      const targetRaw = (kv["target"] ?? "").trim();
+      const amount = parseInt(kv["amount"] ?? "", 10);
+      if (!targetRaw || !Number.isFinite(amount)) {
+        message.reply(`⚠️ Cú pháp: \`-encounter ${sub} target: <key/userId/me> amount: <số, có thể âm để trừ>\``);
+        return;
+      }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
+          const resolved = resolveCombatant(encounter, targetId);
+          if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          resolved.combatant[sub] = Math.max(0, (resolved.combatant[sub] ?? 0) + amount);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`✅ ${resolved.label}: ${sub === "haste" ? "Haste" : "Bind"} ${amount >= 0 ? "+" : ""}${amount} → còn ${resolved.combatant[sub]}.`);
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -4326,6 +4620,37 @@ client.on("messageCreate", async (message) => {
           const removed = list.splice(index - 1, 1)[0];
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ Đã xoá ${listKey === "buffs" ? "🟢 buff" : "🔴 debuff"} #${index} của ${resolved.label}: "${removed.text}"`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── healinjury: GM xoá 1 chấn thương đã chữa khỏi (admin only — chấn thương là
+    // hậu quả thật trong game, chỉ GM mới xác nhận đã chữa lành).
+    if (sub === "healinjury") {
+      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới xoá được chấn thương."); return; }
+      const kv = parseKeyValues(rest);
+      const targetRaw = (kv["target"] ?? "").trim();
+      const index = parseInt(kv["index"] ?? "", 10);
+      if (!targetRaw || !Number.isFinite(index) || index < 1) {
+        message.reply("⚠️ Cú pháp: `-encounter healinjury target: <key/userId> index: <số thứ tự trong -encounter status, bắt đầu từ 1>`");
+        return;
+      }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const targetId = encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, "");
+          const resolved = resolveCombatant(encounter, targetId);
+          if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          const list = resolved.combatant.injuries ?? [];
+          if (index > list.length) throw new Error(`${resolved.label} chỉ có ${list.length} chấn thương — không có #${index}.`);
+          const removed = list.splice(index - 1, 1)[0];
+          if (removed?.startsWith("Choáng")) resolved.combatant.dazedStacks = Math.max(0, (resolved.combatant.dazedStacks ?? 0) - 1);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`✅ Đã chữa khỏi chấn thương #${index} của ${resolved.label}: "${removed}"`);
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -4533,6 +4858,255 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    // ── guard/evade: hành động phòng thủ CHUNG, dùng TỰ DO bao nhiêu lần cũng được
+    // (chỉ giới hạn bởi Stamina còn lại) — KHÔNG giống V1 cũ (không "chặn N hit theo
+    // vũ khí địch", không Parry roll d20). Mỗi lần dùng tốn Stamina NGAY (khác với
+    // attack/hit — Stamina ở đây không cần GM duyệt vì không có số liệu dmg nào để
+    // sai, chỉ là tự trừ tài nguyên bản thân), cộng 1 charge — charge bị TIÊU THỤ
+    // lúc CONFIRM 1 đòn tấn công nhằm vào mình (xem comment ở encconfirmall handler).
+    // Có key: thì GM dùng hộ cho 1 enemy (hiếm khi cần nhưng để đối xứng).
+    if (sub === "guard" || sub === "evade") {
+      const kv = parseKeyValues(rest);
+      const enemyKeyRaw = (kv["key"] ?? "").trim();
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          let combatant, label;
+          if (enemyKeyRaw) {
+            if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
+            const ekey = normalizeEnemyKey(enemyKeyRaw);
+            combatant = encounter.enemies[ekey];
+            if (!combatant) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}".`);
+            label = `**${combatant.name}**`;
+          } else {
+            combatant = encounter.players[message.author.id];
+            if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
+            label = `<@${message.author.id}>`;
+          }
+          if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
+          // Chấn thương: Mất Chân chặn HẲN Evade. Gãy chân nhân đôi Stamina cần.
+          if (sub === "evade" && (combatant.injuries ?? []).includes("Mất Chân")) {
+            throw new Error(`${label} đã Mất Chân — không thể Evade được nữa.`);
+          }
+          let cost = sub === "guard" ? 10 : 20;
+          if (sub === "evade" && (combatant.injuries ?? []).includes("Gãy chân")) cost *= 2;
+          if (combatant.currentStamina < cost) throw new Error(`Không đủ Stamina — cần ${cost}, còn ${combatant.currentStamina}.`);
+          combatant.currentStamina -= cost;
+          combatant.staminaUsedThisTurn = (combatant.staminaUsedThisTurn ?? 0) + cost;
+          const chargeField = sub === "guard" ? "guardCharges" : "evadeCharges";
+          combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
+          checkStaggerPanic(combatant);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`${sub === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina → đang có ${combatant[chargeField]} charge ${sub} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── parry: 0 Sta, roll d20 NGAY — lưu vào parryRolls, so với roll của bên tấn
+    // công lúc CONFIRM (không phải lúc declare, vì roll của bên tấn công chưa biết
+    // được). Ngang điểm = parry THẮNG (luật: "cao hơn HOẶC NGANG"). Thua: -40 Sta +
+    // ăn full dmg. Cũng áp WEAPON_DEFENSE_HITS như Guard/Evade cho M1.
+    if (sub === "parry") {
+      const kv = parseKeyValues(rest);
+      const enemyKeyRaw = (kv["key"] ?? "").trim();
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          let combatant, label;
+          if (enemyKeyRaw) {
+            if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
+            const ekey = normalizeEnemyKey(enemyKeyRaw);
+            combatant = encounter.enemies[ekey];
+            if (!combatant) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}".`);
+            label = `**${combatant.name}**`;
+          } else {
+            combatant = encounter.players[message.author.id];
+            if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
+            label = `<@${message.author.id}>`;
+          }
+          if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
+          const rawRoll = 1 + Math.floor(Math.random() * 20);
+          const penalty = getParryClashPenalty(combatant);
+          const roll = rawRoll - penalty;
+          combatant.parryRolls = combatant.parryRolls ?? [];
+          combatant.parryRolls.push(roll);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`🗡️ Parry! ${label} roll được **${rawRoll}**${penalty > 0 ? ` -${penalty} (chấn thương) = **${roll}**` : ""} (0 Stamina) — đang có ${combatant.parryRolls.length} lần parry chờ sẵn.`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── clash: so dice ĐẦU TIÊN của 2 skill (luôn lấy Dice đầu, theo luật) — ai cao
+    // hơn thắng. Thắng: +10 Sanity +2 Emotion Coin. Thua: -10 Sanity -1 Coin. Huề:
+    // +1 Coin mỗi bên, Sanity không đổi. Quyền clash theo thứ tự turn ("người đi
+    // trước clash được người đi sau, không ngược lại — và có thể clash HỘ cho người
+    // khác") — check qua encounter.turnOrder nếu ĐÃ roll (xem -encounter rollspeed);
+    // nếu chưa roll thì bỏ qua check này (không ép phải roll Speed trước mới clash
+    // được — Speed là tính năng riêng, không phải điều kiện bắt buộc của Clash).
+    // ── shinmang: hi sinh 25 Sanity/turn (chặn nếu Sanity hiện tại ≤ -10) để nhận
+    // Shin (-0.2x Res bản thân) + Mang (+10%/+10% mỗi vòng Dmg M1+skill trong turn,
+    // True Dmg). CHỈ player có sở hữu Shin mới dùng được — kiểm qua unlockedPerks
+    // có "Shin" (đặt tên khác Skill Tree thường để rõ đây là quyền sở hữu, không
+    // phải perk tốn point — GM tự thêm qua -unlockskilltree nếu player sở hữu Shin).
+    if (sub === "shinmang" || sub === "shin") {
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const player = encounter.players[message.author.id];
+          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+          if (!hasPerk(player, "Shin")) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin` nếu thực sự có sở hữu).");
+          if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
+          if (player.currentSanity <= -10) throw new Error(`Không thể hi sinh để dùng Shin/Mang khi Sanity hiện tại ≤ -10 (hiện tại: ${player.currentSanity}).`);
+          player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 25);
+          player.shinMangActive = true;
+          player.shinMangUsedThisTurn = true;
+          player.shinMangRounds = (player.shinMangRounds ?? 0) + 1;
+          checkStaggerPanic(player);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(
+            `🌑 **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân. ` +
+            `Mang: +${player.shinMangRounds * 10}% Dmg M1+skill turn này (vòng ${player.shinMangRounds}), gây True Dmg.`
+          );
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── manifestego: kích hoạt Manifest E.G.O — cần Emotion Level ≥1 đang active
+    // (Duration = Level×3 turn — Lv1=3/Lv2=6 xác nhận trực tiếp, Lv3+ suy theo cùng
+    // quy luật). -30 Sanity lúc kích hoạt. CD 5 turn SAU KHI hết hiệu lực (không
+    // phải sau khi DÙNG — nếu vẫn đang active thì dùng lại = reset Duration, không
+    // vào CD). Comeback Time (perk): lần ĐẦU TIÊN trong trận → +25% Max HP.
+    if (sub === "manifestego") {
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const player = encounter.players[message.author.id];
+          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+          if ((player.emotionLevel ?? 0) < 1) throw new Error("Cần đang ở Emotion Level ≥1 mới kích hoạt được Manifest E.G.O.");
+          if (!player.manifestedEGO && (player.manifestedEGOCooldownLeft ?? 0) > 0) {
+            throw new Error(`Đang trong CD Manifest E.G.O — còn ${player.manifestedEGOCooldownLeft} turn.`);
+          }
+          player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 30);
+          player.manifestedEGO = true;
+          player.manifestedEGOTurnsLeft = player.emotionLevel * 3;
+          player.manifestedEGOCooldownLeft = 0;
+          checkStaggerPanic(player);
+          let healNote = "";
+          if (!player.firstManifestEGOUsed && hasPerk(player, "Comeback Time")) {
+            const healAmt = Math.round(player.maxHp * 0.25 * 100) / 100;
+            player.currentHp = Math.min(player.maxHp, player.currentHp + healAmt);
+            healNote = ` 🩹+${healAmt} HP (Comeback Time — lần đầu Manifest E.G.O)`;
+          }
+          player.firstManifestEGOUsed = true;
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(
+            `😈 **Manifest E.G.O!** -30 Sanity (còn ${player.currentSanity}) → Duration ${player.manifestedEGOTurnsLeft} turn ` +
+            `(theo Emotion Level ${player.emotionLevel}) — +3 Dice Up, +30% Dmg M1+skill.${healNote}`
+          );
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "clash") {
+      const kv = parseKeyValues(rest);
+      const targetRaw = (kv["target"] ?? "").trim();
+      const mySkillRaw = (kv["skill"] ?? "").trim();
+      const oppSkillRaw = (kv["oppskill"] ?? "").trim();
+      const forRaw = (kv["for"] ?? "").trim(); // clash HỘ cho ai — mặc định là chính người gõ lệnh
+      if (!targetRaw || !mySkillRaw || !oppSkillRaw) {
+        message.reply(
+          "⚠️ Cú pháp: `-encounter clash target: <key/userId đối thủ> skill: <skill của bên mình> oppskill: <skill của đối thủ>`\n" +
+          "> Tùy chọn `for: <key/userId>` nếu clash HỘ cho người khác (mặc định là chính bạn).\n" +
+          "> Bot tự roll CẢ 2 skill thật, so Dice đầu tiên — ai cao hơn thắng."
+        );
+        return;
+      }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+
+          const forId = forRaw ? (forRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(forRaw)] ? normalizeEnemyKey(forRaw) : forRaw.replace(/[<@!>]/g, ""))) : message.author.id;
+          const forResolved = resolveCombatant(encounter, forId);
+          if (!forResolved) throw new Error(`Không tìm thấy "${forRaw || "bạn"}" trong encounter.`);
+          const targetId = encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, "");
+          const targetResolved = resolveCombatant(encounter, targetId);
+          if (!targetResolved) throw new Error(`Không tìm thấy đối thủ "${targetRaw}" trong encounter.`);
+
+          // Quyền ưu tiên theo thứ tự turn — CHỈ check nếu đã rollspeed (turnOrder tồn tại).
+          if ((encounter.turnOrder ?? []).length > 0) {
+            const forPos = encounter.turnOrder.findIndex(e => e.id === forId);
+            const targetPos = encounter.turnOrder.findIndex(e => e.id === targetId);
+            if (forPos !== -1 && targetPos !== -1 && forPos > targetPos) {
+              throw new Error(`${forResolved.label} đi SAU ${targetResolved.label} trong thứ tự turn — không thể clash người đi trước mình.`);
+            }
+          }
+
+          const mySkill = findSkill(mySkillRaw);
+          if (!mySkill) throw new Error(`Không tìm thấy skill "${mySkillRaw}".`);
+          if (mySkill.promptArg) throw new Error(`Skill "${mySkill.name}" cần input đặc biệt — chưa hỗ trợ clash trực tiếp qua lệnh này.`);
+          const oppSkill = findSkill(oppSkillRaw);
+          if (!oppSkill) throw new Error(`Không tìm thấy skill "${oppSkillRaw}".`);
+          if (oppSkill.promptArg) throw new Error(`Skill "${oppSkill.name}" cần input đặc biệt — chưa hỗ trợ clash trực tiếp qua lệnh này.`);
+
+          const myRoll = buildSkillRollResult({ skill: mySkill });
+          if (myRoll.error) throw new Error(myRoll.error);
+          const oppRoll = buildSkillRollResult({ skill: oppSkill });
+          if (oppRoll.error) throw new Error(oppRoll.error);
+          if (myRoll.firstDiceValue === null || oppRoll.firstDiceValue === null) {
+            throw new Error("Chỉ skill có Dice mới clash được — 1 trong 2 skill không có Dice nào.");
+          }
+          // Chấn thương (Gãy tay/Gãy chân/Mất Chân) trừ thẳng vào Dice dùng để clash.
+          const myPenalty = getParryClashPenalty(forResolved.combatant);
+          const oppPenalty = getParryClashPenalty(targetResolved.combatant);
+          const myEffectiveDice = myRoll.firstDiceValue - myPenalty;
+          const oppEffectiveDice = oppRoll.firstDiceValue - oppPenalty;
+
+          let resultText;
+          if (myEffectiveDice > oppEffectiveDice) {
+            forResolved.combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, forResolved.combatant.currentSanity + 10);
+            applyEmotionDelta(forResolved.combatant, 2);
+            targetResolved.combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, targetResolved.combatant.currentSanity - 10);
+            applyEmotionDelta(targetResolved.combatant, -1);
+            checkStaggerPanic(forResolved.combatant); checkStaggerPanic(targetResolved.combatant);
+            resultText = `🏆 ${forResolved.label} THẮNG Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — +10 Sanity +2 Coin cho ${forResolved.label}, -10 Sanity -1 Coin cho ${targetResolved.label}.`;
+          } else if (myEffectiveDice < oppEffectiveDice) {
+            targetResolved.combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, targetResolved.combatant.currentSanity + 10);
+            applyEmotionDelta(targetResolved.combatant, 2);
+            forResolved.combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, forResolved.combatant.currentSanity - 10);
+            applyEmotionDelta(forResolved.combatant, -1);
+            checkStaggerPanic(forResolved.combatant); checkStaggerPanic(targetResolved.combatant);
+            resultText = `💔 ${forResolved.label} THUA Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — +10 Sanity +2 Coin cho ${targetResolved.label}, -10 Sanity -1 Coin cho ${forResolved.label}.`;
+          } else {
+            applyEmotionDelta(forResolved.combatant, 1);
+            applyEmotionDelta(targetResolved.combatant, 1);
+            resultText = `⚖️ HUỀ Clash! (${myEffectiveDice} vs ${oppEffectiveDice}) — mỗi bên +1 Coin, Sanity không đổi.`;
+          }
+          await saveEncounter(message.channel.id, encounter);
+          await message.reply({ embeds: [myRoll.embed, oppRoll.embed, { title: "⚔️ Kết quả Clash", description: resultText, color: 0x9b59b6 }] });
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
     message.reply(
       "⚠️ Lệnh không hợp lệ. Dùng:\n" +
       "> `-encounter start name: <tên trận>` (admin/GM)\n" +
@@ -4545,6 +5119,14 @@ client.on("messageCreate", async (message) => {
       "> `-encounter buff/debuff target: <key/me> text: <mô tả>` · `-encounter unbuff/undebuff target: <key/me> index: <số>`\n" +
       "> `-encounter endturn` (GM) — hồi Stamina, đếm ngược Stagger/Panic/cooldown\n" +
       "> `-encounter status` · `-encounter end` (GM)\n" +
+      "> `-encounter rollspeed` (GM) — roll Speed quyết định thứ tự turn\n" +
+      "> `-encounter guard/evade` — phòng thủ tự do (Guard -10 Sta giảm 90% dmg, Evade -20 Sta né 100%), dùng bao nhiêu lần cũng được\n" +
+      "> `-encounter parry` — 0 Sta, roll d20, ăn/thua so với roll đối phương lúc confirm\n" +
+      "> `-encounter clash target: <id> skill: <tên> oppskill: <tên>` — so Dice đầu, thắng/thua/huề ảnh hưởng Sanity+Emotion Coin\n" +
+      "> `-encounter shinmang` — hi sinh 25 Sanity/turn (cần sở hữu Shin) — -0,2x Res bản thân, +Dmg M1+skill, True Dmg\n" +
+      "> `-encounter manifestego` — -30 Sanity (cần Emotion Level ≥1) — Duration theo Level, +30% Dmg M1+skill\n" +
+      "> `-encounter healinjury target: <key/id> index: <số>` (GM) — chữa khỏi 1 chấn thương\n" +
+      "> `-encounter haste/bind target: <key/me> amount: <số>` — chỉnh tay (+1 Haste = +1 Speed, +1 Bind = -1 Speed)\n" +
       "> `-encounter followup target: <key>` — Follow-Up/Pounce (cần ≥20 Sta tiêu turn này, 1 lần/turn)\n" +
       "> `-encounter overcharge` — Overcharged Vessel (tiêu hết Charge ≥10 đổi Dice Up/Dmg 3 turn)\n" +
       "> Skill Tree (Ein Sof/Light Body/...) dùng lệnh riêng `-unlockskilltree @user <perk>` (admin, lưu vĩnh viễn trên profile)"
@@ -4887,9 +5469,66 @@ client.on("interactionCreate", async (interaction) => {
               const target = targetResolved.combatant;
               const hadRuptureBeforeHit = target.rupture > 0; // Defenseless cần biết TRƯỚC khi finalRupture ghi đè
               const bleedBeforeHit = target.bleed; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
-              let finalDmg = t.preview.totalDmg * (1 - (t.defReductionPct ?? 0) / 100);
+              let finalDmg = t.preview.totalDmg;
+              let defenseNote = "";
+              let evadedCompletely = false;
+              // Guard/Evade/Parry — TIÊU THỤ charge SỐNG (đọc trực tiếp target lúc xử
+              // lý action này trong batch, KHÔNG dùng giá trị tính sẵn lúc declare).
+              // QUAN TRỌNG: 1 charge chặn được SỐ HIT theo vũ khí BÊN TẤN CÔNG — CHỈ
+              // áp dụng tỉ lệ này cho đòn ĐÁNH THƯỜNG (M1) — gồm CẢ player tự attack
+              // (kind "attack") VÀ GM dùng enemyattack KHÔNG kèm skill: (coi là M1 của
+              // enemy, vì enemyattack không tự phân biệt M1 hay skill — chỉ biết chắc
+              // là skill khi có verify.skillKey). Còn lại (Page/skill) coi 1 charge =
+              // chặn cả action. Thứ tự ưu tiên: Evade (an toàn nhất) → Parry (free
+              // nhưng rủi ro) → Guard (giảm 90%, không rủi ro).
+              const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+              const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
+              const hitsPerCharge = isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : null; // null = chặn cả action, không chia theo hit
+              const hitCount = Math.max(1, t.preview.dmgValues?.length ?? 1);
+              // computeBlock — trả { chargesUsed, fraction } cho 1 lượt thử block.
+              // hitsPerCharge=null (Page/skill) → 1 charge LUÔN chặn 100% action.
+              function computeBlock(chargesAvailable) {
+                if (hitsPerCharge === null) {
+                  return chargesAvailable >= 1 ? { chargesUsed: 1, fraction: 1 } : { chargesUsed: 0, fraction: 0 };
+                }
+                const chargesNeeded = Math.ceil(hitCount / hitsPerCharge);
+                const chargesUsed = Math.min(chargesAvailable, chargesNeeded);
+                const fraction = chargesUsed > 0 ? Math.min(1, (chargesUsed * hitsPerCharge) / hitCount) : 0;
+                return { chargesUsed, fraction };
+              }
+              if ((target.evadeCharges ?? 0) > 0) {
+                const { chargesUsed, fraction } = computeBlock(target.evadeCharges);
+                target.evadeCharges -= chargesUsed;
+                finalDmg *= (1 - fraction);
+                if (fraction >= 1) evadedCompletely = true;
+                defenseNote = ` 💨**Evade** (chặn ${Math.round(fraction * 100)}% — dùng ${chargesUsed} charge)`;
+              } else if ((target.parryRolls ?? []).length > 0) {
+                const defRoll = target.parryRolls.shift();
+                const atkRoll = 1 + Math.floor(Math.random() * 20);
+                if (defRoll >= atkRoll) {
+                  const { fraction } = computeBlock(1);
+                  finalDmg *= (1 - fraction);
+                  if (fraction >= 1) evadedCompletely = true;
+                  defenseNote = ` 🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll}, chặn ${Math.round(fraction * 100)}%)`;
+                } else {
+                  // Gãy tay (chấn thương): mất GẤP ĐÔI Stamina khi parry hụt (80 thay vì 40).
+                  const failCost = (target.injuries ?? []).includes("Gãy tay") ? 80 : 40;
+                  target.currentStamina = Math.max(0, target.currentStamina - failCost);
+                  defenseNote = ` 🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta, ăn full dmg)`;
+                }
+              } else if ((target.guardCharges ?? 0) > 0) {
+                const { chargesUsed, fraction } = computeBlock(target.guardCharges);
+                target.guardCharges -= chargesUsed;
+                finalDmg *= (1 - fraction * 0.9);
+                defenseNote = ` 🛡️**Guard** (giảm 90% trên ${Math.round(fraction * 100)}% đòn — dùng ${chargesUsed} charge)`;
+              }
+              // Smoldering Resolve (perk passive, KHÔNG tiêu thụ) áp SAU Guard/Evade/
+              // Parry — giảm thêm % trên phần dmg CÒN LẠI sau khi đã né/đỡ.
+              finalDmg *= (1 - (t.defReductionPct ?? 0) / 100);
               let killNote = "";
-              if (t.instantKill) { finalDmg = target.currentHp; killNote = " ☠️KẾT LIỄU"; }
+              // Evade né được = né LUÔN finisher (Claim Their Heart) — đã tránh đòn
+              // hoàn toàn thì không có lý do vẫn bị "kết liễu" bởi chính đòn đó.
+              if (t.instantKill && !evadedCompletely) { finalDmg = target.currentHp; killNote = " ☠️KẾT LIỄU"; }
               let bleedOverride = null; // Break the Dams — giữ bleed KHÔNG bị giảm turn này nếu trigger
               let perkNote = "";
               // Craving Synergy/Thirst/Break the Dams — CHỈ đòn đánh ĐẦU TIÊN của
@@ -4920,7 +5559,24 @@ client.on("interactionCreate", async (interaction) => {
                 }
                 if (usedThisHit) attacker.combatant.bleedFirstHitUsedThisTurn = true;
               }
+              const wasAliveBefore = target.currentHp > 0;
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              // Death Penalty — CHỈ player (enemy không có profile để trừ). Detect
+              // đúng lúc HP chuyển từ >0 sang ≤0 (không trừ lại nếu ĐÃ chết từ trước
+              // mà ăn thêm dmg). Mất 50% Ahn + 50% EXP của MỐC HIỆN TẠI (không tụt
+              // grade — vì chỉ trừ tối đa 1 nửa expInCurrentGrade, không bao giờ đủ
+              // để rớt dưới mốc grade đang đứng).
+              let deathNote = "";
+              if (wasAliveBefore && target.currentHp <= 0 && targetResolved.type === "player") {
+                const { data: profileData, slot } = await getPlayerDataWithSlot(t.targetId);
+                const { expInCurrentGrade } = calcGrade(profileData.exp ?? 0);
+                const ahnLost = Math.floor((profileData.ahn ?? 0) * 0.5);
+                const expLost = Math.floor(expInCurrentGrade * 0.5);
+                profileData.ahn = Math.max(0, (profileData.ahn ?? 0) - ahnLost);
+                profileData.exp = Math.max(0, (profileData.exp ?? 0) - expLost);
+                await savePlayerData(t.targetId, profileData, slot);
+                deathNote = ` ☠️**TỬ VONG** — mất ${ahnLost} Ahn + ${expLost} EXP (profile, không tụt grade)`;
+              }
               // 5 status "trên người địch" — áp vào TARGET (bên bị tấn công).
               target.sinking = t.preview.finalSinking;
               target.rupture = t.preview.finalRupture;
@@ -4951,7 +5607,11 @@ client.on("interactionCreate", async (interaction) => {
                 target.charge = Math.min(CHARGE_MAX, target.charge + 1);
               }
               checkStaggerPanic(target);
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${perkNote}`);
+              // Chấn thương — nhận dmg >30% Max HP trong đòn NÀY → roll 10% nặng/40% nhẹ.
+              // Bỏ qua nếu đã chết (kill/death) — không cần lo chấn thương khi đã ra trận.
+              const injuryGained = (killNote || deathNote) ? null : rollInjury(target, finalDmg);
+              const injuryNote = injuryGained ? ` 🩻**${injuryGained}**` : "";
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -4976,6 +5636,21 @@ client.on("interactionCreate", async (interaction) => {
                 attacker.combatant.poise = firstPreview.finalPoiseStacks;
               }
               attacker.combatant.charge = firstPreview.finalCharge;
+            }
+            // Bleed — "1 bleed count trên người địch sẽ gây dmg bằng 1/4 count mỗi
+            // khi kẻ địch hành động tấn công trong turn" — áp dụng cho CHÍNH người
+            // ĐANG TẤN CÔNG (attacker) ở action này, nếu HỌ đang mang Bleed — không
+            // liên quan gì tới target. Áp dụng cho MỌI loại tấn công (attack/hit/
+            // enemyattack), KHÔNG riêng M1, vì luật chỉ nói "hành động tấn công" nói
+            // chung. Count KHÔNG đổi ở đây (chỉ giảm nửa lúc end turn thật).
+            let bleedSelfNote = "";
+            if ((attacker.combatant.bleed ?? 0) > 0) {
+              const bleedSelfDmg = Math.floor(attacker.combatant.bleed / 4);
+              if (bleedSelfDmg > 0) {
+                attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - bleedSelfDmg);
+                checkStaggerPanic(attacker.combatant);
+                bleedSelfNote = ` [🩸Bleed tự gây ${bleedSelfDmg} dmg lên ${attacker.label}]`;
+              }
             }
             // Battle Ignition/Overbearing/Blessed Sparks: đếm M1 (chỉ attack mới có
             // p.isM1=true, hit/Page không tính) — tăng cả "turn này" (cho Battle
@@ -5012,7 +5687,7 @@ client.on("interactionCreate", async (interaction) => {
               if (levelNotes.length > 0) verifyNote += " " + levelNotes.join(" ");
             }
 
-            resultLines.push(`${attacker.label}${staminaNote}${verifyNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
+            resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
           }
         } else {
           for (const p of encounter.pendingActions) {
