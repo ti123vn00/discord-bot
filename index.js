@@ -658,6 +658,8 @@ function migratePlayerData(data) {
     data.books = data.books ?? {};
     data.items = data.items ?? {};
     data.unlockedSkillTree = data.unlockedSkillTree ?? [];
+    data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
+    data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
     return data;
   }
   const inv = data.inventory ?? {};
@@ -674,6 +676,8 @@ function migratePlayerData(data) {
   data.books = books;
   data.items = items;
   data.unlockedSkillTree = data.unlockedSkillTree ?? [];
+  data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
+  data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
   delete data.inventory;
   return data;
 }
@@ -772,7 +776,7 @@ async function getPlayerData(userId) {
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
       const raw = await withTimeout(redis.get(key));
-      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [] };
+      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null] };
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       return migratePlayerData(data);
     } catch (err) {
@@ -797,7 +801,7 @@ async function getPlayerDataWithSlot(userId) {
       const raw = await withTimeout(redis.get(key));
       const data = raw
         ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
-        : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [] };
+        : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null] };
       return { data, slot };
     } catch (err) {
       lastErr = err;
@@ -969,7 +973,7 @@ async function processDailyClaimForUser(userId) {
     const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
     let playerData = playerRaw
       ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
-      : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [] };
+      : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null] };
     playerData = migratePlayerData(playerData);
 
     const today = getVNDateString();
@@ -2322,11 +2326,227 @@ function formatCombatantBlock(combatant, label) {
 /** Action panel — 2 nút cho player bấm thay vì gõ lệnh text (Attack/Hit cần nhập
  *  công thức dmg + target nên mở Modal). Đã bỏ Guard/Evade/Parry (xem comment đầu
  *  file ENCOUNTER SYSTEM — không khớp luật thật). */
-function buildEncounterActionPanel(channelId) {
+/**
+ * buildEncounterActionPanel — dropdown ĐỘNG (StringSelectMenu, không còn 2 nút cố
+ * định) thay cho action panel cũ — chỉ hiện hành động THỰC SỰ dùng được với
+ * combatant CỤ THỂ này (5 Page/E.G.O Page đã equip trên profile, Shin/Mang nếu sở
+ * hữu Shin, Manifest E.G.O nếu Emotion Level≥1, Overcharge nếu đủ Charge+perk,
+ * Follow-Up/Pounce nếu đủ điều kiện turn này) — Attack/Guard/Evade/Parry luôn hiện
+ * vì không cần điều kiện gì. Trả về [] nếu combatant null (người gọi không phải
+ * player trong encounter này — VD GM xem status, không có gì để họ "hành động").
+ */
+/**
+ * performGuardEvade — logic CHUNG cho -encounter guard/evade VÀ dropdown hành động
+ * (xem encmenu handler). Trả về message kết quả, throw Error nếu thất bại.
+ */
+async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "") {
+  let result;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    let combatant, label;
+    if (enemyKeyRaw) {
+      if (!isAdmin && userId !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
+      const ekey = normalizeEnemyKey(enemyKeyRaw);
+      combatant = encounter.enemies[ekey];
+      if (!combatant) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}".`);
+      label = `**${combatant.name}**`;
+    } else {
+      combatant = encounter.players[userId];
+      if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
+      label = `<@${userId}>`;
+    }
+    if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
+    if (type === "evade" && (combatant.injuries ?? []).includes("Mất Chân")) {
+      throw new Error(`${label} đã Mất Chân — không thể Evade được nữa.`);
+    }
+    let cost = type === "guard" ? 10 : 20;
+    if (type === "evade" && (combatant.injuries ?? []).includes("Gãy chân")) cost *= 2;
+    if (combatant.currentStamina < cost) throw new Error(`Không đủ Stamina — cần ${cost}, còn ${combatant.currentStamina}.`);
+    combatant.currentStamina -= cost;
+    combatant.staminaUsedThisTurn = (combatant.staminaUsedThisTurn ?? 0) + cost;
+    const chargeField = type === "guard" ? "guardCharges" : "evadeCharges";
+    combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
+    checkStaggerPanic(combatant);
+    await saveEncounter(channelId, encounter);
+    result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
+  });
+  return result;
+}
+
+/** performParry — logic CHUNG cho -encounter parry VÀ dropdown hành động. */
+async function performParry(channelId, userId, isAdmin, enemyKeyRaw = "") {
+  let result;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    let combatant, label;
+    if (enemyKeyRaw) {
+      if (!isAdmin && userId !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
+      const ekey = normalizeEnemyKey(enemyKeyRaw);
+      combatant = encounter.enemies[ekey];
+      if (!combatant) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}".`);
+      label = `**${combatant.name}**`;
+    } else {
+      combatant = encounter.players[userId];
+      if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
+      label = `<@${userId}>`;
+    }
+    if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
+    const rawRoll = 1 + Math.floor(Math.random() * 20);
+    const penalty = getParryClashPenalty(combatant);
+    const roll = rawRoll - penalty;
+    combatant.parryRolls = combatant.parryRolls ?? [];
+    combatant.parryRolls.push(roll);
+    await saveEncounter(channelId, encounter);
+    result = `🗡️ Parry! ${label} roll được **${rawRoll}**${penalty > 0 ? ` -${penalty} (chấn thương) = **${roll}**` : ""} (0 Stamina) — đang có ${combatant.parryRolls.length} lần parry chờ sẵn.`;
+  });
+  return result;
+}
+
+/** performShinMang — logic CHUNG cho -encounter shinmang VÀ dropdown hành động. */
+async function performShinMang(channelId, userId) {
+  let result;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    const player = encounter.players[userId];
+    if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+    if (!hasPerk(player, "Shin")) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin` nếu thực sự có sở hữu).");
+    if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
+    if (player.currentSanity <= -10) throw new Error(`Không thể hi sinh để dùng Shin/Mang khi Sanity hiện tại ≤ -10 (hiện tại: ${player.currentSanity}).`);
+    player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 25);
+    player.shinMangActive = true;
+    player.shinMangUsedThisTurn = true;
+    player.shinMangRounds = (player.shinMangRounds ?? 0) + 1;
+    checkStaggerPanic(player);
+    await saveEncounter(channelId, encounter);
+    result =
+      `🌑 **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân. ` +
+      `Mang: +${player.shinMangRounds * 10}% Dmg M1+skill turn này (vòng ${player.shinMangRounds}), gây True Dmg.`;
+  });
+  return result;
+}
+
+/** performManifestEgo — logic CHUNG cho -encounter manifestego VÀ dropdown hành động. */
+async function performManifestEgo(channelId, userId) {
+  let result;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    const player = encounter.players[userId];
+    if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+    if ((player.emotionLevel ?? 0) < 1) throw new Error("Cần đang ở Emotion Level ≥1 mới kích hoạt được Manifest E.G.O.");
+    if (!player.manifestedEGO && (player.manifestedEGOCooldownLeft ?? 0) > 0) {
+      throw new Error(`Đang trong CD Manifest E.G.O — còn ${player.manifestedEGOCooldownLeft} turn.`);
+    }
+    player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 30);
+    player.manifestedEGO = true;
+    player.manifestedEGOTurnsLeft = player.emotionLevel * 3;
+    player.manifestedEGOCooldownLeft = 0;
+    checkStaggerPanic(player);
+    let healNote = "";
+    if (!player.firstManifestEGOUsed && hasPerk(player, "Comeback Time")) {
+      const healAmt = Math.round(player.maxHp * 0.25 * 100) / 100;
+      player.currentHp = Math.min(player.maxHp, player.currentHp + healAmt);
+      healNote = ` 🩹+${healAmt} HP (Comeback Time — lần đầu Manifest E.G.O)`;
+    }
+    player.firstManifestEGOUsed = true;
+    await saveEncounter(channelId, encounter);
+    result =
+      `😈 **Manifest E.G.O!** -30 Sanity (còn ${player.currentSanity}) → Duration ${player.manifestedEGOTurnsLeft} turn ` +
+      `(theo Emotion Level ${player.emotionLevel}) — +3 Dice Up, +30% Dmg M1+skill.${healNote}`;
+  });
+  return result;
+}
+
+/** performOvercharge — logic CHUNG cho -encounter overcharge VÀ dropdown hành động. */
+async function performOvercharge(channelId, userId) {
+  let result;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    const player = encounter.players[userId];
+    if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+    if (!hasPerk(player, "Overcharged Vessel")) throw new Error("Bạn chưa mở khóa perk Overcharged Vessel.");
+    if (player.charge < 10) throw new Error(`Cần ≥10 Charge để kích hoạt (hiện tại: ${player.charge}).`);
+    const tiers = Math.floor(player.charge / 10);
+    player.overchargedDiceUpBonus = tiers;
+    player.overchargedDmgBonusPct = tiers * 5;
+    player.overchargedTurnsLeft = 3;
+    player.charge = 0;
+    await saveEncounter(channelId, encounter);
+    result = `⚡ **Overcharged!** Tiêu ${tiers * 10} Charge → +${tiers} Dice Up, +${tiers * 5}% Dmg trong 3 turn.`;
+  });
+  return result;
+}
+
+/** performFollowUp — logic CHUNG cho -encounter followup VÀ dropdown hành động.
+ *  Trả về { followupEmbed, hitEmbed } — caller tự gửi 2 embed này. */
+async function performFollowUp(channelId, userId, userMention, targetStr) {
+  const encounter = await getEncounter(channelId);
+  if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+  const player = encounter.players[userId];
+  if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+  const hasFollowUp = hasPerk(player, "Follow-Up");
+  const hasPounce = hasPerk(player, "Pounce");
+  if (!hasFollowUp && !hasPounce) throw new Error("Bạn chưa mở khóa perk Follow-Up hoặc Pounce.");
+  if (player.staminaUsedThisTurn < 20) throw new Error(`Cần tiêu ≥20 Stamina qua đánh thường trong turn này trước (hiện tại: ${player.staminaUsedThisTurn}).`);
+  if (player.followUpUsedThisTurn) throw new Error("Đã dùng Follow-Up/Pounce trong turn này rồi — chỉ 1 lần/turn.");
+  const dmgStr = hasFollowUp ? `${r(10, 14)}B` : `${r(8, 30)}B`;
+  const { embed: hitEmbed } = await doPlayerHit(channelId, userId, userMention, dmgStr, targetStr, {});
+  // Đánh dấu đã dùng NGAY lúc declare (không đợi confirm) — chấp nhận sai số nhỏ
+  // này (nếu GM reject thì vẫn coi như đã dùng) để tránh phải thêm field riêng
+  // theo dõi pending cho 1 trường hợp hiếm.
+  await withLock(encounterKey(channelId), async () => {
+    const enc2 = await getEncounter(channelId);
+    if (enc2?.players[userId]) {
+      enc2.players[userId].followUpUsedThisTurn = true;
+      await saveEncounter(channelId, enc2);
+    }
+  });
+  const followupEmbed = {
+    title: hasFollowUp ? "⚡ Follow-Up!" : "🐾 Pounce!",
+    description: `Tung đòn theo sau: \`${dmgStr}\`${hasFollowUp ? " — kẻ địch rơi vào **[Airborne]** (tự narrate, không phải status hệ thống)" : ""}`,
+    color: 0xf39c12,
+  };
+  return { followupEmbed, hitEmbed };
+}
+
+function buildEncounterActionPanel(channelId, combatant, playerId) {
+  if (!combatant || !playerId) return [];
+  const options = [
+    new StringSelectMenuOptionBuilder().setLabel("⚔️ Đánh thường (M1)").setValue("attack"),
+  ];
+  for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
+    if (pageName) options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${pageName}`).setValue(`hit:${pageName}`));
+  }
+  for (const pageName of combatant.unlockedEgoPagesSnapshot ?? []) {
+    if (pageName) options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
+  }
+  options.push(
+    new StringSelectMenuOptionBuilder().setLabel("🛡️ Guard (-10 Sta, giảm 90% dmg)").setValue("guard"),
+    new StringSelectMenuOptionBuilder().setLabel("💨 Evade (-20 Sta, né 100%)").setValue("evade"),
+    new StringSelectMenuOptionBuilder().setLabel("🗡️ Parry (0 Sta, roll d20)").setValue("parry"),
+  );
+  if (hasPerk(combatant, "Shin")) {
+    options.push(new StringSelectMenuOptionBuilder().setLabel("🌑 Shin/Mang (-25 Sanity)").setValue("shinmang"));
+  }
+  if ((combatant.emotionLevel ?? 0) >= 1) {
+    options.push(new StringSelectMenuOptionBuilder().setLabel("😈 Manifest E.G.O (-30 Sanity)").setValue("manifestego"));
+  }
+  if (hasPerk(combatant, "Overcharged Vessel") && combatant.charge >= 10) {
+    options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Overcharged Vessel (tiêu ${combatant.charge} Charge)`).setValue("overcharge"));
+  }
+  if ((hasPerk(combatant, "Follow-Up") || hasPerk(combatant, "Pounce")) && combatant.staminaUsedThisTurn >= 20 && !combatant.followUpUsedThisTurn) {
+    options.push(new StringSelectMenuOptionBuilder().setLabel("⚡ Follow-Up/Pounce").setValue("followup"));
+  }
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`encact:${channelId}:attack`).setLabel("⚔️ Đánh thường").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`encact:${channelId}:hit`).setLabel("📖 Dùng Page").setStyle(ButtonStyle.Primary),
+      new StringSelectMenuBuilder()
+        .setCustomId(`encmenu:${channelId}:${playerId}`)
+        .setPlaceholder("Chọn hành động...")
+        .addOptions(...options.slice(0, 25)), // Discord cap 25 — slice phòng hờ nếu equip đủ 10 page + nhiều buff cùng lúc
     ),
   ];
 }
@@ -2972,6 +3192,14 @@ function parseBatchEntries(raw, findFn, entityLabel) {
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
 const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking } = require("./skills");
+
+/** isEgoSkill — check skill.tags có chứa "EGO"/"E.G.O" không (case-insensitive,
+ *  bỏ qua dấu chấm/khoảng trắng) — dùng để phân biệt Page thường vs E.G.O Page lúc
+ *  equip (5 slot riêng, không chung với 5 Page thường — đúng luật "E.G.O Page sẽ
+ *  không tính slot chung với 5 Page thường"). */
+function isEgoSkill(skill) {
+  return /e\.?g\.?o/i.test((skill.tags ?? "").replace(/<:[^>]+>/g, ""));
+}
 
 
 // ─── PRESCRIPT TABLE ──────────────────────────────────────────────────────────
@@ -4011,6 +4239,84 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // ── equippage/unequippage/equipegopage/unequipegopage ──────────────────────
+  // Tự phục vụ (player tự quản lý loadout của mình, KHÔNG admin-gated — khác
+  // unlockskilltree vì đây là lựa chọn cá nhân, không phải tài nguyên GM cấp). 5
+  // slot Page thường + 5 slot E.G.O Page RIÊNG (đúng luật "E.G.O Page không tính
+  // slot chung với 5 Page thường"). Lưu trên PROFILE (vĩnh viễn, theo slot profile
+  // đang active) — -encounter join sẽ tự lấy danh sách này để hiện trong dropdown
+  // hành động (xem phần dropdown động).
+  if (message.content.startsWith("-equippage") || message.content.startsWith("-equipegopage")) {
+    const isEgo = message.content.startsWith("-equipegopage");
+    const rawInput = message.content.replace(isEgo ? "-equipegopage" : "-equippage", "").trim();
+    const m = rawInput.match(/^([1-5])\s+(.+)$/);
+    if (!m) {
+      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "equipegopage" : "equippage"} <slot 1-5> <tên skill>\`\n> VD: \`-${isEgo ? "equipegopage" : "equippage"} 1 sky kick\``);
+      return;
+    }
+    const slotNum = parseInt(m[1], 10);
+    const skillNameRaw = m[2].trim();
+    try {
+      const skill = findSkill(skillNameRaw);
+      if (!skill) throw new Error(`Không tìm thấy skill "${skillNameRaw}".`);
+      const skillIsEgo = isEgoSkill(skill);
+      if (isEgo && !skillIsEgo) throw new Error(`"${skill.name}" không phải E.G.O Page — dùng \`-equippage\` thay vào đó.`);
+      if (!isEgo && skillIsEgo) throw new Error(`"${skill.name}" là E.G.O Page — dùng \`-equipegopage\` thay vào đó (5 slot riêng).`);
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
+      data[listKey] = data[listKey] ?? [null, null, null, null, null];
+      data[listKey][slotNum - 1] = skill.name;
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(`✅ Đã equip **${skill.name}** vào ${isEgo ? "E.G.O " : ""}slot #${slotNum}.`);
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-unequippage") || message.content.startsWith("-unequipegopage")) {
+    const isEgo = message.content.startsWith("-unequipegopage");
+    const rawInput = message.content.replace(isEgo ? "-unequipegopage" : "-unequippage", "").trim();
+    const slotNum = parseInt(rawInput, 10);
+    if (!Number.isFinite(slotNum) || slotNum < 1 || slotNum > 5) {
+      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "unequipegopage" : "unequippage"} <slot 1-5>\``);
+      return;
+    }
+    try {
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
+      data[listKey] = data[listKey] ?? [null, null, null, null, null];
+      const removed = data[listKey][slotNum - 1];
+      data[listKey][slotNum - 1] = null;
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(removed ? `✅ Đã gỡ **${removed}** khỏi ${isEgo ? "E.G.O " : ""}slot #${slotNum}.` : `⚠️ ${isEgo ? "E.G.O " : ""}Slot #${slotNum} đang trống.`);
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  // ── -pages: xem loadout hiện tại (5 Page + 5 E.G.O Page) ───────────────────
+  if (message.content.startsWith("-pages")) {
+    try {
+      const { data } = await getPlayerDataWithSlot(message.author.id);
+      const pages = data.equippedPages ?? [null, null, null, null, null];
+      const egoPages = data.equippedEgoPages ?? [null, null, null, null, null];
+      const fmt = (list) => list.map((p, i) => `**#${i + 1}** ${p ?? "*(trống)*"}`).join("\n");
+      message.reply({
+        embeds: [{
+          title: "📖 Loadout Page",
+          description: `**5 Page thường:**\n${fmt(pages)}\n\n**5 E.G.O Page:**\n${fmt(egoPages)}`,
+          color: 0x5865f2,
+          footer: { text: "-equippage <slot> <skill> · -equipegopage <slot> <skill> · -unequippage/-unequipegopage <slot>" },
+        }],
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
   // ── -use ──
   if (message.content.startsWith("-use")) {
     if (isOnCooldown(message.author.id, "use", 2000)) {
@@ -4475,6 +4781,12 @@ client.on("messageCreate", async (message) => {
           const profileData = await getPlayerData(message.author.id);
           const joined = encounter.players[message.author.id];
           joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
+          // Snapshot 5 Page + 5 E.G.O Page đã equip trên profile — dùng để build
+          // dropdown hành động (xem buildEncounterActionPanel) — CHỐT lúc join, y
+          // hệt nguyên tắc đang áp dụng cho unlockedPerks/HP/Stamina/... (đổi loadout
+          // giữa trận thì phải join lại để cập nhật).
+          joined.unlockedPagesSnapshot = (profileData.equippedPages ?? []).filter(Boolean);
+          joined.unlockedEgoPagesSnapshot = (profileData.equippedEgoPages ?? []).filter(Boolean);
           // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
           // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
           // refill Light/Poise/Sanity mỗi lần gõ lại join).
@@ -4489,7 +4801,7 @@ client.on("messageCreate", async (message) => {
             content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.name}** với ${hp} HP.` +
               (joined.unlockedPerks.length > 0 ? ` (Perk từ profile: ${joined.unlockedPerks.join(", ")})` : "") +
               (startNotes.length > 0 ? `\n> 🆙 ${startNotes.join(", ")}` : ""),
-            components: buildEncounterActionPanel(message.channel.id),
+            components: buildEncounterActionPanel(message.channel.id, joined, message.author.id),
           });
         });
       } catch (err) {
@@ -4547,7 +4859,7 @@ client.on("messageCreate", async (message) => {
     if (sub === "status") {
       const encounter = await getEncounter(message.channel.id);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào. Dùng `-encounter start` để tạo."); return; }
-      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id) });
+      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id, encounter.players[message.author.id], message.author.id) });
       return;
     }
 
@@ -4804,29 +5116,9 @@ client.on("messageCreate", async (message) => {
       const targetStr = kv["target"] ?? "";
       if (!targetStr.trim()) { message.reply("⚠️ Cú pháp: `-encounter followup target: <key/all>`"); return; }
       try {
-        const encounter = await getEncounter(message.channel.id);
-        if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-        const player = encounter.players[message.author.id];
-        if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-        const hasFollowUp = hasPerk(player, "Follow-Up");
-        const hasPounce = hasPerk(player, "Pounce");
-        if (!hasFollowUp && !hasPounce) throw new Error("Bạn chưa mở khóa perk Follow-Up hoặc Pounce.");
-        if (player.staminaUsedThisTurn < 20) throw new Error(`Cần tiêu ≥20 Stamina qua đánh thường trong turn này trước (hiện tại: ${player.staminaUsedThisTurn}).`);
-        if (player.followUpUsedThisTurn) throw new Error("Đã dùng Follow-Up/Pounce trong turn này rồi — chỉ 1 lần/turn.");
-        const dmgStr = hasFollowUp ? `${r(10, 14)}B` : `${r(8, 30)}B`;
-        const { embed } = await doPlayerHit(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {});
-        // Đánh dấu đã dùng NGAY lúc declare (không đợi confirm) — chấp nhận sai số
-        // nhỏ này (nếu GM reject thì vẫn coi như đã dùng) để tránh phải thêm field
-        // riêng theo dõi pending cho 1 trường hợp hiếm.
-        await withLock(encounterKey(message.channel.id), async () => {
-          const enc2 = await getEncounter(message.channel.id);
-          if (enc2?.players[message.author.id]) {
-            enc2.players[message.author.id].followUpUsedThisTurn = true;
-            await saveEncounter(message.channel.id, enc2);
-          }
-        });
-        await message.reply({ embeds: [{ title: hasFollowUp ? "⚡ Follow-Up!" : "🐾 Pounce!", description: `Tung đòn theo sau: \`${dmgStr}\`${hasFollowUp ? " — kẻ địch rơi vào **[Airborne]** (tự narrate, không phải status hệ thống)" : ""}`, color: 0xf39c12 }] });
-        await message.channel.send({ embeds: [embed] });
+        const { followupEmbed, hitEmbed } = await performFollowUp(message.channel.id, message.author.id, message.author.toString(), targetStr);
+        await message.reply({ embeds: [followupEmbed] });
+        await message.channel.send({ embeds: [hitEmbed] });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -4837,21 +5129,8 @@ client.on("messageCreate", async (message) => {
     // ≥10), mỗi 10 Charge tiêu = +1 Dice Up và +5% Dmg trong 3 turn.
     if (sub === "overcharge") {
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-          if (!hasPerk(player, "Overcharged Vessel")) throw new Error("Bạn chưa mở khóa perk Overcharged Vessel.");
-          if (player.charge < 10) throw new Error(`Cần ≥10 Charge để kích hoạt (hiện tại: ${player.charge}).`);
-          const tiers = Math.floor(player.charge / 10);
-          player.overchargedDiceUpBonus = tiers;
-          player.overchargedDmgBonusPct = tiers * 5;
-          player.overchargedTurnsLeft = 3;
-          player.charge = 0;
-          await saveEncounter(message.channel.id, encounter);
-          message.reply(`⚡ **Overcharged!** Tiêu ${tiers * 10} Charge → +${tiers} Dice Up, +${tiers * 5}% Dmg trong 3 turn.`);
-        });
+        const resultMsg = await performOvercharge(message.channel.id, message.author.id);
+        message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -4864,42 +5143,14 @@ client.on("messageCreate", async (message) => {
     // attack/hit — Stamina ở đây không cần GM duyệt vì không có số liệu dmg nào để
     // sai, chỉ là tự trừ tài nguyên bản thân), cộng 1 charge — charge bị TIÊU THỤ
     // lúc CONFIRM 1 đòn tấn công nhằm vào mình (xem comment ở encconfirmall handler).
-    // Có key: thì GM dùng hộ cho 1 enemy (hiếm khi cần nhưng để đối xứng).
+    // Có key: thì GM dùng hộ cho 1 enemy (hiếm khi cần nhưng để đối xứng). Logic THẬT
+    // nằm ở performGuardEvade (dùng chung với dropdown hành động — xem encmenu handler).
     if (sub === "guard" || sub === "evade") {
       const kv = parseKeyValues(rest);
       const enemyKeyRaw = (kv["key"] ?? "").trim();
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          let combatant, label;
-          if (enemyKeyRaw) {
-            if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
-            const ekey = normalizeEnemyKey(enemyKeyRaw);
-            combatant = encounter.enemies[ekey];
-            if (!combatant) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}".`);
-            label = `**${combatant.name}**`;
-          } else {
-            combatant = encounter.players[message.author.id];
-            if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
-            label = `<@${message.author.id}>`;
-          }
-          if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
-          // Chấn thương: Mất Chân chặn HẲN Evade. Gãy chân nhân đôi Stamina cần.
-          if (sub === "evade" && (combatant.injuries ?? []).includes("Mất Chân")) {
-            throw new Error(`${label} đã Mất Chân — không thể Evade được nữa.`);
-          }
-          let cost = sub === "guard" ? 10 : 20;
-          if (sub === "evade" && (combatant.injuries ?? []).includes("Gãy chân")) cost *= 2;
-          if (combatant.currentStamina < cost) throw new Error(`Không đủ Stamina — cần ${cost}, còn ${combatant.currentStamina}.`);
-          combatant.currentStamina -= cost;
-          combatant.staminaUsedThisTurn = (combatant.staminaUsedThisTurn ?? 0) + cost;
-          const chargeField = sub === "guard" ? "guardCharges" : "evadeCharges";
-          combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
-          checkStaggerPanic(combatant);
-          await saveEncounter(message.channel.id, encounter);
-          message.reply(`${sub === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina → đang có ${combatant[chargeField]} charge ${sub} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`);
-        });
+        const resultMsg = await performGuardEvade(message.channel.id, message.author.id, isAdmin, sub, enemyKeyRaw);
+        message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -4909,35 +5160,14 @@ client.on("messageCreate", async (message) => {
     // ── parry: 0 Sta, roll d20 NGAY — lưu vào parryRolls, so với roll của bên tấn
     // công lúc CONFIRM (không phải lúc declare, vì roll của bên tấn công chưa biết
     // được). Ngang điểm = parry THẮNG (luật: "cao hơn HOẶC NGANG"). Thua: -40 Sta +
-    // ăn full dmg. Cũng áp WEAPON_DEFENSE_HITS như Guard/Evade cho M1.
+    // ăn full dmg. Cũng áp WEAPON_DEFENSE_HITS như Guard/Evade cho M1. Logic THẬT
+    // nằm ở performParry (dùng chung với dropdown — xem encmenu handler).
     if (sub === "parry") {
       const kv = parseKeyValues(rest);
       const enemyKeyRaw = (kv["key"] ?? "").trim();
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          let combatant, label;
-          if (enemyKeyRaw) {
-            if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
-            const ekey = normalizeEnemyKey(enemyKeyRaw);
-            combatant = encounter.enemies[ekey];
-            if (!combatant) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}".`);
-            label = `**${combatant.name}**`;
-          } else {
-            combatant = encounter.players[message.author.id];
-            if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
-            label = `<@${message.author.id}>`;
-          }
-          if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
-          const rawRoll = 1 + Math.floor(Math.random() * 20);
-          const penalty = getParryClashPenalty(combatant);
-          const roll = rawRoll - penalty;
-          combatant.parryRolls = combatant.parryRolls ?? [];
-          combatant.parryRolls.push(roll);
-          await saveEncounter(message.channel.id, encounter);
-          message.reply(`🗡️ Parry! ${label} roll được **${rawRoll}**${penalty > 0 ? ` -${penalty} (chấn thương) = **${roll}**` : ""} (0 Stamina) — đang có ${combatant.parryRolls.length} lần parry chờ sẵn.`);
-        });
+        const resultMsg = await performParry(message.channel.id, message.author.id, isAdmin, enemyKeyRaw);
+        message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -4958,25 +5188,8 @@ client.on("messageCreate", async (message) => {
     // phải perk tốn point — GM tự thêm qua -unlockskilltree nếu player sở hữu Shin).
     if (sub === "shinmang" || sub === "shin") {
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-          if (!hasPerk(player, "Shin")) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin` nếu thực sự có sở hữu).");
-          if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
-          if (player.currentSanity <= -10) throw new Error(`Không thể hi sinh để dùng Shin/Mang khi Sanity hiện tại ≤ -10 (hiện tại: ${player.currentSanity}).`);
-          player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 25);
-          player.shinMangActive = true;
-          player.shinMangUsedThisTurn = true;
-          player.shinMangRounds = (player.shinMangRounds ?? 0) + 1;
-          checkStaggerPanic(player);
-          await saveEncounter(message.channel.id, encounter);
-          message.reply(
-            `🌑 **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân. ` +
-            `Mang: +${player.shinMangRounds * 10}% Dmg M1+skill turn này (vòng ${player.shinMangRounds}), gây True Dmg.`
-          );
-        });
+        const resultMsg = await performShinMang(message.channel.id, message.author.id);
+        message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -4987,36 +5200,12 @@ client.on("messageCreate", async (message) => {
     // (Duration = Level×3 turn — Lv1=3/Lv2=6 xác nhận trực tiếp, Lv3+ suy theo cùng
     // quy luật). -30 Sanity lúc kích hoạt. CD 5 turn SAU KHI hết hiệu lực (không
     // phải sau khi DÙNG — nếu vẫn đang active thì dùng lại = reset Duration, không
-    // vào CD). Comeback Time (perk): lần ĐẦU TIÊN trong trận → +25% Max HP.
+    // vào CD). Comeback Time (perk): lần ĐẦU TIÊN trong trận → +25% Max HP. Logic
+    // THẬT nằm ở performManifestEgo (dùng chung với dropdown).
     if (sub === "manifestego") {
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-          if ((player.emotionLevel ?? 0) < 1) throw new Error("Cần đang ở Emotion Level ≥1 mới kích hoạt được Manifest E.G.O.");
-          if (!player.manifestedEGO && (player.manifestedEGOCooldownLeft ?? 0) > 0) {
-            throw new Error(`Đang trong CD Manifest E.G.O — còn ${player.manifestedEGOCooldownLeft} turn.`);
-          }
-          player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 30);
-          player.manifestedEGO = true;
-          player.manifestedEGOTurnsLeft = player.emotionLevel * 3;
-          player.manifestedEGOCooldownLeft = 0;
-          checkStaggerPanic(player);
-          let healNote = "";
-          if (!player.firstManifestEGOUsed && hasPerk(player, "Comeback Time")) {
-            const healAmt = Math.round(player.maxHp * 0.25 * 100) / 100;
-            player.currentHp = Math.min(player.maxHp, player.currentHp + healAmt);
-            healNote = ` 🩹+${healAmt} HP (Comeback Time — lần đầu Manifest E.G.O)`;
-          }
-          player.firstManifestEGOUsed = true;
-          await saveEncounter(message.channel.id, encounter);
-          message.reply(
-            `😈 **Manifest E.G.O!** -30 Sanity (còn ${player.currentSanity}) → Duration ${player.manifestedEGOTurnsLeft} turn ` +
-            `(theo Emotion Level ${player.emotionLevel}) — +3 Dice Up, +30% Dmg M1+skill.${healNote}`
-          );
-        });
+        const resultMsg = await performManifestEgo(message.channel.id, message.author.id);
+        message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
@@ -5394,37 +5583,8 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // ── Nút action panel (Attack/Hit/Guard/Evade/Parry) ──────────────────────────
-  if (interaction.customId.startsWith("encact:")) {
-    const [, channelId, action] = interaction.customId.split(":");
-
-    // attack/hit cần nhập công thức dmg + target — mở Modal (form nhập liệu) thay vì
-    // xử lý ngay, vì button không mang theo text tự do được. Modal submit xử lý ở
-    // listener riêng (xem "MODAL SUBMIT INTERACTIONS" phía dưới).
-    if (action === "attack" || action === "hit") {
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:${action}`)
-        .setTitle(action === "attack" ? "Đánh thường (M1)" : "Dùng Page/Skill");
-      const targetInput = new TextInputBuilder()
-        .setCustomId("targetStr")
-        .setLabel("Target (key enemy, key1,key2, hoặc all)")
-        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      const dmgInput = new TextInputBuilder()
-        .setCustomId("dmgStr")
-        .setLabel("Công thức dmg (giống /math)")
-        .setPlaceholder("VD: 50x2B+2Sinking")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(targetInput),
-        new ActionRowBuilder().addComponents(dmgInput),
-      );
-      await interaction.showModal(modal).catch(() => {});
-      return;
-    }
-  }
+  // (Nút action panel cũ "encact:" đã bỏ — thay bằng dropdown "encmenu:", xem
+  // listener riêng "SELECT MENU INTERACTIONS (encounter)" phía dưới.)
 
 
   if (interaction.customId.startsWith("encconfirmall:") || interaction.customId.startsWith("encrejectall:")) {
@@ -5728,19 +5888,97 @@ client.on("interactionCreate", async (interaction) => {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   if (!interaction.customId.startsWith("encmodal:")) return;
-  const [, channelId, action] = interaction.customId.split(":");
-  const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+  const parts = interaction.customId.split(":");
+  const channelId = parts[1];
+  const action = parts[2];
+  const encodedPageName = parts[3]; // chỉ có khi action === "hit" VÀ chọn từ dropdown 1 Page cụ thể
   const targetStr = interaction.fields.getTextInputValue("targetStr");
   try {
     if (action === "attack") {
+      const dmgStr = interaction.fields.getTextInputValue("dmgStr");
       const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr);
       await interaction.reply({ embeds: [embed] });
     } else if (action === "hit") {
-      const { embed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr);
-      await interaction.reply({ embeds: [embed] });
+      const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+      // Chọn từ dropdown 1 Page cụ thể → tự điền skill: (bot tự roll thật kèm theo,
+      // giống gõ tay "skill: <tên>") — KHÔNG cần player tự gõ thêm gì ngoài target+dmg.
+      const skillFromDropdown = encodedPageName ? decodeURIComponent(encodedPageName) : undefined;
+      const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { skill: skillFromDropdown });
+      await interaction.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
+    } else if (action === "followup") {
+      const { followupEmbed, hitEmbed } = await performFollowUp(channelId, interaction.user.id, interaction.user.toString(), targetStr);
+      await interaction.reply({ embeds: [followupEmbed] });
+      await interaction.channel.send({ embeds: [hitEmbed] }).catch(() => {});
     }
   } catch (err) {
     log("error", "encModalSubmit", interaction.user?.id ?? "unknown", err.message);
+    await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (encounter) ────────────────────────────────────
+// Dropdown hành động ĐỘNG (xem buildEncounterActionPanel) — thay cho 2 nút
+// Attack/Hit cố định cũ. attack/hit:<page> mở Modal (cần target+dmg); followup mở
+// Modal đơn giản hơn (chỉ target); còn lại (guard/evade/parry/shinmang/
+// manifestego/overcharge) thực thi NGAY qua các hàm perform* dùng CHUNG với lệnh
+// text -encounter (xem định nghĩa performGuardEvade/performParry/...).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("encmenu:")) return;
+  const [, channelId, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân dropdown này mới chọn được — dùng `-encounter status` để có dropdown riêng của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const value = interaction.values[0];
+  try {
+    if (value === "attack" || value.startsWith("hit:")) {
+      const isHit = value.startsWith("hit:");
+      const pageName = isHit ? value.slice(4) : null;
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:${isHit ? "hit" : "attack"}${pageName ? `:${encodeURIComponent(pageName)}` : ""}`)
+        .setTitle(isHit ? `Dùng Page: ${pageName}`.slice(0, 45) : "Đánh thường (M1)");
+      const targetInput = new TextInputBuilder()
+        .setCustomId("targetStr")
+        .setLabel("Target (key enemy, key1,key2, hoặc all)")
+        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      const dmgInput = new TextInputBuilder()
+        .setCustomId("dmgStr")
+        .setLabel("Công thức dmg (giống /math)")
+        .setPlaceholder("VD: 50x2B+2Sinking")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(targetInput),
+        new ActionRowBuilder().addComponents(dmgInput),
+      );
+      await interaction.showModal(modal).catch(() => {});
+      return;
+    }
+    if (value === "followup") {
+      const modal = new ModalBuilder().setCustomId(`encmodal:${channelId}:followup`).setTitle("Follow-Up / Pounce");
+      const targetInput = new TextInputBuilder()
+        .setCustomId("targetStr")
+        .setLabel("Target (key enemy, key1,key2, hoặc all)")
+        .setPlaceholder("VD: mo")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(targetInput));
+      await interaction.showModal(modal).catch(() => {});
+      return;
+    }
+    const isAdmin = ADMIN_IDS.has(interaction.user.id);
+    let resultMsg;
+    if (value === "guard" || value === "evade") resultMsg = await performGuardEvade(channelId, interaction.user.id, isAdmin, value);
+    else if (value === "parry") resultMsg = await performParry(channelId, interaction.user.id, isAdmin);
+    else if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
+    else if (value === "manifestego") resultMsg = await performManifestEgo(channelId, interaction.user.id);
+    else if (value === "overcharge") resultMsg = await performOvercharge(channelId, interaction.user.id);
+    else { await interaction.reply({ content: "⚠️ Hành động không hợp lệ.", flags: MessageFlags.Ephemeral }).catch(() => {}); return; }
+    await interaction.reply({ content: resultMsg });
+  } catch (err) {
+    log("error", "encMenuSelect", interaction.user?.id ?? "unknown", err.message);
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
