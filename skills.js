@@ -237,9 +237,9 @@ const SKILLS = {
     roll() {
       const d1 = r(3,6), d2 = r(3,6), d3 = r(5,9);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 4 <:Burn:1513762753691652177>Burn và 1 <:Fragile:1513763336167100536>Fragile ở turn kế`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 6 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile ở turn kế`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 10 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile ở turn kế`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 4 <:Burn:1513762753691652177>Burn và 1 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 1 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 6 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 1 <:Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 10 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 2 <:Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -249,9 +249,21 @@ const SKILLS = {
     roll() {
       const d1 = r(9,12), d2 = r(11,13);
       return [
-        `${D1} *Nếu địch có trên 10 Burn: tăng lượng <:Burn:1513762753691652177>Burn mỗi Hit thêm 3 <:Burn:1513762753691652177>Burn*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Burn:1513762753691652177>Burn và kích Burning Sensation`,
+        `${D1} *Nếu địch có sẵn 10 <:Burn:1513762753691652177>Burn: tăng lượng <:Burn:1513762753691652177>Burn mỗi Hit thêm 3 <:Burn:1513762753691652177>Burn*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Burn:1513762753691652177>Burn; tự gắn lên bản thân 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 6 <:Burn:1513762753691652177>Burn; tự gắn lên bản thân 4 <:Burn:1513762753691652177>Burn; kích Burning Sensation`,
+      ];
+    },
+  },
+  "celestial fire": {
+    name: "Celestial Fire",
+    cost: "6 <:Light:1513786082502770719>Light", cd: "7 Turn", diceMul: "—",
+    roll() {
+      return [
+        `*Không có Dice — page chỉ tự áp hiệu ứng lên bản thân/đối phương*`,
+        `Tự gắn lên bản thân 20 <:Burn:1513762753691652177>Burn, kích hoạt **Burning Sensation** trên người đối phương`,
+        `Khả năng gắn <:Burn:1513762753691652177>Burn tăng lên 1,5x (kéo dài 2 Turn)`,
+        `*Nếu bản thân có sẵn 10 <:Burn:1513762753691652177>Burn (không phải từ chính Page này): kích hoạt thêm 1 lần **Burning Sensation** nữa*`,
       ];
     },
   },
@@ -263,7 +275,7 @@ const SKILLS = {
       return [
         `${D1} *Nếu địch có Bleed: gắn 1 <:Hemorrhage:1513762688226955285>Hemorrhage*`,
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Bleed:1513762688226955285>Bleed`,
       ];
     },
   },
@@ -275,9 +287,9 @@ const SKILLS = {
       return [
         `${D1} *Nếu địch có <:Bleed:1513762688226955285>Bleed: gắn 1 <:Hemorrhage:1513762688226955285>Hemorrhage*`,
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Bleed:1513762688226955285>Bleed ở turn kế`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D4} **${d4}** [<:Blunt:1513768529718022254>Blunt] — gây 4 <:Bleed:1513762688226955285>Bleed`,
       ];
     },
   },
@@ -4222,7 +4234,7 @@ Object.assign(SKILLS, {
   "fused blade of ruined mirror worlds": {
     name: "Fused Blade of Ruined Mirror Worlds", tags: "Weapon",
     weaponType: "Heavy", weaponDmg: "28 [<:Slash:1513768633434640517>Slash]",
-    passive: `**Dullahan** — Parry khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan** và giảm bản thân 15 Sanity. Khi có **Dullahan**: nhận 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
+    passive: `**Dullahan** — Parry thành công khiến bạn đánh thường lên kẻ địch. Vào turn kế sau khi Parry, nhận 1 Stack **Dullahan**. Khi có **Dullahan**: nhận 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end mất (15 − số **Coffin** hiện có) Sanity. Khi dưới -15 Sanity, mỗi turn end nhận thêm 1 Stack **Dullahan**`,
     cost: "—", cd: "—", diceMul: "—",
     roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "requiem" hoặc "lament mourn and despair")*`]; },
   },
