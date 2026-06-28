@@ -5892,7 +5892,75 @@ client.on("interactionCreate", async (interaction) => {
                 const fraction = chargesUsed > 0 ? Math.min(1, (chargesUsed * hitsPerCharge) / hitCount) : 0;
                 return { chargesUsed, fraction };
               }
-              if ((target.evadeCharges ?? 0) > 0) {
+              const guardReductionPct = hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9;
+              if (isM1Type) {
+                // M1 NHIỀU HIT — cho phép TRỘN nhiều LOẠI phòng thủ khác nhau để chặn
+                // các CỤM hit khác nhau trong CÙNG 1 đòn M1 (xác nhận trực tiếp từ GM:
+                // "có thể guard/parry/evade theo tùy thích vào số hit" — KHÔNG bắt
+                // buộc chỉ 1 loại cho cả đòn như code cũ). Thứ tự ưu tiên xử lý từng
+                // CỤM hit kế tiếp: Evade (free, an toàn nhất) → Parry (free nhưng rủi
+                // ro ăn full nếu hụt) → Guard (chắc chắn giảm % nhưng không free) —
+                // mỗi loại tiêu thụ HẾT charge/roll đang có rồi mới chuyển loại kế,
+                // cho tới khi hết hit cần chặn hoặc hết toàn bộ charge các loại.
+                const instanceResults = t.preview.instanceResults ?? [];
+                const totalHits = instanceResults.length || hitCount;
+                const perHitMult = new Array(totalHits).fill(1);
+                let hitIdx = 0;
+                const noteParts = [];
+
+                if ((target.evadeCharges ?? 0) > 0 && hitIdx < totalHits) {
+                  const coverStart = hitIdx;
+                  let used = 0;
+                  while (target.evadeCharges > 0 && hitIdx < totalHits) {
+                    target.evadeCharges -= 1; used += 1;
+                    for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 0;
+                  }
+                  noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})`);
+                }
+                while ((target.parryRolls ?? []).length > 0 && hitIdx < totalHits) {
+                  const defRoll = target.parryRolls.shift();
+                  const atkRoll = 1 + Math.floor(Math.random() * 20);
+                  const won = defRoll >= atkRoll;
+                  const coverStart = hitIdx;
+                  for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) {
+                    if (won) perHitMult[hitIdx] = 0;
+                  }
+                  if (won) {
+                    noteParts.push(`🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll} — né hit ${coverStart + 1}-${hitIdx})`);
+                  } else {
+                    // Mastered Breaths (Sloth, [15 Points]): base cost 30 thay vì 40.
+                    // Gãy tay (chấn thương) vẫn NHÂN ĐÔI bất kể base là bao nhiêu.
+                    const baseFailCost = hasPerk(target, "Mastered Breaths") ? 30 : 40;
+                    const failCost = (target.injuries ?? []).includes("Gãy tay") ? baseFailCost * 2 : baseFailCost;
+                    target.currentStamina = Math.max(0, target.currentStamina - failCost);
+                    noteParts.push(`🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta — ăn full hit ${coverStart + 1}-${hitIdx})`);
+                  }
+                }
+                if ((target.guardCharges ?? 0) > 0 && hitIdx < totalHits) {
+                  const coverStart = hitIdx;
+                  let used = 0;
+                  while (target.guardCharges > 0 && hitIdx < totalHits) {
+                    target.guardCharges -= 1; used += 1;
+                    for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 1 - guardReductionPct;
+                  }
+                  noteParts.push(`🛡️**Guard** (${used} charge, giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
+                }
+
+                if (instanceResults.length > 0) {
+                  finalDmg = instanceResults.reduce((sum, r, i) => sum + (r.instanceDmg ?? 0) * perHitMult[i], 0);
+                } else {
+                  // fallback hiếm gặp (không có instanceResults chi tiết) — coi như đều
+                  // (giữ hành vi gần đúng cũ, KHÔNG nên xảy ra trong thực tế vì M1 luôn
+                  // có instanceResults).
+                  const avgMult = perHitMult.reduce((s, m) => s + m, 0) / totalHits;
+                  finalDmg *= avgMult;
+                }
+                // evadedCompletely CHỈ true nếu TOÀN BỘ hit đều = 0 — vì Guard KHÔNG
+                // BAO GIỜ đạt 0 (tối đa giảm 99%), nên nếu true thì chắc chắn do
+                // Evade/Parry-thành-công che hết, không lẫn Guard.
+                evadedCompletely = totalHits > 0 && perHitMult.every((m) => m === 0);
+                defenseNote = noteParts.length > 0 ? " " + noteParts.join(" + ") : "";
+              } else if ((target.evadeCharges ?? 0) > 0) {
                 const { chargesUsed, fraction } = computeBlock(target.evadeCharges);
                 target.evadeCharges -= chargesUsed;
                 finalDmg *= (1 - fraction);
@@ -5918,8 +5986,6 @@ client.on("interactionCreate", async (interaction) => {
               } else if ((target.guardCharges ?? 0) > 0) {
                 const { chargesUsed, fraction } = computeBlock(target.guardCharges);
                 target.guardCharges -= chargesUsed;
-                // Fortified Resolve (Sloth, [20 Points]): Guard giảm 99% thay vì 90%.
-                const guardReductionPct = hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9;
                 finalDmg *= (1 - fraction * guardReductionPct);
                 defenseNote = ` 🛡️**Guard** (giảm ${Math.round(guardReductionPct * 100)}% trên ${Math.round(fraction * 100)}% đòn — dùng ${chargesUsed} charge)`;
               }
