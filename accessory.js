@@ -70,7 +70,7 @@ const ACCESSORIES = {
     name: "Composition Tool",
     passives: [
       { name: "Reactive", desc: "Cho khả năng kháng Stagger hai lần mỗi encounter" },
-      { name: "Shimmering", desc: "Cho 1 <:Fix_Light:1513786082502770719>Light khi né hoặc parry thành công" },
+      { name: "Shimmering", desc: "Cho 1 <:Light:1513786082502770719>Light khi né hoặc parry thành công" },
       { name: "Energetic", desc: "Gia tăng x2 hiệu quả nhận Emotion Coin" },
     ],
   },
