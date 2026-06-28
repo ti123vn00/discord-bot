@@ -2244,31 +2244,58 @@ function resolveCombatant(encounter, id) {
   return null;
 }
 
-/** resolveTargets — parse chuỗi target ("mo" / "mo,arnold" / "all" / "@mention" lúc
- *  đã resolve thành userId) thành LIST các { id, combatant, label, type } — dùng cho
- *  attack/hit (target: enemy, có thể nhiều — AOE) và enemyattack (target: player, có
- *  thể nhiều). "all" nghĩa là TẤT CẢ enemy (cho attack/hit) hoặc TẤT CẢ player (cho
- *  enemyattack) — diễn giải theo allowedType truyền vào.
- *  @param allowedType "enemy" | "player" — loại entity được phép chọn làm target
- *  @throws Error nếu target rỗng hoặc có key không tìm thấy */
+/**
+ * resolveTargets — tìm combatant theo target: <key/mention/all>.
+ * allowedType:
+ *   "enemy"  — CHỈ tìm trong enemies (hành vi cũ, doEnemyAttack KHÔNG dùng giá trị
+ *              này — xem "player" dưới).
+ *   "player" — CHỈ tìm trong players (doEnemyAttack — enemy đánh player, hành vi cũ
+ *              giữ nguyên 100%).
+ *   "enemy_or_player" — PvP: player M1/Page giờ có thể target ENEMY (ưu tiên thử
+ *              trước, giữ đúng cú pháp key ngắn cũ "mo") HOẶC PLAYER khác (mention/ID
+ *              — tự nhận diện, không cần cú pháp riêng). "all" vẫn chỉ áp dụng cho
+ *              enemy (pool mặc định) — "tất cả" trong ngữ cảnh có cả PvE+PvP cùng lúc
+ *              dễ gây nhầm lẫn nếu áp cho cả 2 phe, nên giữ AN TOÀN: phải gõ rõ từng
+ *              player muốn nhắm nếu là PvP, "all" KHÔNG tự động gồm cả player.
+ */
 function resolveTargets(encounter, targetStr, allowedType) {
-  const pool = allowedType === "enemy" ? encounter.enemies : encounter.players;
-  const poolLabel = allowedType === "enemy" ? "enemy" : "player";
+  const searchEnemy = allowedType === "enemy" || allowedType === "enemy_or_player";
+  const searchPlayer = allowedType === "player" || allowedType === "enemy_or_player";
+  const primaryIsEnemy = allowedType === "enemy" || allowedType === "enemy_or_player";
+  const primaryPool = primaryIsEnemy ? encounter.enemies : encounter.players;
+  const primaryLabel = primaryIsEnemy ? "enemy" : "player";
   const trimmed = (targetStr ?? "").trim();
   if (!trimmed) throw new Error(`Cần chỉ định target: (VD: \`target: mo\` hoặc \`target: all\`).`);
   if (trimmed.toLowerCase() === "all") {
-    const ids = Object.keys(pool);
-    if (ids.length === 0) throw new Error(`Chưa có ${poolLabel} nào trong encounter để chọn "all".`);
-    return ids.map(id => ({ id, combatant: pool[id], label: allowedType === "enemy" ? `**${pool[id].name}**` : `<@${id}>`, type: allowedType }));
+    const ids = Object.keys(primaryPool);
+    if (ids.length === 0) throw new Error(`Chưa có ${primaryLabel} nào trong encounter để chọn "all".`);
+    return ids.map(id => ({ id, combatant: primaryPool[id], label: primaryIsEnemy ? `**${primaryPool[id].name}**` : `<@${id}>`, type: primaryLabel }));
   }
-  const keys = trimmed.split(",").map(s => allowedType === "enemy" ? normalizeEnemyKey(s) : s.trim().replace(/[<@!>]/g, ""));
+  const rawKeys = trimmed.split(",").map(s => s.trim());
   const results = [];
   const notFound = [];
-  for (const k of keys) {
-    if (pool[k]) results.push({ id: k, combatant: pool[k], label: allowedType === "enemy" ? `**${pool[k].name}**` : `<@${k}>`, type: allowedType });
-    else notFound.push(k);
+  for (const rawKey of rawKeys) {
+    let matched = false;
+    if (searchEnemy) {
+      const enemyKey = normalizeEnemyKey(rawKey);
+      if (encounter.enemies[enemyKey]) {
+        results.push({ id: enemyKey, combatant: encounter.enemies[enemyKey], label: `**${encounter.enemies[enemyKey].name}**`, type: "enemy" });
+        matched = true;
+      }
+    }
+    if (!matched && searchPlayer) {
+      const playerId = rawKey.replace(/[<@!>]/g, "");
+      if (encounter.players[playerId]) {
+        results.push({ id: playerId, combatant: encounter.players[playerId], label: `<@${playerId}>`, type: "player" });
+        matched = true;
+      }
+    }
+    if (!matched) notFound.push(rawKey);
   }
-  if (notFound.length > 0) throw new Error(`Không tìm thấy ${poolLabel}: ${notFound.join(", ")} — dùng \`-encounter status\` để xem danh sách.`);
+  if (notFound.length > 0) {
+    const poolDesc = allowedType === "enemy_or_player" ? "enemy/player" : primaryLabel;
+    throw new Error(`Không tìm thấy ${poolDesc}: ${notFound.join(", ")} — dùng \`-encounter status\` để xem danh sách.`);
+  }
   return results;
 }
 
@@ -2374,6 +2401,18 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     }
     let cost = type === "guard" ? 10 : 20;
     if (type === "evade" && (combatant.injuries ?? []).includes("Gãy chân")) cost *= 2;
+    // Close Call Wind (Wrath, [10 Points]): dưới 50% HP → Evade -5 Stamina.
+    if (type === "evade" && hasPerk(combatant, "Close Call Wind") && combatant.currentHp < combatant.maxHp * 0.5) {
+      cost = Math.max(0, cost - 5);
+    }
+    // Fleeting Steps (Sloth, [10 Points]): cứ 3 lần né, lần né tiếp theo (lần thứ 4,
+    // 8, 12...) KHÔNG tốn Stamina — đếm TRƯỚC khi tính cost, áp dụng NGAY lần này
+    // nếu rơi đúng mốc (không phải "lần tới mới free", mà CHÍNH lần thứ 4 này free).
+    let freeFromFleetingSteps = false;
+    if (type === "evade" && hasPerk(combatant, "Fleeting Steps")) {
+      combatant.evadeCountForFleetingSteps = (combatant.evadeCountForFleetingSteps ?? 0) + 1;
+      if (combatant.evadeCountForFleetingSteps % 4 === 0) { freeFromFleetingSteps = true; cost = 0; }
+    }
     if (combatant.currentStamina < cost) throw new Error(`Không đủ Stamina — cần ${cost}, còn ${combatant.currentStamina}.`);
     combatant.currentStamina -= cost;
     combatant.staminaUsedThisTurn = (combatant.staminaUsedThisTurn ?? 0) + cost;
@@ -2381,7 +2420,7 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
     checkStaggerPanic(combatant);
     await saveEncounter(channelId, encounter);
-    result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
+    result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
   });
   return result;
 }
@@ -2655,11 +2694,11 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // tránh tính toán dư.
     const verify = await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
 
-    const targets = resolveTargets(encounter, targetStr, "enemy");
+    const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     // QUAN TRỌNG: Poise/Charge là "trên bản thân" → lấy từ PLAYER (người tấn công),
     // dùng CHUNG cho mọi target trong AOE (vẫn là 1 người tấn công, 1 lượng Poise).
-    // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch" → lấy RIÊNG cho từng
-    // target — tính calcMathCore riêng từng enemy.
+    // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch HOẶC player khác (PvP)"
+    // → lấy RIÊNG cho từng target — tính calcMathCore riêng từng target.
     const previews = targets.map(t => {
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true });
       const defReductionPct = computeDefenderDmgReduction(t.combatant);
@@ -2699,7 +2738,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     encounter.pendingActions.push({
       id: pendingId, kind: "attack",
       attackerId: playerId, attackerType: "player",
-      targets: previews.map(p => ({ targetId: p.target.id, targetType: "enemy", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
+      targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
       dmgStr, staminaCost, isM1: true,
       // Lưu lại kết quả verify — encconfirmall áp dụng emotionDelta + set cooldown
       // THẬT lúc confirm (không phải lúc declare — khớp nguyên tắc "chưa gì là thật
@@ -2754,7 +2793,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
 
     const verify = await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
 
-    const targets = resolveTargets(encounter, targetStr, "enemy");
+    const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     const previews = targets.map(t => {
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false });
       const defReductionPct = computeDefenderDmgReduction(t.combatant);
@@ -2789,7 +2828,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     encounter.pendingActions.push({
       id: pendingId, kind: "hit",
       attackerId: playerId, attackerType: "player",
-      targets: previews.map(p => ({ targetId: p.target.id, targetType: "enemy", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
+      targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
       dmgStr,
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
@@ -3209,9 +3248,39 @@ function parseBatchEntries(raw, findFn, entityLabel) {
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
 const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking } = require("./skills");
-const { findWeapon, buildWeaponCriticalResult } = require("./weapon");
+const { findWeapon } = require("./weapon");
+
+/**
+ * findWeaponAnywhere — tìm vũ khí ở weapon.js TRƯỚC, không có thì fallback qua
+ * skills.js (entry có tags:"Weapon" VÀ có weaponType/weaponDmg — phân biệt với
+ * entry chỉ là weaponOf:"X" của 1 Critical, không phải định nghĩa vũ khí gốc).
+ * Chuẩn hoá về CÙNG shape với weapon.js để code equip/join dùng chung được. Đặt
+ * TOP-LEVEL (không nest trong handler) để dùng được ở cả -equipweapon VÀ -encounter
+ * join (đọc lại weapon đã equip từ profile).
+ */
+function findWeaponAnywhere(raw) {
+  const fromFile = findWeapon(raw);
+  if (fromFile) return fromFile;
+  const skillEntry = findSkill(raw);
+  if (skillEntry && skillEntry.tags === "Weapon" && (skillEntry.weaponType || skillEntry.weaponDmg)) {
+    const dmgStr = skillEntry.weaponDmg ?? "";
+    const baseDamageMatch = dmgStr.match(/^([\d.]+)/);
+    const typeMatch = dmgStr.match(/Slash|Pierce|Blunt/i);
+    return {
+      name: skillEntry.name,
+      weight: (skillEntry.weaponType ?? "medium").toLowerCase(),
+      type: typeMatch ? typeMatch[0][0].toUpperCase() + typeMatch[0].slice(1).toLowerCase() : "Blunt",
+      baseDamage: baseDamageMatch ? parseFloat(baseDamageMatch[1]) : 0,
+      passives: skillEntry.passive ? [{ name: "(passive)", desc: skillEntry.passive }] : [],
+      // bản thân entry này CHÍNH LÀ weapon — Critical riêng (nếu có) là các entry
+      // weaponOf:"<tên>" KHÁC, tự -skill roll riêng, không qua criticalSkillKey này.
+      criticalSkillKey: null,
+    };
+  }
+  return null;
+}
 const { findOutfit } = require("./outfit");
-const { findAccessory, buildFuriosoResult } = require("./accessory");
+const { findAccessory } = require("./accessory");
 
 /** isEgoSkill — check skill.tags có chứa "EGO"/"E.G.O" không (case-insensitive,
  *  bỏ qua dấu chấm/khoảng trắng) — dùng để phân biệt Page thường vs E.G.O Page lúc
@@ -4344,8 +4413,8 @@ client.on("messageCreate", async (message) => {
     const rawInput = message.content.replace("-equipweapon", "").trim();
     if (!rawInput) { message.reply("⚠️ Cú pháp: `-equipweapon <tên vũ khí>` (VD: `-equipweapon durandal`)"); return; }
     try {
-      const weapon = findWeapon(rawInput);
-      if (!weapon) throw new Error(`Không tìm thấy vũ khí "${rawInput}" trong weapon.js.`);
+      const weapon = findWeaponAnywhere(rawInput);
+      if (!weapon) throw new Error(`Không tìm thấy vũ khí "${rawInput}" trong weapon.js hoặc skills.js.`);
       const { data, slot } = await getPlayerDataWithSlot(message.author.id);
       data.equippedWeapon = weapon.name;
       await savePlayerData(message.author.id, data, slot);
@@ -4439,7 +4508,7 @@ client.on("messageCreate", async (message) => {
   if (message.content.startsWith("-equipment")) {
     try {
       const { data } = await getPlayerDataWithSlot(message.author.id);
-      const weapon = data.equippedWeapon ? findWeapon(data.equippedWeapon) : null;
+      const weapon = data.equippedWeapon ? findWeaponAnywhere(data.equippedWeapon) : null;
       const outfit = data.equippedOutfit ? findOutfit(data.equippedOutfit) : null;
       const accessories = (data.equippedAccessories ?? [null, null, null]).map(n => n ? findAccessory(n) : null);
       const lines = [];
@@ -4912,7 +4981,7 @@ client.on("messageCreate", async (message) => {
       // ĐỊNH cho weapon:/res:/speedrange: khi KHÔNG gõ tay tham số đó. Gõ tay vẫn
       // ĐÈ LÊN trang bị (linh hoạt cho trường hợp đặc biệt, không bắt buộc equip).
       const profileDataForDefaults = await getPlayerData(message.author.id);
-      const equippedWeaponObj = profileDataForDefaults.equippedWeapon ? findWeapon(profileDataForDefaults.equippedWeapon) : null;
+      const equippedWeaponObj = profileDataForDefaults.equippedWeapon ? findWeaponAnywhere(profileDataForDefaults.equippedWeapon) : null;
       const equippedOutfitObj = profileDataForDefaults.equippedOutfit ? findOutfit(profileDataForDefaults.equippedOutfit) : null;
       const weapon = normalizeWeaponWeight(kv["weapon"] ?? equippedWeaponObj?.weight ?? "medium");
       const resRaw = kv["res"] ?? "";
@@ -5838,16 +5907,21 @@ client.on("interactionCreate", async (interaction) => {
                   if (fraction >= 1) evadedCompletely = true;
                   defenseNote = ` 🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll}, chặn ${Math.round(fraction * 100)}%)`;
                 } else {
-                  // Gãy tay (chấn thương): mất GẤP ĐÔI Stamina khi parry hụt (80 thay vì 40).
-                  const failCost = (target.injuries ?? []).includes("Gãy tay") ? 80 : 40;
+                  // Mastered Breaths (Sloth, [15 Points]): base cost 30 thay vì 40 khi
+                  // hụt Parry. Gãy tay (chấn thương) vẫn NHÂN ĐÔI bất kể base là bao
+                  // nhiêu (áp dụng SAU khi đã chọn base, không phải OR riêng).
+                  const baseFailCost = hasPerk(target, "Mastered Breaths") ? 30 : 40;
+                  const failCost = (target.injuries ?? []).includes("Gãy tay") ? baseFailCost * 2 : baseFailCost;
                   target.currentStamina = Math.max(0, target.currentStamina - failCost);
                   defenseNote = ` 🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta, ăn full dmg)`;
                 }
               } else if ((target.guardCharges ?? 0) > 0) {
                 const { chargesUsed, fraction } = computeBlock(target.guardCharges);
                 target.guardCharges -= chargesUsed;
-                finalDmg *= (1 - fraction * 0.9);
-                defenseNote = ` 🛡️**Guard** (giảm 90% trên ${Math.round(fraction * 100)}% đòn — dùng ${chargesUsed} charge)`;
+                // Fortified Resolve (Sloth, [20 Points]): Guard giảm 99% thay vì 90%.
+                const guardReductionPct = hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9;
+                finalDmg *= (1 - fraction * guardReductionPct);
+                defenseNote = ` 🛡️**Guard** (giảm ${Math.round(guardReductionPct * 100)}% trên ${Math.round(fraction * 100)}% đòn — dùng ${chargesUsed} charge)`;
               }
               // Smoldering Resolve (perk passive, KHÔNG tiêu thụ) áp SAU Guard/Evade/
               // Parry — giảm thêm % trên phần dmg CÒN LẠI sau khi đã né/đỡ.
@@ -6002,10 +6076,18 @@ client.on("interactionCreate", async (interaction) => {
 
             // skill:/ref: verify — set cooldown + áp Emotion Coin delta THẬT lúc
             // confirm (xem comment đầy đủ ở resolveSkillVerification/doPlayerAttack).
+            // QUAN TRỌNG: counter nội bộ = cooldownTurns + 1 (KHÔNG phải đúng số CD
+            // ghi trên skill) — vì luật xác nhận: "CD 2 Turn" dùng ở Turn 1 thì Turn
+            // 2 PHẢI còn hiện "còn 2 turn" (chưa giảm gì), Turn 3 mới hiện "còn 1",
+            // Turn 4 mới dùng lại được — nghĩa là lượt CHÍNH NÓ được cast (Turn 1)
+            // không tính là 1 lần giảm. Dùng cùng logic giảm-mỗi-endturn như cũ
+            // (advanceCombatantTurn) nhưng counter khởi tạo dư thêm 1 thì ra đúng số
+            // turn hiển thị. Text hiển thị NGAY LÚC NÀY vẫn dùng cooldownTurns gốc
+            // (đúng số ghi trên skill), CHỈ giá trị lưu nội bộ mới +1.
             let verifyNote = "";
             if (p.skillKey && p.cooldownTurns > 0) {
               attacker.combatant.skillCooldowns = attacker.combatant.skillCooldowns ?? {};
-              attacker.combatant.skillCooldowns[p.skillKey] = p.cooldownTurns;
+              attacker.combatant.skillCooldowns[p.skillKey] = p.cooldownTurns + 1;
               verifyNote += ` [CD ${p.skillKey}: ${p.cooldownTurns}T]`;
             }
             if (p.emotionDelta) {
