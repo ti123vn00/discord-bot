@@ -1698,7 +1698,7 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
   // bug, vì 1.5x luôn được set ĐÚNG bất kể giá trị khởi tạo là gì).
   let critMul = 1.3;
   let critDivOverride = null;
-  let instantKill = false;
+  let instantKill = null;
 
   // Battle Ignition: turn trước đánh ≥10 lần → +15% Dmg turn này
   if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
@@ -1734,7 +1734,13 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
 
   // Claim Their Heart: target Stagger + dưới 15% HP → kết liễu ngay
   if (hasPerk(attacker, "Claim Their Heart") && target.staggered && target.currentHp > 0 && target.currentHp < target.maxHp * 0.15) {
-    instantKill = true;
+    instantKill = "Claim Their Heart — Stagger + dưới 15% HP";
+  }
+
+  // Overwhelming Power (Shin, [50 Points]): đòn tấn công có Mang (attacker đang
+  // shinMangActive) lên target dưới 10% HP → kết liễu ngay.
+  if (hasPerk(attacker, "Overwhelming Power") && attacker.shinMangActive && target.currentHp > 0 && target.currentHp < target.maxHp * 0.1) {
+    instantKill = "Overwhelming Power — Mang + dưới 10% HP";
   }
 
   // Multiplier áp status — viết lại dmgStr TRƯỚC khi đưa vào calcMathCore.
@@ -2014,9 +2020,15 @@ function combatantResStr(combatant) {
   if (combatant.staggered) return "2xB 2xP 2xS";
   const r = combatant.resistance;
   // Shin (đang active): -0,2x mọi Res BẢN THÂN khi combatant này là bên BỊ TẤN
-  // CÔNG (defender) — dễ ăn dmg hơn, đánh đổi lấy Mang +Dmg.
+  // CÔNG (defender) — dễ ăn dmg hơn, đánh đổi lấy Mang +Dmg. Defensive Light (Shin,
+  // [10 Points]): CỘNG THÊM -0,1x mỗi 10 Shin Level hiện có (mặc định Shin Level =
+  // 10 theo luật "khởi điểm 10 Shin Lvl" — không có cơ chế nào khác cho biết nó
+  // tăng/giảm, nên coi là hằng số 10 trừ khi có thêm thông tin).
   if (combatant.shinMangActive) {
-    return `${Math.max(0, r.B - 0.2)}xB ${Math.max(0, r.P - 0.2)}xP ${Math.max(0, r.S - 0.2)}xS`;
+    const shinLevel = combatant.shinLevel ?? 10;
+    const extraReduction = hasPerk(combatant, "Defensive Light") ? Math.floor(shinLevel / 10) * 0.1 : 0;
+    const totalReduction = 0.2 + extraReduction;
+    return `${Math.max(0, r.B - totalReduction)}xB ${Math.max(0, r.P - totalReduction)}xP ${Math.max(0, r.S - totalReduction)}xS`;
   }
   return `${r.B}xB ${r.P}xP ${r.S}xS`;
 }
@@ -2415,7 +2427,12 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     }
     if (combatant.currentStamina < cost) throw new Error(`Không đủ Stamina — cần ${cost}, còn ${combatant.currentStamina}.`);
     combatant.currentStamina -= cost;
-    combatant.staminaUsedThisTurn = (combatant.staminaUsedThisTurn ?? 0) + cost;
+    // KHÔNG cộng vào staminaUsedThisTurn ở đây — counter này CHỈ tính Stamina tiêu
+    // qua ĐÁNH THƯỜNG (M1) theo đúng luật ("đánh thường đủ 20 Stamina... +1 Light",
+    // "20 Stamina tiêu thụ thông qua đánh thường" cho Pounce/Follow-Up) — Guard/Evade
+    // là phòng thủ, KHÔNG phải đánh thường, không được tính vào đây (bug cũ đã sửa:
+    // trước đây Guard/Evade vô tình làm Light-gain/Pounce kích hoạt sai khi người
+    // chơi CHỈ phòng thủ, chưa hề M1).
     const chargeField = type === "guard" ? "guardCharges" : "evadeCharges";
     combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
     checkStaggerPanic(combatant);
@@ -2465,15 +2482,27 @@ async function performShinMang(channelId, userId) {
     if (!player) throw new Error("Bạn chưa tham gia encounter này.");
     if (!hasPerk(player, "Shin")) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin` nếu thực sự có sở hữu).");
     if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
-    if (player.currentSanity <= -10) throw new Error(`Không thể hi sinh để dùng Shin/Mang khi Sanity hiện tại ≤ -10 (hiện tại: ${player.currentSanity}).`);
+    // Decimate Mind (Shin, [20 Points]): cho phép hi sinh vượt mốc -10 (xuống tới
+    // -35) để kích hoạt Shin/Mang — KHÔNG có perk thì mốc giới hạn vẫn là -10 như
+    // luật gốc.
+    const sanityFloorForShin = hasPerk(player, "Decimate Mind") ? -35 : -10;
+    if (player.currentSanity <= sanityFloorForShin) throw new Error(`Không thể hi sinh để dùng Shin/Mang khi Sanity hiện tại ≤ ${sanityFloorForShin} (hiện tại: ${player.currentSanity}).`);
     player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 25);
     player.shinMangActive = true;
     player.shinMangUsedThisTurn = true;
     player.shinMangRounds = (player.shinMangRounds ?? 0) + 1;
     checkStaggerPanic(player);
     await saveEncounter(channelId, encounter);
+    // Defensive Light (Shin, [10 Points]): +0,1x giảm Res CỘNG THÊM (trên nền -0,2x
+    // gốc) cho MỖI 10 Shin Level hiện có. shinLevel mặc định = 10 (luật: "Khởi điểm
+    // với 10 Shin Lvl") — KHÔNG có cơ chế nào khác cho biết Shin Lvl tăng/giảm theo
+    // gì, nên tạm coi là hằng số 10 trừ khi có thêm luật rõ hơn.
+    const shinLevel = player.shinLevel ?? 10;
+    const defensiveLightNote = hasPerk(player, "Defensive Light")
+      ? ` Defensive Light: thêm -${(Math.floor(shinLevel / 10) * 0.1).toFixed(1)}x Res (Shin Lvl ${shinLevel}).`
+      : "";
     result =
-      `🌑 **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân. ` +
+      `🌑 **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
       `Mang: +${player.shinMangRounds * 10}% Dmg M1+skill turn này (vòng ${player.shinMangRounds}), gây True Dmg.`;
   });
   return result;
@@ -2545,7 +2574,27 @@ async function performFollowUp(channelId, userId, userMention, targetStr) {
   if (player.staminaUsedThisTurn < 20) throw new Error(`Cần tiêu ≥20 Stamina qua đánh thường trong turn này trước (hiện tại: ${player.staminaUsedThisTurn}).`);
   if (player.followUpUsedThisTurn) throw new Error("Đã dùng Follow-Up/Pounce trong turn này rồi — chỉ 1 lần/turn.");
   const dmgStr = hasFollowUp ? `${r(10, 14)}B` : `${r(8, 30)}B`;
+  // Shin Follow Up (Shin, [5 Points]): Follow-Up/Pounce LUÔN LUÔN xài Mang (True
+  // Dmg + bonus% theo shinMangRounds hiện có) — kể cả khi CHƯA tự kích hoạt Shin/
+  // Mang turn này. "Ép" tạm thời shinMangActive=true CHỈ cho lượt hit này (lưu
+  // trước khi gọi doPlayerHit vì hàm đó tự fetch/save encounter riêng, rồi khôi
+  // phục lại giá trị gốc ngay sau — không làm thay đổi trạng thái Shin/Mang thật
+  // của người chơi cho các hành động KHÁC trong turn).
+  const forceMangForFollowUp = !player.shinMangActive && hasPerk(player, "Shin Follow Up");
+  if (forceMangForFollowUp) {
+    player.shinMangActive = true;
+    await saveEncounter(channelId, encounter);
+  }
   const { embed: hitEmbed } = await doPlayerHit(channelId, userId, userMention, dmgStr, targetStr, {});
+  if (forceMangForFollowUp) {
+    await withLock(encounterKey(channelId), async () => {
+      const enc3 = await getEncounter(channelId);
+      if (enc3?.players[userId]) {
+        enc3.players[userId].shinMangActive = false;
+        await saveEncounter(channelId, enc3);
+      }
+    });
+  }
   // Đánh dấu đã dùng NGAY lúc declare (không đợi confirm) — chấp nhận sai số nhỏ
   // này (nếu GM reject thì vẫn coi như đã dùng) để tránh phải thêm field riêng
   // theo dõi pending cho 1 trường hợp hiếm.
@@ -2753,7 +2802,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const targetLines = previews.map(p => {
       let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
       if (p.defReductionPct > 0) line += ` *(đã giảm ${p.defReductionPct}% từ perk Smoldering Resolve, gốc ${p.preview.totalDmg.toFixed(3)})*`;
-      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (Claim Their Heart — Stagger + dưới 15% HP)`;
+      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (${p.instantKill})`;
       return line;
     }).join("\n");
     let verifyNote = "";
@@ -2838,7 +2887,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     const targetLines = previews.map(p => {
       let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
       if (p.defReductionPct > 0) line += ` *(đã giảm ${p.defReductionPct}% từ perk Smoldering Resolve, gốc ${p.preview.totalDmg.toFixed(3)})*`;
-      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (Claim Their Heart — Stagger + dưới 15% HP)`;
+      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (${p.instantKill})`;
       return line;
     }).join("\n");
     let verifyNote = "";
@@ -2915,7 +2964,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     const targetLines = previews.map(p => {
       let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
       if (p.defReductionPct > 0) line += ` *(đã giảm ${p.defReductionPct}% từ perk Smoldering Resolve, gốc ${p.preview.totalDmg.toFixed(3)})*`;
-      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (Claim Their Heart — Stagger + dưới 15% HP)`;
+      if (p.instantKill) line += ` ☠️ **KẾT LIỄU NGAY** (${p.instantKill})`;
       return line;
     }).join("\n");
     let verifyNote = "";
@@ -3288,6 +3337,22 @@ const { findAccessory } = require("./accessory");
  *  không tính slot chung với 5 Page thường"). */
 function isEgoSkill(skill) {
   return /e\.?g\.?o/i.test((skill.tags ?? "").replace(/<:[^>]+>/g, ""));
+}
+
+// 5 E.G.O Slot riêng theo Tier (luật: "5 E.G.O Slot Page riêng với các tier như
+// ZAYIN/TETH/HE/WAW/ALEPH" — mỗi loại tier CHỈ lắp được 1 slot, KHÔNG phải 5 slot
+// chung cho EGO bất kỳ). Thứ tự slot 1→5 theo đúng thứ tự liệt kê trong luật, từ
+// thấp tới cao (đúng convention Library of Ruina/Limbus): ZAYIN, TETH, HE, WAW, ALEPH.
+const EGO_TIER_SLOT_ORDER = ["ZAYIN", "TETH", "HE", "WAW", "ALEPH"];
+/** getEgoTier — tìm tier (ZAYIN/TETH/HE/WAW/ALEPH) từ tags của skill, dựa vào tên
+ *  emoji nhúng trong đó (VD tags: "Ego Pages <:TETH:...>" → "TETH"). Trả null nếu
+ *  không tìm thấy tier nào (skill không phải EGO Page có tier rõ ràng). */
+function getEgoTier(skill) {
+  const tagsStr = skill.tags ?? "";
+  for (const tier of EGO_TIER_SLOT_ORDER) {
+    if (new RegExp(`<:${tier}:\\d+>`, "i").test(tagsStr)) return tier;
+  }
+  return null;
 }
 
 
@@ -4340,7 +4405,8 @@ client.on("messageCreate", async (message) => {
     const rawInput = message.content.replace(isEgo ? "-equipegopage" : "-equippage", "").trim();
     const m = rawInput.match(/^([1-5])\s+(.+)$/);
     if (!m) {
-      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "equipegopage" : "equippage"} <slot 1-5> <tên skill>\`\n> VD: \`-${isEgo ? "equipegopage" : "equippage"} 1 sky kick\``);
+      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "equipegopage" : "equippage"} <slot 1-5> <tên skill>\`\n> VD: \`-${isEgo ? "equipegopage" : "equippage"} 1 sky kick\`` +
+        (isEgo ? `\n> 5 slot E.G.O là 5 **Tier riêng** (không hoán đổi được): ${EGO_TIER_SLOT_ORDER.map((t, i) => `slot ${i + 1}=${t}`).join(", ")}.` : ""));
       return;
     }
     const slotNum = parseInt(m[1], 10);
@@ -4351,6 +4417,19 @@ client.on("messageCreate", async (message) => {
       const skillIsEgo = isEgoSkill(skill);
       if (isEgo && !skillIsEgo) throw new Error(`"${skill.name}" không phải E.G.O Page — dùng \`-equippage\` thay vào đó.`);
       if (!isEgo && skillIsEgo) throw new Error(`"${skill.name}" là E.G.O Page — dùng \`-equipegopage\` thay vào đó (5 slot riêng).`);
+      // 5 E.G.O Slot là 5 Tier RIÊNG (ZAYIN/TETH/HE/WAW/ALEPH), KHÔNG phải 5 slot
+      // chung — slot N CHỈ nhận đúng tier tương ứng, mỗi tier chỉ 1 page tại 1 thời
+      // điểm (xác nhận trực tiếp từ GM).
+      if (isEgo) {
+        const expectedTier = EGO_TIER_SLOT_ORDER[slotNum - 1];
+        const skillTier = getEgoTier(skill);
+        if (!skillTier) {
+          throw new Error(`Không xác định được Tier của "${skill.name}" (thiếu tag ZAYIN/TETH/HE/WAW/ALEPH) — không thể equip vào slot Tier.`);
+        }
+        if (skillTier !== expectedTier) {
+          throw new Error(`"${skill.name}" là Tier **${skillTier}** — phải equip vào slot **${EGO_TIER_SLOT_ORDER.indexOf(skillTier) + 1}** (Tier ${skillTier}), không phải slot ${slotNum} (Tier ${expectedTier}).`);
+        }
+      }
       const { data, slot } = await getPlayerDataWithSlot(message.author.id);
       const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
       data[listKey] = data[listKey] ?? [null, null, null, null, null];
@@ -4990,6 +5069,12 @@ client.on("messageCreate", async (message) => {
       const speedRangeMatch = (kv["speedrange"] ?? "").match(/(\d+)\s*[~\-]\s*(\d+)/);
       const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : (equippedOutfitObj?.speedRange?.min ?? 3);
       const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : (equippedOutfitObj?.speedRange?.max ?? 6);
+      // Max Light MẶC ĐỊNH tính theo Grade hiện tại (luật: "4 Max Light ở grade
+      // 7/8/9, cứ cách 3 grade nhận thêm 1 (Max 6)") — GRADE_MIN=9 (thấp nhất),
+      // GRADE_MAX=1 (cao nhất), grade GIẢM khi lên cấp. Công thức:
+      // 4 + floor((GRADE_MIN - grade)/3), cap 6. Gõ tay light: vẫn ĐÈ lên được.
+      const { grade: playerGrade } = calcGrade(profileDataForDefaults.exp ?? 0);
+      const gradeBasedMaxLight = Math.min(6, 4 + Math.floor((GRADE_MIN - playerGrade) / 3));
       try {
         await withLock(encounterKey(message.channel.id), async () => {
           const encounter = await getEncounter(message.channel.id);
@@ -4998,7 +5083,7 @@ client.on("messageCreate", async (message) => {
           encounter.players[message.author.id] = createCombatant({
             name: message.author.username, maxHp: hp,
             maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
-            maxLight: Number.isFinite(light) && light > 0 ? light : ENCOUNTER_DEFAULT_MAX_LIGHT,
+            maxLight: Number.isFinite(light) && light > 0 ? light : gradeBasedMaxLight,
             weaponWeight: weapon, resistance: res, speedRangeMin, speedRangeMax,
           });
           // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
@@ -5029,6 +5114,7 @@ client.on("messageCreate", async (message) => {
           const equipNotes = [];
           if (equippedWeaponObj && !kv["weapon"]) equipNotes.push(`Vũ khí: ${equippedWeaponObj.name} (${equippedWeaponObj.weight})`);
           if (equippedOutfitObj && !kv["res"]) equipNotes.push(`Outfit: ${equippedOutfitObj.name} (Res ${res.B}xB ${res.P}xP ${res.S}xS)`);
+          if (!Number.isFinite(light) || light <= 0) equipNotes.push(`Max Light: ${gradeBasedMaxLight} (theo Grade ${playerGrade})`);
           await message.reply({
             content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.name}** với ${hp} HP.` +
               (equipNotes.length > 0 ? `\n> 🎒 Tự lấy từ trang bị: ${equipNotes.join(", ")}` : "") +
@@ -5856,6 +5942,20 @@ client.on("interactionCreate", async (interaction) => {
               attacker.combatant.staminaUsedThisTurn += p.staminaCost;
               checkStaggerPanic(attacker.combatant);
               staminaNote = ` (-${p.staminaCost} Sta${attacker.combatant.staggered ? " 💫Stagger!" : ""})`;
+              // Regain Mind (Shin, [30 Points]): mỗi 40 Stamina mất do M1 (đánh
+              // thường) → +10 Sanity. Tích lũy riêng (KHÔNG dùng chung
+              // staminaUsedThisTurn vì cái đó reset mỗi turn còn đây cần tích lũy
+              // XUYÊN TURN cho tới khi đủ 40) — 1 action tốn ≥40 Sta (VD M1 nhiều hit
+              // vũ khí heavy) có thể cho nhiều lần 10 Sanity cùng lúc.
+              if (hasPerk(attacker.combatant, "Regain Mind")) {
+                attacker.combatant.regainMindAccumulator = (attacker.combatant.regainMindAccumulator ?? 0) + p.staminaCost;
+                const sanityGainCount = Math.floor(attacker.combatant.regainMindAccumulator / 40);
+                if (sanityGainCount > 0) {
+                  attacker.combatant.regainMindAccumulator -= sanityGainCount * 40;
+                  attacker.combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, attacker.combatant.currentSanity + sanityGainCount * 10);
+                  staminaNote += ` 🧠+${sanityGainCount * 10} Sanity (Regain Mind)`;
+                }
+              }
             }
 
             const targetDmgLines = [];
@@ -5995,7 +6095,7 @@ client.on("interactionCreate", async (interaction) => {
               let killNote = "";
               // Evade né được = né LUÔN finisher (Claim Their Heart) — đã tránh đòn
               // hoàn toàn thì không có lý do vẫn bị "kết liễu" bởi chính đòn đó.
-              if (t.instantKill && !evadedCompletely) { finalDmg = target.currentHp; killNote = " ☠️KẾT LIỄU"; }
+              if (t.instantKill && !evadedCompletely) { finalDmg = target.currentHp; killNote = ` ☠️KẾT LIỄU (${t.instantKill})`; }
               let bleedOverride = null; // Break the Dams — giữ bleed KHÔNG bị giảm turn này nếu trigger
               let perkNote = "";
               // Craving Synergy/Thirst/Break the Dams — CHỈ đòn đánh ĐẦU TIÊN của
@@ -6028,13 +6128,31 @@ client.on("interactionCreate", async (interaction) => {
               }
               const wasAliveBefore = target.currentHp > 0;
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              const justDied = wasAliveBefore && target.currentHp <= 0;
+              // Emotion Coin: "Giết 1 kẻ địch cho 3" — CHỈ áp khi target là enemy (PvE)
+              // và ATTACKER là player (enemy giết enemy khác hoặc tự mình chết không
+              // tính). "Đồng đội bị giết cho 5" — áp cho TẤT CẢ player KHÁC trong
+              // encounter khi 1 player chết — giả định mọi player đều là "đồng đội"
+              // của nhau (đúng cho PvE chuẩn; với PvP thật giữa 2 player thì coi như
+              // không có "đồng đội" nào khác để cộng — không có cách phân biệt
+              // team/side rõ ràng hơn trong hệ thống hiện tại nên dùng quy ước này).
+              if (justDied) {
+                if (targetResolved.type === "enemy" && attacker.type === "player") {
+                  applyEmotionDelta(attacker.combatant, 3);
+                } else if (targetResolved.type === "player") {
+                  for (const otherPid of Object.keys(encounter.players)) {
+                    if (otherPid === t.targetId) continue;
+                    applyEmotionDelta(encounter.players[otherPid], 5);
+                  }
+                }
+              }
               // Death Penalty — CHỈ player (enemy không có profile để trừ). Detect
               // đúng lúc HP chuyển từ >0 sang ≤0 (không trừ lại nếu ĐÃ chết từ trước
               // mà ăn thêm dmg). Mất 50% Ahn + 50% EXP của MỐC HIỆN TẠI (không tụt
               // grade — vì chỉ trừ tối đa 1 nửa expInCurrentGrade, không bao giờ đủ
               // để rớt dưới mốc grade đang đứng).
               let deathNote = "";
-              if (wasAliveBefore && target.currentHp <= 0 && targetResolved.type === "player") {
+              if (justDied && targetResolved.type === "player") {
                 const { data: profileData, slot } = await getPlayerDataWithSlot(t.targetId);
                 const { expInCurrentGrade } = calcGrade(profileData.exp ?? 0);
                 const ahnLost = Math.floor((profileData.ahn ?? 0) * 0.5);
