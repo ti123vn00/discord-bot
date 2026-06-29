@@ -229,6 +229,43 @@ function calcExpForGrade(targetGrade) {
   return total;
 }
 
+// ─── HP PERSISTENCE GIỮA CÁC ENCOUNTER (luật: "HP vẫn giữ nguyên" sau khi
+// encounter kết thúc, CHỈ hồi qua item hồi phục hoặc mốc 0h00 AM/PM — giờ Việt
+// Nam UTC+7, xác nhận trực tiếp từ GM) ────────────────────────────────────────
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** mostRecentHpResetBoundaryUtc — trả về timestamp UTC (ms) của mốc reset HP GẦN
+ *  NHẤT đã/sắp qua tính tới thời điểm nowUtcMs — 2 mốc/ngày theo giờ VN: 00:00 và
+ *  12:00. VD nowUtcMs tương ứng 15:00 giờ VN → mốc gần nhất là 12:00 giờ VN HÔM
+ *  NAY. Nếu là 05:00 giờ VN → mốc gần nhất là 00:00 giờ VN HÔM NAY. */
+function mostRecentHpResetBoundaryUtc(nowUtcMs) {
+  const nowVn = new Date(nowUtcMs + VN_OFFSET_MS);
+  const vnHour = nowVn.getUTCHours();
+  const boundaryVnHour = vnHour < 12 ? 0 : 12;
+  const boundaryVnMs = Date.UTC(nowVn.getUTCFullYear(), nowVn.getUTCMonth(), nowVn.getUTCDate(), boundaryVnHour, 0, 0, 0);
+  return boundaryVnMs - VN_OFFSET_MS; // chuyển ngược về UTC thật để so sánh trực tiếp với Date.now()
+}
+
+/** getEffectiveCurrentHp — HP hiện tại của player TÍNH ĐẾN GIỜ, áp dụng auto-reset
+ *  nếu đã qua mốc 0h/12h VN kể từ lần check gần nhất. KHÔNG mutate profileData
+ *  trực tiếp — trả về { hp, didReset } để caller tự quyết định lưu lại hay không
+ *  (tránh side-effect ẩn trong 1 hàm "get"). Nếu profileData.currentHp chưa từng
+ *  được set (player hoàn toàn mới, chưa join encounter nào) → trả về maxHp (coi
+ *  như "đầy máu" mặc định, hợp lý cho lần đầu). */
+function getEffectiveCurrentHp(profileData, maxHp) {
+  if (profileData.currentHp === undefined || profileData.currentHp === null) {
+    return { hp: maxHp, didReset: false };
+  }
+  const lastCheck = profileData.hpLastResetCheck ?? 0;
+  const boundary = mostRecentHpResetBoundaryUtc(Date.now());
+  if (lastCheck < boundary) {
+    return { hp: maxHp, didReset: true };
+  }
+  // Clamp vào maxHp hiện tại (trường hợp grade tăng làm maxHp tăng theo, hoặc
+  // giảm — không nên giữ currentHp > maxHp mới).
+  return { hp: Math.min(profileData.currentHp, maxHp), didReset: false };
+}
+
 // ─── UI CONSTANTS ─────────────────────────────────────────────────────────────
 const INVENTORY_HINT_TEXT = "Dùng /inventory hoặc -inventory để xem chi tiết sách và vật phẩm";
 
@@ -1653,6 +1690,50 @@ function findExclusiveConflict(existingPerks, newPerk) {
     if (newPerk === b && existingPerks.includes(a)) return a;
   }
   return null;
+}
+
+// ── Skill Tree — Budget điểm ────────────────────────────────────────────────
+// Luật: "Bắt đầu với grade 9 và có sẵn 5 point. Max 50 point. 1 grade = 5 point.
+// Để đạt 50 cần điều kiện đặc biệt" — leveling thường (grade 9→1) cho 5 + 5×8 = 45
+// điểm, 5 điểm CUỐI (lên 50) cần "điều kiện đặc biệt" KHÔNG được luật nói rõ là gì
+// → lưu riêng field bonusSkillPoints (admin tự cấp tay qua -setplayer khi GM thấy
+// player đạt điều kiện đặc biệt đó, hệ thống không tự suy ra được).
+//
+// PERK_POINT_COSTS: CHỈ chứa perk đã được xác nhận TRỰC TIẾP số point cụ thể
+// (Pride/Wrath/Sloth/Desire/Shin qua các đoạn chat trước) — perk KHÁC không có
+// trong bảng này được xem là "chưa rõ cost", KHÔNG bị chặn bởi budget (tránh chặn
+// nhầm các perk cũ đã unlock từ trước khi chưa có hệ thống budget này).
+const PERK_POINT_COSTS = {
+  // Pride
+  "Claim Their Heart": 10, "Pressure Point": 15, "Shrouded Power": 20, "Sharp Eyes": 30,
+  "Adrenaline Rush": 35, "Smoke Overload": 45, "Steady Breathing": 50,
+  // Wrath
+  "Battle Ignition": 5, "Close Call Wind": 10,
+  // Desire
+  "Here We Go Again": 10,
+  // Sloth
+  "Pounce": 5, "Fleeting Steps": 10, "Mastered Breaths": 15, "Fortified Resolve": 20,
+  "Shockwave": 25, "Break and Punish": 30,
+  // Shin
+  "Shin Follow Up": 5, "Defensive Light": 10, "Decimate Mind": 20, "Regain Mind": 30,
+  "Overwhelming Power": 50,
+};
+
+/** calcSkillTreePointsEarned — tổng điểm ĐÃ KIẾM ĐƯỢC (5 khởi điểm grade 9 + 5/grade
+ *  đã lên + bonusSkillPoints admin cấp riêng cho "điều kiện đặc biệt" lên 50). Cap
+ *  tuyệt đối ở 50 dù cộng dư bao nhiêu. */
+function calcSkillTreePointsEarned(profileData) {
+  const { grade } = calcGrade(profileData.exp ?? 0);
+  const fromGrade = 5 + 5 * (GRADE_MIN - grade);
+  const bonus = profileData.bonusSkillPoints ?? 0;
+  return Math.min(50, fromGrade + bonus);
+}
+
+/** calcSkillTreePointsSpent — tổng điểm ĐÃ DÙNG, CHỈ tính perk có trong
+ *  PERK_POINT_COSTS (perk không rõ cost coi như free/không tính, để không chặn
+ *  nhầm các unlock cũ trước khi có hệ thống budget). */
+function calcSkillTreePointsSpent(profileData) {
+  return (profileData.unlockedSkillTree ?? []).reduce((sum, perk) => sum + (PERK_POINT_COSTS[perk] ?? 0), 0);
 }
 
 function hasPerk(combatant, perkName) {
@@ -4477,9 +4558,21 @@ client.on("messageCreate", async (message) => {
           if (data.unlockedSkillTree.includes(perkName)) { results.push(`⚠️ ${user.username}: đã có "${perkName}" rồi.`); continue; }
           const conflict = findExclusiveConflict(data.unlockedSkillTree, perkName);
           if (conflict) { results.push(`❌ ${user.username}: "${perkName}" loại trừ với "${conflict}" đã có sẵn — không thể có cả 2 (dùng \`-ununlockskilltree\` xoá "${conflict}" trước nếu muốn đổi).`); continue; }
+          // Budget điểm — CHỈ chặn nếu perk này có cost RÕ trong PERK_POINT_COSTS
+          // (perk chưa rõ cost thì cho qua tự do, không chặn nhầm các unlock đã có
+          // từ trước hệ thống budget này).
+          const cost = PERK_POINT_COSTS[perkName];
+          if (cost !== undefined) {
+            const earned = calcSkillTreePointsEarned(data);
+            const spent = calcSkillTreePointsSpent(data);
+            if (spent + cost > earned) {
+              results.push(`❌ ${user.username}: "${perkName}" cần ${cost} điểm — chỉ còn ${earned - spent}/${earned} điểm trống (đã dùng ${spent}/${earned}).`);
+              continue;
+            }
+          }
           data.unlockedSkillTree.push(perkName);
           await savePlayerData(user.id, data, slot);
-          results.push(`✅ ${user.username}: mở khóa "${perkName}".`);
+          results.push(`✅ ${user.username}: mở khóa "${perkName}"${cost !== undefined ? ` (${cost} điểm, còn ${calcSkillTreePointsEarned(data) - calcSkillTreePointsSpent(data)}/${calcSkillTreePointsEarned(data)})` : ""}.`);
         } else {
           const idx = data.unlockedSkillTree.indexOf(perkName);
           if (idx === -1) { results.push(`⚠️ ${user.username}: chưa có "${perkName}".`); continue; }
@@ -5181,7 +5274,19 @@ client.on("messageCreate", async (message) => {
       // grade đã lên TỪ grade 9). Gõ tay hp: vẫn ĐÈ lên được (linh hoạt — đặc biệt
       // cần cho enemy/stat-block tuỳ ý không theo Grade).
       const gradeBasedMaxHp = 140 + 20 * (GRADE_MIN - playerGrade);
-      const finalHp = Number.isFinite(hp) && hp > 0 ? hp : gradeBasedMaxHp;
+      // HP mặc định khi KHÔNG gõ tay hp: — dùng HP THẬT còn lại từ encounter trước
+      // (persist qua profile.currentHp), áp auto-reset nếu đã qua mốc 0h/12h giờ
+      // VN kể từ lần cập nhật gần nhất (xem getEffectiveCurrentHp). Nếu auto-reset
+      // xảy ra ngay lúc này, lưu lại NGAY để lần check sau không reset lại lần nữa
+      // trước mốc kế tiếp.
+      const effectiveHp = getEffectiveCurrentHp(profileDataForDefaults, gradeBasedMaxHp);
+      if (effectiveHp.didReset) {
+        profileDataForDefaults.currentHp = effectiveHp.hp;
+        profileDataForDefaults.hpLastResetCheck = Date.now();
+        const { slot: hpSlot } = await getPlayerDataWithSlot(message.author.id);
+        await savePlayerData(message.author.id, profileDataForDefaults, hpSlot);
+      }
+      const finalHp = Number.isFinite(hp) && hp > 0 ? hp : effectiveHp.hp;
       try {
         await withLock(encounterKey(message.channel.id), async () => {
           const encounter = await getEncounter(message.channel.id);
@@ -5222,7 +5327,13 @@ client.on("messageCreate", async (message) => {
           if (equippedWeaponObj && !kv["weapon"]) equipNotes.push(`Vũ khí: ${equippedWeaponObj.name} (${equippedWeaponObj.weight})`);
           if (equippedOutfitObj && !kv["res"]) equipNotes.push(`Outfit: ${equippedOutfitObj.name} (Res ${res.B}xB ${res.P}xP ${res.S}xS)`);
           if (!Number.isFinite(light) || light <= 0) equipNotes.push(`Max Light: ${gradeBasedMaxLight} (theo Grade ${playerGrade})`);
-          if (!Number.isFinite(hp) || hp <= 0) equipNotes.push(`Max HP: ${gradeBasedMaxHp} (theo Grade ${playerGrade})`);
+          if (!Number.isFinite(hp) || hp <= 0) {
+            equipNotes.push(
+              effectiveHp.hp < gradeBasedMaxHp
+                ? `HP: ${effectiveHp.hp}/${gradeBasedMaxHp} (còn lại từ trước — chưa qua mốc reset 0h/12h giờ VN)`
+                : `Max HP: ${gradeBasedMaxHp} (theo Grade ${playerGrade})`
+            );
+          }
           await message.reply({
             content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.name}** với ${finalHp} HP.` +
               (equipNotes.length > 0 ? `\n> 🎒 Tự lấy từ trang bị: ${equipNotes.join(", ")}` : "") +
@@ -6327,6 +6438,18 @@ client.on("interactionCreate", async (interaction) => {
               const wasAliveBefore = target.currentHp > 0;
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
               const justDied = wasAliveBefore && target.currentHp <= 0;
+              // HP Persistence (luật: "HP vẫn giữ nguyên" sau khi encounter kết
+              // thúc) — đồng bộ NGAY mỗi lần HP player thay đổi (không chỉ lúc
+              // -encounter end, để không mất dữ liệu nếu encounter bị bỏ dở/quên
+              // end). Enemy không có profile nên không áp.
+              if (targetResolved.type === "player") {
+                try {
+                  const { data: hpSyncData, slot: hpSyncSlot } = await getPlayerDataWithSlot(t.targetId);
+                  hpSyncData.currentHp = target.currentHp;
+                  hpSyncData.hpLastResetCheck = Date.now();
+                  await savePlayerData(t.targetId, hpSyncData, hpSyncSlot);
+                } catch { /* không chặn action chính nếu sync HP lỗi — log đủ rồi bỏ qua */ }
+              }
               // Emotion Coin: "Giết 1 kẻ địch cho 3" — CHỈ áp khi target là enemy (PvE)
               // và ATTACKER là player (enemy giết enemy khác hoặc tự mình chết không
               // tính). "Đồng đội bị giết cho 5" — áp cho TẤT CẢ player KHÁC trong
