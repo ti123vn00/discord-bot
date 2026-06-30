@@ -3350,9 +3350,25 @@ function buildEncounterBoardEmbed(encounter) {
     blocks.push(`⏳ **${pending.length} action đang chờ GM xác nhận** — dùng \`-encounter pending\` để xem chi tiết.`);
   }
   const allDead = Object.keys(encounter.enemies).length > 0 && Object.values(encounter.enemies).every(e => e.currentHp <= 0);
+  // BUG ĐÃ SỬA: trước đây join() KHÔNG giới hạn độ dài — trận nhiều enemy/player
+  // (VD 2v2 trở lên, hoặc nhiều enemy cùng lúc) có thể VƯỢT 4096 ký tự giới hạn
+  // embed description của Discord, khiến request bị Discord TỪ CHỐI hoàn toàn (lỗi
+  // im lặng, GM không thấy board nào cả). Giờ GHÉP TỪNG BLOCK tới khi gần chạm giới
+  // hạn (3900, chừa đệm an toàn cho title/footer), rồi dừng + ghi rõ còn bao nhiêu
+  // combatant chưa hiện — KHÔNG để Discord tự xử lý/từ chối.
+  let description = "";
+  let omittedCount = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    const candidate = description ? description + "\n\n" + blocks[i] : blocks[i];
+    if (candidate.length > 3900) { omittedCount = blocks.length - i; break; }
+    description = candidate;
+  }
+  if (omittedCount > 0) {
+    description += `\n\n*(... còn ${omittedCount} mục nữa, board quá dài để hiện hết — dùng \`-encounter status\` để GM/player tự xem riêng từng người)*`;
+  }
   return {
     title: `Encounter: ${encounter.name}`,
-    description: blocks.join("\n\n") || "*(chưa có enemy/player nào)*",
+    description: description || "*(chưa có enemy/player nào)*",
     color: allDead ? 0x555555 : 0xe74c3c,
     footer: { text: "-encounter attack/hit/enemyattack/pending/confirmall/endturn — xem -encounter help để biết hết lệnh" },
   };
@@ -5498,6 +5514,43 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    // ── removeenemy: gỡ 1 enemy KHỎI BOARD hoàn toàn (KHÁC với hạ HP về 0 — dùng
+    // cho trường hợp enemy bỏ chạy/bị bắt sống/rút lui giữa trận, không phải chết).
+    // Enemy đã gỡ KHÔNG còn trong actionLog tương lai, không tính vào "tất cả đã hạ"
+    // (allDead) — nếu muốn loại enemy ra khỏi điều kiện thắng mà KHÔNG coi là enemy
+    // đã chết, đây là lệnh đúng (thay vì set HP=0 sẽ kích hoạt Death Penalty/loot
+    // logic dành cho "đã hạ").
+    if (sub === "removeenemy") {
+      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được gỡ enemy."); return; }
+      const kv = parseKeyValues(rest);
+      const keyRaw = (kv["key"] ?? "").trim();
+      if (!keyRaw) { message.reply("⚠️ Cú pháp: `-encounter removeenemy key: <key>` (gỡ khỏi board — dùng cho bỏ chạy/bắt sống, KHÔNG phải chết)."); return; }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const key = normalizeEnemyKey(keyRaw);
+          const enemy = encounter.enemies[key];
+          if (!enemy) throw new Error(`Không tìm thấy enemy với key "${keyRaw}".`);
+          const name = enemy.name;
+          delete encounter.enemies[key];
+          // Dọn pendingActions còn nhắm vào enemy vừa gỡ (tránh confirm sau đó bị lỗi
+          // "không tìm thấy target").
+          encounter.pendingActions = (encounter.pendingActions ?? []).filter(p =>
+            p.attackerId !== key && !(p.targets ?? []).some(t => t.targetId === key)
+          );
+          await saveEncounter(message.channel.id, encounter);
+          await message.reply({
+            content: `🏃 Đã gỡ enemy **${name}** (key: \`${key}\`) khỏi board — KHÔNG tính là đã hạ (bỏ chạy/bắt sống).`,
+            embeds: [buildEncounterBoardEmbed(encounter)],
+          });
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
     if (sub === "join") {
       const kv = parseKeyValues(rest);
       const hp = parseInt(kv["hp"] ?? "", 10);
@@ -5570,6 +5623,11 @@ client.on("messageCreate", async (message) => {
           // giữa trận thì phải join lại để cập nhật).
           joined.unlockedPagesSnapshot = (profileData.equippedPages ?? []).filter(Boolean);
           joined.unlockedEgoPagesSnapshot = (profileData.equippedEgoPages ?? []).filter(Boolean);
+          // Snapshot 3 Accessory đã equip — dùng để check perk ĐẶC BIỆT gắn liền 1
+          // accessory cụ thể (VD Dimension Pocket của Găng Tay Câm Lặng cho phép đổi
+          // vũ khí giữa trận — xem -encounter swapweapon) — CHỐT lúc join, cùng
+          // nguyên tắc snapshot như Page ở trên.
+          joined.equippedAccessoriesSnapshot = (profileData.equippedAccessories ?? []).filter(Boolean);
           // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
           // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
           // refill Light/Poise/Sanity mỗi lần gõ lại join).
@@ -5644,6 +5702,50 @@ client.on("messageCreate", async (message) => {
           resolved.combatant[sub] = Math.max(0, (resolved.combatant[sub] ?? 0) + amount);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ ${resolved.label}: ${sub === "haste" ? "Haste" : "Bind"} ${amount >= 0 ? "+" : ""}${amount} → còn ${resolved.combatant[sub]}.`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    // ── swapweapon: đổi vũ khí GIỮA TRẬN — luật xác nhận trực tiếp: "mỗi người chỉ
+    // được trang bị 1 vũ khí + 1 outfit + 3 accessory, KHÔNG được đem vào/đổi giữa
+    // trận TRỪ 1 số vũ khí/accessory ĐẶC BIỆT cho phép điều đó" — MẶC ĐỊNH CHẶN
+    // HOÀN TOÀN, chỉ mở khi player sở hữu 1 trong số ít accessory/vũ khí được biết
+    // là CÓ khả năng này (hiện tại: Dimension Pocket — passive của Găng Tay Câm
+    // Lặng, "Có thể thay đổi vũ khí giữa trận bằng cách tiêu hao 1 Light"). DANH
+    // SÁCH NÀY CỐ Ý NGẮN — chỉ thêm khi có xác nhận RÕ RÀNG 1 item khác cũng cho
+    // phép, KHÔNG tự suy đoán/mở rộng.
+    const MID_COMBAT_WEAPON_SWAP_SOURCES = {
+      "găng tay câm lặng": { lightCost: 1, abilityName: "Dimension Pocket" },
+    };
+    if (sub === "swapweapon") {
+      const weaponNameRaw = rest.trim();
+      if (!weaponNameRaw) { message.reply("⚠️ Cú pháp: `-encounter swapweapon <tên vũ khí>` (CHỈ dùng được nếu sở hữu accessory/vũ khí có khả năng đổi giữa trận, VD Dimension Pocket của Găng Tay Câm Lặng)."); return; }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const player = encounter.players[message.author.id];
+          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+          const ownedAccessories = (player.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase());
+          const grantingSource = Object.keys(MID_COMBAT_WEAPON_SWAP_SOURCES).find(key => ownedAccessories.includes(key));
+          if (!grantingSource) {
+            throw new Error(`Trang bị bị KHOÁ trong suốt trận (luật: 1 vũ khí cố định/trận) — bạn không sở hữu accessory/vũ khí nào cho phép đổi giữa trận (VD Dimension Pocket của Găng Tay Câm Lặng).`);
+          }
+          const { lightCost, abilityName } = MID_COMBAT_WEAPON_SWAP_SOURCES[grantingSource];
+          const newWeapon = findWeaponAnywhere(weaponNameRaw);
+          if (!newWeapon) throw new Error(`Không tìm thấy vũ khí "${weaponNameRaw}" trong weapon.js hoặc skills.js.`);
+          if (player.currentLight < lightCost) throw new Error(`Không đủ Light để đổi vũ khí qua ${abilityName} — cần ${lightCost}, hiện có ${player.currentLight}.`);
+          const oldWeaponWeight = player.weaponWeight;
+          player.currentLight -= lightCost;
+          player.weaponWeight = newWeapon.weight;
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(
+            `🔄 ${message.author} đổi vũ khí qua **${abilityName}** (-${lightCost} Light): **${newWeapon.name}** (${newWeapon.weight}/${newWeapon.type}, Base Dmg ${newWeapon.baseDamage}).\n` +
+            `> Độ nặng vũ khí đổi từ \`${oldWeaponWeight}\` → \`${newWeapon.weight}\` (ảnh hưởng Stamina cost M1 + số hit Guard/Evade/Parry chặn được). GM tự xác nhận đây có đúng là vũ khí hợp lệ theo phạm vi ${abilityName} hay không (hệ thống không có danh sách phân loại để tự kiểm tra).`
+          );
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -5831,8 +5933,35 @@ client.on("messageCreate", async (message) => {
       const encounter = await getEncounter(message.channel.id);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
       if (!isAdmin && message.author.id !== encounter.gmId) { message.reply("⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được kết thúc."); return; }
+      // BUG ĐÃ SỬA: trước đây xoá actionLog VĨNH VIỄN ngay khi end, không có cách
+      // nào lấy lại lịch sử trận đấu sau đó — giờ tự động gửi TOÀN BỘ actionLog
+      // (giống `-encounter log turn: all`) NGAY TRƯỚC KHI xoá, để GM còn cơ hội lưu
+      // lại nếu cần (copy/paste, hoặc Discord tự lưu lịch sử chat).
+      const fullLog = encounter.actionLog ?? [];
+      if (fullLog.length > 0) {
+        const lines = [];
+        let lastTurn = null;
+        for (const entry of fullLog) {
+          if (entry.turn !== lastTurn) { lines.push(`\n**── Turn ${entry.turn} ──**`); lastTurn = entry.turn; }
+          const icon = entry.type === "confirm" ? "✅" : "❌";
+          for (const l of entry.lines) lines.push(`${icon} ${l}`);
+        }
+        const chunks = [];
+        let current = "";
+        for (const line of lines) {
+          if ((current + "\n" + line).length > 3900) { chunks.push(current); current = line; }
+          else current = current ? current + "\n" + line : line;
+        }
+        if (current) chunks.push(current);
+        const logEmbeds = chunks.slice(0, 10).map((c, i) => ({
+          title: i === 0 ? `📜 Toàn bộ Action Log — ${encounter.name} (trước khi kết thúc)` : `📜 Action Log (tiếp ${i + 1})`,
+          description: c || "*(trống)*",
+          color: 0x95a5a6,
+        }));
+        await message.channel.send({ embeds: logEmbeds }).catch(() => {});
+      }
       await deleteEncounter(message.channel.id);
-      message.reply(`✅ Đã kết thúc encounter **${encounter.name}**.`);
+      message.reply(`✅ Đã kết thúc encounter **${encounter.name}**.${fullLog.length > 0 ? ` (Đã gửi lại toàn bộ ${fullLog.length} entry log ở trên trước khi xoá.)` : ""}`);
       return;
     }
 
@@ -6266,28 +6395,33 @@ client.on("messageCreate", async (message) => {
     }
 
     message.reply(
-      "⚠️ Lệnh không hợp lệ. Dùng:\n" +
-      "> `-encounter start name: <tên trận>` (admin/GM)\n" +
-      "> `-encounter addenemy key: <key> name: <tên> hp: <số>` (admin/GM)\n" +
-      "> `-encounter join hp: <số>` (player tham gia — tự copy Skill Tree đã mở từ profile)\n" +
-      "> `-encounter attack target: <key/all> dmg: <công thức> [skill: <tên>] [ref: <link>] [coin: <số>]` — M1, tự trừ Stamina\n" +
-      "> `-encounter hit target: <key/all> dmg: <công thức> [skill:] [ref:] [coin:]` — Page/Skill\n" +
-      "> `-encounter enemyattack key: <enemy> target: <@player/all> dmg: <công thức> [skill:] [ref:] [coin:]` (GM)\n" +
-      "> `-encounter pending` — xem hàng chờ, confirm/reject tất cả\n" +
-      "> `-encounter buff/debuff target: <key/me> text: <mô tả>` · `-encounter unbuff/undebuff target: <key/me> index: <số>`\n" +
-      "> `-encounter endturn` (GM) — hồi Stamina, đếm ngược Stagger/Panic/cooldown\n" +
-      "> `-encounter status` · `-encounter end` (GM)\n" +
-      "> `-encounter rollspeed` (GM) — roll Speed quyết định thứ tự turn\n" +
-      "> `-encounter guard/evade` — phòng thủ tự do (Guard -10 Sta giảm 90% dmg, Evade -20 Sta né 100%), dùng bao nhiêu lần cũng được\n" +
+      "⚠️ Lệnh không hợp lệ. Dùng:\n\n" +
+      "**Setup & quản lý trận**\n" +
+      "> `-encounter start name: <tên trận> [permadeath: yes]` (admin/GM) — permadeath cho Night in the Backstreet/dungeon đặc biệt\n" +
+      "> `-encounter addenemy key: <key> name: <tên> hp: <số>` (admin/GM, tùy chọn `stamina:`/`weapon:`/`res:`/`perks:`/`speedrange:`)\n" +
+      "> `-encounter removeenemy key: <key>` (admin/GM) — gỡ khỏi board (bỏ chạy/bắt sống, KHÔNG tính là đã hạ)\n" +
+      "> `-encounter join hp: <số>` (player — không gõ hp:/light: thì tự tính theo Grade + HP còn lại từ trận trước; tự lấy weapon/outfit đã equip)\n" +
+      "> `-encounter status` · `-encounter end` (GM, tự gửi lại action log đầy đủ trước khi xoá) · `-encounter rollspeed` (GM)\n" +
+      "> `-encounter log [turn: <số>/all]` — xem lại lịch sử action đã confirm/reject (mặc định 5 turn gần nhất)\n\n" +
+      "**Tấn công & phòng thủ**\n" +
+      "> `-encounter attack target: <key/all> dmg: <công thức> [skill:] [ref:] [coin:] [tags:]` — M1, tự trừ Stamina\n" +
+      "> `-encounter hit target: <key/all> dmg: <công thức> [skill:] [ref:] [coin:] [tags:]` — Page/Skill, tự trừ Light/Sanity theo cost\n" +
+      "> `-encounter enemyattack key: <enemy> target: <@player/all> dmg: <công thức> [skill:] [ref:] [coin:] [tags:]` (GM)\n" +
+      "> `tags:` gõ tay thêm: undodgeable/unblockable/unparriable/guard break/unclashable (skill thật tự phát hiện từ text roll, không cần gõ)\n" +
+      "> `-encounter guard/evade` — phòng thủ tự do, dùng bao nhiêu lần cũng được, TRỘN được nhiều loại để chặn 1 đòn M1 nhiều hit\n" +
       "> `-encounter parry` — 0 Sta, roll d20, ăn/thua so với roll đối phương lúc confirm\n" +
-      "> `-encounter clash target: <id> skill: <tên> oppskill: <tên>` — so Dice đầu, thắng/thua/huề ảnh hưởng Sanity+Emotion Coin\n" +
-      "> `-encounter shinmang` — hi sinh 25 Sanity/turn (cần sở hữu Shin) — -0,2x Res bản thân, +Dmg M1+skill, True Dmg\n" +
-      "> `-encounter manifestego` — -30 Sanity (cần Emotion Level ≥1) — Duration theo Level, +30% Dmg M1+skill\n" +
-      "> `-encounter healinjury target: <key/id> index: <số>` (GM) — chữa khỏi 1 chấn thương\n" +
-      "> `-encounter haste/bind target: <key/me> amount: <số>` — chỉnh tay (+1 Haste = +1 Speed, +1 Bind = -1 Speed)\n" +
-      "> `-encounter followup target: <key>` — Follow-Up/Pounce (cần ≥20 Sta tiêu turn này, 1 lần/turn)\n" +
-      "> `-encounter overcharge` — Overcharged Vessel (tiêu hết Charge ≥10 đổi Dice Up/Dmg 3 turn)\n" +
-      "> Skill Tree (Ein Sof/Light Body/...) dùng lệnh riêng `-unlockskilltree @user <perk>` (admin, lưu vĩnh viễn trên profile)"
+      "> `-encounter pending` — xem hàng chờ, confirm/reject tất cả · `-encounter endturn` (GM)\n\n" +
+      "**Cơ chế đặc biệt**\n" +
+      "> `-encounter clash target: <id> skill: <tên> oppskill: <tên> [for: <id>]` — so Dice đầu, ảnh hưởng Sanity+Coin (+Poise/Light/Rupture nếu có perk liên quan)\n" +
+      "> `-encounter shinmang` — hi sinh 25 Sanity/turn (cần sở hữu Shin) · `-encounter manifestego` — -30 Sanity (cần Emotion Level ≥1)\n" +
+      "> `-encounter followup target: <key>` — Follow-Up/Pounce (cần ≥20 Sta tiêu turn này) · `-encounter overcharge` — Overcharged Vessel\n" +
+      "> `-encounter swapweapon <tên>` — đổi vũ khí GIỮA TRẬN — CHỈ dùng được nếu sở hữu accessory đặc biệt (VD Dimension Pocket)\n" +
+      "> `-encounter additem <tên>` / `useitem <tên>` (tối đa 4 mang/trận, 1 dùng/turn) · `-encounter healinjury target: <key> index: <số>` (GM)\n" +
+      "> `-encounter haste/bind target: <key/me> amount: <số>` — chỉnh tay Speed\n\n" +
+      "**Ngoài encounter (profile, không cần đang trong trận)**\n" +
+      "> `-equipweapon/-equipoutfit <tên>` · `-equipaccessory <slot 1-3> <tên>` · `-equippage/-equipegopage <slot 1-5> <tên>` · `-equipment`/`-pages`\n" +
+      "> `-healitem <tên>` — hồi đầy HP ngoài trận bằng item · `-rewoundtime @user` — hồi sinh Permanent Death (miễn phí lần đầu/profile)\n" +
+      "> Skill Tree dùng lệnh riêng `-unlockskilltree @user <perk>` (admin, lưu vĩnh viễn trên profile, tự trừ điểm theo Grade)"
     );
     return;
   }
@@ -7049,12 +7183,25 @@ client.on("interactionCreate", async (interaction) => {
           }
         }
         encounter.pendingActions = [];
+        // Chiến thắng — luật xác nhận: cần thông báo RÕ RÀNG khi TẤT CẢ enemy đã hạ,
+        // không chỉ đổi màu embed (GM dễ bỏ sót). victoryAnnounced chặn báo LẶP LẠI
+        // mỗi lần confirm sau đó trong cùng trạng thái "đã thắng" — tự RESET về false
+        // ngay khi có enemy MỚI còn sống (VD GM thêm enemy tiếp theo bằng addenemy),
+        // để lần thắng KẾ TIẾP vẫn báo đúng.
+        const allEnemiesDeadNow = Object.keys(encounter.enemies).length > 0 && Object.values(encounter.enemies).every(e => e.currentHp <= 0);
+        let victoryNote = "";
+        if (allEnemiesDeadNow && !encounter.victoryAnnounced) {
+          encounter.victoryAnnounced = true;
+          victoryNote = "\n\n🎉 **CHIẾN THẮNG!** Toàn bộ enemy đã bị hạ — dùng `-encounter end` để kết thúc trận (sẽ tự gửi lại action log đầy đủ trước khi xoá), hoặc `-encounter addenemy` nếu muốn thêm đợt tiếp theo.";
+        } else if (!allEnemiesDeadNow) {
+          encounter.victoryAnnounced = false;
+        }
         await saveEncounter(channelId, encounter);
 
         await interaction.update({
           embeds: [{
             title: isConfirm ? "✅ Đã xác nhận tất cả" : "❌ Đã reject tất cả",
-            description: resultLines.join("\n") || "*(không có gì)*",
+            description: (resultLines.join("\n") || "*(không có gì)*") + victoryNote,
             color: isConfirm ? 0x2ecc71 : 0xe74c3c,
           }],
           components: [],
