@@ -359,7 +359,7 @@ function findItemAdmin(input) {
 
 // ─── parseKeyValues ───────────────────────────────────────────────────────────
 const KNOWN_KEYS = new Set([
-  "book", "count", "item", "itemcount", "ahn", "exp", "grade",
+  "book", "count", "item", "itemcount", "ahn", "exp", "grade", "bonusskillpoints",
   "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
   "poise",
@@ -1706,17 +1706,33 @@ function findExclusiveConflict(existingPerks, newPerk) {
 const PERK_POINT_COSTS = {
   // Pride
   "Claim Their Heart": 10, "Pressure Point": 15, "Shrouded Power": 20, "Sharp Eyes": 30,
-  "Adrenaline Rush": 35, "Smoke Overload": 45, "Steady Breathing": 50,
+  "Adrenaline Rush": 35, "Smoke Overload": 45, "Overbearing": 50, "Steady Breathing": 50,
   // Wrath
-  "Battle Ignition": 5, "Close Call Wind": 10,
+  "Battle Ignition": 5, "Close Call Wind": 10, "Follow-Up": 15, "Smoldering Resolve": 20,
+  "Tip-Toe Around": 25, "Inner Ardor": 30, "Backdraft": 35,
   // Desire
-  "Here We Go Again": 10,
+  "Here We Go Again": 10, "Craving Synergy": 15, "Thirst": 20, "Voracity": 30,
+  "Break the Dams": 40, "A Beautiful Mess": 50,
   // Sloth
   "Pounce": 5, "Fleeting Steps": 10, "Mastered Breaths": 15, "Fortified Resolve": 20,
-  "Shockwave": 25, "Break and Punish": 30,
+  "Shockwave": 25, "Break and Punish": 30, "Wasted Hours, Lying Down": 40,
+  // Gluttony
+  "Defenseless": 10, "Biting Embrace": 15, "Thorns": 30, "Tear To Shreds": 35,
+  "Death Comes For All": 50,
+  // Gloom
+  "Tap Of The Light": 10, "Borderline Breakdown": 15, "Comeback Time": 20, "Wail": 25,
+  "No Will To Break": 30, "Negative Thoughts": 30, "No Mind To Cure": 40, "Cry On Deaf Ears": 50,
+  // Envy
+  "Charge Up": 5, "Convert Physical Trauma": 10, "Blessed by the Sparks": 15,
+  "Electrifying Vendetta": 30, "Short Circuit Trip": 35, "Kinetic Energy": 40,
+  "Overflowing Guard": 45, "Overcharged Vessel": 50,
   // Shin
   "Shin Follow Up": 5, "Defensive Light": 10, "Decimate Mind": 20, "Regain Mind": 30,
   "Overwhelming Power": 50,
+  // Light (chỉ thủ thư thư viện) — LƯU Ý: "Light Dash" ở đây là PERK (mỗi turn
+  // start +2 Light), KHÁC HOÀN TOÀN "Light Dash" PAGE đã có trong skills.js (dash+
+  // né 1 đòn) — trùng TÊN nhưng 2 thứ khác nhau, không liên quan tới nhau.
+  "Ein Sof": 5, "Light Body": 10, "Light Dash": 20, "Emotion Surge": 30, "Ohr Ein Sof": 50,
 };
 
 /** calcSkillTreePointsEarned — tổng điểm ĐÃ KIẾM ĐƯỢC (5 khởi điểm grade 9 + 5/grade
@@ -1797,6 +1813,12 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
   if (hasPerk(attacker, "Break and Punish") && target.staggered) bonusPct += 20;
   // Kinetic Energy: CHỈ áp cho M1, cần ≥10 Charge → +10% Dmg
   if (isM1 && hasPerk(attacker, "Kinetic Energy") && attacker.charge >= 10) bonusPct += 10;
+  // Tip-Toe Around (Wrath, [25 Points]): sau khi Parry thành công, đòn tấn công
+  // KẾ TIẾP +10% Dmg — tiêu thụ cờ NGAY khi tính bonus cho đòn này (chỉ áp 1 lần).
+  if (attacker.tipToeBonusPending) {
+    bonusPct += 10;
+    attacker.tipToeBonusPending = false;
+  }
   // Wail: bản thân dưới -25 Sanity → +10% Dmg
   if (hasPerk(attacker, "Wail") && attacker.currentSanity < -25) bonusPct += 10;
   // Borderline Breakdown: mỗi -5 Sanity (âm) → +2% Dmg, tối đa 18%
@@ -2030,6 +2052,11 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // quyết định/narrate lúc dùng, hệ thống chỉ enforce đúng giới hạn 4 mang + 1
     // dùng/turn + trừ thật khỏi inventory profile.
     consumablesLoadout: [], usedItemThisTurn: false,
+    // Voracity (Desire, [30 Points]): thắng Clash +2 Light — CHỈ 1 lần/turn.
+    voracityUsedThisTurn: false,
+    // Tip-Toe Around (Wrath, [25 Points]): cờ chờ — Parry thành công → đòn tấn
+    // công KẾ TIẾP +10% Dmg (tiêu thụ ở computeAttackerPerkContext).
+    tipToeBonusPending: false,
   };
 }
 
@@ -2139,6 +2166,46 @@ function trueDmgResStr(target) {
  *  bị trừ Stamina/Sanity — gọi MỖI LẦN sau khi thay đổi 2 giá trị này. Không tự bỏ
  *  qua nếu đã đang stagger/panic (idempotent — set lại staggerTurnsLeft=1 chỉ nếu
  *  CHƯA staggered, tránh việc bị trừ Stamina=0 nhiều lần liên tục lại reset đếm ngược). */
+/** applyParrySuccessPerks — gọi MỖI lần Parry thành công (cả đường M1-mix lẫn
+ *  Page/skill 1-charge) — xử lý các perk kích hoạt từ Parry thành công:
+ *  - Charge Up (Envy, [5 Points]): +10 Charge.
+ *  - Tip-Toe Around (Wrath, [25 Points]): đòn tấn công KẾ TIẾP của combatant này
+ *    được +10% Dmg — set cờ chờ tiêu thụ ở computeAttackerPerkContext lúc tấn
+ *    công lần sau.
+ *  - Electrifying Vendetta (Envy, [30 Points]): ≥15 Charge → gây 10 Dmg THẲNG (raw,
+ *    không qua Res) lên người tấn công gốc. Phần "ngắt đòn đánh tiếp theo của
+ *    chúng" mang tính tường thuật/phụ thuộc bàn chơi cụ thể — KHÔNG tự động hoá
+ *    được (không có khái niệm "khoá hành động tiếp theo" trong hệ thống hiện tại),
+ *    GM tự xử lý phần đó.
+ *  @param attackerCombatant — người VỪA bị parry (để áp Electrifying Vendetta lên).
+ */
+function applyParrySuccessPerks(combatant, attackerCombatant) {
+  if (hasPerk(combatant, "Charge Up")) {
+    combatant.charge = Math.min(CHARGE_MAX, (combatant.charge ?? 0) + 10);
+  }
+  if (hasPerk(combatant, "Tip-Toe Around")) {
+    combatant.tipToeBonusPending = true;
+  }
+  let vendettaNote = "";
+  if (hasPerk(combatant, "Electrifying Vendetta") && (combatant.charge ?? 0) >= 15 && attackerCombatant) {
+    attackerCombatant.currentHp = Math.max(0, attackerCombatant.currentHp - 10);
+    vendettaNote = " ⚡-10 HP (Electrifying Vendetta — phần 'ngắt đòn tiếp theo' GM tự xử lý)";
+  }
+  return vendettaNote;
+}
+
+/** applyEvadeSuccessPerks — Short Circuit Trip (Envy, [35 Points]): ≥15 Charge →
+ *  Evade thành công gây 10 Dmg raw lên người tấn công gốc (tương tự Electrifying
+ *  Vendetta nhưng cho Evade) — phần "ngắt đòn tiếp theo" cũng không tự động hoá
+ *  được, GM tự xử lý. */
+function applyEvadeSuccessPerks(combatant, attackerCombatant) {
+  if (hasPerk(combatant, "Short Circuit Trip") && (combatant.charge ?? 0) >= 15 && attackerCombatant) {
+    attackerCombatant.currentHp = Math.max(0, attackerCombatant.currentHp - 10);
+    return " ⚡-10 HP (Short Circuit Trip — phần 'ngắt đòn tiếp theo' GM tự xử lý)";
+  }
+  return "";
+}
+
 function checkStaggerPanic(combatant) {
   if (combatant.currentStamina <= 0 && !combatant.staggered) {
     combatant.staggered = true;
@@ -2286,6 +2353,7 @@ function advanceCombatantTurn(combatant) {
   // turn") — đều là cờ 1 LẦN/turn, reset về false mỗi turn mới.
   combatant.followUpUsedThisTurn = false;
   combatant.usedItemThisTurn = false;
+  combatant.voracityUsedThisTurn = false;
   // Shin/Mang chỉ active TRONG TURN đã kích hoạt — hết turn thì tắt hẳn (phải dùng
   // lại -encounter shinmang, tốn thêm 25 Sanity, nếu muốn duy trì turn sau).
   combatant.shinMangActive = false;
@@ -2504,6 +2572,13 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     }
     let cost = type === "guard" ? 10 : 20;
     if (type === "evade" && (combatant.injuries ?? []).includes("Gãy chân")) cost *= 2;
+    // Overflowing Guard (Envy, [45 Points]): ≥7 Charge → Guard giảm 1 nửa Stamina,
+    // đồng thời giảm 1 Charge bản thân.
+    let overflowingGuardUsed = false;
+    if (type === "guard" && hasPerk(combatant, "Overflowing Guard") && (combatant.charge ?? 0) >= 7) {
+      cost = Math.ceil(cost / 2);
+      overflowingGuardUsed = true;
+    }
     // Close Call Wind (Wrath, [10 Points]): dưới 50% HP → Evade -5 Stamina.
     if (type === "evade" && hasPerk(combatant, "Close Call Wind") && combatant.currentHp < combatant.maxHp * 0.5) {
       cost = Math.max(0, cost - 5);
@@ -2518,6 +2593,7 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     }
     if (combatant.currentStamina < cost) throw new Error(`Không đủ Stamina — cần ${cost}, còn ${combatant.currentStamina}.`);
     combatant.currentStamina -= cost;
+    if (overflowingGuardUsed) combatant.charge = Math.max(0, (combatant.charge ?? 0) - 1);
     // KHÔNG cộng vào staminaUsedThisTurn ở đây — counter này CHỈ tính Stamina tiêu
     // qua ĐÁNH THƯỜNG (M1) theo đúng luật ("đánh thường đủ 20 Stamina... +1 Light",
     // "20 Stamina tiêu thụ thông qua đánh thường" cho Pounce/Follow-Up) — Guard/Evade
@@ -2528,7 +2604,7 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
     checkStaggerPanic(combatant);
     await saveEncounter(channelId, encounter);
-    result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
+    result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""}${overflowingGuardUsed ? " (Overflowing Guard — giảm 1 nửa Sta, -1 Charge)" : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
   });
   return result;
 }
@@ -4344,6 +4420,37 @@ client.on("messageCreate", async (message) => {
   // miễn phí"). Admin/GM dùng giúp player (vì player đã chết không tự gõ lệnh
   // được theo tinh thần luật, nhưng không hại gì nếu cho self-use — vẫn enforce
   // đúng giới hạn 1 lần miễn phí + cần item "Rewound Time" cho các lần sau).
+  // ── -healitem — hồi HP NGOÀI encounter (luật: "HP persist nhưng vẫn có thể hồi
+  // lại bằng cách dùng consumable item ở ngoài" — KHÁC -encounter useitem, lệnh đó
+  // chỉ dùng được TRONG 1 encounter đang chạy, KHÔNG đụng tới currentHp đã persist
+  // trên profile). Không có số liệu hồi cụ thể nào được luật cho — coi "dùng item
+  // hồi phục" nghĩa là HỒI ĐẦY (full heal), hợp lý nhất cho 1 item hồi phục dùng
+  // ngoài combat.
+  if (message.content.startsWith("-healitem")) {
+    const itemNameRaw = message.content.replace("-healitem", "").trim();
+    if (!itemNameRaw) { message.reply("⚠️ Cú pháp: `-healitem <tên item>` (hồi ĐẦY HP — dùng item hồi phục trong inventory, KHÔNG cần đang ở trong encounter)."); return; }
+    try {
+      await withLock(message.author.id, async () => {
+        const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
+        const itemName = findItem(itemNameRaw) ?? (profileData.items?.[itemNameRaw] > 0 ? itemNameRaw : null);
+        if (!itemName) throw new Error(`Không tìm thấy item "${itemNameRaw}" trong inventory của bạn.`);
+        const owned = profileData.items?.[itemName] ?? 0;
+        if (owned < 1) throw new Error(`Không còn **${itemName}** trong inventory.`);
+        profileData.items[itemName] = owned - 1;
+        if (profileData.items[itemName] <= 0) delete profileData.items[itemName];
+        const { grade } = calcGrade(profileData.exp ?? 0);
+        const maxHp = 140 + 20 * (GRADE_MIN - grade);
+        profileData.currentHp = maxHp;
+        profileData.hpLastResetCheck = Date.now();
+        await savePlayerData(message.author.id, profileData, slot);
+        message.reply(`🧪 ${message.author} đã dùng **${itemName}** — hồi đầy HP (${maxHp}/${maxHp})!`);
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
   if (message.content.startsWith("-rewoundtime")) {
     const isAdmin = ADMIN_IDS.has(message.author.id);
     const targetUser = message.mentions.users.first();
@@ -4439,8 +4546,19 @@ client.on("messageCreate", async (message) => {
       message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
       return;
     }
-    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0) {
-      message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`, `items`.\n> Thêm `+` trước số để cộng thêm, VD: `exp: +50`");
+    // bonusskillpoints: — "điều kiện đặc biệt" để lên 50 điểm Skill Tree (luật:
+    // "Để đạt 50 sẽ cần điều kiện đặc biệt" — KHÔNG được luật định nghĩa rõ điều
+    // kiện cụ thể là gì, nên GM tự quyết định khi nào player đạt được, rồi cấp tay
+    // qua tham số này — set tuyệt đối hoặc +N để cộng thêm, giống exp:/ahn:).
+    const bonusSkillRaw = kv["bonusskillpoints"] ?? null;
+    const bonusSkillIsAdd = bonusSkillRaw && bonusSkillRaw.startsWith("+");
+    const bonusSkillValue = bonusSkillRaw ? parseInt(bonusSkillRaw.replace("+", ""), 10) : null;
+    if (bonusSkillRaw && (bonusSkillValue === null || isNaN(bonusSkillValue))) {
+      message.reply("❌ `bonusskillpoints:` phải là số.");
+      return;
+    }
+    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && bonusSkillValue === null) {
+      message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`, `items`, `bonusskillpoints`.\n> Thêm `+` trước số để cộng thêm, VD: `exp: +50`");
       return;
     }
 
@@ -4486,6 +4604,16 @@ client.on("messageCreate", async (message) => {
               data.items[name] = isAdd ? (data.items[name] ?? 0) + count : count;
             }
             changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
+          }
+          if (bonusSkillValue !== null) {
+            if (bonusSkillIsAdd) {
+              const before = data.bonusSkillPoints ?? 0;
+              data.bonusSkillPoints = Math.max(0, before + bonusSkillValue);
+              changes.push(`Bonus Skill Points +${bonusSkillValue} (${before} → **${data.bonusSkillPoints}**) [điều kiện đặc biệt lên 50 điểm]`);
+            } else {
+              data.bonusSkillPoints = Math.max(0, bonusSkillValue);
+              changes.push(`Bonus Skill Points set → **${data.bonusSkillPoints}**`);
+            }
           }
           await savePlayerData(targetUser.id, data, slot);
           return changes;
@@ -5886,6 +6014,17 @@ client.on("messageCreate", async (message) => {
             applyEmotionDelta(targetResolved.combatant, -1);
             checkStaggerPanic(forResolved.combatant); checkStaggerPanic(targetResolved.combatant);
             resultText = `🏆 ${forResolved.label} THẮNG Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — +10 Sanity +2 Coin cho ${forResolved.label}, -10 Sanity -1 Coin cho ${targetResolved.label}.`;
+            // Voracity (Desire, [30 Points]): thắng Clash +2 Light, chỉ 1 lần/turn.
+            if (hasPerk(forResolved.combatant, "Voracity") && !forResolved.combatant.voracityUsedThisTurn) {
+              forResolved.combatant.currentLight = Math.min(forResolved.combatant.maxLight, forResolved.combatant.currentLight + 2);
+              forResolved.combatant.voracityUsedThisTurn = true;
+              resultText += ` ✨+2 Light (Voracity) cho ${forResolved.label}.`;
+            }
+            // Thorns (Gluttony, [30 Points]): THUA Clash → áp 7 Rupture lên người thắng.
+            if (hasPerk(targetResolved.combatant, "Thorns")) {
+              forResolved.combatant.rupture = Math.min(99, (forResolved.combatant.rupture ?? 0) + 7);
+              resultText += ` 🌵+7 Rupture (Thorns) lên ${forResolved.label}.`;
+            }
           } else if (myEffectiveDice < oppEffectiveDice) {
             targetResolved.combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, targetResolved.combatant.currentSanity + 10);
             applyEmotionDelta(targetResolved.combatant, 2);
@@ -5893,6 +6032,15 @@ client.on("messageCreate", async (message) => {
             applyEmotionDelta(forResolved.combatant, -1);
             checkStaggerPanic(forResolved.combatant); checkStaggerPanic(targetResolved.combatant);
             resultText = `💔 ${forResolved.label} THUA Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — +10 Sanity +2 Coin cho ${targetResolved.label}, -10 Sanity -1 Coin cho ${forResolved.label}.`;
+            if (hasPerk(targetResolved.combatant, "Voracity") && !targetResolved.combatant.voracityUsedThisTurn) {
+              targetResolved.combatant.currentLight = Math.min(targetResolved.combatant.maxLight, targetResolved.combatant.currentLight + 2);
+              targetResolved.combatant.voracityUsedThisTurn = true;
+              resultText += ` ✨+2 Light (Voracity) cho ${targetResolved.label}.`;
+            }
+            if (hasPerk(forResolved.combatant, "Thorns")) {
+              targetResolved.combatant.rupture = Math.min(99, (targetResolved.combatant.rupture ?? 0) + 7);
+              resultText += ` 🌵+7 Rupture (Thorns) lên ${targetResolved.label}.`;
+            }
           } else {
             applyEmotionDelta(forResolved.combatant, 1);
             applyEmotionDelta(targetResolved.combatant, 1);
@@ -6311,7 +6459,7 @@ client.on("interactionCreate", async (interaction) => {
                     target.evadeCharges -= 1; used += 1;
                     for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 0;
                   }
-                  noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})`);
+                  noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
                 }
                 while (!bypass.blockParry && (target.parryRolls ?? []).length > 0 && hitIdx < totalHits) {
                   const defRoll = target.parryRolls.shift();
@@ -6322,7 +6470,7 @@ client.on("interactionCreate", async (interaction) => {
                     if (won) perHitMult[hitIdx] = 0;
                   }
                   if (won) {
-                    noteParts.push(`🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll} — né hit ${coverStart + 1}-${hitIdx})`);
+                    noteParts.push(`🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll} — né hit ${coverStart + 1}-${hitIdx})${applyParrySuccessPerks(target, attacker.combatant)}`);
                   } else {
                     // Mastered Breaths (Sloth, [15 Points]): base cost 30 thay vì 40.
                     // Gãy tay (chấn thương) vẫn NHÂN ĐÔI bất kể base là bao nhiêu.
@@ -6370,7 +6518,7 @@ client.on("interactionCreate", async (interaction) => {
                 target.evadeCharges -= chargesUsed;
                 finalDmg *= (1 - fraction);
                 if (fraction >= 1) evadedCompletely = true;
-                defenseNote = ` 💨**Evade** (chặn ${Math.round(fraction * 100)}% — dùng ${chargesUsed} charge)`;
+                defenseNote = ` 💨**Evade** (chặn ${Math.round(fraction * 100)}% — dùng ${chargesUsed} charge)${applyEvadeSuccessPerks(target, attacker.combatant)}`;
               } else if (!bypass.blockParry && (target.parryRolls ?? []).length > 0) {
                 const defRoll = target.parryRolls.shift();
                 const atkRoll = 1 + Math.floor(Math.random() * 20);
@@ -6379,6 +6527,7 @@ client.on("interactionCreate", async (interaction) => {
                   finalDmg *= (1 - fraction);
                   if (fraction >= 1) evadedCompletely = true;
                   defenseNote = ` 🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll}, chặn ${Math.round(fraction * 100)}%)`;
+                  defenseNote += applyParrySuccessPerks(target, attacker.combatant);
                 } else {
                   // Mastered Breaths (Sloth, [15 Points]): base cost 30 thay vì 40 khi
                   // hụt Parry. Gãy tay (chấn thương) vẫn NHÂN ĐÔI bất kể base là bao
