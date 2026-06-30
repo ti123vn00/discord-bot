@@ -1805,9 +1805,11 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
   if (attacker.manifestedEGO) bonusPct += 30;
   // Chấn thương nặng "Mất tay": -50% sát thương gây ra — cơ chế GỐC, không cần unlock.
   if ((attacker.injuries ?? []).includes("Mất tay")) bonusPct -= 50;
-  // Backdraft: Stamina ≥50 (xấp xỉ "lúc turn start" bằng Stamina hiện tại, vì không
-  // lưu snapshot riêng lúc turn start) → +20% Dmg
-  if (hasPerk(attacker, "Backdraft") && attacker.currentStamina >= 50) bonusPct += 20;
+  // Backdraft: Stamina ≤50 (xấp xỉ "lúc turn start" bằng Stamina hiện tại, vì không
+  // lưu snapshot riêng lúc turn start) → +20% Dmg. BUG ĐÃ SỬA: trước đây dùng >=50
+  // (Stamina CAO mới buff) — ĐẢO NGƯỢC hoàn toàn ý nghĩa perk so với luật ("dưới
+  // hoặc bằng 50 Stamina" — buff khi Stamina THẤP, hợp lý với tên "Backdraft").
+  if (hasPerk(attacker, "Backdraft") && attacker.currentStamina <= 50) bonusPct += 20;
   // Death Comes For All: target có Rupture → +30% Dmg
   if (hasPerk(attacker, "Death Comes For All") && target.rupture > 0) bonusPct += 30;
   // Break and Punish: target bị Stagger → +20% Dmg
@@ -1900,6 +1902,50 @@ function computeDefenderDmgReduction(defender) {
  * advanceCombatantTurn), không liên quan gì tới coin hiện có lúc đó.
  * @returns {string[]} note để hiển thị (VD "🆙 Emotion Level 2! (+10.00 HP...)")
  */
+/**
+ * applySanityGain — dùng cho MỌI nguồn vốn dĩ "TĂNG" Sanity (Clash thắng +10,
+ * Regain Mind +10...) — luật Negative Thoughts (Gloom, [30 Points]): "các nguồn
+ * tăng sanity sẽ trở thành giảm" — nếu combatant có perk này, amount (luôn dương)
+ * sẽ TRỪ thay vì CỘNG. KHÔNG dùng hàm này cho các nguồn vốn dĩ "GIẢM" Sanity (Shin/
+ * Mang -25, Manifest E.G.O -30, No Mind To Cure -25 lúc start, Sinking -1/hit) —
+ * luật CHỈ nói đảo chiều TĂNG→GIẢM, không nói ngược lại (GIẢM vẫn giữ nguyên GIẢM
+ * dù có Negative Thoughts), những chỗ đó tiếp tục dùng phép trừ trực tiếp như cũ.
+ * @param amount số dương (lượng Sanity ĐÁNG LẼ được CỘNG nếu không có perk này)
+ */
+/**
+ * getEffectiveSanityForDiceBonus — luật gốc: "+1 Sanity → +1% dice value, -1 Sanity
+ * → -1% dice value". Negative Thoughts (Gloom, [30 Points]) ĐẢO chiều hoàn toàn:
+ * "âm Sanity sẽ tăng Dice Value Bonus thay vì giảm và ngược lại" — tương đương lấy
+ * NGƯỢC DẤU của currentSanity trước khi đưa vào công thức %dice gốc.
+ */
+function getEffectiveSanityForDiceBonus(combatant) {
+  return hasPerk(combatant, "Negative Thoughts") ? -combatant.currentSanity : combatant.currentSanity;
+}
+
+function applySanityGain(combatant, amount) {
+  if (hasPerk(combatant, "Negative Thoughts")) {
+    combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, combatant.currentSanity - amount);
+  } else {
+    combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, combatant.currentSanity + amount);
+  }
+}
+
+/**
+ * applyClashLossSanity — Sanity của bên THUA Clash. Bình thường -10 (luật gốc).
+ * Negative Thoughts (Gloom, [30 Points]) có EXCEPTION RIÊNG cho đúng trường hợp
+ * này: "khi thua clash sẽ tăng 30 Sanity" — đây KHÔNG phải chỉ đảo dấu -10 thành
+ * +10 theo rule chung "nguồn tăng→giảm" (vì -10 vốn dĩ ĐÃ là nguồn giảm, rule
+ * chung không đảo phần này) — mà là 1 con số HOÀN TOÀN RIÊNG (+30) được luật ghi
+ * rõ, nên tách hẳn thành helper riêng thay vì tái dùng applySanityGain.
+ */
+function applyClashLossSanity(combatant) {
+  if (hasPerk(combatant, "Negative Thoughts")) {
+    combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, combatant.currentSanity + 30);
+  } else {
+    combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, combatant.currentSanity - 10);
+  }
+}
+
 function applyEmotionDelta(combatant, delta) {
   const notes = [];
   if (!delta) return notes;
@@ -2210,10 +2256,23 @@ function applyEvadeSuccessPerks(combatant, attackerCombatant) {
 function checkStaggerPanic(combatant) {
   if (combatant.currentStamina <= 0 && !combatant.staggered) {
     combatant.staggered = true;
-    // Choáng (chấn thương nhẹ, từ 2 stack trở lên): lần Stagger này kéo dài 2 turn
-    // thay vì 1.
+    // Choáng (luật xác nhận trực tiếp từ GM: "game không có status Choáng riêng,
+    // chỉ có Stagger" — Choáng KHÔNG PHẢI 1 chấn thương random độc lập như Gãy tay/
+    // Gãy chân/Gãy Xương, mà là COUNTER tự động +1 MỖI LẦN bị Stagger, không liên
+    // quan gì tới roll injury 30% dmg) — BUG ĐÃ SỬA: trước đây "Choáng" nằm CHUNG
+    // MINOR_INJURIES, bị roll random 40% cùng 3 cái kia thay vì tự động trigger ở
+    // đây.
+    // Thứ tự QUAN TRỌNG: "Sau 2 stack sẽ tăng lần stagger TIẾP THEO từ 1→2 turn" —
+    // nghĩa là phải ĐÃ CÓ ĐỦ 2 stack TỪ TRƯỚC (không tính lần này) thì LẦN KẾ TIẾP
+    // (lần Stagger thứ 3 trở đi) mới kéo dài 2 turn — Stagger lần 1 (stacks hiện=0)
+    // và lần 2 (stacks hiện=1) đều VẪN 1 turn, chỉ từ lần 3 (stacks hiện=2) mới 2
+    // turn. Do đó CHECK trước bằng giá trị HIỆN CÓ, rồi MỚI tăng dazedStacks sau.
     combatant.staggerTurnsLeft = (combatant.dazedStacks ?? 0) >= 2 ? 2 : 1;
+    combatant.dazedStacks = (combatant.dazedStacks ?? 0) + 1;
     combatant.currentStamina = 0;
+    // Cleanse: SAU KHI lần Stagger 2-turn này THỰC SỰ KẾT THÚC, dazedStacks reset về
+    // 0 (chu kỳ 1,1,2-cleanse lặp lại) — xem advanceCombatantTurn, không reset ở
+    // đây vì Stagger vừa MỚI BẮT ĐẦU, chưa kết thúc.
   }
   // Negative Thoughts (Gloom, [30 Points]): "Chỉ bị Panic ở +45 Sanity" — đảo
   // NGƯỢC chiều ngưỡng Panic hoàn toàn (thay vì -45). Các phần KHÁC của perk này
@@ -2236,7 +2295,10 @@ function checkStaggerPanic(combatant) {
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
  *  -encounter endturn được gọi. */
-const MINOR_INJURIES = ["Gãy tay", "Gãy chân", "Gãy Xương", "Choáng"];
+// "Choáng" KHÔNG nằm trong danh sách này nữa — xem comment đầy đủ ở
+// checkStaggerPanic (xác nhận trực tiếp từ GM: không phải injury random, mà là
+// counter tự động mỗi lần Stagger).
+const MINOR_INJURIES = ["Gãy tay", "Gãy chân", "Gãy Xương"];
 const SEVERE_INJURIES = ["Mất tay", "Mất Chân", "Vết thương lớn"];
 
 /**
@@ -2267,10 +2329,7 @@ function rollInjury(combatant, dmgDealtThisHit) {
   else return null;
 
   combatant.injuries = combatant.injuries ?? [];
-  if (injuryName === "Choáng") {
-    combatant.dazedStacks = (combatant.dazedStacks ?? 0) + 1;
-    combatant.injuries.push(`Choáng (stack ${combatant.dazedStacks})`);
-  } else if (injuryName === "Gãy Xương") {
+  if (injuryName === "Gãy Xương") {
     combatant.maxHp = Math.max(1, combatant.maxHp - 30);
     combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);
     combatant.injuries.push("Gãy Xương (-30 Max HP)");
@@ -2301,6 +2360,16 @@ function advanceCombatantTurn(combatant) {
     if (combatant.staggerTurnsLeft <= 0) {
       combatant.staggered = false;
       combatant.currentStamina = combatant.maxStamina; // hồi đầy sau khi hết Stagger
+      // Choáng — cleanse: SAU KHI 1 lần Stagger 2-turn (dazedStacks đã ≥2 lúc trigger
+      // — xem checkStaggerPanic) ĐÃ THỰC SỰ KẾT THÚC, dazedStacks reset về 0, bắt
+      // đầu đếm lại từ đầu cho chu kỳ Stagger tiếp theo (1, 1, 2-cleanse, lặp lại) —
+      // xác nhận trực tiếp từ GM. dazedStacks GIỮ NGUYÊN suốt lúc Stagger đang diễn
+      // ra (chỉ đổi lúc TRIGGER mới — checkStaggerPanic chặn re-trigger khi đã
+      // staggered=true), nên kiểm tra giá trị HIỆN TẠI ở đây là an toàn, phản ánh
+      // đúng giá trị lúc lần Stagger NÀY được kích hoạt.
+      if (combatant.dazedStacks >= 2) {
+        combatant.dazedStacks = 0;
+      }
     }
     // Đang stagger thì KHÔNG hồi 30 Stamina thường — turn này coi như "không hành
     // động được", hồi đầy 1 LẦN lúc hết stagger (đã xử lý ở trên).
@@ -2516,6 +2585,10 @@ function formatCombatantBlock(combatant, label) {
   if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill`);
   else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) lines.push(`> ⏳ Manifest E.G.O CD — còn ${combatant.manifestedEGOCooldownLeft} turn`);
   if ((combatant.injuries ?? []).length > 0) lines.push(`> 🩻 Chấn thương: ${combatant.injuries.join(", ")}`);
+  // Choáng (dazedStacks) — counter tự động mỗi lần Stagger (xem checkStaggerPanic),
+  // KHÔNG còn nằm trong injuries[] nữa — hiển thị riêng để GM/player biết khi nào
+  // Stagger sẽ kéo dài 2 turn thay vì 1 (từ stack thứ 2 trở lên).
+  if ((combatant.dazedStacks ?? 0) > 0) lines.push(`> 💫 Choáng: ${combatant.dazedStacks} stack${combatant.dazedStacks >= 2 ? " (Stagger lần tới sẽ kéo dài 2 turn)" : ""}`);
   const statusParts = [];
   if (combatant.sinking > 0) statusParts.push(`<:Sinking:1513762793436741652>${combatant.sinking}`);
   if (combatant.rupture > 0) statusParts.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
@@ -3021,7 +3094,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         // áp dụng từ Sanity HIỆN TẠI của người tấn công — KHÔNG phải tham số tự gõ
         // tay (trước đây M1 hoàn toàn THIẾU dòng này, /hit thì có nhưng phải tự gõ
         // — cả 2 đều sai, vì luật nói đây là cơ chế MẶC ĐỊNH không cần khai báo).
-        sanityBonusPct: player.currentSanity,
+        sanityBonusPct: getEffectiveSanityForDiceBonus(player),
         critDiv: perkCtx.critDivOverride ?? undefined,
         poiseInit: player.poise, chargeInit: player.charge,
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
@@ -3115,7 +3188,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // Tự động cộng Sanity HIỆN TẠI của người dùng Page vào dice bonus (xem
         // comment đầy đủ ở doPlayerAttack) — sanityBonusPct (tham số tự gõ tay nếu
         // có) CỘNG THÊM vào, không thay thế, để vẫn linh hoạt cho trường hợp đặc biệt.
-        sanityBonusPct: player.currentSanity + sanityBonusPct,
+        sanityBonusPct: getEffectiveSanityForDiceBonus(player) + sanityBonusPct,
         // critMul: ưu tiên giá trị NGƯỜI DÙNG GÕ TAY (critmul: ...) nếu có — còn
         // không thì lấy từ perk context (giờ ĐÃ đúng default 1.3x, xem comment đầy
         // đủ ở computeAttackerPerkContext — trước đây so sánh "!== 1" để biết "có
@@ -3201,7 +3274,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten, resStr: combatantResStr(t.combatant),
         bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
-        sanityBonusPct: enemy.currentSanity,
+        sanityBonusPct: getEffectiveSanityForDiceBonus(enemy),
         poiseInit: enemy.poise, chargeInit: enemy.charge,
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
@@ -5669,7 +5742,6 @@ client.on("messageCreate", async (message) => {
           const list = resolved.combatant.injuries ?? [];
           if (index > list.length) throw new Error(`${resolved.label} chỉ có ${list.length} chấn thương — không có #${index}.`);
           const removed = list.splice(index - 1, 1)[0];
-          if (removed?.startsWith("Choáng")) resolved.combatant.dazedStacks = Math.max(0, (resolved.combatant.dazedStacks ?? 0) - 1);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ Đã chữa khỏi chấn thương #${index} của ${resolved.label}: "${removed}"`);
         });
@@ -6051,12 +6123,16 @@ client.on("messageCreate", async (message) => {
 
           let resultText;
           if (myEffectiveDice > oppEffectiveDice) {
-            forResolved.combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, forResolved.combatant.currentSanity + 10);
+            const myBefore = forResolved.combatant.currentSanity;
+            applySanityGain(forResolved.combatant, 10);
             applyEmotionDelta(forResolved.combatant, 2);
-            targetResolved.combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, targetResolved.combatant.currentSanity - 10);
+            const oppBefore = targetResolved.combatant.currentSanity;
+            applyClashLossSanity(targetResolved.combatant);
             applyEmotionDelta(targetResolved.combatant, -1);
             checkStaggerPanic(forResolved.combatant); checkStaggerPanic(targetResolved.combatant);
-            resultText = `🏆 ${forResolved.label} THẮNG Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — +10 Sanity +2 Coin cho ${forResolved.label}, -10 Sanity -1 Coin cho ${targetResolved.label}.`;
+            const myDelta = forResolved.combatant.currentSanity - myBefore;
+            const oppDelta = targetResolved.combatant.currentSanity - oppBefore;
+            resultText = `🏆 ${forResolved.label} THẮNG Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — ${myDelta >= 0 ? "+" : ""}${myDelta} Sanity +2 Coin cho ${forResolved.label}, ${oppDelta >= 0 ? "+" : ""}${oppDelta} Sanity -1 Coin cho ${targetResolved.label}.`;
             // Voracity (Desire, [30 Points]): thắng Clash +2 Light, chỉ 1 lần/turn.
             if (hasPerk(forResolved.combatant, "Voracity") && !forResolved.combatant.voracityUsedThisTurn) {
               forResolved.combatant.currentLight = Math.min(forResolved.combatant.maxLight, forResolved.combatant.currentLight + 2);
@@ -6074,12 +6150,16 @@ client.on("messageCreate", async (message) => {
               resultText += ` 🌵+7 Rupture (Thorns) lên ${forResolved.label}.`;
             }
           } else if (myEffectiveDice < oppEffectiveDice) {
-            targetResolved.combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, targetResolved.combatant.currentSanity + 10);
+            const oppBefore2 = targetResolved.combatant.currentSanity;
+            applySanityGain(targetResolved.combatant, 10);
             applyEmotionDelta(targetResolved.combatant, 2);
-            forResolved.combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, forResolved.combatant.currentSanity - 10);
+            const myBefore2 = forResolved.combatant.currentSanity;
+            applyClashLossSanity(forResolved.combatant);
             applyEmotionDelta(forResolved.combatant, -1);
             checkStaggerPanic(forResolved.combatant); checkStaggerPanic(targetResolved.combatant);
-            resultText = `💔 ${forResolved.label} THUA Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — +10 Sanity +2 Coin cho ${targetResolved.label}, -10 Sanity -1 Coin cho ${forResolved.label}.`;
+            const oppDelta2 = targetResolved.combatant.currentSanity - oppBefore2;
+            const myDelta2 = forResolved.combatant.currentSanity - myBefore2;
+            resultText = `💔 ${forResolved.label} THUA Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — ${oppDelta2 >= 0 ? "+" : ""}${oppDelta2} Sanity +2 Coin cho ${targetResolved.label}, ${myDelta2 >= 0 ? "+" : ""}${myDelta2} Sanity -1 Coin cho ${forResolved.label}.`;
             if (hasPerk(targetResolved.combatant, "Voracity") && !targetResolved.combatant.voracityUsedThisTurn) {
               targetResolved.combatant.currentLight = Math.min(targetResolved.combatant.maxLight, targetResolved.combatant.currentLight + 2);
               targetResolved.combatant.voracityUsedThisTurn = true;
@@ -6441,8 +6521,10 @@ client.on("interactionCreate", async (interaction) => {
                 const sanityGainCount = Math.floor(attacker.combatant.regainMindAccumulator / 40);
                 if (sanityGainCount > 0) {
                   attacker.combatant.regainMindAccumulator -= sanityGainCount * 40;
-                  attacker.combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, attacker.combatant.currentSanity + sanityGainCount * 10);
-                  staminaNote += ` 🧠+${sanityGainCount * 10} Sanity (Regain Mind)`;
+                  const sanityBeforeRegain = attacker.combatant.currentSanity;
+                  applySanityGain(attacker.combatant, sanityGainCount * 10);
+                  const actualSanityDelta = attacker.combatant.currentSanity - sanityBeforeRegain;
+                  staminaNote += ` 🧠${actualSanityDelta >= 0 ? "+" : ""}${actualSanityDelta} Sanity (Regain Mind)`;
                 }
               }
             }
@@ -6628,7 +6710,14 @@ client.on("interactionCreate", async (interaction) => {
               // Craving Synergy/Thirst/Break the Dams — CHỈ đòn đánh ĐẦU TIÊN của
               // ATTACKER lên TARGET ĐANG có Bleed mỗi turn (chung 1 cờ — trigger cả 3
               // nếu đủ điều kiện riêng từng cái, vì đều là "tận dụng đòn đầu turn").
-              if (attacker.type === "player" && !attacker.combatant.bleedFirstHitUsedThisTurn && bleedBeforeHit > 0) {
+              // BUG ĐÃ SỬA: trước đây KHÔNG check evadedCompletely — nếu đòn bị né/
+              // parry HOÀN TOÀN, cả 3 perk này vẫn trigger như đòn đã trúng (vô lý —
+              // "đòn đánh đầu tiên LÊN kẻ địch" hàm ý phải THỰC SỰ chạm tới, không
+              // trúng thì không có "đòn đánh" nào để tính là "đầu tiên" cả). Nghiêm
+              // trọng hơn: Break the Dams cũ còn "finalDmg += bleedBeforeHit" — cộng
+              // thẳng vào finalDmg ĐÃ BỊ ÉP VỀ 0 bởi né hoàn toàn, khiến target VẪN ăn
+              // dmg dù đã né 100% — giờ chặn hẳn nhánh này khi evadedCompletely.
+              if (!evadedCompletely && attacker.type === "player" && !attacker.combatant.bleedFirstHitUsedThisTurn && bleedBeforeHit > 0) {
                 let usedThisHit = false;
                 if (hasPerk(attacker.combatant, "Break the Dams") && bleedBeforeHit >= 7 && (attacker.combatant.breakTheDamsCdLeft ?? 0) <= 0) {
                   finalDmg += bleedBeforeHit;
@@ -6713,33 +6802,44 @@ client.on("interactionCreate", async (interaction) => {
                 }
               }
               // 5 status "trên người địch" — áp vào TARGET (bên bị tấn công).
-              target.sinking = t.preview.finalSinking;
-              target.rupture = t.preview.finalRupture;
-              // QUAN TRỌNG: dùng burnStacksAfter/bleedStacksAfter (giá trị NGAY SAU
-              // gain/consume từ dmgStr, TRƯỚC khi calcMathCore áp công thức "cuối
-              // turn") — KHÔNG dùng finalBurn/finalBleed (đã bị giảm nửa SẴN, vì
-              // calcMathCore coi MỌI lần gọi là "nếu turn kết thúc NGAY bây giờ").
-              // Trước đây dùng finalBurn/finalBleed khiến Burn/Bleed bị giảm nửa
-              // NGAY SAU MỖI HIT thay vì chỉ 1 lần thật mỗi -encounter endturn — sai
-              // hoàn toàn với luật, và làm hỏng cả Break the Dams/Craving Synergy/
-              // Thirst (chúng cần biết bleed CHƯA bị giảm khi check điều kiện). Halving
-              // THẬT giờ chỉ xảy ra trong advanceCombatantTurn (xem comment ở đó).
-              const lastHitForStatus = t.preview.instanceResults[t.preview.instanceResults.length - 1];
-              target.burn = lastHitForStatus?.burnStacksAfter ?? target.burn;
-              target.bleed = bleedOverride ?? (lastHitForStatus?.bleedStacksAfter ?? target.bleed);
-              target.tremor = t.preview.finalTremor;
-              target.currentSanity = t.preview.finalSanity;
-              // Tremor Burst rút STAMINA của TARGET (kẻ mang Tremor bị rút Sta).
-              if (t.preview.totalTremorStaminaLoss > 0) {
-                target.currentStamina = Math.max(0, target.currentStamina - t.preview.totalTremorStaminaLoss);
-              }
-              // Defenseless (perk của ATTACKER): gây dmg lên target ĐANG có Rupture → -5 Stamina target.
-              if (hasPerk(attacker.combatant, "Defenseless") && hadRuptureBeforeHit) {
-                target.currentStamina = Math.max(0, target.currentStamina - 5);
-              }
-              // Convert Physical Trauma (perk của TARGET/defender): bị tấn công trúng → +1 Charge.
-              if (hasPerk(target, "Convert Physical Trauma")) {
-                target.charge = Math.min(CHARGE_MAX, target.charge + 1);
+              // QUAN TRỌNG (BUG ĐÃ SỬA): TOÀN BỘ status/Stamina/Charge effect dưới
+              // đây trước kia áp VÔ ĐIỀU KIỆN từ t.preview (đã tính sẵn lúc DECLARE,
+              // TRƯỚC khi biết Guard/Evade/Parry được dùng lúc CONFIRM) — nghĩa là
+              // dù target NÉ HOÀN TOÀN (evadedCompletely=true, 0 dmg thật), Sinking/
+              // Rupture/Burn/Bleed/Tremor/Defenseless/Convert Physical Trauma VẪN bị
+              // áp như thể đòn trúng 100% — vô lý hoàn toàn (né hoàn toàn = không
+              // trúng GÌ CẢ, không chỉ riêng HP). Giờ bọc toàn bộ trong
+              // !evadedCompletely — NÉ MỘT PHẦN (M1 nhiều hit, evadedCompletely vẫn
+              // false) thì status vẫn áp bình thường (đúng — 1 phần đòn vẫn trúng).
+              if (!evadedCompletely) {
+                target.sinking = t.preview.finalSinking;
+                target.rupture = t.preview.finalRupture;
+                // QUAN TRỌNG: dùng burnStacksAfter/bleedStacksAfter (giá trị NGAY SAU
+                // gain/consume từ dmgStr, TRƯỚC khi calcMathCore áp công thức "cuối
+                // turn") — KHÔNG dùng finalBurn/finalBleed (đã bị giảm nửa SẴN, vì
+                // calcMathCore coi MỌI lần gọi là "nếu turn kết thúc NGAY bây giờ").
+                // Trước đây dùng finalBurn/finalBleed khiến Burn/Bleed bị giảm nửa
+                // NGAY SAU MỖI HIT thay vì chỉ 1 lần thật mỗi -encounter endturn — sai
+                // hoàn toàn với luật, và làm hỏng cả Break the Dams/Craving Synergy/
+                // Thirst (chúng cần biết bleed CHƯA bị giảm khi check điều kiện). Halving
+                // THẬT giờ chỉ xảy ra trong advanceCombatantTurn (xem comment ở đó).
+                const lastHitForStatus = t.preview.instanceResults[t.preview.instanceResults.length - 1];
+                target.burn = lastHitForStatus?.burnStacksAfter ?? target.burn;
+                target.bleed = bleedOverride ?? (lastHitForStatus?.bleedStacksAfter ?? target.bleed);
+                target.tremor = t.preview.finalTremor;
+                target.currentSanity = t.preview.finalSanity;
+                // Tremor Burst rút STAMINA của TARGET (kẻ mang Tremor bị rút Sta).
+                if (t.preview.totalTremorStaminaLoss > 0) {
+                  target.currentStamina = Math.max(0, target.currentStamina - t.preview.totalTremorStaminaLoss);
+                }
+                // Defenseless (perk của ATTACKER): gây dmg lên target ĐANG có Rupture → -5 Stamina target.
+                if (hasPerk(attacker.combatant, "Defenseless") && hadRuptureBeforeHit) {
+                  target.currentStamina = Math.max(0, target.currentStamina - 5);
+                }
+                // Convert Physical Trauma (perk của TARGET/defender): bị tấn công trúng → +1 Charge.
+                if (hasPerk(target, "Convert Physical Trauma")) {
+                  target.charge = Math.min(CHARGE_MAX, target.charge + 1);
+                }
               }
               checkStaggerPanic(target);
               // Chấn thương — nhận dmg >30% Max HP trong đòn NÀY → roll 10% nặng/40% nhẹ.
