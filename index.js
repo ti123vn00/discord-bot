@@ -366,7 +366,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", // -encounter
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", // -encounter
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -5431,6 +5431,11 @@ client.on("messageCreate", async (message) => {
             name, enemies: {}, players: {},
             gmId: message.author.id, createdAt: Date.now(),
             pendingActions: [], permadeath,
+            // turnNumber — bắt đầu 1 (Turn 1), tăng mỗi -encounter endturn.
+            // actionLog — lịch sử ĐẦY ĐỦ các action đã CONFIRM (KHÔNG phải pending
+            // — pendingActions là hàng chờ TRƯỚC khi confirm, actionLog là log SAU
+            // khi đã confirm/reject) — xem -encounter log để xem lại.
+            turnNumber: 1, actionLog: [],
           };
           await saveEncounter(message.channel.id, encounter);
           await message.reply({
@@ -5671,6 +5676,68 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    // ── log: xem lại LỊCH SỬ các action ĐÃ CONFIRM/REJECT (full detail — nguyên
+    // văn text đã hiện lúc confirm, xem actionLog ghi ở đâu trong confirm handler).
+    // KHÁC "pending" — pending là hàng chờ TRƯỚC khi confirm, log là lịch sử SAU
+    // khi đã xử lý xong. Mặc định hiện 5 turn GẦN NHẤT (tránh tràn message dài) —
+    // `turn: N` để xem ĐÚNG 1 turn cụ thể, `turn: all` để xem TOÀN BỘ (tự cắt
+    // thành nhiều embed nếu vượt 4096 ký tự/embed của Discord).
+    if (sub === "log") {
+      const encounter = await getEncounter(message.channel.id);
+      if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
+      const fullLog = encounter.actionLog ?? [];
+      if (fullLog.length === 0) { message.reply("📜 Chưa có action nào được confirm/reject trong encounter này."); return; }
+      const kv = parseKeyValues(rest);
+      const turnFilter = (kv["turn"] ?? "").trim().toLowerCase();
+      let entriesToShow;
+      let headerNote;
+      if (turnFilter === "all") {
+        entriesToShow = fullLog;
+        headerNote = `toàn bộ ${fullLog.length} entry`;
+      } else if (turnFilter && /^\d+$/.test(turnFilter)) {
+        const turnNum = parseInt(turnFilter, 10);
+        entriesToShow = fullLog.filter(e => e.turn === turnNum);
+        headerNote = `Turn ${turnNum} (${entriesToShow.length} entry)`;
+        if (entriesToShow.length === 0) { message.reply(`📜 Không có log nào cho Turn ${turnNum} (hiện đang ở Turn ${encounter.turnNumber ?? 1}).`); return; }
+      } else {
+        const distinctTurns = [...new Set(fullLog.map(e => e.turn))]; // đã theo thứ tự thời gian (push tuần tự)
+        const last5TurnNumbers = new Set(distinctTurns.slice(-5));
+        entriesToShow = fullLog.filter(e => last5TurnNumbers.has(e.turn));
+        headerNote = `5 turn gần nhất — dùng \`turn: N\` để xem turn cụ thể, \`turn: all\` để xem hết`;
+      }
+      // Build text, gộp theo Turn cho dễ đọc.
+      const lines = [];
+      let lastTurn = null;
+      for (const entry of entriesToShow) {
+        if (entry.turn !== lastTurn) { lines.push(`\n**── Turn ${entry.turn} ──**`); lastTurn = entry.turn; }
+        const icon = entry.type === "confirm" ? "✅" : "❌";
+        for (const l of entry.lines) lines.push(`${icon} ${l}`);
+      }
+      const fullText = lines.join("\n").trim();
+      // Cắt thành nhiều embed nếu vượt 4096 ký tự (giới hạn Discord) — cắt theo
+      // DÒNG (không cắt giữa 1 dòng), mỗi embed tối đa ~3900 ký tự để có khoảng
+      // đệm an toàn.
+      const chunks = [];
+      let current = "";
+      for (const line of lines) {
+        if ((current + "\n" + line).length > 3900) { chunks.push(current); current = line; }
+        else current = current ? current + "\n" + line : line;
+      }
+      if (current) chunks.push(current);
+      const embeds = chunks.map((c, i) => ({
+        title: i === 0 ? `📜 Action Log — ${headerNote}` : `📜 Action Log (tiếp ${i + 1})`,
+        description: c || "*(trống)*",
+        color: 0x95a5a6,
+      }));
+      // Discord giới hạn 10 embed/message — nếu vượt, chỉ gửi 10 đầu kèm cảnh báo.
+      if (embeds.length > 10) {
+        message.reply({ content: `⚠️ Log quá dài (${embeds.length} phần) — chỉ hiện 10 phần đầu. Dùng \`turn: N\` để xem từng turn cụ thể thay vì \`all\`.`, embeds: embeds.slice(0, 10) });
+      } else {
+        message.reply({ embeds });
+      }
+      return;
+    }
+
     // ── buff/debuff: thêm 1 dòng TỰ DO vào danh sách buff/debuff của 1 combatant
     // (enemy hoặc player) — KHÔNG tự tính/tự hết hạn (xem comment ở createCombatant).
     // target: có thể là key enemy, userId, hoặc "me" (chính người gõ lệnh).
@@ -5792,6 +5859,9 @@ client.on("messageCreate", async (message) => {
           }
           for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
           for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
+          // turnNumber — đếm số turn ĐÃ QUA (bắt đầu 1, tăng mỗi lần endturn) — dùng
+          // để gắn nhãn "Turn N" vào mỗi entry trong actionLog (-encounter log).
+          encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
           await saveEncounter(message.channel.id, encounter);
           await message.reply({
             content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
@@ -6962,6 +7032,22 @@ client.on("interactionCreate", async (interaction) => {
           }
         }
 
+        // Ghi vào actionLog (xem -encounter log) — lưu NGUYÊN VĂN resultLines (full
+        // detail, đúng những gì vừa hiện trong embed confirm) kèm Turn number lúc
+        // ghi. Cap 100 entries gần nhất (drop entry CŨ NHẤT khi vượt) — tránh phình
+        // vô hạn dữ liệu lưu trên Redis qua trận dài.
+        if (resultLines.length > 0) {
+          encounter.actionLog = encounter.actionLog ?? [];
+          encounter.actionLog.push({
+            turn: encounter.turnNumber ?? 1,
+            type: isConfirm ? "confirm" : "reject",
+            lines: resultLines,
+            timestamp: Date.now(),
+          });
+          if (encounter.actionLog.length > 100) {
+            encounter.actionLog = encounter.actionLog.slice(encounter.actionLog.length - 100);
+          }
+        }
         encounter.pendingActions = [];
         await saveEncounter(channelId, encounter);
 
