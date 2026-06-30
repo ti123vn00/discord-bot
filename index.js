@@ -2065,7 +2065,7 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // — chỉ GM xoá tay nếu chữa lành, xem -encounter healinjury). daseStacks riêng
     // (Choáng) vì cộng dồn nhiều stack mới phát huy tác dụng, khác các chấn thương
     // khác (chỉ cần CÓ là đủ).
-    injuries: [], dazedStacks: 0,
+    injuries: [], dazedStacks: 0, lastStaggerWas2Turn: false,
     // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
     // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
     // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
@@ -2267,7 +2267,18 @@ function checkStaggerPanic(combatant) {
     // (lần Stagger thứ 3 trở đi) mới kéo dài 2 turn — Stagger lần 1 (stacks hiện=0)
     // và lần 2 (stacks hiện=1) đều VẪN 1 turn, chỉ từ lần 3 (stacks hiện=2) mới 2
     // turn. Do đó CHECK trước bằng giá trị HIỆN CÓ, rồi MỚI tăng dazedStacks sau.
-    combatant.staggerTurnsLeft = (combatant.dazedStacks ?? 0) >= 2 ? 2 : 1;
+    const isThisStagger2Turn = (combatant.dazedStacks ?? 0) >= 2;
+    combatant.staggerTurnsLeft = isThisStagger2Turn ? 2 : 1;
+    // lastStaggerWas2Turn — cờ RIÊNG lưu ĐÚNG loại của LẦN STAGGER NÀY (1 hay 2
+    // turn), đọc lại lúc Stagger này KẾT THÚC ở advanceCombatantTurn để quyết định
+    // cleanse — KHÔNG dùng dazedStacks lúc đó (giá trị đã bị +1 ngay dòng dưới đây,
+    // không còn phản ánh đúng "lúc trigger" nữa — BUG ĐÃ SỬA: trước đây
+    // advanceCombatantTurn tự đọc dazedStacks HIỆN TẠI lúc Stagger kết thúc, nhưng
+    // giá trị đó đã bị tăng lên 2 ngay SAU Stagger lần 2 (dù lần 2 đó vẫn CHỈ 1
+    // turn) — khiến cleanse trigger NGAY sau lần 2 (1-turn), trước cả khi lần Stagger
+    // 2-turn THẬT (lần 3) từng xảy ra — phá vỡ hoàn toàn chu kỳ "1,1,2-cleanse",
+    // verify thực tế ra toàn 1-turn liên tục thay vì đúng pattern).
+    combatant.lastStaggerWas2Turn = isThisStagger2Turn;
     combatant.dazedStacks = (combatant.dazedStacks ?? 0) + 1;
     combatant.currentStamina = 0;
     // Cleanse: SAU KHI lần Stagger 2-turn này THỰC SỰ KẾT THÚC, dazedStacks reset về
@@ -2360,14 +2371,11 @@ function advanceCombatantTurn(combatant) {
     if (combatant.staggerTurnsLeft <= 0) {
       combatant.staggered = false;
       combatant.currentStamina = combatant.maxStamina; // hồi đầy sau khi hết Stagger
-      // Choáng — cleanse: SAU KHI 1 lần Stagger 2-turn (dazedStacks đã ≥2 lúc trigger
-      // — xem checkStaggerPanic) ĐÃ THỰC SỰ KẾT THÚC, dazedStacks reset về 0, bắt
-      // đầu đếm lại từ đầu cho chu kỳ Stagger tiếp theo (1, 1, 2-cleanse, lặp lại) —
-      // xác nhận trực tiếp từ GM. dazedStacks GIỮ NGUYÊN suốt lúc Stagger đang diễn
-      // ra (chỉ đổi lúc TRIGGER mới — checkStaggerPanic chặn re-trigger khi đã
-      // staggered=true), nên kiểm tra giá trị HIỆN TẠI ở đây là an toàn, phản ánh
-      // đúng giá trị lúc lần Stagger NÀY được kích hoạt.
-      if (combatant.dazedStacks >= 2) {
+      // Choáng — cleanse: SAU KHI 1 lần Stagger 2-turn (lastStaggerWas2Turn, set
+      // ĐÚNG lúc trigger lần này — xem checkStaggerPanic) ĐÃ THỰC SỰ KẾT THÚC,
+      // dazedStacks reset về 0, bắt đầu đếm lại từ đầu cho chu kỳ Stagger tiếp theo
+      // (1, 1, 2-cleanse, lặp lại) — xác nhận trực tiếp từ GM.
+      if (combatant.lastStaggerWas2Turn) {
         combatant.dazedStacks = 0;
       }
     }
@@ -6547,6 +6555,7 @@ client.on("interactionCreate", async (interaction) => {
             staminaNote += resourceNote;
 
             const targetDmgLines = [];
+            let totalHitsThisAction = 0; // tích luỹ TỔNG hit thật qua mọi target (AOE) trong action này — dùng cho Battle Ignition sau vòng lặp (xem dưới)
             for (const t of p.targets) {
               const targetResolved = resolveCombatant(encounter, t.targetId);
               if (!targetResolved) { targetDmgLines.push(`⚠️ target ${t.targetId} không còn tồn tại`); continue; }
@@ -6569,6 +6578,7 @@ client.on("interactionCreate", async (interaction) => {
               const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
               const hitsPerCharge = isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : null; // null = chặn cả action, không chia theo hit
               const hitCount = Math.max(1, t.preview.dmgValues?.length ?? 1);
+              if (isM1Type) totalHitsThisAction += hitCount; // chỉ M1 mới tính cho Battle Ignition (Page/skill không tính, đúng comment dưới)
               // bypass — đọc từ defenseBypass đã lưu lúc declare (tự phát hiện từ
               // [Undodgeable]/[Unblockable]/[Guard Break]/[Unparriable] trong text
               // skill roll thật, gộp với tags: gõ tay nếu có) — loại đúng phòng thủ
@@ -6888,13 +6898,26 @@ client.on("interactionCreate", async (interaction) => {
               }
             }
             // Battle Ignition/Overbearing/Blessed Sparks: đếm M1 (chỉ attack mới có
-            // p.isM1=true, hit/Page không tính) — tăng cả "turn này" (cho Battle
-            // Ignition turn SAU) và "tổng" (cho Overbearing/Blessed Sparks "mỗi đòn
-            // thứ 2", không reset theo turn). PHẢI ĐẶT SAU khối gán Poise/Charge từ
-            // preview phía trên — trước đây đặt TRƯỚC nên bị preview ghi đè mất ngay,
-            // Overbearing/Blessed Sparks không bao giờ thấy hiệu lực thật.
+            // p.isM1=true, hit/Page không tính). 2 counter TÁCH BIỆT, đếm KHÁC kiểu:
+            //   - attacksThisTurn (Battle Ignition, "đánh kẻ địch ≥10 LẦN"): đếm theo
+            //     HIT THẬT (xác nhận trực tiếp từ GM) — dùng totalHitsThisAction (tích
+            //     luỹ TRONG vòng for ở trên, qua MỌI target nếu AOE) — BUG ĐÃ SỬA 2
+            //     LẦN: (1) trước đây +1 mỗi LƯỢT TARGET trong vòng lặp thay vì +N hit
+            //     thật; (2) lần sửa đầu tiên dùng biến `hitCount` nhưng đặt code Ở
+            //     NGOÀI scope của vòng for (const t of p.targets) — gây lỗi runtime
+            //     "hitCount is not defined" mỗi lần confirm M1 — giờ dùng
+            //     totalHitsThisAction (khai báo TRƯỚC vòng for, cộng dồn ĐÚNG TRONG
+            //     vòng for, đọc lại AN TOÀN ở NGOÀI vòng for).
+            //   - m1AttackCount (Overbearing/Blessed Sparks, "mỗi đòn đánh thường thứ
+            //     2"): GIỮ NGUYÊN đếm theo ACTION (+1/toàn action, không nhân theo
+            //     target/hit) — luật dùng từ "đòn" (1 lượt ra tay), KHÁC "lần" của
+            //     Battle Ignition, và KHÔNG được GM xác nhận đổi sang hit-based, nên
+            //     giữ behavior cũ.
+            // PHẢI ĐẶT SAU khối gán Poise/Charge từ preview phía trên — trước đây đặt
+            // TRƯỚC nên bị preview ghi đè mất ngay, Overbearing/Blessed Sparks không
+            // bao giờ thấy hiệu lực thật.
             if (p.isM1 && attacker.type === "player") {
-              attacker.combatant.attacksThisTurn = (attacker.combatant.attacksThisTurn ?? 0) + 1;
+              attacker.combatant.attacksThisTurn = (attacker.combatant.attacksThisTurn ?? 0) + totalHitsThisAction;
               attacker.combatant.m1AttackCount = (attacker.combatant.m1AttackCount ?? 0) + 1;
               if (attacker.combatant.m1AttackCount % 2 === 0) {
                 const poiseGain = { light: 1, medium: 2, heavy: 4 }[attacker.combatant.weaponWeight];
