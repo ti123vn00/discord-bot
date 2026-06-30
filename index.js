@@ -1693,11 +1693,12 @@ function findExclusiveConflict(existingPerks, newPerk) {
 }
 
 // ── Skill Tree — Budget điểm ────────────────────────────────────────────────
-// Luật: "Bắt đầu với grade 9 và có sẵn 5 point. Max 50 point. 1 grade = 5 point.
-// Để đạt 50 cần điều kiện đặc biệt" — leveling thường (grade 9→1) cho 5 + 5×8 = 45
-// điểm, 5 điểm CUỐI (lên 50) cần "điều kiện đặc biệt" KHÔNG được luật nói rõ là gì
-// → lưu riêng field bonusSkillPoints (admin tự cấp tay qua -setplayer khi GM thấy
-// player đạt điều kiện đặc biệt đó, hệ thống không tự suy ra được).
+// Luật (xác nhận trực tiếp từ GM): "Grade 9 mặc định 5 điểm. Tới Grade 1 sẽ có 45
+// điểm. Để có 5 điểm cuối (đạt 50) cần làm QUEST ĐẶC BIỆT" — leveling thường
+// (grade 9→1) cho 5 + 5×8 = 45 điểm, 5 điểm CUỐI cần quest đặc biệt KHÔNG được
+// luật mô tả chi tiết nội dung quest → lưu riêng field bonusSkillPoints (admin tự
+// cấp tay qua `-setplayer @user bonusskillpoints: +5` khi GM xác nhận player đã
+// hoàn thành quest đó, hệ thống không tự biết quest là gì để tự động trao).
 //
 // PERK_POINT_COSTS: CHỈ chứa perk đã được xác nhận TRỰC TIẾP số point cụ thể
 // (Pride/Wrath/Sloth/Desire/Shin qua các đoạn chat trước) — perk KHÁC không có
@@ -2860,6 +2861,26 @@ function parseSkillCooldownTurns(cdStr) {
  *   [Unclashable] — không thể Clash (dùng ở -encounter clash, KHÔNG liên quan
  *     Guard/Evade/Parry).
  */
+/**
+ * parseSkillCost — đọc field `cost` của 1 skill (skills.js), trích ra Light/
+ * Sanity cost NẾU match được pattern rõ ràng ("N Light", "N Light & M Sanity",
+ * "N Light, M Sanity"...) — CHỦ ĐỘNG bỏ qua mọi dạng cost KHÁC (Heat Gauge, "Tiêu
+ * N viên đạn", "Cần đủ N Trigram", điều kiện đặc biệt như "Chỉ dùng khi có
+ * Dullahan"...) vì những resource đó KHÔNG map vào field nào của Combatant —
+ * GIỮ NGUYÊN hành vi cũ (GM/player tự note tay) cho các trường hợp này, tránh
+ * trừ nhầm hoặc trừ sai resource không tồn tại. Trả về { light, sanity } — null
+ * cho phần không match được (nghĩa là "không tự động trừ phần đó").
+ */
+function parseSkillCost(costStr) {
+  const t = costStr ?? "";
+  let light = null, sanity = null;
+  const lightMatch = t.match(/(\d+)\s*(?:<:Light:\d+>)?Light/i);
+  if (lightMatch) light = parseInt(lightMatch[1], 10);
+  const sanityMatch = t.match(/(\d+)\s*Sanity/i);
+  if (sanityMatch) sanity = parseInt(sanityMatch[1], 10);
+  return { light, sanity };
+}
+
 function extractDefenseBypassTags(text) {
   const t = text ?? "";
   return {
@@ -2899,6 +2920,7 @@ function forceStagger(combatant) {
 async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw) {
   let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0;
   let refSnippet = null, refLink = null;
+  let lightCost = 0, sanityCost = 0;
 
   if (skillNameRaw && skillNameRaw.trim()) {
     const skill = findSkill(skillNameRaw.trim());
@@ -2907,6 +2929,24 @@ async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRa
     skillKey = skillNameRaw.trim().toLowerCase();
     const existingCd = attacker.skillCooldowns?.[skillKey] ?? 0;
     if (existingCd > 0) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
+    // Light/Sanity cost — đọc từ field cost của skill (xem parseSkillCost — CHỈ
+    // match được pattern Light/Sanity rõ ràng, bỏ qua Heat Gauge/custom resource
+    // khác). Tap Of The Light (Gloom, [10 Points]): giảm 1 NỬA Sanity Cost từ
+    // E.G.O Page — chỉ áp khi skill này LÀ E.G.O (isEgoSkill), floor() để có lợi
+    // cho player. CHECK ĐỦ TÀI NGUYÊN TRƯỚC KHI ROLL DICE — tránh tình huống roll
+    // xong (tốn thời gian/RNG) mới phát hiện không đủ Light/Sanity.
+    const parsedCost = parseSkillCost(skill.cost);
+    lightCost = parsedCost.light ?? 0;
+    sanityCost = parsedCost.sanity ?? 0;
+    if (sanityCost > 0 && isEgoSkill(skill) && hasPerk(attacker, "Tap Of The Light")) {
+      sanityCost = Math.floor(sanityCost / 2);
+    }
+    if (lightCost > 0 && attacker.currentLight < lightCost) {
+      throw new Error(`Không đủ Light cho "${skill.name}" — cần ${lightCost}, hiện có ${attacker.currentLight}.`);
+    }
+    if (sanityCost > 0 && attacker.currentSanity - sanityCost < -ENCOUNTER_SANITY_MAX) {
+      throw new Error(`Sanity không đủ cho "${skill.name}" — cần ${sanityCost}, hiện tại ${attacker.currentSanity} (sẽ vượt mốc Panic -${ENCOUNTER_SANITY_MAX}).`);
+    }
     const rollResult = buildSkillRollResult({ skill, rollCount: 1 });
     if (rollResult.error) throw new Error(rollResult.error);
     skillRollEmbed = rollResult.embed;
@@ -2928,7 +2968,7 @@ async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRa
     }
   }
 
-  return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink };
+  return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost };
 }
 
 /**
@@ -3015,6 +3055,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
+      lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
     await saveEncounter(channelId, encounter);
 
@@ -3101,6 +3142,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       dmgStr, defenseBypass,
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
+      lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
     await saveEncounter(channelId, encounter);
 
@@ -3179,6 +3221,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       dmgStr, defenseBypass,
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
+      lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
     await saveEncounter(channelId, encounter);
 
@@ -6020,6 +6063,11 @@ client.on("messageCreate", async (message) => {
               forResolved.combatant.voracityUsedThisTurn = true;
               resultText += ` ✨+2 Light (Voracity) cho ${forResolved.label}.`;
             }
+            // Pressure Point (Pride, [15 Points]): thắng Clash +5 Poise.
+            if (hasPerk(forResolved.combatant, "Pressure Point")) {
+              forResolved.combatant.poise = Math.min(99, (forResolved.combatant.poise ?? 0) + 5);
+              resultText += ` 💪+5 Poise (Pressure Point) cho ${forResolved.label}.`;
+            }
             // Thorns (Gluttony, [30 Points]): THUA Clash → áp 7 Rupture lên người thắng.
             if (hasPerk(targetResolved.combatant, "Thorns")) {
               forResolved.combatant.rupture = Math.min(99, (forResolved.combatant.rupture ?? 0) + 7);
@@ -6036,6 +6084,10 @@ client.on("messageCreate", async (message) => {
               targetResolved.combatant.currentLight = Math.min(targetResolved.combatant.maxLight, targetResolved.combatant.currentLight + 2);
               targetResolved.combatant.voracityUsedThisTurn = true;
               resultText += ` ✨+2 Light (Voracity) cho ${targetResolved.label}.`;
+            }
+            if (hasPerk(targetResolved.combatant, "Pressure Point")) {
+              targetResolved.combatant.poise = Math.min(99, (targetResolved.combatant.poise ?? 0) + 5);
+              resultText += ` 💪+5 Poise (Pressure Point) cho ${targetResolved.label}.`;
             }
             if (hasPerk(forResolved.combatant, "Thorns")) {
               targetResolved.combatant.rupture = Math.min(99, (targetResolved.combatant.rupture ?? 0) + 7);
@@ -6394,6 +6446,23 @@ client.on("interactionCreate", async (interaction) => {
                 }
               }
             }
+            // Light/Sanity cost của Page (verify.lightCost/sanityCost, đã check ĐỦ
+            // lúc declare trong resolveSkillVerification — xem comment đầy đủ ở đó,
+            // bao gồm Tap Of The Light giảm 1 nửa Sanity Cost cho E.G.O Page) — trừ
+            // THẬT ở đây, lúc confirm (cùng nguyên tắc với Stamina M1: reject không
+            // làm mất resource oan). Áp dụng cho CẢ player lẫn enemy (enemy cũng có
+            // currentLight/currentSanity, GM có thể dùng skill: cho enemy).
+            let resourceNote = "";
+            if (p.lightCost > 0) {
+              attacker.combatant.currentLight = Math.max(0, attacker.combatant.currentLight - p.lightCost);
+              resourceNote += ` (-${p.lightCost} <:Light:1513786082502770719>Light)`;
+            }
+            if (p.sanityCost > 0) {
+              attacker.combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, attacker.combatant.currentSanity - p.sanityCost);
+              resourceNote += ` (-${p.sanityCost} Sanity)`;
+              checkStaggerPanic(attacker.combatant);
+            }
+            staminaNote += resourceNote;
 
             const targetDmgLines = [];
             for (const t of p.targets) {
