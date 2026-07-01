@@ -373,6 +373,7 @@ function findItemAdmin(input) {
 // ─── parseKeyValues ───────────────────────────────────────────────────────────
 const KNOWN_KEYS = new Set([
   "book", "count", "item", "itemcount", "ahn", "exp", "grade", "bonusskillpoints",
+  "wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light", // 9 nhánh Skill Tree (branchPoints)
   "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
   "poise",
@@ -1749,9 +1750,43 @@ const PERK_POINT_COSTS = {
   "Ein Sof": 5, "Light Body": 10, "Light Dash": 20, "Emotion Surge": 30, "Ohr Ein Sof": 50,
 };
 
+// PERK_BRANCH — map TÊN PERK → key nhánh (9 nhánh chuẩn hoá, khớp PERK_POINT_COSTS
+// phía trên) — dùng để biết 1 perk thuộc nhánh nào khi check ngưỡng mở khoá.
+const PERK_BRANCH = {
+  // Pride
+  "Claim Their Heart": "pride", "Pressure Point": "pride", "Shrouded Power": "pride", "Sharp Eyes": "pride",
+  "Adrenaline Rush": "pride", "Smoke Overload": "pride", "Overbearing": "pride", "Steady Breathing": "pride",
+  // Wrath
+  "Battle Ignition": "wrath", "Close Call Wind": "wrath", "Follow-Up": "wrath", "Smoldering Resolve": "wrath",
+  "Tip-Toe Around": "wrath", "Inner Ardor": "wrath", "Backdraft": "wrath",
+  // Desire
+  "Here We Go Again": "desire", "Craving Synergy": "desire", "Thirst": "desire", "Voracity": "desire",
+  "Break the Dams": "desire", "A Beautiful Mess": "desire",
+  // Sloth
+  "Pounce": "sloth", "Fleeting Steps": "sloth", "Mastered Breaths": "sloth", "Fortified Resolve": "sloth",
+  "Shockwave": "sloth", "Break and Punish": "sloth", "Wasted Hours, Lying Down": "sloth",
+  // Gluttony
+  "Defenseless": "gluttony", "Biting Embrace": "gluttony", "Thorns": "gluttony", "Tear To Shreds": "gluttony",
+  "Death Comes For All": "gluttony",
+  // Gloom
+  "Tap Of The Light": "gloom", "Borderline Breakdown": "gloom", "Comeback Time": "gloom", "Wail": "gloom",
+  "No Will To Break": "gloom", "Negative Thoughts": "gloom", "No Mind To Cure": "gloom", "Cry On Deaf Ears": "gloom",
+  // Envy
+  "Charge Up": "envy", "Convert Physical Trauma": "envy", "Blessed by the Sparks": "envy",
+  "Electrifying Vendetta": "envy", "Short Circuit Trip": "envy", "Kinetic Energy": "envy",
+  "Overflowing Guard": "envy", "Overcharged Vessel": "envy",
+  // Shin
+  "Shin Follow Up": "shin", "Defensive Light": "shin", "Decimate Mind": "shin", "Regain Mind": "shin",
+  "Overwhelming Power": "shin",
+  // Light
+  "Ein Sof": "light", "Light Body": "light", "Light Dash": "light", "Emotion Surge": "light", "Ohr Ein Sof": "light",
+};
+const BRANCH_KEYS = ["wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light"];
+
 /** calcSkillTreePointsEarned — tổng điểm ĐÃ KIẾM ĐƯỢC (5 khởi điểm grade 9 + 5/grade
  *  đã lên + bonusSkillPoints admin cấp riêng cho "điều kiện đặc biệt" lên 50). Cap
- *  tuyệt đối ở 50 dù cộng dư bao nhiêu. */
+ *  tuyệt đối ở 50 dù cộng dư bao nhiêu — đây là TỔNG POOL để PHÂN BỔ vào 9 nhánh
+ *  (branchPoints), KHÔNG PHẢI để "mua" từng perk trực tiếp. */
 function calcSkillTreePointsEarned(profileData) {
   const { grade } = calcGrade(profileData.exp ?? 0);
   const fromGrade = 5 + 5 * (GRADE_MIN - grade);
@@ -1759,11 +1794,19 @@ function calcSkillTreePointsEarned(profileData) {
   return Math.min(50, fromGrade + bonus);
 }
 
-/** calcSkillTreePointsSpent — tổng điểm ĐÃ DÙNG, CHỈ tính perk có trong
- *  PERK_POINT_COSTS (perk không rõ cost coi như free/không tính, để không chặn
- *  nhầm các unlock cũ trước khi có hệ thống budget). */
-function calcSkillTreePointsSpent(profileData) {
-  return (profileData.unlockedSkillTree ?? []).reduce((sum, perk) => sum + (PERK_POINT_COSTS[perk] ?? 0), 0);
+/**
+ * calcBranchPointsAllocated — TỔNG điểm đã PHÂN BỔ vào 9 nhánh (branchPoints) —
+ * dùng để validate KHÔNG VƯỢT tổng pool (calcSkillTreePointsEarned) khi GM phân bổ
+ * thêm. KIẾN TRÚC ĐÃ SỬA HOÀN TOÀN (xác nhận trực tiếp từ GM, kèm ví dụ cụ thể:
+ * Hoshino Takanashi Grade 4 (pool=30 theo Grade), Sloth: 20, mọi nhánh khác: 0 —
+ * TỨC LÀ điểm KHÔNG "chi tiêu cộng dồn qua từng perk lẻ" như tôi hiểu sai lúc
+ * đầu, mà PHÂN BỔ theo TỪNG NHÁNH riêng biệt — trong 1 nhánh, có N điểm = mở
+ * ĐƯỢC TẤT CẢ perk nhánh đó có tag ≤N cùng lúc, không giới hạn số lượng, không
+ * trừ dần theo từng perk).
+ */
+function calcBranchPointsAllocated(profileData) {
+  const bp = profileData.branchPoints ?? {};
+  return BRANCH_KEYS.reduce((sum, k) => sum + (bp[k] ?? 0), 0);
 }
 
 function hasPerk(combatant, perkName) {
@@ -3595,6 +3638,29 @@ async function buildBalanceEmbed(targetUser) {
     const filled = Math.round((expInCurrentGrade / expNeeded) * 10);
     progressBar = "\n> " + "🟦".repeat(filled) + "⬛".repeat(10 - filled) + ` ${expInCurrentGrade}/${expNeeded}`;
   }
+  // Skill Tree — hiện ĐẦY ĐỦ giống format ví dụ GM cho (Hoshino Takanashi): 7 nhánh
+  // THƯỜNG (Wrath/Desire/Sloth/Gluttony/Gloom/Pride/Envy) LUÔN hiện dù =0 — Shin/
+  // Light CHỈ hiện nếu ĐÃ có điểm phân bổ (>0), vì 2 nhánh này CHỈ dành cho nhân
+  // vật đủ điều kiện đặc biệt (xác nhận trực tiếp từ GM) — im lặng với người
+  // thường, không gây hiểu lầm "ai cũng có quyền truy cập 2 nhánh này".
+  const bp = data.branchPoints ?? {};
+  const pool = calcSkillTreePointsEarned(data);
+  const allocated = calcBranchPointsAllocated(data);
+  const STANDARD_BRANCHES = ["wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy"];
+  const BRANCH_DISPLAY_NAME = { wrath: "Wrath", desire: "Desire", sloth: "Sloth", gluttony: "Gluttony", gloom: "Gloom", pride: "Pride", envy: "Envy", shin: "Shin", light: "Light" };
+  const branchLines = STANDARD_BRANCHES.map(k => `${BRANCH_DISPLAY_NAME[k]}: ${bp[k] ?? 0}`);
+  if ((bp.shin ?? 0) > 0) branchLines.push(`Shin: ${bp.shin}`);
+  if ((bp.light ?? 0) > 0) branchLines.push(`Light: ${bp.light}`);
+  const unlockedByBranch = {};
+  for (const perk of data.unlockedSkillTree ?? []) {
+    const b = PERK_BRANCH[perk] ?? "khác";
+    unlockedByBranch[b] = unlockedByBranch[b] ?? [];
+    unlockedByBranch[b].push(perk);
+  }
+  const perkLines = Object.entries(unlockedByBranch)
+    .map(([b, perks]) => `**${BRANCH_DISPLAY_NAME[b] ?? b}:** ${perks.join(", ")}`);
+  const skillTreeValue = `${branchLines.join(" | ")}\n> **Chưa phân bổ:** ${pool - allocated}/${pool} điểm` +
+    (perkLines.length > 0 ? `\n\n${perkLines.join("\n")}` : "\n\n*(chưa mở khoá perk nào)*");
   return {
     embeds: [{
       title: `💼 Thông tin của ${targetUser.displayName ?? targetUser.username}`,
@@ -3606,6 +3672,7 @@ async function buildBalanceEmbed(targetUser) {
         { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
         { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
         { name: "🔩 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
+        { name: "🌳 Skill Tree", value: skillTreeValue, inline: false },
       ],
       footer: { text: INVENTORY_HINT_TEXT },
     }],
@@ -4926,8 +4993,26 @@ client.on("messageCreate", async (message) => {
       message.reply("❌ `bonusskillpoints:` phải là số.");
       return;
     }
-    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && bonusSkillValue === null) {
-      message.reply("❌ Không có gì để set. Dùng: `exp`, `grade`, `ahn`, `books`, `items`, `bonusskillpoints`.\n> Thêm `+` trước số để cộng thêm, VD: `exp: +50`");
+    // Branch Points — PHÂN BỔ điểm Skill Tree vào 1 trong 9 nhánh (wrath/desire/
+    // sloth/gluttony/gloom/pride/envy/shin/light) — KIẾN TRÚC ĐÃ SỬA (xác nhận trực
+    // tiếp từ GM): mỗi nhánh có ngưỡng RIÊNG, KHÔNG dùng chung 1 pool toàn cục cho
+    // mọi perk. Set TUYỆT ĐỐI (VD `sloth: 20`) hoặc CỘNG THÊM (VD `sloth: +10`),
+    // giống exp:/ahn:. Validate TỔNG các nhánh KHÔNG vượt tổng pool
+    // (calcSkillTreePointsEarned theo Grade) — nếu vượt, BÁO LỖI RÕ chứ không tự ý
+    // cắt bớt (để GM tự quyết định phân bổ lại).
+    const branchUpdates = {};
+    let hasBranchUpdate = false;
+    for (const bKey of BRANCH_KEYS) {
+      const raw = kv[bKey] ?? null;
+      if (raw === null) continue;
+      const isAdd = raw.startsWith("+");
+      const value = parseInt(raw.replace("+", ""), 10);
+      if (isNaN(value) || value < 0) { message.reply(`❌ \`${bKey}:\` phải là số ≥0 (hoặc +N để cộng thêm).`); return; }
+      branchUpdates[bKey] = { isAdd, value };
+      hasBranchUpdate = true;
+    }
+    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate) {
+      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`books\`, \`items\`, \`bonusskillpoints\`, hoặc 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
       return;
     }
 
@@ -4982,6 +5067,26 @@ client.on("messageCreate", async (message) => {
             } else {
               data.bonusSkillPoints = Math.max(0, bonusSkillValue);
               changes.push(`Bonus Skill Points set → **${data.bonusSkillPoints}**`);
+            }
+          }
+          if (Object.keys(branchUpdates).length > 0) {
+            data.branchPoints = data.branchPoints ?? {};
+            // Tính TRƯỚC giá trị CUỐI CÙNG (chưa gán thật) để validate tổng trước.
+            const proposedBranchPoints = { ...data.branchPoints };
+            for (const [bKey, { isAdd, value }] of Object.entries(branchUpdates)) {
+              const before = data.branchPoints[bKey] ?? 0;
+              proposedBranchPoints[bKey] = isAdd ? before + value : value;
+            }
+            const proposedTotal = BRANCH_KEYS.reduce((sum, k) => sum + (proposedBranchPoints[k] ?? 0), 0);
+            const pool = calcSkillTreePointsEarned(data);
+            if (proposedTotal > pool) {
+              changes.push(`❌ KHÔNG áp dụng phân bổ nhánh — tổng sẽ thành ${proposedTotal} điểm, vượt quá pool ${pool} điểm (theo Grade${data.bonusSkillPoints ? " + bonusSkillPoints" : ""}). Giữ nguyên phân bổ cũ.`);
+            } else {
+              for (const [bKey, { isAdd, value }] of Object.entries(branchUpdates)) {
+                const before = data.branchPoints[bKey] ?? 0;
+                data.branchPoints[bKey] = proposedBranchPoints[bKey];
+                changes.push(`${bKey[0].toUpperCase() + bKey.slice(1)}: ${isAdd ? `+${value} (${before} → ` : "set → "}**${data.branchPoints[bKey]}**${isAdd ? ")" : ""} [tổng nhánh: ${proposedTotal}/${pool}]`);
+              }
             }
           }
           await savePlayerData(targetUser.id, data, slot);
@@ -5055,21 +5160,24 @@ client.on("messageCreate", async (message) => {
           if (data.unlockedSkillTree.includes(perkName)) { results.push(`⚠️ ${user.username}: đã có "${perkName}" rồi.`); continue; }
           const conflict = findExclusiveConflict(data.unlockedSkillTree, perkName);
           if (conflict) { results.push(`❌ ${user.username}: "${perkName}" loại trừ với "${conflict}" đã có sẵn — không thể có cả 2 (dùng \`-ununlockskilltree\` xoá "${conflict}" trước nếu muốn đổi).`); continue; }
-          // Budget điểm — CHỈ chặn nếu perk này có cost RÕ trong PERK_POINT_COSTS
-          // (perk chưa rõ cost thì cho qua tự do, không chặn nhầm các unlock đã có
-          // từ trước hệ thống budget này).
+          // Ngưỡng mở khoá THEO NHÁNH — CHỈ chặn nếu perk này có cost RÕ trong
+          // PERK_POINT_COSTS (perk chưa rõ cost/nhánh thì cho qua tự do, không chặn
+          // nhầm unlock cũ). KIẾN TRÚC ĐÃ SỬA (xác nhận trực tiếp từ GM): trong 1
+          // NHÁNH, có N điểm branchPoints[nhánh] = mở được TẤT CẢ perk nhánh đó có
+          // tag ≤N — KHÔNG trừ dần theo từng perk, KHÔNG dùng chung 1 pool toàn
+          // cục cho mọi nhánh (mỗi nhánh độc lập hoàn toàn).
           const cost = PERK_POINT_COSTS[perkName];
-          if (cost !== undefined) {
-            const earned = calcSkillTreePointsEarned(data);
-            const spent = calcSkillTreePointsSpent(data);
-            if (spent + cost > earned) {
-              results.push(`❌ ${user.username}: "${perkName}" cần ${cost} điểm — chỉ còn ${earned - spent}/${earned} điểm trống (đã dùng ${spent}/${earned}).`);
+          const branch = PERK_BRANCH[perkName];
+          if (cost !== undefined && branch !== undefined) {
+            const branchHave = (data.branchPoints ?? {})[branch] ?? 0;
+            if (branchHave < cost) {
+              results.push(`❌ ${user.username}: "${perkName}" (nhánh ${branch}) cần ${cost} điểm nhánh — hiện chỉ có ${branchHave} điểm ${branch} (dùng \`-setplayer @user ${branch}: <số>\` để phân bổ thêm).`);
               continue;
             }
           }
           data.unlockedSkillTree.push(perkName);
           await savePlayerData(user.id, data, slot);
-          results.push(`✅ ${user.username}: mở khóa "${perkName}"${cost !== undefined ? ` (${cost} điểm, còn ${calcSkillTreePointsEarned(data) - calcSkillTreePointsSpent(data)}/${calcSkillTreePointsEarned(data)})` : ""}.`);
+          results.push(`✅ ${user.username}: mở khóa "${perkName}"${cost !== undefined ? ` (nhánh ${branch}, cần ${cost}/${(data.branchPoints ?? {})[branch] ?? 0} điểm ${branch})` : ""}.`);
         } else {
           const idx = data.unlockedSkillTree.indexOf(perkName);
           if (idx === -1) { results.push(`⚠️ ${user.username}: chưa có "${perkName}".`); continue; }
