@@ -2011,7 +2011,7 @@ function normalizeEnemyKey(k) {
 }
 
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
-function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
+function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
   return {
     name,
     maxHp, currentHp: maxHp,
@@ -2023,6 +2023,12 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // advanceCombatantTurn. Tách riêng để KHÔNG mất giá trị gốc khi Level hết hạn.
     baseMaxLight: maxLight, maxLight, currentLight: 0,
     weaponWeight: normalizeWeaponWeight(weaponWeight),
+    // weaponBaseDamage/weaponType — CHỈ dùng để TỰ ĐỘNG TÍNH dmgStr cho nút "Đánh
+    // thường (M1)" qua dropdown/Modal (hỏi "đánh mấy lần" thay vì bắt gõ tay cả
+    // công thức) — KHÔNG ảnh hưởng gì tới lệnh text -encounter attack (vẫn luôn
+    // cho gõ tay dmgStr tuỳ ý như cũ). null nếu player chưa equip vũ khí nào rõ
+    // ràng (enemy luôn null — GM dùng lệnh text, không cần field này).
+    weaponBaseDamage, weaponType,
     resistance: resistance ?? { B: 1, P: 1, S: 1 },
     // 7 status effect — LƯU Ý quan trọng về AI mang gì: Poise/Charge là "trên bản
     // thân" (self) — combatant này tự mang, áp dụng khi NÓ là người TẤN CÔNG.
@@ -2079,6 +2085,9 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // (Choáng) vì cộng dồn nhiều stack mới phát huy tác dụng, khác các chấn thương
     // khác (chỉ cần CÓ là đủ).
     injuries: [], dazedStacks: 0, lastStaggerWas2Turn: false,
+    // Táo (item consumable): -1 Dmg/hit nhận vào tới hết turn hiện tại — reset ở
+    // advanceCombatantTurn.
+    appleDmgReductionActive: false,
     // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
     // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
     // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
@@ -2558,6 +2567,8 @@ function advanceCombatantTurn(combatant) {
   if ((combatant.kCorpAmpuleCooldownLeft ?? 0) > 0) {
     combatant.kCorpAmpuleCooldownLeft -= 1;
   }
+  // Táo (item): -1 Dmg/hit CHỈ tới hết turn hiện tại — reset về false mỗi endturn.
+  combatant.appleDmgReductionActive = false;
   // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
   // ngay) — giờ mới trừ THẬT lúc end turn.
   if ((combatant.poiseReductionPending ?? 0) > 0) {
@@ -5782,7 +5793,10 @@ client.on("messageCreate", async (message) => {
             name: message.author.username, maxHp: finalHp,
             maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
             maxLight: Number.isFinite(light) && light > 0 ? light : gradeBasedMaxLight,
-            weaponWeight: weapon, resistance: res, speedRangeMin, speedRangeMax,
+            weaponWeight: weapon,
+            weaponBaseDamage: equippedWeaponObj?.baseDamage ?? null,
+            weaponType: equippedWeaponObj?.type ?? null,
+            resistance: res, speedRangeMin, speedRangeMax,
           });
           // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
           // encounter này — snapshot lúc join, giống cách HP/Stamina/vũ khí cũng
@@ -5924,6 +5938,8 @@ client.on("messageCreate", async (message) => {
           const oldWeaponWeight = player.weaponWeight;
           player.currentLight -= lightCost;
           player.weaponWeight = newWeapon.weight;
+          player.weaponBaseDamage = newWeapon.baseDamage ?? null;
+          player.weaponType = newWeapon.type ?? null;
           appendActionLog(encounter, `🔄 <@${message.author.id}> đổi vũ khí qua ${abilityName} (-${lightCost} Light): ${newWeapon.name} (${oldWeaponWeight} → ${newWeapon.weight}).`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(
@@ -6436,6 +6452,13 @@ client.on("messageCreate", async (message) => {
           // CÙNG 1 encounter (dù đã hết CD hay chưa) → CHẾT NGAY (Death Penalty/
           // Permadeath như chết bình thường), KHÔNG hồi máu/chữa gì nữa.
           const isKCorpAmpule = actualName.toLowerCase() === "k-corp ampule";
+          // 4 item consumable đơn giản khác (xác nhận trực tiếp từ GM, giá Ahn chỉ
+          // mang tính THAM KHẢO — hệ thống hiện chưa có cơ chế "mua" item bằng Ahn,
+          // items chỉ được GM cấp qua -setplayer items:, nên KHÔNG trừ Ahn ở đây).
+          const isChuoi = actualName.toLowerCase() === "chuối";
+          const isTao = actualName.toLowerCase() === "táo";
+          const isDuaHau = actualName.toLowerCase() === "dưa hấu";
+          const isMedkit = actualName.toLowerCase() === "medkit";
           if (isKCorpAmpule && (player.kCorpAmpuleCooldownLeft ?? 0) > 0) {
             throw new Error(`K-Corp Ampule đang trong CD — còn ${player.kCorpAmpuleCooldownLeft} turn nữa mới dùng lại được.`);
           }
@@ -6479,10 +6502,46 @@ client.on("messageCreate", async (message) => {
               } catch { /* không chặn action chính nếu sync lỗi */ }
               effectNote = ` 💊 Hồi ĐẦY HP (${player.currentHp}/${player.maxHp}) + Chữa TOÀN BỘ injury! (CD 2 turn — dùng lần 2 trong trận này sẽ CHẾT NGAY.)`;
             }
+          } else if (isChuoi) {
+            // Chuối: hồi phục 10 HP, cap tại maxHp.
+            const before = player.currentHp;
+            player.currentHp = Math.min(player.maxHp, player.currentHp + 10);
+            effectNote = ` 🍌 +${(player.currentHp - before).toFixed(0)} HP (${player.currentHp}/${player.maxHp}).`;
+          } else if (isTao) {
+            // Táo: giảm 1 Dmg/hit phải nhận tới hết turn hiện tại — set cờ, logic
+            // trừ dmg THẬT nằm ở nhánh xử lý damage (xem comment "Táo (item)" gần
+            // target.currentHp -= finalDmg).
+            player.appleDmgReductionActive = true;
+            effectNote = ` 🍎 Giảm 1 Dmg/hit phải nhận tới hết turn này.`;
+          } else if (isDuaHau) {
+            // Dưa hấu: hồi phục 20 Stamina, cap tại maxStamina.
+            const before = player.currentStamina;
+            player.currentStamina = Math.min(player.maxStamina, player.currentStamina + 20);
+            effectNote = ` 🍉 +${(player.currentStamina - before).toFixed(0)} Stamina (${player.currentStamina}/${player.maxStamina}).`;
+          } else if (isMedkit) {
+            // Medkit: CHỈ chữa chấn thương NHẸ (Gãy tay/Gãy chân/Gãy Xương) —
+            // KHÔNG chữa chấn thương NẶNG (Mất tay/Mất Chân/Vết thương lớn), khác
+            // hẳn K-Corp Ampule (chữa TẤT CẢ). Chữa TOÀN BỘ chấn thương nhẹ đang
+            // mang cùng lúc (không chỉ 1 cái).
+            const before = [...(player.injuries ?? [])];
+            const healedMinor = before.filter(inj => MINOR_INJURIES.some(m => inj.startsWith(m)));
+            if (healedMinor.length === 0) {
+              effectNote = ` 🩹 Không có chấn thương nhẹ nào để chữa (Medkit KHÔNG chữa được chấn thương nặng).`;
+            } else {
+              player.injuries = before.filter(inj => !MINOR_INJURIES.some(m => inj.startsWith(m)));
+              for (const inj of healedMinor) restoreInjuryMaxHp(player, inj);
+              try {
+                const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(message.author.id);
+                injSyncData.injuries = [...player.injuries];
+                await savePlayerData(message.author.id, injSyncData, injSyncSlot);
+              } catch { /* không chặn action chính nếu sync lỗi */ }
+              effectNote = ` 🩹 Đã chữa ${healedMinor.length} chấn thương nhẹ: ${healedMinor.join(", ")}. (Chấn thương nặng KHÔNG được chữa bởi Medkit.)`;
+            }
           }
           appendActionLog(encounter, `🧪 <@${message.author.id}> dùng **${actualName}**.${effectNote}`);
           await saveEncounter(message.channel.id, encounter);
-          message.reply(`🧪 ${message.author} đã dùng **${actualName}**!${effectNote}${!isKCorpAmpule ? " (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)" : ""}`);
+          const isKnownItemWithEffect = isKCorpAmpule || isChuoi || isTao || isDuaHau || isMedkit;
+          message.reply(`🧪 ${message.author} đã dùng **${actualName}**!${effectNote}${!isKnownItemWithEffect ? " (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)" : ""}`);
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -6659,6 +6718,7 @@ client.on("messageCreate", async (message) => {
       "> `-encounter followup target: <key>` — Follow-Up/Pounce (cần ≥20 Sta tiêu turn này) · `-encounter overcharge` — Overcharged Vessel\n" +
       "> `-encounter swapweapon <tên>` — đổi vũ khí GIỮA TRẬN — CHỈ dùng được nếu sở hữu accessory đặc biệt (VD Dimension Pocket)\n" +
       "> `-encounter additem <tên>` / `useitem <tên>` (tối đa 4 mang/trận, 1 dùng/turn) · `-encounter healinjury target: <key> index: <số>` (GM)\n" +
+      "> Item có hiệu ứng CỤ THỂ (tự động, không cần GM narrate): Chuối (+10 HP), Táo (-1 Dmg/hit tới hết turn), Dưa hấu (+20 Stamina), Medkit (chữa TOÀN BỘ chấn thương NHẸ, không chữa chấn thương nặng), K-Corp Ampule (hồi đầy HP + chữa hết injury, dùng lần 2/trận = CHẾT)\n" +
       "> `-encounter haste/bind target: <key/me> amount: <số>` — chỉnh tay Speed\n\n" +
       "**Ngoài encounter (profile, không cần đang trong trận)**\n" +
       "> `-equipweapon/-equipoutfit <tên>` · `-equipaccessory <slot 1-3> <tên>` · `-equippage/-equipegopage <slot 1-5> <tên>` · `-equipment`/`-pages`\n" +
@@ -7200,6 +7260,15 @@ client.on("interactionCreate", async (interaction) => {
                 if (usedThisHit) attacker.combatant.bleedFirstHitUsedThisTurn = true;
               }
               const wasAliveBefore = target.currentHp > 0;
+              // Táo (item): giảm 1 Dmg PHẢI NHẬN mỗi HIT (không phải mỗi ACTION) cho
+              // tới hết turn hiện tại — áp SAU Guard/Evade/Parry (finalDmg đã qua
+              // mitigation), nhân theo hitCount thật của action này (M1 nhiều hit →
+              // giảm nhiều lần, đúng "mỗi hit"). Không áp nếu evadedCompletely
+              // (finalDmg đã =0 từ trước, floor tại 0 tự nhiên an toàn không cần
+              // check thêm). Chỉ áp cho target LÀ PLAYER (Táo là item của player).
+              if (target.appleDmgReductionActive && targetResolved.type === "player") {
+                finalDmg = Math.max(0, finalDmg - hitCount);
+              }
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
               const justDied = wasAliveBefore && target.currentHp <= 0;
               // HP Persistence (luật: "HP vẫn giữ nguyên" sau khi encounter kết
@@ -7465,10 +7534,57 @@ client.on("interactionCreate", async (interaction) => {
   const channelId = parts[1];
   const action = parts[2];
   const encodedPageName = parts[3]; // chỉ có khi action === "hit" VÀ chọn từ dropdown 1 Page cụ thể
-  const targetStr = interaction.fields.getTextInputValue("targetStr");
   try {
+    if (action === "repeat") {
+      // Guard/Evade/Parry — Modal CHỈ có field "count" (không có targetStr) — PHẢI
+      // xử lý TRƯỚC dòng đọc targetStr chung, vì field đó không tồn tại trong Modal
+      // này (đọc field không tồn tại → Discord.js throw lỗi).
+      const repeatType = parts[3]; // "guard" | "evade" | "parry"
+      const countRaw = interaction.fields.getTextInputValue("count").trim();
+      const count = countRaw === "" ? 1 : parseInt(countRaw, 10);
+      if (!Number.isFinite(count) || count < 1 || count > 20) {
+        throw new Error(`Số lần phải từ 1-20 (để trống = 1). Nhận được: "${countRaw}".`);
+      }
+      const isAdminRepeat = ADMIN_IDS.has(interaction.user.id);
+      const lines = [];
+      let stoppedEarly = false;
+      for (let i = 0; i < count; i++) {
+        try {
+          let r;
+          if (repeatType === "parry") r = await performParry(channelId, interaction.user.id, isAdminRepeat);
+          else r = await performGuardEvade(channelId, interaction.user.id, isAdminRepeat, repeatType);
+          lines.push(r);
+        } catch (err) {
+          lines.push(`❌ Dừng ở lần ${i + 1}/${count}: ${err.message}`);
+          stoppedEarly = true;
+          break;
+        }
+      }
+      await interaction.reply({ content: lines.join("\n") + (stoppedEarly ? "" : ` ✅ (${count}/${count} lần)`) });
+      return;
+    }
+    const targetStr = interaction.fields.getTextInputValue("targetStr");
     if (action === "attack") {
-      const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+      const isAutoCalc = parts[3] === "auto";
+      let dmgStr;
+      if (isAutoCalc) {
+        const hitCountRaw = interaction.fields.getTextInputValue("hitCount");
+        const hitCount = parseInt(hitCountRaw.trim(), 10);
+        if (!Number.isFinite(hitCount) || hitCount < 1 || hitCount > 50) {
+          throw new Error(`"Đánh mấy lần?" phải là số nguyên từ 1-50 (nhận được: "${hitCountRaw}").`);
+        }
+        const encounter = await getEncounter(channelId);
+        const combatant = encounter?.players?.[interaction.user.id];
+        if (!combatant || !Number.isFinite(combatant.weaponBaseDamage) || !combatant.weaponType) {
+          throw new Error("Không tìm thấy dữ liệu vũ khí — dùng `-encounter attack target: ... dmg: ...` (lệnh text) thay vào đó.");
+        }
+        // Type text (Blunt/Pierce/Slash) → chữ cái dmgStr cần (B/P/S).
+        const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
+        if (!typeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
+        dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${typeLetter}` : `${combatant.weaponBaseDamage}${typeLetter}`;
+      } else {
+        dmgStr = interaction.fields.getTextInputValue("dmgStr");
+      }
       const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr);
       await interaction.reply({ embeds: [embed] });
     } else if (action === "hit") {
@@ -7504,12 +7620,59 @@ client.on("interactionCreate", async (interaction) => {
   }
   const value = interaction.values[0];
   try {
-    if (value === "attack" || value.startsWith("hit:")) {
-      const isHit = value.startsWith("hit:");
-      const pageName = isHit ? value.slice(4) : null;
+    if (value === "attack") {
+      // M1 (Đánh thường) — theo yêu cầu trực tiếp: hỏi "đánh mấy lần" thay vì bắt
+      // gõ tay cả công thức dmgStr — tự tính từ vũ khí đã equip (weaponBaseDamage/
+      // weaponType lưu trên combatant, xem createCombatant/join/swapweapon). Nếu
+      // KHÔNG có dữ liệu vũ khí (chưa từng equip gì rõ ràng) → fallback về Modal
+      // dmgStr CŨ (gõ tay), để không chặn hoàn toàn player chưa equip.
+      const encounter = await getEncounter(channelId);
+      const combatant = encounter?.players?.[interaction.user.id];
+      const hasWeaponData = combatant && Number.isFinite(combatant.weaponBaseDamage) && combatant.weaponType;
       const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:${isHit ? "hit" : "attack"}${pageName ? `:${encodeURIComponent(pageName)}` : ""}`)
-        .setTitle(isHit ? `Dùng Page: ${pageName}`.slice(0, 45) : "Đánh thường (M1)");
+        .setCustomId(`encmodal:${channelId}:attack${hasWeaponData ? ":auto" : ""}`)
+        .setTitle("Đánh thường (M1)");
+      const targetInput = new TextInputBuilder()
+        .setCustomId("targetStr")
+        .setLabel("Target (key enemy, key1,key2, hoặc all)")
+        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      if (hasWeaponData) {
+        const hitCountInput = new TextInputBuilder()
+          .setCustomId("hitCount")
+          .setLabel(`Đánh mấy lần? (${combatant.weaponBaseDamage} ${combatant.weaponType}/hit, vũ khí ${combatant.weaponWeight})`.slice(0, 45))
+          .setPlaceholder("VD: 4")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(targetInput),
+          new ActionRowBuilder().addComponents(hitCountInput),
+        );
+      } else {
+        const dmgInput = new TextInputBuilder()
+          .setCustomId("dmgStr")
+          .setLabel("Công thức dmg (chưa rõ vũ khí — gõ tay)")
+          .setPlaceholder("VD: 50x2B+2Sinking")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(targetInput),
+          new ActionRowBuilder().addComponents(dmgInput),
+        );
+      }
+      await interaction.showModal(modal).catch(() => {});
+      return;
+    }
+    if (value.startsWith("hit:")) {
+      // Page/Skill — GIỮ NGUYÊN Modal target+dmgStr (KHÔNG tự động tính được an
+      // toàn như M1, vì mỗi Page có dice/hiệu ứng khác nhau hoàn toàn — tự bịa số
+      // có nguy cơ sai lệch dmg thật). Chọn từ dropdown vẫn tự điền đúng skill: (áp
+      // dụng ở lúc submit modal, xem encmodal handler) — chỉ cần gõ target+dmg.
+      const pageName = value.slice(4);
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:hit:${encodeURIComponent(pageName)}`)
+        .setTitle(`Dùng Page: ${pageName}`.slice(0, 45));
       const targetInput = new TextInputBuilder()
         .setCustomId("targetStr")
         .setLabel("Target (key enemy, key1,key2, hoặc all)")
@@ -7541,11 +7704,28 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.showModal(modal).catch(() => {});
       return;
     }
+    if (value === "guard" || value === "evade" || value === "parry") {
+      // Guard/Evade/Parry — theo yêu cầu trực tiếp: hỏi "mấy lần" qua Modal thay vì
+      // bắt chọn lại dropdown nhiều lần cho mỗi charge muốn có. Modal NHẸ, chỉ 1
+      // field, để trống = mặc định 1 lần (không bắt buộc phải gõ số cho trường hợp
+      // đơn giản nhất).
+      const label = { guard: "🛡️ Guard", evade: "💨 Evade", parry: "🗡️ Parry" }[value];
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:repeat:${value}`)
+        .setTitle(`${label} — mấy lần?`);
+      const countInput = new TextInputBuilder()
+        .setCustomId("count")
+        .setLabel("Số lần (để trống = 1)")
+        .setPlaceholder("VD: 3")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false);
+      modal.addComponents(new ActionRowBuilder().addComponents(countInput));
+      await interaction.showModal(modal).catch(() => {});
+      return;
+    }
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     let resultMsg;
-    if (value === "guard" || value === "evade") resultMsg = await performGuardEvade(channelId, interaction.user.id, isAdmin, value);
-    else if (value === "parry") resultMsg = await performParry(channelId, interaction.user.id, isAdmin);
-    else if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
+    if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
     else if (value === "manifestego") resultMsg = await performManifestEgo(channelId, interaction.user.id);
     else if (value === "overcharge") resultMsg = await performOvercharge(channelId, interaction.user.id);
     else { await interaction.reply({ content: "⚠️ Hành động không hợp lệ.", flags: MessageFlags.Ephemeral }).catch(() => {}); return; }
