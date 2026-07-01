@@ -2253,6 +2253,47 @@ function applyEvadeSuccessPerks(combatant, attackerCombatant) {
   return "";
 }
 
+/**
+ * appendActionLog — ghi 1 entry vào encounter.actionLog — dùng CHUNG cho MỌI loại
+ * hành động: cả M1/Page/skill (đã ghi riêng trong confirmAll handler) LẪN các hành
+ * động TỨC THỜI không qua hàng chờ confirm (Guard/Evade/Parry/Clash/Shin-Mang/
+ * Manifest E.G.O/Follow-Up/Overcharge/additem/useitem) — BUG ĐÃ SỬA: trước đây CHỈ
+ * confirmAll ghi log, khiến log có LỖ HỔNG LỚN (không thấy Guard/Parry/Clash nào cả,
+ * dù đây là hành động RẤT phổ biến trong lối chơi thật). PHẢI gọi TRƯỚC
+ * saveEncounter tương ứng (không tự save bên trong hàm này — gộp chung 1 lần ghi
+ * Redis với thay đổi khác của cùng action, tránh 2 lần ghi cho 1 hành động).
+ * @param type "instant" cho các hành động tức thời (hiện icon 🔹 khác ✅/❌ confirm/
+ *  reject để phân biệt trực quan trong -encounter log).
+ */
+function appendActionLog(encounter, lines, type = "instant") {
+  if (!lines) return;
+  const arr = Array.isArray(lines) ? lines.filter(Boolean) : [lines];
+  if (arr.length === 0) return;
+  encounter.actionLog = encounter.actionLog ?? [];
+  encounter.actionLog.push({
+    turn: encounter.turnNumber ?? 1,
+    type,
+    lines: arr,
+    timestamp: Date.now(),
+  });
+  if (encounter.actionLog.length > 100) {
+    encounter.actionLog = encounter.actionLog.slice(encounter.actionLog.length - 100);
+  }
+}
+
+/** getActionLogIcon — icon hiển thị cho 1 entry trong actionLog theo đúng 3 loại:
+ *  "confirm" (M1/Page/skill đã GM xác nhận), "reject" (đã bị từ chối), "instant"
+ *  (hành động tức thời như Guard/Evade/Parry/Clash/buff/... — không qua hàng chờ
+ *  confirm nên KHÔNG có khái niệm "reject" cho loại này). BUG ĐÃ SỬA: trước đây
+ *  dùng ternary 2 nhánh (entry.type === "confirm" ? "✅" : "❌") — coi MỌI entry
+ *  KHÔNG PHẢI "confirm" là "❌ reject", khiến toàn bộ hành động instant (vốn luôn
+ *  thành công nếu không throw error) hiện sai thành "đã bị từ chối". */
+function getActionLogIcon(type) {
+  if (type === "confirm") return "✅";
+  if (type === "reject") return "❌";
+  return "🔹";
+}
+
 function checkStaggerPanic(combatant) {
   if (combatant.currentStamina <= 0 && !combatant.staggered) {
     combatant.staggered = true;
@@ -2685,8 +2726,9 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     const chargeField = type === "guard" ? "guardCharges" : "evadeCharges";
     combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
     checkStaggerPanic(combatant);
-    await saveEncounter(channelId, encounter);
     result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""}${overflowingGuardUsed ? " (Overflowing Guard — giảm 1 nửa Sta, -1 Charge)" : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
+    appendActionLog(encounter, result);
+    await saveEncounter(channelId, encounter);
   });
   return result;
 }
@@ -2715,8 +2757,9 @@ async function performParry(channelId, userId, isAdmin, enemyKeyRaw = "") {
     const roll = rawRoll - penalty;
     combatant.parryRolls = combatant.parryRolls ?? [];
     combatant.parryRolls.push(roll);
-    await saveEncounter(channelId, encounter);
     result = `🗡️ Parry! ${label} roll được **${rawRoll}**${penalty > 0 ? ` -${penalty} (chấn thương) = **${roll}**` : ""} (0 Stamina) — đang có ${combatant.parryRolls.length} lần parry chờ sẵn.`;
+    appendActionLog(encounter, result);
+    await saveEncounter(channelId, encounter);
   });
   return result;
 }
@@ -2741,7 +2784,6 @@ async function performShinMang(channelId, userId) {
     player.shinMangUsedThisTurn = true;
     player.shinMangRounds = (player.shinMangRounds ?? 0) + 1;
     checkStaggerPanic(player);
-    await saveEncounter(channelId, encounter);
     // Defensive Light (Shin, [10 Points]): +0,1x giảm Res CỘNG THÊM (trên nền -0,2x
     // gốc) cho MỖI 10 Shin Level hiện có. shinLevel mặc định = 10 (luật: "Khởi điểm
     // với 10 Shin Lvl") — KHÔNG có cơ chế nào khác cho biết Shin Lvl tăng/giảm theo
@@ -2753,6 +2795,8 @@ async function performShinMang(channelId, userId) {
     result =
       `🌑 **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
       `Mang: +${player.shinMangRounds * 10}% Dmg M1+skill turn này (vòng ${player.shinMangRounds}), gây True Dmg.`;
+    appendActionLog(encounter, result);
+    await saveEncounter(channelId, encounter);
   });
   return result;
 }
@@ -2781,10 +2825,11 @@ async function performManifestEgo(channelId, userId) {
       healNote = ` 🩹+${healAmt} HP (Comeback Time — lần đầu Manifest E.G.O)`;
     }
     player.firstManifestEGOUsed = true;
-    await saveEncounter(channelId, encounter);
     result =
       `😈 **Manifest E.G.O!** -30 Sanity (còn ${player.currentSanity}) → Duration ${player.manifestedEGOTurnsLeft} turn ` +
       `(theo Emotion Level ${player.emotionLevel}) — +3 Dice Up, +30% Dmg M1+skill.${healNote}`;
+    appendActionLog(encounter, result);
+    await saveEncounter(channelId, encounter);
   });
   return result;
 }
@@ -2804,8 +2849,9 @@ async function performOvercharge(channelId, userId) {
     player.overchargedDmgBonusPct = tiers * 5;
     player.overchargedTurnsLeft = 3;
     player.charge = 0;
-    await saveEncounter(channelId, encounter);
     result = `⚡ **Overcharged!** Tiêu ${tiers * 10} Charge → +${tiers} Dice Up, +${tiers * 5}% Dmg trong 3 turn.`;
+    appendActionLog(encounter, result);
+    await saveEncounter(channelId, encounter);
   });
   return result;
 }
@@ -5539,6 +5585,7 @@ client.on("messageCreate", async (message) => {
           encounter.pendingActions = (encounter.pendingActions ?? []).filter(p =>
             p.attackerId !== key && !(p.targets ?? []).some(t => t.targetId === key)
           );
+          appendActionLog(encounter, `🏃 Gỡ enemy **${name}** (key: \`${key}\`) khỏi board — bỏ chạy/bắt sống.`);
           await saveEncounter(message.channel.id, encounter);
           await message.reply({
             content: `🏃 Đã gỡ enemy **${name}** (key: \`${key}\`) khỏi board — KHÔNG tính là đã hạ (bỏ chạy/bắt sống).`,
@@ -5673,6 +5720,7 @@ client.on("messageCreate", async (message) => {
           if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới roll thứ tự turn.");
           if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length < 1) throw new Error("Chưa có combatant nào để roll.");
           determineTurnOrder(encounter);
+          appendActionLog(encounter, `🎲 Roll Speed — Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`);
           await saveEncounter(message.channel.id, encounter);
           message.reply({ embeds: [{ title: "🎲 Thứ tự Turn", description: buildTurnOrderText(encounter), color: 0x3498db }] });
         });
@@ -5700,6 +5748,7 @@ client.on("messageCreate", async (message) => {
           const resolved = resolveCombatant(encounter, targetId);
           if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
           resolved.combatant[sub] = Math.max(0, (resolved.combatant[sub] ?? 0) + amount);
+          appendActionLog(encounter, `${resolved.label}: ${sub === "haste" ? "Haste" : "Bind"} ${amount >= 0 ? "+" : ""}${amount} → còn ${resolved.combatant[sub]}.`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ ${resolved.label}: ${sub === "haste" ? "Haste" : "Bind"} ${amount >= 0 ? "+" : ""}${amount} → còn ${resolved.combatant[sub]}.`);
         });
@@ -5741,6 +5790,7 @@ client.on("messageCreate", async (message) => {
           const oldWeaponWeight = player.weaponWeight;
           player.currentLight -= lightCost;
           player.weaponWeight = newWeapon.weight;
+          appendActionLog(encounter, `🔄 <@${message.author.id}> đổi vũ khí qua ${abilityName} (-${lightCost} Light): ${newWeapon.name} (${oldWeaponWeight} → ${newWeapon.weight}).`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(
             `🔄 ${message.author} đổi vũ khí qua **${abilityName}** (-${lightCost} Light): **${newWeapon.name}** (${newWeapon.weight}/${newWeapon.type}, Base Dmg ${newWeapon.baseDamage}).\n` +
@@ -5812,7 +5862,7 @@ client.on("messageCreate", async (message) => {
       let lastTurn = null;
       for (const entry of entriesToShow) {
         if (entry.turn !== lastTurn) { lines.push(`\n**── Turn ${entry.turn} ──**`); lastTurn = entry.turn; }
-        const icon = entry.type === "confirm" ? "✅" : "❌";
+        const icon = getActionLogIcon(entry.type);
         for (const l of entry.lines) lines.push(`${icon} ${l}`);
       }
       const fullText = lines.join("\n").trim();
@@ -5861,6 +5911,7 @@ client.on("messageCreate", async (message) => {
           const listKey = sub === "buff" ? "buffs" : "debuffs";
           resolved.combatant[listKey] = resolved.combatant[listKey] ?? [];
           resolved.combatant[listKey].push({ text, addedAt: Date.now() });
+          appendActionLog(encounter, `${sub === "buff" ? "🟢" : "🔴"} ${resolved.label}: ${sub === "buff" ? "+buff" : "+debuff"} "${text}"`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ Đã thêm ${sub === "buff" ? "🟢 buff" : "🔴 debuff"} cho ${resolved.label}: "${text}"`);
         });
@@ -5889,6 +5940,7 @@ client.on("messageCreate", async (message) => {
           const list = resolved.combatant[listKey] ?? [];
           if (index > list.length) throw new Error(`${resolved.label} chỉ có ${list.length} ${listKey === "buffs" ? "buff" : "debuff"} — không có #${index}.`);
           const removed = list.splice(index - 1, 1)[0];
+          appendActionLog(encounter, `${listKey === "buffs" ? "🟢" : "🔴"} Đã xoá ${listKey === "buffs" ? "buff" : "debuff"} của ${resolved.label}: "${removed.text}"`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ Đã xoá ${listKey === "buffs" ? "🟢 buff" : "🔴 debuff"} #${index} của ${resolved.label}: "${removed.text}"`);
         });
@@ -5919,6 +5971,7 @@ client.on("messageCreate", async (message) => {
           const list = resolved.combatant.injuries ?? [];
           if (index > list.length) throw new Error(`${resolved.label} chỉ có ${list.length} chấn thương — không có #${index}.`);
           const removed = list.splice(index - 1, 1)[0];
+          appendActionLog(encounter, `🩹 Đã chữa khỏi chấn thương của ${resolved.label}: "${removed}"`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ Đã chữa khỏi chấn thương #${index} của ${resolved.label}: "${removed}"`);
         });
@@ -5943,7 +5996,7 @@ client.on("messageCreate", async (message) => {
         let lastTurn = null;
         for (const entry of fullLog) {
           if (entry.turn !== lastTurn) { lines.push(`\n**── Turn ${entry.turn} ──**`); lastTurn = entry.turn; }
-          const icon = entry.type === "confirm" ? "✅" : "❌";
+          const icon = getActionLogIcon(entry.type);
           for (const l of entry.lines) lines.push(`${icon} ${l}`);
         }
         const chunks = [];
@@ -6209,6 +6262,7 @@ client.on("messageCreate", async (message) => {
           const alreadyBrought = player.consumablesLoadout.filter(n => n === itemName).length;
           if (alreadyBrought >= ownedCount) throw new Error(`Bạn chỉ có ${ownedCount}× **${itemName}** trong inventory — đã mang đủ số đó vào trận rồi.`);
           player.consumablesLoadout.push(itemName);
+          appendActionLog(encounter, `🎒 <@${message.author.id}> mang **${itemName}** vào trận (${player.consumablesLoadout.length}/4).`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`🎒 Đã mang **${itemName}** vào trận (${player.consumablesLoadout.length}/4 slot item).`);
         });
@@ -6240,6 +6294,7 @@ client.on("messageCreate", async (message) => {
           await savePlayerData(message.author.id, profileData, slot);
           player.consumablesLoadout.splice(idx, 1);
           player.usedItemThisTurn = true;
+          appendActionLog(encounter, `🧪 <@${message.author.id}> dùng **${actualName}**.`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`🧪 ${message.author} đã dùng **${actualName}**! (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)`);
         });
@@ -6385,6 +6440,7 @@ client.on("messageCreate", async (message) => {
             applyEmotionDelta(targetResolved.combatant, 1);
             resultText = `⚖️ HUỀ Clash! (${myEffectiveDice} vs ${oppEffectiveDice}) — mỗi bên +1 Coin, Sanity không đổi.`;
           }
+          appendActionLog(encounter, `⚔️ Clash: ${resultText}`);
           await saveEncounter(message.channel.id, encounter);
           await message.reply({ embeds: [myRoll.embed, oppRoll.embed, { title: "⚔️ Kết quả Clash", description: resultText, color: 0x9b59b6 }] });
         });
