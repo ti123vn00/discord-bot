@@ -32,11 +32,24 @@ const OUTFITS = {
       "Khi sử dụng Tiantui Star's Blade [天退星刀]: Khi gây <:Tremor:1513762737388257380>Tremor bạn sẽ áp thêm <:Burn:1513762753691652177>Burn bằng một nửa count của <:Tremor:1513762737388257380>Tremor và ngược lại",
     ],
   },
+  "abydos's uniform - lazy style": {
+    name: "Abydos's Uniform - Lazy Style",
+    resistance: { B: 1.1, P: 1.5, S: 1.3 },
+    speedRange: { min: 2, max: 5 },
+    keypage: [
+      // "Iron Horus" — thay đổi cơ chế Guard CƠ BẢN (40 Sta thay vì 10, giảm TOÀN
+      // BỘ sát thương thay vì 90%/99%) — KHÔNG tự động hoá trong -encounter guard
+      // (hệ thống hiện dùng cứng 10 Sta/90% giảm cho mọi player, không có field
+      // "override Guard cost/hiệu quả theo outfit") — GM/player tự áp dụng bằng
+      // tay khi Guard trong lúc mặc outfit này.
+      "Iron Horus: Block tốn 40 stamina nhưng giảm sát thương TOÀN BỘ đòn (KHÔNG tự động hoá — GM/player tự áp khi Guard).",
+    ],
+  },
 };
 
 /** findOutfit — tra theo key chuẩn hoá hoặc tên hiển thị (case-insensitive). */
 function findOutfit(raw) {
-  const key = (raw ?? "").toLowerCase().trim();
+  const key = (raw ?? "").toLowerCase().trim().replace(/^["']+|["']+$/g, "").trim();
   if (OUTFITS[key]) return OUTFITS[key];
   for (const o of Object.values(OUTFITS)) {
     if (o.name.toLowerCase() === key) return o;
