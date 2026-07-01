@@ -4993,6 +4993,17 @@ client.on("messageCreate", async (message) => {
       message.reply("❌ `bonusskillpoints:` phải là số.");
       return;
     }
+    // hp: — set TRỰC TIẾP currentHp đã persist trên profile (KHÁC hp: của
+    // -encounter join, vốn chỉ set cho 1 TRẬN cụ thể) — dùng cho trường hợp cần
+    // khôi phục/nhập dữ liệu HP chính xác (VD import từ hệ thống cũ). Set kèm
+    // hpLastResetCheck = NGAY BÂY GIỜ để tránh bị auto-reset về full ngay lần
+    // join kế tiếp (xem getEffectiveCurrentHp).
+    const hpSetRaw = kv["hp"] ?? null;
+    const hpSetValue = hpSetRaw ? parseFloat(hpSetRaw) : null;
+    if (hpSetRaw && (hpSetValue === null || isNaN(hpSetValue) || hpSetValue < 0)) {
+      message.reply("❌ `hp:` phải là số ≥0.");
+      return;
+    }
     // Branch Points — PHÂN BỔ điểm Skill Tree vào 1 trong 9 nhánh (wrath/desire/
     // sloth/gluttony/gloom/pride/envy/shin/light) — KIẾN TRÚC ĐÃ SỬA (xác nhận trực
     // tiếp từ GM): mỗi nhánh có ngưỡng RIÊNG, KHÔNG dùng chung 1 pool toàn cục cho
@@ -5011,8 +5022,8 @@ client.on("messageCreate", async (message) => {
       branchUpdates[bKey] = { isAdd, value };
       hasBranchUpdate = true;
     }
-    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate) {
-      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`books\`, \`items\`, \`bonusskillpoints\`, hoặc 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
+    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null) {
+      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, hoặc 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
       return;
     }
 
@@ -5068,6 +5079,12 @@ client.on("messageCreate", async (message) => {
               data.bonusSkillPoints = Math.max(0, bonusSkillValue);
               changes.push(`Bonus Skill Points set → **${data.bonusSkillPoints}**`);
             }
+          }
+          if (hpSetValue !== null) {
+            const before = data.currentHp;
+            data.currentHp = hpSetValue;
+            data.hpLastResetCheck = Date.now();
+            changes.push(`HP set → **${hpSetValue}**${before !== undefined ? ` (trước: ${before})` : ""}`);
           }
           if (Object.keys(branchUpdates).length > 0) {
             data.branchPoints = data.branchPoints ?? {};
@@ -5135,19 +5152,74 @@ client.on("messageCreate", async (message) => {
   // thật đã tốn trong game, phải tồn tại qua mọi trận đấu, giống Grade/EXP. Admin
   // only — giống -setplayer, vì đây là tài nguyên cần GM duyệt, không phải thứ
   // player tự cấp cho mình.
-  if (message.content.startsWith("-unlockskilltree") || message.content.startsWith("-ununlockskilltree")) {
-    if (!ADMIN_IDS.has(message.author.id)) {
-      message.reply("❌ Bạn không có quyền dùng lệnh này.");
+  // ── -allocatepoints — TỰ PHÂN BỔ điểm Skill Tree vào 1 nhánh (theo yêu cầu trực
+  // tiếp: "để player tự phân bổ stats... không nhất thiết cần GM"). CHỈ CHO TĂNG
+  // (KHÔNG cho giảm qua lệnh này) — tránh làm "mồ côi" perk ĐÃ unlock dựa trên điểm
+  // nhánh cũ (VD đã unlock Fortified Resolve cần Sloth≥20, nếu tự ý giảm Sloth
+  // xuống 10 thì perk đó về mặt logic không còn đủ điều kiện nữa nhưng vẫn active
+  // — để tránh case này, GIẢM/ĐIỀU CHỈNH LẠI vẫn cần GM qua `-setplayer` (admin,
+  // có thể set tuyệt đối kể cả giảm, dùng cho các trường hợp đặc biệt/sửa lỗi).
+  if (message.content.startsWith("-allocatepoints")) {
+    const kv = parseKeyValues(message.content.replace("-allocatepoints", "").trim());
+    const branchEntries = BRANCH_KEYS.filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
+    if (branchEntries.length === 0) {
+      message.reply(`⚠️ Cú pháp: \`-allocatepoints <nhánh>: <số điểm muốn CỘNG THÊM>\` (CHỈ cộng, không trừ được qua lệnh này)\n> Nhánh hợp lệ: ${BRANCH_KEYS.join("/")}\n> VD: \`-allocatepoints sloth: 10\``);
       return;
     }
+    try {
+      await withLock(message.author.id, async () => {
+        const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+        data.branchPoints = data.branchPoints ?? {};
+        const proposedBranchPoints = { ...data.branchPoints };
+        const changes = [];
+        for (const { key, raw } of branchEntries) {
+          const addAmount = parseInt(raw.replace(/^\+/, ""), 10);
+          if (!Number.isFinite(addAmount) || addAmount <= 0) throw new Error(`\`${key}:\` phải là số dương (chỉ cộng thêm, không trừ được qua lệnh này — dùng số ≥1).`);
+          proposedBranchPoints[key] = (data.branchPoints[key] ?? 0) + addAmount;
+        }
+        const proposedTotal = BRANCH_KEYS.reduce((sum, k) => sum + (proposedBranchPoints[k] ?? 0), 0);
+        const pool = calcSkillTreePointsEarned(data);
+        if (proposedTotal > pool) {
+          const currentAllocated = calcBranchPointsAllocated(data);
+          throw new Error(`Không đủ điểm — tổng sẽ thành ${proposedTotal}, vượt quá pool ${pool} (hiện đã phân bổ ${currentAllocated}, còn dư ${pool - currentAllocated} điểm để cộng).`);
+        }
+        // Cảnh báo MỀM cho Shin/Light — 2 nhánh CHỈ dành cho nhân vật đủ điều kiện
+        // đặc biệt (xác nhận trực tiếp từ GM: "chỉ 1 số người đặc biệt đủ điều kiện
+        // mới thấy và cộng nó") — KHÔNG chặn cứng (không có luật số để verify điều
+        // kiện đó), chỉ nhắc để player/GM tự ý thức, tránh cộng nhầm/lạm dụng.
+        const specialBranchNote = branchEntries.some(e => e.key === "shin" || e.key === "light")
+          ? "\n⚠️ **Lưu ý**: Nhánh Shin/Light chỉ dành cho nhân vật đủ điều kiện đặc biệt trong cốt truyện — hãy xác nhận với GM trước khi dùng nếu chưa chắc chắn."
+          : "";
+        for (const { key, raw } of branchEntries) {
+          const before = data.branchPoints[key] ?? 0;
+          data.branchPoints[key] = proposedBranchPoints[key];
+          changes.push(`${key[0].toUpperCase() + key.slice(1)}: ${before} → **${data.branchPoints[key]}**`);
+        }
+        await savePlayerData(message.author.id, data, slot);
+        message.reply(`✅ ${message.author}: ${changes.join(", ")} [tổng đã phân bổ: ${proposedTotal}/${pool}]${specialBranchNote}`);
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-unlockskilltree") || message.content.startsWith("-ununlockskilltree")) {
     const isUnlock = message.content.startsWith("-unlockskilltree");
-    const targetUsers = [...message.mentions.users.values()];
+    const isAdminUnlock = ADMIN_IDS.has(message.author.id);
+    // TỰ PHỤC VỤ (theo yêu cầu trực tiếp: "để player tự phân bổ stats... không nhất
+    // thiết cần GM") — KHÔNG có @mention → áp dụng cho CHÍNH NGƯỜI GÕ. CÓ @mention
+    // VÀ là admin → admin làm hộ người khác (giữ khả năng override/hỗ trợ cũ). CÓ
+    // @mention nhưng KHÔNG PHẢI admin → bỏ qua mention (an toàn, giống
+    // resolveEquipTarget — tránh non-admin thao túng người khác).
+    const mentionedUsers = [...message.mentions.users.values()];
+    const targetUsers = (isAdminUnlock && mentionedUsers.length > 0) ? mentionedUsers : [message.author];
     const rawInput = message.content.replace(/^-(un)?unlockskilltree/, "").replace(/<@!?\d+>/g, "").trim();
     const perkName = rawInput.replace(/^text:\s*/i, "").trim();
-    if (targetUsers.length === 0 || !perkName) {
+    if (!perkName) {
       message.reply(
-        `❌ Cú pháp: \`-${isUnlock ? "" : "un"}unlockskilltree @user <tên perk>\`\n` +
-        "> VD: `-unlockskilltree @user Ein Sof`"
+        `❌ Cú pháp: \`-${isUnlock ? "" : "un"}unlockskilltree [@user] <tên perk>\`\n` +
+        `> VD: \`-unlockskilltree Ein Sof\` (tự mở cho chính mình) — thêm @user nếu admin muốn mở hộ.`
       );
       return;
     }
@@ -5171,7 +5243,7 @@ client.on("messageCreate", async (message) => {
           if (cost !== undefined && branch !== undefined) {
             const branchHave = (data.branchPoints ?? {})[branch] ?? 0;
             if (branchHave < cost) {
-              results.push(`❌ ${user.username}: "${perkName}" (nhánh ${branch}) cần ${cost} điểm nhánh — hiện chỉ có ${branchHave} điểm ${branch} (dùng \`-setplayer @user ${branch}: <số>\` để phân bổ thêm).`);
+              results.push(`❌ ${user.username}: "${perkName}" (nhánh ${branch}) cần ${cost} điểm nhánh — hiện chỉ có ${branchHave} điểm ${branch} (dùng \`-allocatepoints ${branch}: <số>\` để phân bổ thêm).`);
               continue;
             }
           }
