@@ -54,12 +54,74 @@ const WEAPONS = {
     // KHÁC trùng tên, không phải cái này.
     criticalSkillKey: "sharp cuts",
   },
+  "patron librarian baton": {
+    name: "Patron Librarian Baton",
+    weight: "light",
+    type: "Blunt",
+    baseDamage: 6,
+    passives: [],
+    // KHÔNG có Critical nào trong skills.js cho vũ khí này (đã rà soát kỹ — chỉ có
+    // 9 Page riêng: Alleyway Counter/Thrust/Onslaught Command/Charge and Cover/
+    // Focused Strikes/Light Dash/Dodge and Strike/You're too slow/Light attack,
+    // không có entry weaponOf:"Patron Librarian Baton" nào) — để trống
+    // criticalSkillKey, không bịa ra Critical không tồn tại.
+  },
+  "brawler": {
+    name: "Brawler",
+    weight: "light",
+    type: "Blunt",
+    baseDamage: 5,
+    passives: [],
+    // Critical "Grappling" ĐÃ CÓ trong skills.js (key "grappling", weaponOf:
+    // "Brawler") — roll qua `-skill grappling`. Có passive [Hakuda] gắn liền trong
+    // chính text roll của Grappling ("Nếu xài Critical sau khi xài skill có tag
+    // Airborne: dice đổi thành [14~30]") — KHÔNG tự động hoá được (phụ thuộc việc
+    // "vừa mới xài skill có tag Airborne" trước đó trong cùng turn, hệ thống hiện
+    // tại không track tag "Airborne" của lần roll skill gần nhất) — GM tự áp dụng.
+    criticalSkillKey: "grappling",
+  },
+  "eyes of horus": {
+    name: "Eyes Of Horus",
+    weight: "heavy",
+    type: "Pierce",
+    // "3x9" theo mô tả gốc: 1 LẦN BẮN (1 lượt M1) tự động ra 9 hit, mỗi hit 3 dmg
+    // (tổng 27 dmg raw/lượt bắn) — baseDamage lưu ở đây là dmg MỖI HIT (3), người
+    // dùng nút "Đánh mấy lần" trong encounter nên nhập THEO BỘI SỐ CỦA 9 (VD "9"
+    // cho 1 lần bắn trọn vẹn = 27 dmg, "18" cho 2 lần bắn = 54 dmg) — hệ thống
+    // KHÔNG tự ép bội số 9, GM/player tự áp đúng quy ước vũ khí này khi nhập.
+    baseDamage: 3,
+    passives: [
+      {
+        name: "Foreclosure Task Force President",
+        desc:
+          "Trong 1 turn khi tấn công 1 đối tượng, nếu đánh thường: 1 lần → bắn thêm 1 Repeat Ammo, gây sát thương chuẩn. " +
+          "Dưới hoặc bằng 3 lần → +50% sát thương. Dưới hoặc bằng 6 lần → Base dmg nâng lên 4x9. " +
+          "Mỗi lần đánh thường: gắn 2 Tremor + 2 Charge lên bản thân. " +
+          "[KHÔNG TỰ ĐỘNG HOÁ — leo thang theo SỐ LẦN đánh thường TRONG 1 TURN lên CÙNG 1 đối tượng, hệ thống hiện không track " +
+          "counter dạng này; GM/player tự cộng % dmg + đổi base dmg + gắn Tremor/Charge bằng tay theo đúng mốc.]",
+      },
+      {
+        name: "Ammo: 8",
+        desc:
+          "[KHÔNG TỰ ĐỘNG HOÁ — không có hệ thống \"đạn\"/reload trong bot, tương tự Light/Stamina/Sanity/Charge. " +
+          "GM/player tự đếm 8 lượt bắn rồi tự narrate hết đạn/reload theo ý đồ riêng của bàn chơi.]",
+      },
+    ],
+    // Critical "Tactical Suppression" — có trong skills.js (key "tactical
+    // suppression", weaponOf: "Eyes Of Horus") — LƯU Ý: bản chất là kích hoạt
+    // trạng thái Shield 2-turn phức tạp, KHÔNG phải 1 lần roll dmg đơn thuần — xem
+    // đầy đủ comment ở entry skills.js tương ứng.
+    criticalSkillKey: "tactical suppression",
+  },
 };
 
 /** findWeapon — tra theo key chuẩn hoá hoặc tên hiển thị (case-insensitive), giống
  *  pattern findSkill ở skills.js. */
 function findWeapon(raw) {
-  const key = (raw ?? "").toLowerCase().trim();
+  // Strip dấu " thừa ở đầu/cuối (item name đôi khi lưu KÈM dấu ngoặc kép do copy từ
+  // text có định dạng markdown, VD từ inventory) — để cả 2 cách gõ (có/không ngoặc)
+  // đều match đúng.
+  const key = (raw ?? "").toLowerCase().trim().replace(/^["']+|["']+$/g, "").trim();
   if (WEAPONS[key]) return WEAPONS[key];
   for (const w of Object.values(WEAPONS)) {
     if (w.name.toLowerCase() === key) return w;
