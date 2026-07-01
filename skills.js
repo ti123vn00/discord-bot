@@ -2678,6 +2678,57 @@ roll(v = "no") {
       ];
     },
   },
+  "tactical suppression": {
+    name: "Tactical Suppression", weaponOf: "Eyes Of Horus", tags: "Weapon",
+    // KHÔNG có Dice — đây là kích hoạt trạng thái (khiêu khích + Shield HP kéo dài
+    // 2 turn), không phải 1 đòn sát thương đơn thuần. KHÔNG TỰ ĐỘNG HOÁ (Shield HP/
+    // Tremor Reverb/Charge Shield không nằm trong 7 status effect hệ thống track
+    // được) — GM/player tự quản lý bằng tay khi dùng, hệ thống chỉ hiện lại đúng
+    // mô tả gốc để tra cứu.
+    cost: "—", cd: "3 Turn sau khi hết Shield HP", diceMul: "1x",
+    roll() {
+      return [
+        `*[KHÔNG có Dice — kích hoạt trạng thái, không phải đòn sát thương]*`,
+        `Khiêu khích toàn bộ kẻ địch, bản thân nhận 50 HP Shield × Số lượng người trên sân trong 2 Turn. Heal lại lượng máu = Lượng HP Shield hao hụt sau 2 turn.`,
+        `— Nếu **Block** trong trạng thái này: húc vào 1 kẻ địch, kích hoạt Tremor Burst + Tremor Reverb lên kẻ địch.`,
+        `— Nếu đánh thường trong trạng thái này: tiêu thụ toàn bộ Charge thành Charge Shield lên bản thân.`,
+      ];
+    },
+  },
+  "falco berigora": {
+    name: "Falco Berigora", weaponOf: "Manifested E.G.O (Hoshino)", tags: "Ego Pages",
+    // Light: "??" GIỮ NGUYÊN như GM ghi (chưa xác nhận số cụ thể) — KHÔNG tự bịa.
+    cost: "?? Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `${D1} dồn một viên cầu rồi bắn thẳng tới kẻ địch, gây 30 × Lượng Light bỏ ra [KHÔNG TỰ ĐỘNG TÍNH — GM/player tự nhân theo Light đã dùng].`,
+        `${D1} Khi đạt -40 Sanity, áp thêm 2 Paralyze.`,
+        `${D1} Nếu kẻ địch có Bleed: tiêu hết Bleed, chuyển thành 2 Erosion (Erosion: +0,1x Res của ĐỐI PHƯƠNG, chỉ áp dụng 1 Turn, áp với chính bản thân — KHÔNG PHẢI status hệ thống track được, GM tự áp).`,
+      ];
+    },
+  },
+  "wedjat": {
+    name: "Wedjat", weaponOf: "Manifested E.G.O (Hoshino)", tags: "Ego Pages",
+    cost: "— (chưa rõ Light cost)", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `${D1} Bắn 1 đòn Repeat Ammo [AOE/True Dmg], gây 5 Blind và 2 Bleed.`,
+        `Nhận 100 HP Shield với TỪNG mục tiêu dính đòn.`,
+        `*(Blind: khiến đòn đánh thường tiếp theo bị trượt — KHÔNG PHẢI status hệ thống track được, GM tự áp. HP Shield cũng không tự động — GM/player tự quản lý.)*`,
+      ];
+    },
+  },
+  "augury kick": {
+    name: "Augury Kick", tags: "Tremor",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,9), d2 = r(18,26);
+      return [
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đá thẳng đối thủ trước mặt lên trời, gây 8 <:Tremor:1513762737388257380>Tremor.`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable][Undodgeable] — Nhảy lên đá thêm 1 phát khiến hắn đập mặt xuống đất, gây Tremor Burst. *(Nếu trên 20 Tremor: +2 Dice Up cho 2 Turn kế tiếp — GM/player tự áp, không tự động track.)*`,
+      ];
+    },
+  },
   "stob": {
     name: "Stob", weaponOf: "Dolch", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "1x",
