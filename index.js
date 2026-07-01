@@ -252,6 +252,19 @@ function mostRecentHpResetBoundaryUtc(nowUtcMs) {
  *  (tránh side-effect ẩn trong 1 hàm "get"). Nếu profileData.currentHp chưa từng
  *  được set (player hoàn toàn mới, chưa join encounter nào) → trả về maxHp (coi
  *  như "đầy máu" mặc định, hợp lý cho lần đầu). */
+/**
+ * calcInjuryMaxHpPenalty — tổng Max HP bị trừ vĩnh viễn từ các chấn thương ĐANG
+ * MANG (Gãy Xương -30, Vết thương lớn -100) — dùng để tính Max HP THẬT của player
+ * lúc join (luật xác nhận trực tiếp: "injuries vẫn persist qua các encounter").
+ */
+function calcInjuryMaxHpPenalty(injuries) {
+  return (injuries ?? []).reduce((sum, inj) => {
+    if (inj.startsWith("Gãy Xương")) return sum + 30;
+    if (inj.startsWith("Vết thương lớn")) return sum + 100;
+    return sum;
+  }, 0);
+}
+
 function getEffectiveCurrentHp(profileData, maxHp) {
   if (profileData.currentHp === undefined || profileData.currentHp === null) {
     return { hp: maxHp, didReset: false };
@@ -2265,6 +2278,57 @@ function applyEvadeSuccessPerks(combatant, attackerCombatant) {
  * @param type "instant" cho các hành động tức thời (hiện icon 🔹 khác ✅/❌ confirm/
  *  reject để phân biệt trực quan trong -encounter log).
  */
+/**
+ * restoreInjuryMaxHp — khi 1 chấn thương bị CHỮA KHỎI, nếu chấn thương đó có gây
+ * giảm Max HP (Gãy Xương -30, Vết thương lớn -100), khôi phục lại đúng số đó vào
+ * maxHp — BUG ĐÃ SỬA: trước đây -encounter healinjury chỉ xoá TÊN khỏi danh sách,
+ * KHÔNG hề trả lại maxHp đã mất, khiến "chữa khỏi" trên danh nghĩa nhưng vẫn chịu
+ * hình phạt vĩnh viễn. Dùng CHUNG cho mọi đường chữa injury (GM lệnh tay, K-Corp
+ * Ampule, chữa bằng Ahn ngoài encounter).
+ * @param obj combatant (live, có field maxHp) HOẶC profileData (không có maxHp cố
+ *  định — chỉ áp dụng cho combatant; với profileData chỉ cần xoá khỏi mảng
+ *  injuries, maxHp NGOÀI encounter luôn tính lại từ Grade trừ injuries hiện có lúc
+ *  join, không cần "khôi phục" gì thêm).
+ * @param removedInjuryText text ĐÃ XOÁ khỏi injuries[] (dùng match tên gốc).
+ */
+function restoreInjuryMaxHp(combatant, removedInjuryText) {
+  if (!combatant || typeof combatant.maxHp !== "number") return;
+  if (removedInjuryText.startsWith("Gãy Xương")) {
+    combatant.maxHp += 30;
+    combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);
+  } else if (removedInjuryText.startsWith("Vết thương lớn")) {
+    combatant.maxHp += 100;
+    combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);
+  }
+}
+
+/**
+ * applyDeathPenalty — Death Penalty (hoặc Permanent Death nếu encounter.permadeath)
+ * cho 1 player VỪA CHẾT (currentHp=0). Dùng CHUNG cho MỌI nguồn gây chết (combat
+ * damage bình thường, VÀ hiệu ứng đặc biệt như K-Corp Ampule dùng 2 lần liên tiếp
+ * trong 1 encounter — xác nhận trực tiếp từ GM: "gây chết ngay lập tức").
+ * - Encounter THƯỜNG: mất 50% Ahn + 50% EXP của MỐC HIỆN TẠI (không tụt grade).
+ * - Encounter PERMADEATH: set permanentlyDead=true, chặn join encounter mới cho
+ *   tới khi hồi sinh qua Rewound Time.
+ * @returns deathNote string để hiển thị.
+ */
+async function applyDeathPenalty(encounter, playerId) {
+  const { data: profileData, slot } = await getPlayerDataWithSlot(playerId);
+  if (encounter.permadeath) {
+    profileData.permanentlyDead = true;
+    await savePlayerData(playerId, profileData, slot);
+    return ` ☠️**PERMANENT DEATH** (encounter permadeath) — không thể tham gia encounter khác cho tới khi hồi sinh qua Rewound Time (\`-rewoundtime @user\`)`;
+  } else {
+    const { expInCurrentGrade } = calcGrade(profileData.exp ?? 0);
+    const ahnLost = Math.floor((profileData.ahn ?? 0) * 0.5);
+    const expLost = Math.floor(expInCurrentGrade * 0.5);
+    profileData.ahn = Math.max(0, (profileData.ahn ?? 0) - ahnLost);
+    profileData.exp = Math.max(0, (profileData.exp ?? 0) - expLost);
+    await savePlayerData(playerId, profileData, slot);
+    return ` ☠️**TỬ VONG** — mất ${ahnLost} Ahn + ${expLost} EXP (profile, không tụt grade)`;
+  }
+}
+
 function appendActionLog(encounter, lines, type = "instant") {
   if (!lines) return;
   const arr = Array.isArray(lines) ? lines.filter(Boolean) : [lines];
@@ -2489,6 +2553,10 @@ function advanceCombatantTurn(combatant) {
     }
   } else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) {
     combatant.manifestedEGOCooldownLeft -= 1;
+  }
+  // K-Corp Ampule — CD 2 turn RIÊNG của item này (xem -encounter useitem).
+  if ((combatant.kCorpAmpuleCooldownLeft ?? 0) > 0) {
+    combatant.kCorpAmpuleCooldownLeft -= 1;
   }
   // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
   // ngay) — giờ mới trừ THẬT lúc end turn.
@@ -3421,6 +3489,46 @@ function buildEncounterBoardEmbed(encounter) {
 }
 
 /** buildPendingListText — danh sách đầy đủ pending action cho `-encounter pending`. */
+/** buildDothihelpEmbed — nội dung help ĐẦY ĐỦ, dùng CHUNG cho cả `-dothihelp`
+ *  (gửi qua DM) và `/dothihelp` (ephemeral) — tách riêng để không lặp code 2 nơi. */
+function buildDothihelpEmbed(isAdmin) {
+  const generalFields = [
+    { name: "📅 -daily", value: "Nhận phần thưởng điểm danh hàng ngày.\n> `5 EXP + 100k Ahn + 1 Random Book`\n> Streak 7 ngày: thêm `25 EXP + 400k Ahn + 1 Sealed Book Cache`", inline: false },
+    { name: "💼 -balance [@user]", value: "Xem thông tin Grade, EXP, Ahn và tổng kho của bạn hoặc người khác.\n> VD: `-balance` hoặc `-balance @user`", inline: false },
+    { name: "🎒 -inventory [@user]", value: "Xem chi tiết toàn bộ sách và vật phẩm trong kho.\n> VD: `-inventory` hoặc `-inventory @user`", inline: false },
+    { name: "🎁 -give @user [...]", value: ["Chuyển Ahn, sách hoặc vật phẩm cho người khác.", "> `ahn: <số>` — số Ahn muốn chuyển", "> `book: <tên> count: <số>` — sách muốn chuyển", "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển (dùng `itemcount` khi có cả book lẫn item, **bắt buộc** khi có cả hai)", "> VD: `-give @user ahn: 50000`", "> VD: `-give @user book: Random Book count: 2`", "> VD: `-give @user book: Random Book count: 1 item: Chipboard MK1 itemcount: 2`"].join("\n"), inline: false },
+    { name: "🗑️ -remove [...]", value: ["Tự xóa sách hoặc vật phẩm khỏi kho của mình.", "> `book: <tên> count: <số>` — xóa 1 loại sách", "> `item: <tên> itemcount: <số>` — xóa 1 loại vật phẩm", "> `books: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại sách cùng lúc", "> `items: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại vật phẩm cùng lúc", "> VD: `-remove books: Random Book x2, N Corp Book x1`"].join("\n"), inline: false },
+    { name: "⚒️ -use <tên vật phẩm> [count: <số>]", value: ["Craft vật phẩm bằng nguyên liệu trong kho.", "> VD: `-use Chipboard MK2` — craft 1 cái", "> VD: `-use Chipboard MK3 count: 5` — craft 5 cái cùng lúc"].join("\n"), inline: false },
+    { name: "📋 -recipes", value: "Xem toàn bộ công thức craft vật phẩm.", inline: false },
+    { name: "📖 -randombook [số]", value: "Mở Random Book để nhận sách ngẫu nhiên (tối đa 20 lần).\n> VD: `-randombook` hoặc `-randombook 5`", inline: false },
+    { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
+    { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
+    { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
+    { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 30 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
+    { name: "🎯 -rtparry", value: `Parry phản xạ thời gian thực! Bot gửi link riêng cho bạn (\`-rtparry\` qua DM, \`/rtparry\` qua ephemeral) — đo phản ứng chính xác 100% trên trình duyệt, không lẫn latency mạng.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ (${RTPARRY_WINDOW_MS}ms) = ❌ thất bại | Đúng lúc = ✅ thành công`, inline: false },
+    { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
+    { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `dr: <% DR, VD: 90%>` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus: <Sanity của bản thân>` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise Count (1 Count = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
+    { name: "✨ -dmgbonus <số>", value: "Cho biết % Dmg Bonus thực tế sau khi bị bão hòa.\n> VD: `-dmgbonus 1000`", inline: false },
+    { name: "🛡️ -dr <số>", value: "Cho biết % Damage Reduction thực tế sau khi bị bão hòa.\n> VD: `-dr 1000`", inline: false },
+    { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
+    { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
+  ];
+  const adminFields = [
+    { name: "─────── 🔐 ADMIN ONLY ───────", value: "Các lệnh dưới đây chỉ dành cho admin.", inline: false },
+    { name: "🎁 -give @user (admin)", value: ["Admin có thể tặng EXP, set Grade, và dùng **bất kỳ tên item nào** không cần trong whitelist.", "> `exp: <số>` — tặng EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade trực tiếp", "> `item: <tên bất kỳ> itemcount: <số>` — không cần validate tên (tối đa 100 ký tự)", "> VD: `-give @user item: Sword of Dawn itemcount: 1`"].join("\n"), inline: false },
+    { name: "🗑️ -remove @user (admin)", value: ["Admin có thể xóa EXP, Ahn, sách, hoặc **item bất kỳ** của người khác.", "> `exp:` `ahn:` `book:` `item: <tên bất kỳ>` (tối đa 100 ký tự)", "> `books: <Tên> x<số>, ...` — xóa nhiều sách cùng lúc", "> `items: <Tên bất kỳ> x<số>, ...` — xóa nhiều item cùng lúc (tối đa 100 ký tự/tên)", "> VD: `-remove @user books: Random Book x2, N Corp Book x1`", "> VD: `-remove @user items: Sword of Dawn x1`"].join("\n"), inline: false },
+    { name: "⚙️ -setplayer @user [...]", value: ["Set hoặc cộng thêm dữ liệu của người chơi.", "> `exp: <số>` — set EXP | `exp: +<số>` — cộng thêm EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade", "> `ahn: <số>` — set Ahn | `ahn: +<số>` — cộng thêm Ahn", "> `books: <Tên> x<số>` — set | `+x<số>` — cộng thêm (phải hợp lệ)", "> `items: <Tên bất kỳ> x<số>` — set | `+x<số>` — cộng thêm (tối đa 100 ký tự/tên)", "> VD: `-setplayer @user exp: +50 ahn: +100000`", "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Durandal x2`"].join("\n"), inline: false },
+  ];
+  const fields = isAdmin ? [...generalFields, ...adminFields] : generalFields;
+  return {
+    title: "📖 Danh sách lệnh của bot",
+    color: isAdmin ? 0xe74c3c : 0x5865f2,
+    description: isAdmin ? "Hiển thị đầy đủ bao gồm lệnh admin vì bạn là **Admin** 🔐" : "Dùng các lệnh dưới đây để tương tác với bot.",
+    fields,
+    footer: { text: `EXP tối đa: ${EXP_MAX} (Grade 1 MAX)${isAdmin ? " • Admin mode" : ""}` },
+  };
+}
+
 function buildPendingListText(encounter) {
   const pending = encounter.pendingActions ?? [];
   if (pending.length === 0) return "✅ Không có action nào đang chờ.";
@@ -4625,11 +4733,50 @@ client.on("messageCreate", async (message) => {
         profileData.items[itemName] = owned - 1;
         if (profileData.items[itemName] <= 0) delete profileData.items[itemName];
         const { grade } = calcGrade(profileData.exp ?? 0);
-        const maxHp = 140 + 20 * (GRADE_MIN - grade);
+        // BUG ĐÃ SỬA: trước đây dùng maxHp THÔ theo Grade, KHÔNG trừ injury penalty
+        // (Gãy Xương/Vết thương lớn) — "hồi đầy HP" có thể vượt quá Max HP THẬT của
+        // player đang mang chấn thương, gây currentHp > maxHp cho tới lần join kế
+        // tiếp mới tự sửa lại (vì join luôn tự clamp).
+        const rawMaxHp = 140 + 20 * (GRADE_MIN - grade);
+        const injuryPenalty = calcInjuryMaxHpPenalty(profileData.injuries);
+        const maxHp = Math.max(1, rawMaxHp - injuryPenalty);
         profileData.currentHp = maxHp;
         profileData.hpLastResetCheck = Date.now();
         await savePlayerData(message.author.id, profileData, slot);
-        message.reply(`🧪 ${message.author} đã dùng **${itemName}** — hồi đầy HP (${maxHp}/${maxHp})!`);
+        message.reply(`🧪 ${message.author} đã dùng **${itemName}** — hồi đầy HP (${maxHp}/${maxHp})!${injuryPenalty > 0 ? ` (Max HP đang bị giảm ${injuryPenalty} do chấn thương chưa chữa — item này KHÔNG chữa injury, chỉ hồi HP.)` : ""}`);
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  // ── -healinjuryahn — chữa 1 chấn thương NGOÀI encounter bằng Ahn (luật xác nhận
+  // trực tiếp: "chỉ có dùng Ahn để chữa trị hoặc dùng item đặc biệt [K-Corp Ampule]
+  // mới chữa khỏi TRONG encounter"). GM TỰ ĐỊNH GIÁ mỗi lần (không có mức cố định)
+  // — GM gõ số Ahn cụ thể lúc dùng lệnh này. CHỈ admin/GM được dùng (vì GM là người
+  // quyết định giá, không phải player tự trả tuỳ ý).
+  if (message.content.startsWith("-healinjuryahn")) {
+    const isAdminHealAhn = ADMIN_IDS.has(message.author.id);
+    if (!isAdminHealAhn) { message.reply("⚠️ Chỉ admin/GM mới được dùng lệnh này (GM là người quyết định giá Ahn mỗi lần)."); return; }
+    const targetUser = message.mentions.users.first();
+    const kv = parseKeyValues(message.content.replace("-healinjuryahn", "").trim());
+    const ahnCost = parseInt(kv["ahn"] ?? "", 10);
+    const index = parseInt(kv["index"] ?? "", 10);
+    if (!targetUser || !Number.isFinite(ahnCost) || ahnCost < 0 || !Number.isFinite(index) || index < 1) {
+      message.reply("⚠️ Cú pháp: `-healinjuryahn @user ahn: <số Ahn GM tự định giá> index: <số thứ tự chấn thương, xem qua -profile hoặc -encounter status>`");
+      return;
+    }
+    try {
+      await withLock(targetUser.id, async () => {
+        const { data: profileData, slot } = await getPlayerDataWithSlot(targetUser.id);
+        const list = profileData.injuries ?? [];
+        if (index > list.length) throw new Error(`${targetUser.username} chỉ có ${list.length} chấn thương đang mang — không có #${index}.`);
+        if ((profileData.ahn ?? 0) < ahnCost) throw new Error(`${targetUser.username} không đủ Ahn — cần ${ahnCost}, hiện có ${profileData.ahn ?? 0}.`);
+        const removed = list.splice(index - 1, 1)[0];
+        profileData.ahn = (profileData.ahn ?? 0) - ahnCost;
+        await savePlayerData(targetUser.id, profileData, slot);
+        message.reply(`🩹💰 Đã chữa khỏi chấn thương của **${targetUser.username}**: "${removed}" (tốn ${ahnCost} Ahn, còn lại ${profileData.ahn} Ahn).\n> Lưu ý: nếu ${targetUser.username} đang ở TRONG 1 encounter khác, cần \`-encounter join\` lại để cập nhật Max HP/injury mới nhất.`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);
@@ -5233,43 +5380,17 @@ client.on("messageCreate", async (message) => {
   // ── -dothihelp ──
   if (message.content.startsWith("-dothihelp")) {
     const isAdmin = ADMIN_IDS.has(message.author.id);
-    const generalFields = [
-      { name: "📅 -daily", value: "Nhận phần thưởng điểm danh hàng ngày.\n> `5 EXP + 100k Ahn + 1 Random Book`\n> Streak 7 ngày: thêm `25 EXP + 400k Ahn + 1 Sealed Book Cache`", inline: false },
-      { name: "💼 -balance [@user]", value: "Xem thông tin Grade, EXP, Ahn và tổng kho của bạn hoặc người khác.\n> VD: `-balance` hoặc `-balance @user`", inline: false },
-      { name: "🎒 -inventory [@user]", value: "Xem chi tiết toàn bộ sách và vật phẩm trong kho.\n> VD: `-inventory` hoặc `-inventory @user`", inline: false },
-      { name: "🎁 -give @user [...]", value: ["Chuyển Ahn, sách hoặc vật phẩm cho người khác.", "> `ahn: <số>` — số Ahn muốn chuyển", "> `book: <tên> count: <số>` — sách muốn chuyển", "> `item: <tên> itemcount: <số>` — vật phẩm muốn chuyển (dùng `itemcount` khi có cả book lẫn item, **bắt buộc** khi có cả hai)", "> VD: `-give @user ahn: 50000`", "> VD: `-give @user book: Random Book count: 2`", "> VD: `-give @user book: Random Book count: 1 item: Chipboard MK1 itemcount: 2`"].join("\n"), inline: false },
-      { name: "🗑️ -remove [...]", value: ["Tự xóa sách hoặc vật phẩm khỏi kho của mình.", "> `book: <tên> count: <số>` — xóa 1 loại sách", "> `item: <tên> itemcount: <số>` — xóa 1 loại vật phẩm", "> `books: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại sách cùng lúc", "> `items: <Tên> x<số>, <Tên> x<số>` — xóa nhiều loại vật phẩm cùng lúc", "> VD: `-remove books: Random Book x2, N Corp Book x1`"].join("\n"), inline: false },
-      { name: "⚒️ -use <tên vật phẩm> [count: <số>]", value: ["Craft vật phẩm bằng nguyên liệu trong kho.", "> VD: `-use Chipboard MK2` — craft 1 cái", "> VD: `-use Chipboard MK3 count: 5` — craft 5 cái cùng lúc"].join("\n"), inline: false },
-      { name: "📋 -recipes", value: "Xem toàn bộ công thức craft vật phẩm.", inline: false },
-      { name: "📖 -randombook [số]", value: "Mở Random Book để nhận sách ngẫu nhiên (tối đa 20 lần).\n> VD: `-randombook` hoặc `-randombook 5`", inline: false },
-      { name: "🔮 -randomsealedbook [số]", value: "Mở Sealed Book Cache để nhận sách hiếm (tối đa 20 lần).\n> VD: `-randomsealedbook` hoặc `-randomsealedbook 3`", inline: false },
-      { name: "🔩 -chipboardcache [số]", value: "Mở Chipboard Cache để nhận Chipboard MK1–MK3 ngẫu nhiên (tối đa 20 lần).\n> VD: `-chipboardcache` hoặc `-chipboardcache 5`", inline: false },
-      { name: "🎴 -skill <tên>", value: "Roll kết quả skill. Dùng `-skill list` để xem toàn bộ.\n> VD: `-skill Purify` | `-skill furioso` | `-skill list`", inline: false },
-      { name: "⚔️ -parry [số]", value: "Roll kiểm tra parry (Attacker d16 vs Defender d20, hòa thì roll lại). Tối đa 30 lần.\n> VD: `-parry` hoặc `-parry 10`", inline: false },
-      { name: "🎯 -rtparry", value: `Parry phản xạ thời gian thực! Bot gửi link riêng cho bạn (\`-rtparry\` qua DM, \`/rtparry\` qua ephemeral) — đo phản ứng chính xác 100% trên trình duyệt, không lẫn latency mạng.\n> Bấm sớm = ❌ thất bại | Bỏ lỡ cửa sổ (${RTPARRY_WINDOW_MS}ms) = ❌ thất bại | Đúng lúc = ✅ thành công`, inline: false },
-      { name: "🎲 -rolldice <range> [x<lần>], ...", value: ["Roll dice theo range tùy chỉnh. Mỗi dice có thể có số lần riêng.", "> `-rolldice <min>-<max>` — roll 1 lần", "> `-rolldice <min>-<max> x<lần>` — roll nhiều lần (tối đa 20)", "> `-rolldice <range> x<lần>, <range>, <range> x<lần>` — nhiều dice, mỗi dice có số lần riêng (tối đa 10 dice)", "> VD: `-rolldice 3-7` | `-rolldice 3-7 x5` | `-rolldice 3-17 x14, 2-4, 2-7 x3`"].join("\n"), inline: false },
-      { name: "📊 -math [...]", value: ["Tính damage theo hệ thống game.", "> `dmg:` `res:` `dr: <% DR, VD: 90%>` `bonus:` `critmul:` `critdiv: <số|yes|no>`", "> `critdiv: 2` = Overbearing (÷2) | `critdiv: 1.5` = Steady Breathing (÷1.5) | `critdiv: yes` = ÷2", "> `sanity:` `sanitybonus: <Sanity của bản thân>` `sinking:` `rupture:` `dicemul:`", `> \`poise: <stacks>\` — Starting <:Poise:1513762945715142736>Poise Count (1 Count = 5% crit, tối đa ${POISE_MAX})`, "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`"].join("\n"), inline: false },
-      { name: "✨ -dmgbonus <số>", value: "Cho biết % Dmg Bonus thực tế sau khi bị bão hòa.\n> VD: `-dmgbonus 1000`", inline: false },
-      { name: "🛡️ -dr <số>", value: "Cho biết % Damage Reduction thực tế sau khi bị bão hòa.\n> VD: `-dr 1000`", inline: false },
-      { name: "📚 -books", value: "Xem danh sách toàn bộ sách hợp lệ.", inline: false },
-      { name: "🔩 -items", value: "Xem danh sách vật phẩm hợp lệ (dành cho người thường).", inline: false },
-    ];
-    const adminFields = [
-      { name: "─────── 🔐 ADMIN ONLY ───────", value: "Các lệnh dưới đây chỉ dành cho admin.", inline: false },
-      { name: "🎁 -give @user (admin)", value: ["Admin có thể tặng EXP, set Grade, và dùng **bất kỳ tên item nào** không cần trong whitelist.", "> `exp: <số>` — tặng EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade trực tiếp", "> `item: <tên bất kỳ> itemcount: <số>` — không cần validate tên (tối đa 100 ký tự)", "> VD: `-give @user item: Sword of Dawn itemcount: 1`"].join("\n"), inline: false },
-      { name: "🗑️ -remove @user (admin)", value: ["Admin có thể xóa EXP, Ahn, sách, hoặc **item bất kỳ** của người khác.", "> `exp:` `ahn:` `book:` `item: <tên bất kỳ>` (tối đa 100 ký tự)", "> `books: <Tên> x<số>, ...` — xóa nhiều sách cùng lúc", "> `items: <Tên bất kỳ> x<số>, ...` — xóa nhiều item cùng lúc (tối đa 100 ký tự/tên)", "> VD: `-remove @user books: Random Book x2, N Corp Book x1`", "> VD: `-remove @user items: Sword of Dawn x1`"].join("\n"), inline: false },
-      { name: "⚙️ -setplayer @user [...]", value: ["Set hoặc cộng thêm dữ liệu của người chơi.", "> `exp: <số>` — set EXP | `exp: +<số>` — cộng thêm EXP (bị cap tại MAX)", "> `grade: <1–9>` — set Grade", "> `ahn: <số>` — set Ahn | `ahn: +<số>` — cộng thêm Ahn", "> `books: <Tên> x<số>` — set | `+x<số>` — cộng thêm (phải hợp lệ)", "> `items: <Tên bất kỳ> x<số>` — set | `+x<số>` — cộng thêm (tối đa 100 ký tự/tên)", "> VD: `-setplayer @user exp: +50 ahn: +100000`", "> VD: `-setplayer @user grade: 5 ahn: 1000000 items: Durandal x2`"].join("\n"), inline: false },
-    ];
-    const fields = isAdmin ? [...generalFields, ...adminFields] : generalFields;
-    message.reply({
-      embeds: [{
-        title: "📖 Danh sách lệnh của bot",
-        color: isAdmin ? 0xe74c3c : 0x5865f2,
-        description: isAdmin ? "Hiển thị đầy đủ bao gồm lệnh admin vì bạn là **Admin** 🔐" : "Dùng các lệnh dưới đây để tương tác với bot.",
-        fields,
-        footer: { text: `EXP tối đa: ${EXP_MAX} (Grade 1 MAX)${isAdmin ? " • Admin mode" : ""}` },
-      }],
-    });
+    // BUG ĐÃ SỬA (theo yêu cầu trực tiếp): trước đây gửi CÔNG KHAI trong channel —
+    // giờ gửi qua DM (giống cách -rtparry đã làm) để không làm loãng channel chung,
+    // kèm 1 xác nhận NGẮN trong channel để người dùng biết đã gửi (hoặc lỗi nếu DM
+    // đóng). `/dothihelp` (slash command) thay vào đó dùng ephemeral — xem phần
+    // slash command handler riêng.
+    try {
+      await message.author.send({ embeds: [buildDothihelpEmbed(isAdmin)] });
+      message.reply("📬 Đã gửi danh sách lệnh qua DM cho bạn!");
+    } catch {
+      message.reply("⚠️ Không gửi được DM — kiểm tra lại cài đặt quyền riêng tư (Privacy Settings → Allow DMs from server members) rồi thử lại.");
+    }
     return;
   }
 
@@ -5631,12 +5752,20 @@ client.on("messageCreate", async (message) => {
       // grade đã lên TỪ grade 9). Gõ tay hp: vẫn ĐÈ lên được (linh hoạt — đặc biệt
       // cần cho enemy/stat-block tuỳ ý không theo Grade).
       const gradeBasedMaxHp = 140 + 20 * (GRADE_MIN - playerGrade);
+      // Chấn thương PERSIST qua encounter (luật xác nhận trực tiếp) — Gãy Xương/Vết
+      // thương lớn trừ Max HP VĨNH VIỄN cho tới khi được chữa (bằng Ahn ngoài
+      // encounter qua -healinjuryahn, HOẶC bằng K-Corp Ampule trong encounter — xem
+      // -encounter useitem). Max HP THẬT = Grade-based TRỪ tổng penalty từ injuries
+      // đang mang, floor tại 1 (không bao giờ về 0/âm).
+      const persistedInjuries = profileDataForDefaults.injuries ?? [];
+      const injuryMaxHpPenalty = calcInjuryMaxHpPenalty(persistedInjuries);
+      const effectiveGradeMaxHp = Math.max(1, gradeBasedMaxHp - injuryMaxHpPenalty);
       // HP mặc định khi KHÔNG gõ tay hp: — dùng HP THẬT còn lại từ encounter trước
       // (persist qua profile.currentHp), áp auto-reset nếu đã qua mốc 0h/12h giờ
       // VN kể từ lần cập nhật gần nhất (xem getEffectiveCurrentHp). Nếu auto-reset
       // xảy ra ngay lúc này, lưu lại NGAY để lần check sau không reset lại lần nữa
       // trước mốc kế tiếp.
-      const effectiveHp = getEffectiveCurrentHp(profileDataForDefaults, gradeBasedMaxHp);
+      const effectiveHp = getEffectiveCurrentHp(profileDataForDefaults, effectiveGradeMaxHp);
       if (effectiveHp.didReset) {
         profileDataForDefaults.currentHp = effectiveHp.hp;
         profileDataForDefaults.hpLastResetCheck = Date.now();
@@ -5664,6 +5793,11 @@ client.on("messageCreate", async (message) => {
           const profileData = profileDataForDefaults;
           const joined = encounter.players[message.author.id];
           joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
+          // Injuries PERSIST qua encounter (xác nhận trực tiếp từ GM) — snapshot
+          // TRỰC TIẾP từ profile (KHÔNG reset về rỗng như trước đây). maxHp đã tính
+          // TRỪ injuryMaxHpPenalty ở effectiveGradeMaxHp phía trên rồi, nên ở đây chỉ
+          // cần copy danh sách injuries (không cần trừ maxHp lần 2).
+          joined.injuries = [...persistedInjuries];
           // Snapshot 5 Page + 5 E.G.O Page đã equip trên profile — dùng để build
           // dropdown hành động (xem buildEncounterActionPanel) — CHỐT lúc join, y
           // hệt nguyên tắc đang áp dụng cho unlockedPerks/HP/Stamina/... (đổi loadout
@@ -5971,6 +6105,14 @@ client.on("messageCreate", async (message) => {
           const list = resolved.combatant.injuries ?? [];
           if (index > list.length) throw new Error(`${resolved.label} chỉ có ${list.length} chấn thương — không có #${index}.`);
           const removed = list.splice(index - 1, 1)[0];
+          restoreInjuryMaxHp(resolved.combatant, removed);
+          if (resolved.type === "player") {
+            try {
+              const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(targetId);
+              injSyncData.injuries = [...(resolved.combatant.injuries ?? [])];
+              await savePlayerData(targetId, injSyncData, injSyncSlot);
+            } catch { /* không chặn lệnh chính nếu sync lỗi */ }
+          }
           appendActionLog(encounter, `🩹 Đã chữa khỏi chấn thương của ${resolved.label}: "${removed}"`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ Đã chữa khỏi chấn thương #${index} của ${resolved.label}: "${removed}"`);
@@ -6286,6 +6428,17 @@ client.on("messageCreate", async (message) => {
           const idx = (player.consumablesLoadout ?? []).findIndex(n => n.toLowerCase() === itemName.toLowerCase());
           if (idx === -1) throw new Error(`"${itemNameRaw}" không có trong số item đã mang vào trận — dùng \`-encounter additem\` trước (xem hiện tại bằng \`-encounter status\`).`);
           const actualName = player.consumablesLoadout[idx];
+          // K-Corp Ampule — item ĐẶC BIỆT DUY NHẤT chữa được injury TRONG encounter
+          // (xác nhận trực tiếp từ GM): "Lập tức hồi 100% Máu. Chữa toàn bộ Injuries
+          // ngay lập tức. Dùng 2 cái liên tục trong 1 Encounter sẽ gây chết ngay lập
+          // tức (cd 2 turn). Giá: 1 triệu Ahn." — CD 2 turn RIÊNG của item này (khác
+          // "usedItemThisTurn" chung 1/turn cho MỌI item), và dùng LẦN THỨ 2 trong
+          // CÙNG 1 encounter (dù đã hết CD hay chưa) → CHẾT NGAY (Death Penalty/
+          // Permadeath như chết bình thường), KHÔNG hồi máu/chữa gì nữa.
+          const isKCorpAmpule = actualName.toLowerCase() === "k-corp ampule";
+          if (isKCorpAmpule && (player.kCorpAmpuleCooldownLeft ?? 0) > 0) {
+            throw new Error(`K-Corp Ampule đang trong CD — còn ${player.kCorpAmpuleCooldownLeft} turn nữa mới dùng lại được.`);
+          }
           const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
           const owned = profileData.items?.[actualName] ?? 0;
           if (owned < 1) throw new Error(`Inventory không còn **${actualName}** để dùng (đã bị tiêu/mất từ trước).`);
@@ -6294,9 +6447,42 @@ client.on("messageCreate", async (message) => {
           await savePlayerData(message.author.id, profileData, slot);
           player.consumablesLoadout.splice(idx, 1);
           player.usedItemThisTurn = true;
-          appendActionLog(encounter, `🧪 <@${message.author.id}> dùng **${actualName}**.`);
+          let effectNote = "";
+          if (isKCorpAmpule) {
+            player.kCorpAmpuleUsesThisEncounter = (player.kCorpAmpuleUsesThisEncounter ?? 0) + 1;
+            player.kCorpAmpuleCooldownLeft = 2;
+            if (player.kCorpAmpuleUsesThisEncounter >= 2) {
+              // Dùng lần 2 trong CÙNG encounter → CHẾT NGAY, bất kể HP/injury hiện
+              // tại — dùng CHUNG applyDeathPenalty với cái chết combat bình thường.
+              const wasAliveBeforeKCorp = player.currentHp > 0;
+              player.currentHp = 0;
+              if (wasAliveBeforeKCorp) {
+                for (const otherPid of Object.keys(encounter.players)) {
+                  if (otherPid === message.author.id) continue;
+                  applyEmotionDelta(encounter.players[otherPid], 5);
+                }
+                const deathNote = await applyDeathPenalty(encounter, message.author.id);
+                effectNote = ` ☠️ **DÙNG LẦN 2 TRONG CÙNG ENCOUNTER — CHẾT NGAY LẬP TỨC!**${deathNote}`;
+              }
+            } else {
+              // Lần dùng ĐẦU TIÊN — hồi đầy HP + chữa TOÀN BỘ injury (kể cả maxHp
+              // penalty từ Gãy Xương/Vết thương lớn được khôi phục đầy đủ).
+              for (const inj of player.injuries ?? []) restoreInjuryMaxHp(player, inj);
+              player.injuries = [];
+              player.currentHp = player.maxHp;
+              // Sync injury đã chữa sạch về profile NGAY (giống mọi lần chữa injury
+              // khác trong trận).
+              try {
+                const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(message.author.id);
+                injSyncData.injuries = [];
+                await savePlayerData(message.author.id, injSyncData, injSyncSlot);
+              } catch { /* không chặn action chính nếu sync lỗi */ }
+              effectNote = ` 💊 Hồi ĐẦY HP (${player.currentHp}/${player.maxHp}) + Chữa TOÀN BỘ injury! (CD 2 turn — dùng lần 2 trong trận này sẽ CHẾT NGAY.)`;
+            }
+          }
+          appendActionLog(encounter, `🧪 <@${message.author.id}> dùng **${actualName}**.${effectNote}`);
           await saveEncounter(message.channel.id, encounter);
-          message.reply(`🧪 ${message.author} đã dùng **${actualName}**! (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)`);
+          message.reply(`🧪 ${message.author} đã dùng **${actualName}**!${effectNote}${!isKCorpAmpule ? " (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)" : ""}`);
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -6477,6 +6663,7 @@ client.on("messageCreate", async (message) => {
       "**Ngoài encounter (profile, không cần đang trong trận)**\n" +
       "> `-equipweapon/-equipoutfit <tên>` · `-equipaccessory <slot 1-3> <tên>` · `-equippage/-equipegopage <slot 1-5> <tên>` · `-equipment`/`-pages`\n" +
       "> `-healitem <tên>` — hồi đầy HP ngoài trận bằng item · `-rewoundtime @user` — hồi sinh Permanent Death (miễn phí lần đầu/profile)\n" +
+      "> `-healinjuryahn @user ahn: <số> index: <số>` (admin/GM, GM tự định giá) — chữa 1 chấn thương NGOÀI trận. Chấn thương PERSIST qua encounter — chỉ chữa được bằng Ahn (ngoài trận) hoặc K-Corp Ampule (trong trận, hồi đầy HP + chữa hết injury, dùng lần 2/trận = CHẾT)\n" +
       "> Skill Tree dùng lệnh riêng `-unlockskilltree @user <perk>` (admin, lưu vĩnh viễn trên profile, tự trừ điểm theo Grade)"
     );
     return;
@@ -7046,30 +7233,11 @@ client.on("interactionCreate", async (interaction) => {
               }
               // Death Penalty — CHỈ player (enemy không có profile để trừ). Detect
               // đúng lúc HP chuyển từ >0 sang ≤0 (không trừ lại nếu ĐÃ chết từ trước
-              // mà ăn thêm dmg).
-              // - Encounter THƯỜNG: mất 50% Ahn + 50% EXP của MỐC HIỆN TẠI (không tụt
-              //   grade — vì chỉ trừ tối đa 1 nửa expInCurrentGrade, không bao giờ đủ
-              //   để rớt dưới mốc grade đang đứng).
-              // - Encounter PERMADEATH (Night in the Backstreet/dungeon đặc biệt): THAY
-              //   VÌ Ahn/EXP loss, set permanentlyDead=true trên profile — chặn join
-              //   encounter mới cho tới khi được hồi sinh qua Rewound Time (xem
-              //   -reviveplayer/-rewoundtime).
+              // mà ăn thêm dmg). Logic THẬT nằm ở applyDeathPenalty (dùng CHUNG với
+              // K-Corp Ampule dùng 2 lần liên tiếp — xem -encounter useitem).
               let deathNote = "";
               if (justDied && targetResolved.type === "player") {
-                const { data: profileData, slot } = await getPlayerDataWithSlot(t.targetId);
-                if (encounter.permadeath) {
-                  profileData.permanentlyDead = true;
-                  await savePlayerData(t.targetId, profileData, slot);
-                  deathNote = ` ☠️**PERMANENT DEATH** (encounter permadeath) — không thể tham gia encounter khác cho tới khi hồi sinh qua Rewound Time (\`-rewoundtime @user\`)`;
-                } else {
-                  const { expInCurrentGrade } = calcGrade(profileData.exp ?? 0);
-                  const ahnLost = Math.floor((profileData.ahn ?? 0) * 0.5);
-                  const expLost = Math.floor(expInCurrentGrade * 0.5);
-                  profileData.ahn = Math.max(0, (profileData.ahn ?? 0) - ahnLost);
-                  profileData.exp = Math.max(0, (profileData.exp ?? 0) - expLost);
-                  await savePlayerData(t.targetId, profileData, slot);
-                  deathNote = ` ☠️**TỬ VONG** — mất ${ahnLost} Ahn + ${expLost} EXP (profile, không tụt grade)`;
-                }
+                deathNote = await applyDeathPenalty(encounter, t.targetId);
               }
               // 5 status "trên người địch" — áp vào TARGET (bên bị tấn công).
               // QUAN TRỌNG (BUG ĐÃ SỬA): TOÀN BỘ status/Stamina/Charge effect dưới
@@ -7116,6 +7284,16 @@ client.on("interactionCreate", async (interaction) => {
               // Bỏ qua nếu đã chết (kill/death) — không cần lo chấn thương khi đã ra trận.
               const injuryGained = (killNote || deathNote) ? null : rollInjury(target, finalDmg);
               const injuryNote = injuryGained ? ` 🩻**${injuryGained}**` : "";
+              // Injury Persistence — sync NGAY vào profile mỗi khi player nhận chấn
+              // thương MỚI (giống cách HP sync ở trên) — không đợi -encounter end,
+              // tránh mất dữ liệu nếu trận bị bỏ dở/quên end.
+              if (injuryGained && targetResolved.type === "player") {
+                try {
+                  const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(t.targetId);
+                  injSyncData.injuries = [...target.injuries];
+                  await savePlayerData(t.targetId, injSyncData, injSyncSlot);
+                } catch { /* không chặn action chính nếu sync injury lỗi */ }
+              }
               targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
@@ -7930,6 +8108,14 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   // ── /profile ──
+  // ── /dothihelp — ephemeral (chỉ người dùng lệnh thấy được), theo yêu cầu trực
+  // tiếp — KHÁC -dothihelp (gửi qua DM).
+  if (interaction.commandName === "dothihelp") {
+    const isAdminHelp = ADMIN_IDS.has(interaction.user.id);
+    await interaction.reply({ embeds: [buildDothihelpEmbed(isAdminHelp)], flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
+  }
+
   if (interaction.commandName === "profile") {
     const userId = interaction.user.id;
     const sub = interaction.options.getSubcommand();
