@@ -2006,6 +2006,31 @@ function normalizeWeaponWeight(w) {
 
 /** Chuẩn hoá key ngắn cho enemy (VD "Mo" → "mo") — dùng làm định danh trong lệnh,
  *  KHÔNG dùng tên hiển thị đầy đủ (VD "Mo (Brother of Iron)") để gõ lệnh cho nhanh. */
+/**
+ * resolveEquipTarget — cho phép admin/GM chạy CÁC LỆNH EQUIP (weapon/outfit/
+ * accessory/page/egopage) HỘ cho player khác — dùng khi GM cần nhập dữ liệu cũ có
+ * sẵn hàng loạt cho nhiều player, thay vì bắt từng người tự gõ lệnh. MẶC ĐỊNH vẫn
+ * tự áp dụng cho chính người gõ (giữ nguyên nguyên tắc "trang bị là lựa chọn cá
+ * nhân") — CHỈ chuyển sang người khác nếu (a) message có @mention Ở ĐẦU input VÀ
+ * (b) người gõ LÀ admin. Non-admin gõ @mention vẫn bị bỏ qua (áp dụng cho chính họ,
+ * không throw lỗi — tránh phá vỡ trường hợp @mention xuất hiện tình cờ trong tên
+ * item).
+ * @returns { targetUserId, targetLabel, remainingInput }
+ */
+function resolveEquipTarget(message, rawInput) {
+  const isAdmin = ADMIN_IDS.has(message.author.id);
+  const mentionMatch = rawInput.match(/^<@!?(\d+)>\s*/);
+  if (isAdmin && mentionMatch) {
+    const mentionedUser = message.mentions.users.first();
+    return {
+      targetUserId: mentionMatch[1],
+      targetLabel: mentionedUser ? mentionedUser.username : mentionMatch[1],
+      remainingInput: rawInput.slice(mentionMatch[0].length).trim(),
+    };
+  }
+  return { targetUserId: message.author.id, targetLabel: null, remainingInput: rawInput };
+}
+
 function normalizeEnemyKey(k) {
   return (k ?? "").trim().toLowerCase().replace(/\s+/g, "");
 }
@@ -5069,10 +5094,11 @@ client.on("messageCreate", async (message) => {
   // hành động (xem phần dropdown động).
   if (message.content.startsWith("-equippage") || message.content.startsWith("-equipegopage")) {
     const isEgo = message.content.startsWith("-equipegopage");
-    const rawInput = message.content.replace(isEgo ? "-equipegopage" : "-equippage", "").trim();
+    const rawInputFull = message.content.replace(isEgo ? "-equipegopage" : "-equippage", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
     const m = rawInput.match(/^([1-5])\s+(.+)$/);
     if (!m) {
-      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "equipegopage" : "equippage"} <slot 1-5> <tên skill>\`\n> VD: \`-${isEgo ? "equipegopage" : "equippage"} 1 sky kick\`` +
+      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "equipegopage" : "equippage"} [@user] <slot 1-5> <tên skill>\`\n> VD: \`-${isEgo ? "equipegopage" : "equippage"} 1 sky kick\` (thêm @user nếu admin muốn equip hộ)` +
         (isEgo ? `\n> 5 slot E.G.O là 5 **Tier riêng** (không hoán đổi được): ${EGO_TIER_SLOT_ORDER.map((t, i) => `slot ${i + 1}=${t}`).join(", ")}.` : ""));
       return;
     }
@@ -5097,12 +5123,12 @@ client.on("messageCreate", async (message) => {
           throw new Error(`"${skill.name}" là Tier **${skillTier}** — phải equip vào slot **${EGO_TIER_SLOT_ORDER.indexOf(skillTier) + 1}** (Tier ${skillTier}), không phải slot ${slotNum} (Tier ${expectedTier}).`);
         }
       }
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
       data[listKey] = data[listKey] ?? [null, null, null, null, null];
       data[listKey][slotNum - 1] = skill.name;
-      await savePlayerData(message.author.id, data, slot);
-      message.reply(`✅ Đã equip **${skill.name}** vào ${isEgo ? "E.G.O " : ""}slot #${slotNum}.`);
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(`✅ Đã equip **${skill.name}** vào ${isEgo ? "E.G.O " : ""}slot #${slotNum}${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5111,20 +5137,21 @@ client.on("messageCreate", async (message) => {
 
   if (message.content.startsWith("-unequippage") || message.content.startsWith("-unequipegopage")) {
     const isEgo = message.content.startsWith("-unequipegopage");
-    const rawInput = message.content.replace(isEgo ? "-unequipegopage" : "-unequippage", "").trim();
+    const rawInputFull = message.content.replace(isEgo ? "-unequipegopage" : "-unequippage", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
     const slotNum = parseInt(rawInput, 10);
     if (!Number.isFinite(slotNum) || slotNum < 1 || slotNum > 5) {
-      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "unequipegopage" : "unequippage"} <slot 1-5>\``);
+      message.reply(`⚠️ Cú pháp: \`-${isEgo ? "unequipegopage" : "unequippage"} [@user] <slot 1-5>\``);
       return;
     }
     try {
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
       data[listKey] = data[listKey] ?? [null, null, null, null, null];
       const removed = data[listKey][slotNum - 1];
       data[listKey][slotNum - 1] = null;
-      await savePlayerData(message.author.id, data, slot);
-      message.reply(removed ? `✅ Đã gỡ **${removed}** khỏi ${isEgo ? "E.G.O " : ""}slot #${slotNum}.` : `⚠️ ${isEgo ? "E.G.O " : ""}Slot #${slotNum} đang trống.`);
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(removed ? `✅ Đã gỡ **${removed}** khỏi ${isEgo ? "E.G.O " : ""}slot #${slotNum}${targetLabel ? ` của **${targetLabel}**` : ""}.` : `⚠️ ${isEgo ? "E.G.O " : ""}Slot #${slotNum} đang trống${targetLabel ? ` (${targetLabel})` : ""}.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5156,15 +5183,16 @@ client.on("messageCreate", async (message) => {
   // cần dùng, KHÔNG lưu cả object — tránh dữ liệu cũ kẹt lại nếu weapon.js sau này
   // sửa số liệu). Tự phục vụ, không admin-gated (chọn trang bị là lựa chọn cá nhân).
   if (message.content.startsWith("-equipweapon")) {
-    const rawInput = message.content.replace("-equipweapon", "").trim();
-    if (!rawInput) { message.reply("⚠️ Cú pháp: `-equipweapon <tên vũ khí>` (VD: `-equipweapon durandal`)"); return; }
+    const rawInputFull = message.content.replace("-equipweapon", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
+    if (!rawInput) { message.reply("⚠️ Cú pháp: `-equipweapon [@user] <tên vũ khí>` (VD: `-equipweapon durandal`; thêm @user nếu admin muốn equip hộ)"); return; }
     try {
       const weapon = findWeaponAnywhere(rawInput);
       if (!weapon) throw new Error(`Không tìm thấy vũ khí "${rawInput}" trong weapon.js hoặc skills.js.`);
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       data.equippedWeapon = weapon.name;
-      await savePlayerData(message.author.id, data, slot);
-      message.reply(`✅ Đã equip vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage}).`);
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(`✅ Đã equip vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage})${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5172,12 +5200,13 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.content.startsWith("-unequipweapon")) {
+    const { targetUserId, targetLabel } = resolveEquipTarget(message, message.content.replace("-unequipweapon", "").trim());
     try {
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       const removed = data.equippedWeapon;
       data.equippedWeapon = null;
-      await savePlayerData(message.author.id, data, slot);
-      message.reply(removed ? `✅ Đã gỡ vũ khí **${removed}**.` : "⚠️ Chưa equip vũ khí nào.");
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(removed ? `✅ Đã gỡ vũ khí **${removed}**${targetLabel ? ` của **${targetLabel}**` : ""}.` : `⚠️ ${targetLabel ? `**${targetLabel}** chưa` : "Chưa"} equip vũ khí nào.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5185,16 +5214,17 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.content.startsWith("-equipoutfit")) {
-    const rawInput = message.content.replace("-equipoutfit", "").trim();
-    if (!rawInput) { message.reply("⚠️ Cú pháp: `-equipoutfit <tên outfit>` (VD: `-equipoutfit black suit`)"); return; }
+    const rawInputFull = message.content.replace("-equipoutfit", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
+    if (!rawInput) { message.reply("⚠️ Cú pháp: `-equipoutfit [@user] <tên outfit>` (VD: `-equipoutfit black suit`; thêm @user nếu admin muốn equip hộ)"); return; }
     try {
       const outfit = findOutfit(rawInput);
       if (!outfit) throw new Error(`Không tìm thấy outfit "${rawInput}" trong outfit.js.`);
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       data.equippedOutfit = outfit.name;
-      await savePlayerData(message.author.id, data, slot);
+      await savePlayerData(targetUserId, data, slot);
       const r = outfit.resistance;
-      message.reply(`✅ Đã equip outfit **${outfit.name}** (Res: ${r.B}xB ${r.P}xP ${r.S}xS${outfit.speedRange ? `, Speed ${outfit.speedRange.min}~${outfit.speedRange.max}` : ""}).`);
+      message.reply(`✅ Đã equip outfit **${outfit.name}** (Res: ${r.B}xB ${r.P}xP ${r.S}xS${outfit.speedRange ? `, Speed ${outfit.speedRange.min}~${outfit.speedRange.max}` : ""})${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5202,12 +5232,13 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.content.startsWith("-unequipoutfit")) {
+    const { targetUserId, targetLabel } = resolveEquipTarget(message, message.content.replace("-unequipoutfit", "").trim());
     try {
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       const removed = data.equippedOutfit;
       data.equippedOutfit = null;
-      await savePlayerData(message.author.id, data, slot);
-      message.reply(removed ? `✅ Đã gỡ outfit **${removed}**.` : "⚠️ Chưa equip outfit nào.");
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(removed ? `✅ Đã gỡ outfit **${removed}**${targetLabel ? ` của **${targetLabel}**` : ""}.` : `⚠️ ${targetLabel ? `**${targetLabel}** chưa` : "Chưa"} equip outfit nào.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5215,18 +5246,19 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.content.startsWith("-equipaccessory")) {
-    const rawInput = message.content.replace("-equipaccessory", "").trim();
+    const rawInputFull = message.content.replace("-equipaccessory", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
     const m = rawInput.match(/^([1-3])\s+(.+)$/);
-    if (!m) { message.reply("⚠️ Cú pháp: `-equipaccessory <slot 1-3> <tên accessory>` (VD: `-equipaccessory 1 perfect cube`)"); return; }
+    if (!m) { message.reply("⚠️ Cú pháp: `-equipaccessory [@user] <slot 1-3> <tên accessory>` (VD: `-equipaccessory 1 perfect cube`; thêm @user nếu admin muốn equip hộ)"); return; }
     const slotNum = parseInt(m[1], 10);
     try {
       const accessory = findAccessory(m[2].trim());
       if (!accessory) throw new Error(`Không tìm thấy accessory "${m[2].trim()}" trong accessory.js.`);
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
       data.equippedAccessories[slotNum - 1] = accessory.name;
-      await savePlayerData(message.author.id, data, slot);
-      message.reply(`✅ Đã equip accessory **${accessory.name}** vào slot #${slotNum}.`);
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(`✅ Đã equip accessory **${accessory.name}** vào slot #${slotNum}${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5234,16 +5266,17 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.content.startsWith("-unequipaccessory")) {
-    const rawInput = message.content.replace("-unequipaccessory", "").trim();
+    const rawInputFull = message.content.replace("-unequipaccessory", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
     const slotNum = parseInt(rawInput, 10);
-    if (!Number.isFinite(slotNum) || slotNum < 1 || slotNum > 3) { message.reply("⚠️ Cú pháp: `-unequipaccessory <slot 1-3>`"); return; }
+    if (!Number.isFinite(slotNum) || slotNum < 1 || slotNum > 3) { message.reply("⚠️ Cú pháp: `-unequipaccessory [@user] <slot 1-3>`"); return; }
     try {
-      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
       data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
       const removed = data.equippedAccessories[slotNum - 1];
       data.equippedAccessories[slotNum - 1] = null;
-      await savePlayerData(message.author.id, data, slot);
-      message.reply(removed ? `✅ Đã gỡ accessory **${removed}** khỏi slot #${slotNum}.` : `⚠️ Slot #${slotNum} đang trống.`);
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(removed ? `✅ Đã gỡ accessory **${removed}** khỏi slot #${slotNum}${targetLabel ? ` của **${targetLabel}**` : ""}.` : `⚠️ Slot #${slotNum} đang trống${targetLabel ? ` (${targetLabel})` : ""}.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
