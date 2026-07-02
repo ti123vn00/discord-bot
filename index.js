@@ -374,6 +374,7 @@ function findItemAdmin(input) {
 const KNOWN_KEYS = new Set([
   "book", "count", "item", "itemcount", "ahn", "exp", "grade", "bonusskillpoints",
   "wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light", // 9 nhánh Skill Tree (branchPoints)
+  "choose", // -readbook <sách> choose: <tên> — chốt lựa chọn qua text thay vì dropdown
   "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
   "poise",
@@ -833,7 +834,7 @@ async function getPlayerData(userId) {
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
       const raw = await withTimeout(redis.get(key));
-      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
+      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       return migratePlayerData(data);
     } catch (err) {
@@ -858,7 +859,7 @@ async function getPlayerDataWithSlot(userId) {
       const raw = await withTimeout(redis.get(key));
       const data = raw
         ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
-        : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
+        : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
       return { data, slot };
     } catch (err) {
       lastErr = err;
@@ -1030,7 +1031,7 @@ async function processDailyClaimForUser(userId) {
     const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
     let playerData = playerRaw
       ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
-      : { exp: 0, ahn: 0, books: {}, items: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
+      : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
     playerData = migratePlayerData(playerData);
 
     const today = getVNDateString();
@@ -1768,7 +1769,7 @@ const BOOK_GRANTS = {
       "Focused Strikes", "Charge and Cover", "Thrust", "Alleyway Counter", "Right Hook",
       "Opportunistic Slash", "Y-you Only Live Once", "Deep Cuts", "Mutilate", "Sky Kick",
       "Drop Kick", "Backstreets Scramble", "Stylish Sweeps", "Shocking Blow",
-      "Onslaught Command", "Preemptive Strike",
+      "Onslaught Command", "Preemptive Strike", "Set Fire",
     ],
     weapons: [], outfits: ["Casual Outfit", "Rats Outfit", "Businessman", "Ambitious Fixer"],
   },
@@ -1875,19 +1876,24 @@ const BOOK_GRANTS = {
     weapons: [], outfits: [],
   },
   "Library Book": {
-    pages: [
-      "Light Dash (E.G.O)",
-      "— Keter: Fervent Beats, Wrist Cutter, Marionette, Aspiration, Frost Splinter",
-      "— Hod: Look of the Day, Today's Expression, Sanguine Desire, Red Eyes, Laetitia, Black Swan",
-      "— Netzach: Echoes from the Beyond, The Finale, Fragments from Somewhere, Our Galaxy, Pleasure, Faint Aroma, Da Capo",
-      "— Yesod: Violence, Grinder Mk. 5-2, Harmony, Solemn Lament, Magic Bullet, Flooding Bullets, Magic Bullet (Der Freischütz — dùng `-skill magic bullet df`), Inevitable Bullet, Regret",
-      "— Malkuth: Display of Affection, Fourth Match Flame, Wingbeat, Hornet, Green Stem, The Forgotten",
-      "— Binah: Beak, Punishing Beak, Lamp, Eyes Lamp, Justitia, The Justice Scale, Twillight, Apocalypse (mỗi Page có bản Corrosion riêng, VD Beak↔Punishing Beak — vẫn là 1 Page, có điều kiện/tự chọn để lấy hiệu ứng Corrosion khác)",
-      "— Chesed: Torn Off Wisdom, Harvest, Logging, The Homing Instinct, Faded Memories, False Throne",
-    ],
+    pages: ["Light Dash"],
     weapons: [], outfits: [],
     isEgoOnly: true,
-    note: "Học Light Dash (E.G.O Page) MỞ RA TOÀN BỘ 7 nhóm Page phía trên NGAY LẬP TỨC (Keter/Hod/Netzach/Yesod/Malkuth/Binah/Chesed) — đây KHÔNG PHẢI 7 cuốn sách riêng cần đọc thêm (không tồn tại trong inventory), chỉ là cách phân loại — TOÀN BỘ Page trên đều là E.G.O Page.",
+    // groups — CẤU TRÚC THẬT (mảng tên, không phải text) để hệ thống CHỌN-1-KHI-ĐỌC
+    // dựng dropdown được — 45 lựa chọn (1 Light Dash + 44 Page trong 7 nhóm) VƯỢT
+    // giới hạn 25 option/dropdown của Discord, nên chọn theo 2 TẦNG: tầng 1 chọn
+    // "Light Dash" HOẶC 1 trong 7 tên nhóm, nếu chọn nhóm thì tầng 2 mới chọn ĐÚNG
+    // 1 Page cụ thể trong nhóm đó (mỗi nhóm 4-8 Page, luôn dưới 25).
+    groups: {
+      "Keter": ["Fervent Beats", "Wrist Cutter", "Marionette", "Aspiration", "Frost Splinter"],
+      "Hod": ["Look of the Day", "Today's Expression", "Sanguine Desire", "Red Eyes", "Laetitia", "Black Swan"],
+      "Netzach": ["Echoes from the Beyond", "The Finale", "Fragments from Somewhere", "Our Galaxy", "Pleasure", "Faint Aroma", "Da Capo"],
+      "Yesod": ["Violence", "Grinder Mk. 5-2", "Harmony", "Solemn Lament", "Magic Bullet", "Regret"],
+      "Malkuth": ["Display of Affection", "Fourth Match Flame", "Wingbeat", "Hornet", "Green Stem", "The Forgotten"],
+      "Binah": ["Beak", "Punishing Beak", "Lamp", "Eyes Lamp", "Justitia", "The Justice Scale", "Twillight", "Apocalypse"],
+      "Chesed": ["Torn Off Wisdom", "Harvest", "Logging", "The Homing Instinct", "Faded Memories", "False Throne"],
+    },
+    note: "Đọc 1 cuốn = CHỌN ĐÚNG 1 Page (Light Dash HOẶC 1 Page cụ thể trong 1 trong 7 nhóm Keter/Hod/Netzach/Yesod/Malkuth/Binah/Chesed) — TOÀN BỘ đều là E.G.O Page. Muốn Page khác cần đọc thêm cuốn khác.",
   },
 };
 
@@ -2333,6 +2339,10 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // Táo (item consumable): -1 Dmg/hit nhận vào tới hết turn hiện tại — reset ở
     // advanceCombatantTurn.
     appleDmgReductionActive: false,
+    // Set Fire (Page): 3 turn tự áp Burn theo weaponWeight lên target khi M1 trúng
+    // — đếm ngược mỗi endturn (KHÁC appleDmgReductionActive vốn hết NGAY cuối turn
+    // hiện tại — Set Fire kéo dài NHIỀU turn nên cần counter, không phải boolean).
+    setFireTurnsLeft: 0,
     // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
     // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
     // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
@@ -2817,6 +2827,9 @@ function advanceCombatantTurn(combatant) {
   // Eye Of Horus (weapon passive "Foreclosure Task Force President") — reset TOÀN
   // BỘ counter mỗi endturn (luật: "trong 1 turn khi tấn công 1 đối tượng").
   combatant.m1CountThisTurnByTarget = {};
+  // Set Fire — đếm ngược 3 turn, hết thì tắt buff (KHÔNG reset về 0 ngay như apple —
+  // đây là counter thật, giảm dần từ 3→2→1→0).
+  if (combatant.setFireTurnsLeft > 0) combatant.setFireTurnsLeft -= 1;
   // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
   // ngay) — giờ mới trừ THẬT lúc end turn.
   if ((combatant.poiseReductionPending ?? 0) > 0) {
@@ -3911,6 +3924,53 @@ async function buildBalanceEmbed(targetUser, isSelf = false) {
           .addOptions(perkOptions)
       ));
     }
+    // 3 dropdown EQUIP — theo yêu cầu trực tiếp ("balance chưa thấy chỗ equip
+    // page/weapon/vũ khí") — CHỈ hiện những gì ĐÃ SỞ HỮU (khớp kiến trúc mới: đọc
+    // sách/GM cấp → sở hữu → equip). Gộp Weapon+Outfit+Accessory vào 1 dropdown
+    // (đỡ tốn row — Discord giới hạn CỨNG 5 ActionRow/message, đã dùng 2 cho
+    // branch/unlock, còn đúng 3 cho equip). Page thường và E.G.O Page tách riêng
+    // vì logic slot khác nhau (E.G.O cần khớp đúng Tier).
+    const ownedWeapons = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findWeaponAnywhere(n));
+    const ownedOutfits = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findOutfit(n));
+    const ownedAccessories = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findAccessory(n));
+    const gearOptions = [
+      ...ownedWeapons.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Vũ khí").setValue(`weapon:${n}`).setEmoji("⚔️")),
+      ...ownedOutfits.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Outfit").setValue(`outfit:${n}`).setEmoji("🧥")),
+      ...ownedAccessories.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Accessory").setValue(`accessory:${n}`).setEmoji("💍")),
+    ].slice(0, 25);
+    if (gearOptions.length > 0) {
+      components.push(new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`balequipgear:${targetUser.id}`)
+          .setPlaceholder("⚔️ Equip Weapon/Outfit/Accessory đã sở hữu...")
+          .addOptions(gearOptions)
+      ));
+    }
+    const ownedPageNames = Object.keys(data.pages ?? {}).filter(n => (data.pages[n] ?? 0) > 0);
+    const ownedRegularPages = ownedPageNames.filter(n => { const s = findSkill(n); return s && !isEgoSkill(s); });
+    const ownedEgoPages = ownedPageNames.filter(n => { const s = findSkill(n); return s && isEgoSkill(s); });
+    if (ownedRegularPages.length > 0) {
+      const pageOptions = ownedRegularPages.slice(0, 25).map(n =>
+        new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Page — tự chọn slot trống đầu tiên").setValue(`page:${n}`).setEmoji("📖")
+      );
+      components.push(new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`balequippage:${targetUser.id}`)
+          .setPlaceholder("📖 Equip Page thường đã sở hữu...")
+          .addOptions(pageOptions)
+      ));
+    }
+    if (ownedEgoPages.length > 0) {
+      const egoOptions = ownedEgoPages.slice(0, 25).map(n =>
+        new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription(`Tier ${getEgoTier(findSkill(n)) ?? "?"} — tự vào đúng slot Tier`).setValue(`egopage:${n}`).setEmoji("✨")
+      );
+      components.push(new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`balequipego:${targetUser.id}`)
+          .setPlaceholder("✨ Equip E.G.O Page đã sở hữu...")
+          .addOptions(egoOptions)
+      ));
+    }
   }
   return { embeds: [embed], components };
 }
@@ -4231,6 +4291,12 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
+// Tăng giới hạn listener — kiến trúc CÓ CHỦ Ý dùng NHIỀU client.on("interactionCreate",
+// ...) riêng biệt (mỗi cái tự check customId prefix, return sớm nếu không khớp) thay
+// vì 1 handler khổng lồ — KHÔNG PHẢI memory leak thật, chỉ là số lượng listener hợp lệ
+// vượt ngưỡng CẢNH BÁO mặc định (10) của Node EventEmitter — verify bằng test thật
+// xác nhận mọi listener hoạt động đúng, không có rò rỉ nào.
+client.setMaxListeners(30);
 
 let botReady = false;
 client.once("ready", () => {
@@ -4446,45 +4512,125 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
 
 
 /**
- * executeReadBook — logic "đọc" 1 cuốn sách dùng CHUNG cho `-readbook` (text) VÀ
- * nút "📚 Đọc" trong menu -inventory (button) — tiêu 1 cuốn, trả về nội dung
- * Page/Weapon/Outfit sách đó dạy (tra BOOK_GRANTS). PHẢI gọi trong withLock(userId).
- * BUG ĐÃ SỬA: hàm này TRƯỚC ĐÂY bị đặt LỒNG BÊN TRONG body của
- * client.on("messageCreate", ...) — dù `node --check` vẫn PASS (hợp lệ về cú
- * pháp), function declaration bên trong 1 arrow-function callback CHỈ có scope
- * CỤC BỘ trong callback đó, KHÔNG được các client.on("interactionCreate", ...)
- * KHÁC (định nghĩa Ở NƠI KHÁC trong file) truy cập được — verify bằng test thật
- * phát hiện lỗi runtime "executeReadBook is not defined" khi bấm nút "📚 Đọc"
- * trong menu -inventory. Giờ đặt ở TOP-LEVEL (ngoài mọi client.on callback) để
- * MỌI listener đều truy cập được, giống các helper khác (hasPerk, v.v.).
- * @returns {Promise<{ bookName: string, desc: string, remaining: number }>}
+ * getBookTopLevelChoices — TẦNG 1 lựa chọn khi đọc 1 cuốn sách — với sách THƯỜNG
+ * (không có `groups`), đây là DANH SÁCH CUỐI (mỗi option = 1 page/weapon/outfit cụ
+ * thể, chọn xong là XONG). Với "Library Book" (CÓ `groups`), tầng 1 chỉ gồm
+ * "Light Dash" (nếu có trong pages) + TÊN 7 NHÓM (không phải page cụ thể) — chọn 1
+ * nhóm thì cần gọi getBookGroupChoices để lấy TẦNG 2.
+ * @returns {Array<{ type: "page"|"weapon"|"outfit"|"group", name: string }>}
  */
-async function executeReadBook(userId, bookNameRaw) {
+function getBookTopLevelChoices(bookName) {
+  const grants = BOOK_GRANTS[bookName];
+  if (!grants) return [];
+  const choices = [];
+  for (const p of grants.pages ?? []) choices.push({ type: "page", name: p });
+  for (const w of grants.weapons ?? []) choices.push({ type: "weapon", name: w });
+  for (const o of grants.outfits ?? []) choices.push({ type: "outfit", name: o });
+  if (grants.groups) {
+    for (const groupName of Object.keys(grants.groups)) choices.push({ type: "group", name: groupName });
+  }
+  return choices;
+}
+
+/** getBookGroupChoices — TẦNG 2, CHỈ dùng cho sách có `groups` (hiện chỉ "Library
+ *  Book") — trả về Page cụ thể TRONG 1 nhóm đã chọn ở tầng 1. */
+function getBookGroupChoices(bookName, groupName) {
+  const grants = BOOK_GRANTS[bookName];
+  const list = grants?.groups?.[groupName];
+  if (!list) return [];
+  return list.map(name => ({ type: "page", name }));
+}
+
+/** isValidBookChoice — validate 1 lựa chọn CUỐI CÙNG (page/weapon/outfit cụ thể,
+ *  KHÔNG PHẢI tên nhóm) có thực sự thuộc sách này không — dùng khi CHỐT lựa chọn
+ *  (qua text `-readbook <sách> choose: <tên>` hoặc qua UI 2 tầng). */
+function isValidBookChoice(bookName, chosenType, chosenName) {
+  const grants = BOOK_GRANTS[bookName];
+  if (!grants) return false;
+  if (chosenType === "page") {
+    if ((grants.pages ?? []).includes(chosenName)) return true;
+    if (grants.groups) {
+      for (const list of Object.values(grants.groups)) if (list.includes(chosenName)) return true;
+    }
+    return false;
+  }
+  if (chosenType === "weapon") return (grants.weapons ?? []).includes(chosenName);
+  if (chosenType === "outfit") return (grants.outfits ?? []).includes(chosenName);
+  return false;
+}
+
+/**
+ * buildBookChoiceComponents — dựng {embeds, components} hiện danh sách lựa chọn
+ * TẦNG 1 khi đọc 1 cuốn sách (dùng CHUNG cho -readbook text VÀ nút 📚 Đọc trong
+ * -inventory). userId để gắn vào customId (chỉ chủ nhân được chọn).
+ */
+function buildBookChoiceComponents(userId, bookName, owned) {
+  const grants = BOOK_GRANTS[bookName];
+  if (!grants) {
+    return {
+      embeds: [{ title: `📖 ${bookName}`, description: `*(Chưa có dữ liệu nội dung cụ thể cho sách này trong hệ thống — GM tự narrate.)*`, color: 0x5865f2 }],
+      components: [],
+    };
+  }
+  const choices = getBookTopLevelChoices(bookName);
+  if (choices.length === 0) {
+    return {
+      embeds: [{ title: `📖 ${bookName}`, description: `*(Sách này không dạy Page/Weapon/Outfit cụ thể nào.)*`, color: 0x5865f2 }],
+      components: [],
+    };
+  }
+  const TYPE_ICON = { page: "📖", weapon: "⚔️", outfit: "🧥", group: "📂" };
+  const options = choices.slice(0, 25).map(c =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(c.name.slice(0, 100))
+      .setDescription(c.type === "group" ? "Nhóm — chọn để xem Page cụ thể bên trong" : `${c.type === "page" ? "Page" : c.type === "weapon" ? "Vũ khí" : "Outfit"}`)
+      .setValue(`${c.type}:${c.name}`)
+      .setEmoji(TYPE_ICON[c.type])
+  );
+  return {
+    embeds: [{
+      title: `📖 ${bookName} (còn ${owned} cuốn)`,
+      description: `Chọn ĐÚNG 1 thứ để nhận (tiêu 1 cuốn ngay khi chọn):${grants.note ? `\n> ${grants.note}` : ""}`,
+      color: 0x5865f2,
+    }],
+    components: [new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`bookchoice:${userId}:${encodeURIComponent(bookName)}`)
+        .setPlaceholder("Chọn Page/Vũ khí/Outfit...")
+        .addOptions(options)
+    )],
+  };
+}
+
+/**
+ * executeReadBookChoose — CHỐT 1 lựa chọn CỤ THỂ khi đọc sách (theo yêu cầu trực
+ * tiếp: "đọc = CHỌN 1 trong page/weapon/outfit, KHÔNG PHẢI mở khoá tất cả" — bản
+ * thiết kế CŨ cho lấy hết chỉ bằng 1 quyển sách rẻ tiền, ĐÃ THAY THẾ HOÀN TOÀN).
+ * Tiêu 1 cuốn, cấp CHÍNH XÁC 1 thứ đã chọn: Page → profileData.pages (category
+ * MỚI, giống books/items — trước đây Page hoàn toàn không có sở hữu), Weapon/
+ * Outfit → profileData.items (khớp pattern ĐÃ CÓ SẴN, VD Hoshino's "Eye of Horus"
+ * từng nằm trong items). PHẢI gọi trong withLock(userId).
+ */
+async function executeReadBookChoose(userId, bookNameRaw, chosenType, chosenName) {
   const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
   const bookName = findBook(bookNameRaw);
   if (!bookName) throw new Error(`Không nhận diện được sách "${bookNameRaw}".`);
   const owned = profileData.books?.[bookName] ?? 0;
   if (owned < 1) throw new Error(`Bạn không có (hoặc đã hết) **${bookName}** trong inventory.`);
+  if (!isValidBookChoice(bookName, chosenType, chosenName)) {
+    throw new Error(`"${chosenName}" không thuộc **${bookName}**.`);
+  }
   profileData.books[bookName] = owned - 1;
   if (profileData.books[bookName] <= 0) delete profileData.books[bookName];
-  await savePlayerData(userId, profileData, slot);
-  const grants = BOOK_GRANTS[bookName];
-  let desc;
-  if (!grants) {
-    desc = `*(Chưa có dữ liệu nội dung cụ thể cho sách này trong hệ thống — GM tự narrate.)*`;
+  if (chosenType === "page") {
+    profileData.pages = profileData.pages ?? {};
+    profileData.pages[chosenName] = (profileData.pages[chosenName] ?? 0) + 1;
   } else {
-    const parts = [];
-    if (grants.pages.length > 0) {
-      const hasGroupHeaders = grants.pages.some(p => p.startsWith("—"));
-      parts.push(`**📖 Page:**${hasGroupHeaders ? "\n" + grants.pages.join("\n") : " " + grants.pages.join(", ")}`);
-    }
-    if (grants.weapons.length > 0) parts.push(`**⚔️ Vũ khí:** ${grants.weapons.join(", ")}`);
-    if (grants.outfits.length > 0) parts.push(`**🧥 Outfit:** ${grants.outfits.join(", ")}`);
-    if (grants.isEgoOnly) parts.push(`*(Toàn bộ Page trên đều là E.G.O Page.)*`);
-    if (grants.note) parts.push(`> ${grants.note}`);
-    desc = parts.join("\n") || "*(Sách này không dạy Page/Weapon/Outfit cụ thể nào.)*";
+    profileData.items = profileData.items ?? {};
+    profileData.items[chosenName] = (profileData.items[chosenName] ?? 0) + 1;
   }
-  return { bookName, desc, remaining: profileData.books[bookName] ?? 0 };
+  await savePlayerData(userId, profileData, slot);
+  return { bookName, chosenType, chosenName, remaining: profileData.books[bookName] ?? 0 };
 }
 
 client.on("messageCreate", async (message) => {
@@ -5105,16 +5251,38 @@ client.on("messageCreate", async (message) => {
   // Page/Weapon/Outfit sách đó dạy được (tra từ BOOK_GRANTS) — xác nhận trực tiếp
   // từ GM: KHÔNG chặn equip nếu chưa đọc (equip vẫn tự do như trước, sách chỉ mang
   // tính ghi nhận/tham khảo).
+  // ── -readbook — theo yêu cầu trực tiếp: đọc = CHỌN ĐÚNG 1 Page/Weapon/Outfit
+  // (KHÔNG PHẢI mở khoá tất cả — thiết kế CŨ bị coi là "lấy hết chỉ bằng 1 quyển
+  // sách rẻ tiền", ĐÃ THAY THẾ HOÀN TOÀN). Không gõ `choose:` → hiện dropdown chọn.
+  // Có `choose:` → chốt luôn (tiện cho GM cấp nhanh/player đã biết muốn gì).
   if (message.content.startsWith("-readbook")) {
-    const bookNameRaw = message.content.replace("-readbook", "").trim();
-    if (!bookNameRaw) { message.reply("⚠️ Cú pháp: `-readbook <tên sách>` (VD: `-readbook cinq association book`) — tiêu 1 cuốn, hiện Page/Weapon/Outfit sách đó dạy.\n> Mẹo: dùng `-inventory` rồi bấm nút 📚 Đọc cho tiện hơn."); return; }
+    const rawInput = message.content.replace("-readbook", "").trim();
+    const kv = parseKeyValues(rawInput);
+    const chooseRaw = kv["choose"] ?? null;
+    const bookNameRaw = chooseRaw ? rawInput.slice(0, rawInput.toLowerCase().indexOf("choose:")).trim() : rawInput;
+    if (!bookNameRaw) { message.reply("⚠️ Cú pháp: `-readbook <tên sách>` (hiện dropdown chọn) hoặc `-readbook <tên sách> choose: <tên Page/Vũ khí/Outfit>` (chốt luôn).\n> Mẹo: dùng `-inventory` rồi bấm nút 📚 Đọc cho tiện hơn."); return; }
     try {
+      const bookName = findBook(bookNameRaw);
+      if (!bookName) throw new Error(`Không nhận diện được sách "${bookNameRaw}".`);
+      const { data: profileData } = await getPlayerDataWithSlot(message.author.id);
+      const owned = profileData.books?.[bookName] ?? 0;
+      if (owned < 1) throw new Error(`Bạn không có (hoặc đã hết) **${bookName}** trong inventory.`);
+      if (!chooseRaw) {
+        message.reply(buildBookChoiceComponents(message.author.id, bookName, owned));
+        return;
+      }
+      // choose: <tên> — cần biết đây là page/weapon/outfit — thử LẦN LƯỢT cả 3 loại.
+      let matchedType = null;
+      for (const t of ["page", "weapon", "outfit"]) {
+        if (isValidBookChoice(bookName, t, chooseRaw.trim())) { matchedType = t; break; }
+      }
+      if (!matchedType) throw new Error(`"${chooseRaw.trim()}" không thuộc **${bookName}** (hoặc là TÊN NHÓM của Library Book — dùng dropdown thay vì gõ tay cho trường hợp này).`);
       await withLock(message.author.id, async () => {
-        const { bookName, desc, remaining } = await executeReadBook(message.author.id, bookNameRaw);
+        const result = await executeReadBookChoose(message.author.id, bookName, matchedType, chooseRaw.trim());
         message.reply({
           embeds: [{
-            title: `📖 Đã đọc: ${bookName}`,
-            description: desc + `\n\n*Còn lại: ${remaining} cuốn.*\n*Lưu ý: đọc sách KHÔNG chặn equip — bạn vẫn có thể \`-equipweapon\`/\`-equippage\`/\`-equipoutfit\` các tên trên (hoặc bất kỳ tên hợp lệ nào khác) mà không cần đọc sách trước.*`,
+            title: `📖 Đã đọc: ${result.bookName}`,
+            description: `Nhận được: **${result.chosenName}** (${matchedType === "page" ? "Page" : matchedType === "weapon" ? "Vũ khí" : "Outfit"})\n\n*Còn lại: ${result.remaining} cuốn.*\n*Lưu ý: từ giờ equip weapon/outfit/page ĐỀU cần sở hữu trước — dùng \`-equipweapon\`/\`-equippage\`/\`-equipoutfit\` với đúng tên vừa nhận.*`,
             color: 0x5865f2,
           }],
         });
@@ -5273,6 +5441,29 @@ client.on("messageCreate", async (message) => {
         itemEntries.push({ name: itemName, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
       }
     }
+    // pages: — GM cấp THẲNG 1 hoặc nhiều Page vào category "pages" (giống books:/
+    // items:) — theo yêu cầu trực tiếp "hoặc GM cấp thẳng" (không cần qua đọc
+    // sách). Dùng findSkill để validate tên Page/skill hợp lệ (không giới hạn chỉ
+    // Page có trong BOOK_GRANTS — GM có thể cấp BẤT KỲ Page/skill hợp lệ nào tồn
+    // tại trong skills.js, kể cả loại chưa gắn với sách nào).
+    const pagesRaw = kv["pages"] ?? null;
+    const pageEntries = [];
+    if (pagesRaw) {
+      const parts = pagesRaw.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const match = part.match(/^(.+?)\s+(\+?)x(\d+)$/i);
+        if (!match) {
+          message.reply(`❌ Định dạng Page sai: \`${part}\`\nĐúng: \`Tên Page x<số>\` hoặc \`Tên Page +x<số>\` (VD: \`Pounce x1\` hoặc \`Pounce +x1\`)`);
+          return;
+        }
+        const skill = findSkill(match[1].trim());
+        if (!skill) {
+          message.reply(`❌ Tên Page không hợp lệ: \`${match[1].trim()}\``);
+          return;
+        }
+        pageEntries.push({ name: skill.name, count: parseInt(match[3], 10), isAdd: match[2] === "+" });
+      }
+    }
     const expAddRaw = kv["exp"] ?? null;
     const ahnAddRaw = kv["ahn"] ?? null;
     const expIsAdd = expAddRaw && expAddRaw.startsWith("+");
@@ -5324,7 +5515,7 @@ client.on("messageCreate", async (message) => {
       branchUpdates[bKey] = { isAdd, value };
       hasBranchUpdate = true;
     }
-    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null) {
+    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null) {
       message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, hoặc 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
       return;
     }
@@ -5371,6 +5562,13 @@ client.on("messageCreate", async (message) => {
               data.items[name] = isAdd ? (data.items[name] ?? 0) + count : count;
             }
             changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
+          }
+          if (pageEntries.length > 0) {
+            data.pages = data.pages ?? {};
+            for (const { name, count, isAdd } of pageEntries) {
+              data.pages[name] = isAdd ? (data.pages[name] ?? 0) + count : count;
+            }
+            changes.push(`Page:\n` + pageEntries.map(e => `> • 📖 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
           }
           if (bonusSkillValue !== null) {
             if (bonusSkillIsAdd) {
@@ -5616,6 +5814,13 @@ client.on("messageCreate", async (message) => {
         }
       }
       const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      // Ownership gate — Page giờ có category RIÊNG "pages" (giống books/items,
+      // trước đây Page hoàn toàn tự do không cần sở hữu — theo yêu cầu trực tiếp:
+      // "equip weapon/outfit/page đều phải SỞ HỮU trước").
+      const isAdminAction = targetLabel !== null;
+      if (!isAdminAction && (data.pages?.[skill.name] ?? 0) < 1) {
+        throw new Error(`Bạn chưa sở hữu Page **${skill.name}** — cần đọc sách tương ứng để nhận (xem \`-readbook\`), hoặc nhờ GM cấp.`);
+      }
       const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
       data[listKey] = data[listKey] ?? [null, null, null, null, null];
       data[listKey][slotNum - 1] = skill.name;
@@ -5683,6 +5888,14 @@ client.on("messageCreate", async (message) => {
       const weapon = findWeaponAnywhere(rawInput);
       if (!weapon) throw new Error(`Không tìm thấy vũ khí "${rawInput}" trong weapon.js hoặc skills.js.`);
       const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      // Ownership gate — theo yêu cầu trực tiếp: "equip weapon/outfit/page đều
+      // phải SỞ HỮU trước (qua chọn từ sách, hoặc GM cấp thẳng)". Admin equip HỘ
+      // người khác (targetLabel !== null) BỎ QUA check này — admin có toàn quyền
+      // cấp phát trực tiếp không cần qua sách (đúng "hoặc GM cấp thẳng").
+      const isAdminAction = targetLabel !== null;
+      if (!isAdminAction && (data.items?.[weapon.name] ?? 0) < 1) {
+        throw new Error(`Bạn chưa sở hữu **${weapon.name}** — cần đọc sách tương ứng để nhận (xem \`-readbook\`), hoặc nhờ GM cấp.`);
+      }
       data.equippedWeapon = weapon.name;
       await savePlayerData(targetUserId, data, slot);
       message.reply(`✅ Đã equip vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage})${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
@@ -5714,6 +5927,10 @@ client.on("messageCreate", async (message) => {
       const outfit = findOutfit(rawInput);
       if (!outfit) throw new Error(`Không tìm thấy outfit "${rawInput}" trong outfit.js.`);
       const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      const isAdminAction = targetLabel !== null;
+      if (!isAdminAction && (data.items?.[outfit.name] ?? 0) < 1) {
+        throw new Error(`Bạn chưa sở hữu **${outfit.name}** — cần đọc sách tương ứng để nhận (xem \`-readbook\`), hoặc nhờ GM cấp.`);
+      }
       data.equippedOutfit = outfit.name;
       await savePlayerData(targetUserId, data, slot);
       const r = outfit.resistance;
@@ -5748,6 +5965,14 @@ client.on("messageCreate", async (message) => {
       const accessory = findAccessory(m[2].trim());
       if (!accessory) throw new Error(`Không tìm thấy accessory "${m[2].trim()}" trong accessory.js.`);
       const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      // Ownership gate — ÁP DỤNG NHẤT QUÁN với weapon/outfit/page (accessory vốn
+      // ĐÃ nằm trong items từ trước, cùng pattern) — GM chỉ nhắc rõ weapon/outfit/
+      // page trong yêu cầu gốc, đây là suy luận nhất quán, ĐIỀU CHỈNH nếu không
+      // đúng ý.
+      const isAdminAction = targetLabel !== null;
+      if (!isAdminAction && (data.items?.[accessory.name] ?? 0) < 1) {
+        throw new Error(`Bạn chưa sở hữu **${accessory.name}** — nhờ GM cấp (hiện chưa có cơ chế sách nào dạy accessory).`);
+      }
       data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
       data.equippedAccessories[slotNum - 1] = accessory.name;
       await savePlayerData(targetUserId, data, slot);
@@ -7414,25 +7639,20 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.customId.startsWith("invread:")) {
     const parts = interaction.customId.split(":");
     const targetUserId = parts[1];
-    const itemName = parts.slice(3).join(":"); // parts[2] luôn là "book" ở đây, bỏ qua
+    const bookName = parts.slice(3).join(":"); // parts[2] luôn là "book" ở đây, bỏ qua
     if (interaction.user.id !== targetUserId) {
       return interaction.reply({ content: "⚠️ Đây không phải inventory của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     if (isOnCooldown(interaction.user.id, "invread", 2000)) {
       return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
     }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
-      const { bookName, desc, remaining } = await withLock(targetUserId, () => executeReadBook(targetUserId, itemName));
-      await interaction.editReply({
-        embeds: [{
-          title: `📖 Đã đọc: ${bookName}`,
-          description: desc + `\n\n*Còn lại: ${remaining} cuốn.*\n*Lưu ý: đọc sách KHÔNG chặn equip — bạn vẫn có thể \`-equipweapon\`/\`-equippage\`/\`-equipoutfit\` mà không cần đọc sách trước.*`,
-          color: 0x5865f2,
-        }],
-      });
+      const { data: profileData } = await getPlayerDataWithSlot(targetUserId);
+      const owned = profileData.books?.[bookName] ?? 0;
+      if (owned < 1) { return interaction.reply({ content: `❌ Không còn **${bookName}** trong inventory.`, flags: MessageFlags.Ephemeral }).catch(() => {}); }
+      await interaction.reply({ ...buildBookChoiceComponents(targetUserId, bookName, owned), flags: MessageFlags.Ephemeral });
     } catch (err) {
-      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra."}` });
+      await interaction.reply({ content: `❌ ${err.message ?? "Có lỗi xảy ra."}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     return;
   }
@@ -7977,6 +8197,19 @@ client.on("interactionCreate", async (interaction) => {
                   attacker.combatant.tremor = Math.min(TREMOR_MAX, attacker.combatant.tremor + 2);
                   eyeOfHorusChargeGainedThisAction += 2;
                 }
+                // Set Fire (Page): "đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy]
+                // Burn... mỗi lần trúng" — CHỈ áp cho M1 (p.isM1), KHÔNG áp cho Page/
+                // skill khác. BUG ĐÃ SỬA: "mỗi lần trúng" nghĩa là MỖI HIT (không
+                // phải mỗi ACTION) — code cũ chỉ cộng burnAmount ĐÚNG 1 LẦN dù M1 có
+                // bao nhiêu hit (vì nằm trong for loop TARGET, không phải loop HIT) —
+                // giống lớp bug tôi từng sửa cho Eye Of Horus's Repeat Ammo — giờ
+                // nhân theo hitCount (số hit THẬT của target này trong action). Nằm
+                // trong khối !evadedCompletely — né hoàn toàn thì không tính là đã
+                // đánh trúng, không áp Burn (nhất quán với mọi status effect khác).
+                if (p.isM1 && attacker.type === "player" && (attacker.combatant.setFireTurnsLeft ?? 0) > 0) {
+                  const burnPerHit = { light: 1, medium: 2, heavy: 4 }[attacker.combatant.weaponWeight] ?? 1;
+                  target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + burnPerHit * hitCount);
+                }
               }
               checkStaggerPanic(target);
               // Chấn thương — nhận dmg >30% Max HP trong đòn NÀY → roll 10% nặng/40% nhẹ.
@@ -8088,6 +8321,16 @@ client.on("interactionCreate", async (interaction) => {
               attacker.combatant.skillCooldowns = attacker.combatant.skillCooldowns ?? {};
               attacker.combatant.skillCooldowns[p.skillKey] = p.cooldownTurns + 1;
               verifyNote += ` [CD ${p.skillKey}: ${p.cooldownTurns}T]`;
+            }
+            // Set Fire — Page tự buff (không dice, không nhắm target thật) — kích
+            // hoạt NGAY khi skill confirm thành công, KHÔNG phụ thuộc evadedCompletely
+            // (đây không phải đòn tấn công lên target, tương tự Light Dash/Tactical
+            // Suppression). 3 turn tự áp Burn theo weaponWeight lên M1 — xem logic
+            // ÁP DỤNG THẬT ở khối xử lý M1 (tìm "setFireTurnsLeft") và đếm ngược ở
+            // advanceCombatantTurn.
+            if (p.skillKey === "set fire") {
+              attacker.combatant.setFireTurnsLeft = 3;
+              verifyNote += ` 🔥 Vũ khí bốc cháy trong 3 turn!`;
             }
             if (p.emotionDelta) {
               const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta);
@@ -8380,6 +8623,48 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ─── SELECT MENU INTERACTIONS (inventory) ────────────────────────────────────
+// ─── SELECT MENU INTERACTIONS (đọc sách — chọn 1 Page/Weapon/Outfit) ─────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("bookchoice:")) return;
+  const [, ownerId, encodedBookName] = interaction.customId.split(":");
+  const bookName = decodeURIComponent(encodedBookName);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const [chosenType, chosenName] = interaction.values[0].split(":");
+  if (chosenType === "group") {
+    // TẦNG 2 — hiện Page cụ thể TRONG nhóm đã chọn (CHỈ "Library Book" mới có
+    // nhánh này, vì đây là sách DUY NHẤT có >25 lựa chọn cần chia 2 tầng).
+    const groupChoices = getBookGroupChoices(bookName, chosenName);
+    const options = groupChoices.slice(0, 25).map(c =>
+      new StringSelectMenuOptionBuilder().setLabel(c.name.slice(0, 100)).setDescription("Page").setValue(`page:${c.name}`).setEmoji("📖")
+    );
+    return interaction.reply({
+      embeds: [{ title: `📂 ${bookName} — Nhóm ${chosenName}`, description: "Chọn ĐÚNG 1 Page trong nhóm này:", color: 0x5865f2 }],
+      components: [new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder().setCustomId(`bookchoice:${ownerId}:${encodeURIComponent(bookName)}`).setPlaceholder("Chọn Page...").addOptions(options)
+      )],
+      flags: MessageFlags.Ephemeral,
+    }).catch(() => {});
+  }
+  // page/weapon/outfit cụ thể — CHỐT LUÔN.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const result = await withLock(ownerId, () => executeReadBookChoose(ownerId, bookName, chosenType, chosenName));
+    const typeLabel = chosenType === "page" ? "Page" : chosenType === "weapon" ? "Vũ khí" : "Outfit";
+    await interaction.editReply({
+      embeds: [{
+        title: `📖 Đã đọc: ${result.bookName}`,
+        description: `Nhận được: **${result.chosenName}** (${typeLabel})\n\n*Còn lại: ${result.remaining} cuốn.*\n*Lưu ý: từ giờ equip weapon/outfit/page ĐỀU cần sở hữu trước.*`,
+        color: 0x5865f2,
+      }],
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
+  }
+});
+
 // ─── SELECT MENU INTERACTIONS (-balance: phân bổ điểm / unlock perk) ─────────
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
@@ -8462,6 +8747,105 @@ client.on("interactionCreate", async (interaction) => {
       data.unlockedSkillTree.push(perkName);
       await savePlayerData(ownerId, data, slot);
       await interaction.editReply({ content: `✅ Đã mở khoá **${perkName}** (nhánh ${branch}, ${cost} điểm)!\n> Dùng lại \`-balance\` để thấy cập nhật.` });
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (-balance: equip weapon/outfit/accessory) ──────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("balequipgear:")) return;
+  const [, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  if (isOnCooldown(interaction.user.id, "balequipgear", 2000)) {
+    return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const [chosenType, chosenName] = [interaction.values[0].split(":")[0], interaction.values[0].split(":").slice(1).join(":")];
+    await withLock(ownerId, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(ownerId);
+      // Re-check sở hữu NGAY LÚC BẤM (không chỉ lúc build dropdown) — phòng
+      // trường hợp đã dùng/mất item giữa lúc dropdown hiện và lúc bấm chọn.
+      if ((data.items?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu **${chosenName}** — dùng lại \`-balance\` để cập nhật danh sách.`);
+      let resultMsg;
+      if (chosenType === "weapon") {
+        const weapon = findWeaponAnywhere(chosenName);
+        data.equippedWeapon = weapon.name;
+        resultMsg = `✅ Đã equip vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage}).`;
+      } else if (chosenType === "outfit") {
+        const outfit = findOutfit(chosenName);
+        data.equippedOutfit = outfit.name;
+        const r = outfit.resistance;
+        resultMsg = `✅ Đã equip outfit **${outfit.name}** (Res: ${r.B}xB ${r.P}xP ${r.S}xS).`;
+      } else if (chosenType === "accessory") {
+        const accessory = findAccessory(chosenName);
+        data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+        // Tự chọn slot TRỐNG đầu tiên — nếu cả 3 đã đầy, ghi đè slot 1 (kèm cảnh
+        // báo) — muốn chọn slot cụ thể, dùng lệnh text `-equipaccessory <slot>`.
+        let targetSlot = data.equippedAccessories.findIndex(s => !s);
+        const overwritten = targetSlot === -1;
+        if (overwritten) targetSlot = 0;
+        data.equippedAccessories[targetSlot] = accessory.name;
+        resultMsg = `✅ Đã equip accessory **${accessory.name}** vào slot #${targetSlot + 1}${overwritten ? " (đã GHI ĐÈ slot đầy — dùng `-equipaccessory <slot>` nếu muốn chọn slot khác)" : ""}.`;
+      } else {
+        throw new Error("Loại trang bị không hợp lệ.");
+      }
+      await savePlayerData(ownerId, data, slot);
+      await interaction.editReply({ content: resultMsg + "\n> Dùng lại `-balance`/`-equipment` để xem cập nhật." });
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (-balance: equip Page/E.G.O Page) ──────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  // Chấp nhận CẢ 2 customId (Page thường VÀ E.G.O Page) — BUG ĐÃ SỬA: trước đây
+  // CẢ 2 dropdown (Page thường/E.G.O Page trong -balance) dùng CHUNG 1 customId
+  // "balequippage:" y hệt nhau (Discord không thể phân biệt 2 component TRÙNG
+  // customId trong cùng 1 message) — đã tách riêng "balequipego:" cho dropdown
+  // E.G.O Page, giờ handler CHUNG này chấp nhận CẢ 2 (logic bên trong ĐÃ phân biệt
+  // đúng qua giá trị chọn "page:"/"egopage:", không cần customId phân biệt).
+  if (!interaction.customId.startsWith("balequippage:") && !interaction.customId.startsWith("balequipego:")) return;
+  const [, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  if (isOnCooldown(interaction.user.id, "balequippage", 2000)) {
+    return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const [chosenType, chosenName] = [interaction.values[0].split(":")[0], interaction.values[0].split(":").slice(1).join(":")];
+    const isEgo = chosenType === "egopage";
+    await withLock(ownerId, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(ownerId);
+      if ((data.pages?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu Page **${chosenName}** — dùng lại \`-balance\` để cập nhật danh sách.`);
+      const skill = findSkill(chosenName);
+      if (!skill) throw new Error(`Không tìm thấy Page "${chosenName}" trong hệ thống.`);
+      const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
+      data[listKey] = data[listKey] ?? [null, null, null, null, null];
+      let targetSlot;
+      let slotNote = "";
+      if (isEgo) {
+        // E.G.O Page — slot XÁC ĐỊNH theo Tier, KHÔNG tự chọn (khác Page thường).
+        const skillTier = getEgoTier(skill);
+        if (!skillTier) throw new Error(`Không xác định được Tier của "${skill.name}".`);
+        targetSlot = EGO_TIER_SLOT_ORDER.indexOf(skillTier);
+        slotNote = ` (Tier ${skillTier})`;
+      } else {
+        targetSlot = data[listKey].findIndex(s => !s);
+        if (targetSlot === -1) { targetSlot = 0; slotNote = " (đã GHI ĐÈ slot đầy — dùng `-equippage <slot>` nếu muốn chọn slot khác)"; }
+      }
+      data[listKey][targetSlot] = skill.name;
+      await savePlayerData(ownerId, data, slot);
+      await interaction.editReply({ content: `✅ Đã equip **${skill.name}** vào ${isEgo ? "E.G.O " : ""}slot #${targetSlot + 1}${slotNote}.\n> Dùng lại \`-balance\`/\`-pages\` để xem cập nhật.` });
     });
   } catch (err) {
     await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
