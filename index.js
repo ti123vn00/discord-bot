@@ -1842,7 +1842,7 @@ function applyStatusMultiplierToDmgStr(dmgStr, tagName, multiplier) {
  * áp cho Page/skill).
  * @returns { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill }
  */
-function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } = {}) {
+function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null } = {}) {
   let bonusPct = 0;
   // BUG ĐÃ SỬA: trước đây critMul khởi tạo = 1 (không có bonus crit dmg nào trừ
   // khi có Sharp Eyes) — SAI hoàn toàn so với luật ("crit dmg [1,3x]" là mặc định
@@ -1894,6 +1894,37 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
   // chỉ hiện trong status để player tự cộng tay lúc roll.
   if ((attacker.overchargedTurnsLeft ?? 0) > 0) bonusPct += attacker.overchargedDmgBonusPct ?? 0;
 
+  // Eye Of Horus — passive vũ khí "Foreclosure Task Force President" (CHỈ áp cho
+  // M1 — "nếu đánh thường") — xác nhận trực tiếp từ GM: các mốc "≤3 lần"/"≤6 lần"
+  // đều tính TỪ LẦN ĐÁNH ĐẦU TIÊN (KHÔNG PHẢI ngưỡng riêng biệt "bắt đầu từ lần
+  // đó") — cụ thể: lần 1-3 có CẢ +50% dmg VÀ +33,33% dmg (tương đương base 3→4/
+  // hit dùng % thay vì đổi số dice thật — an toàn hơn vì hoạt động đúng cho CẢ
+  // dmgStr gõ tay lẫn dmgStr tự tính từ nút "Đánh mấy lần"), lần 4-6 CHỈ +33,33%,
+  // lần 7+ về bình thường. Lần ĐẦU TIÊN (count===1) CÒN có thêm "Repeat Ammo" — 1
+  // hit sát thương CHUẨN bổ sung, tính tương đương +(100/hitCount)% (hitCount parse
+  // từ dmgStr dạng "NxM", đúng cho M1 đơn giản — không dùng cho Page/skill phức
+  // tạp, đã giới hạn isM1). "Mỗi lần đánh thường: +2 Tremor +2 Charge lên bản
+  // thân" trả về qua eyeOfHorusSelfTremorCharge (KHÔNG nhét vào dmgStrRewritten vì
+  // đó áp lên TARGET, không phải bản thân — cần xử lý riêng ở nơi gọi).
+  let eyeOfHorusSelfTremorCharge = false;
+  if (isM1 && targetId && (attacker.weaponName ?? "").toLowerCase() === "eye of horus") {
+    // CHỈ PEEK (đọc, KHÔNG ghi) ở đây — hàm này chạy lúc DECLARE (build preview),
+    // KHÔNG PHẢI lúc CONFIRM. BUG ĐÃ TRÁNH: nếu tự TĂNG counter ngay tại đây, GM
+    // reject action này sau đó vẫn để counter tăng sai (action không thực sự xảy
+    // ra) — giống bài học evadedCompletely trước đó trong dự án này. Tăng THẬT
+    // (commit) chỉ xảy ra ở confirm handler — xem comment "Eye Of Horus — commit"
+    // trong khối xử lý M1 lúc confirm.
+    const thisAttackNumber = (attacker.m1CountThisTurnByTarget?.[targetId] ?? 0) + 1;
+    if (thisAttackNumber <= 6) bonusPct += 100 / 3; // base 3→4/hit (+33,33%)
+    if (thisAttackNumber <= 3) bonusPct += 50;
+    if (thisAttackNumber === 1) {
+      const hitCountMatch = dmgStr.match(/^[\d.]+\s*x\s*(\d+)/i);
+      const hitCount = hitCountMatch ? parseInt(hitCountMatch[1], 10) : 1;
+      bonusPct += 100 / hitCount; // Repeat Ammo — 1 hit chuẩn bổ sung
+    }
+    eyeOfHorusSelfTremorCharge = true;
+  }
+
   // Claim Their Heart: target Stagger + dưới 15% HP → kết liễu ngay
   if (hasPerk(attacker, "Claim Their Heart") && target.staggered && target.currentHp > 0 && target.currentHp < target.maxHp * 0.15) {
     instantKill = "Claim Their Heart — Stagger + dưới 15% HP";
@@ -1930,7 +1961,7 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false } =
     }
   }
 
-  return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill };
+  return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusSelfTremorCharge };
 }
 
 /** computeDefenderDmgReduction — % giảm dmg NHẬN VÀO của bên BỊ tấn công, dựa trên
@@ -2079,7 +2110,7 @@ function normalizeEnemyKey(k) {
 }
 
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
-function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
+function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
   return {
     name,
     maxHp, currentHp: maxHp,
@@ -2091,12 +2122,19 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // advanceCombatantTurn. Tách riêng để KHÔNG mất giá trị gốc khi Level hết hạn.
     baseMaxLight: maxLight, maxLight, currentLight: 0,
     weaponWeight: normalizeWeaponWeight(weaponWeight),
-    // weaponBaseDamage/weaponType — CHỈ dùng để TỰ ĐỘNG TÍNH dmgStr cho nút "Đánh
-    // thường (M1)" qua dropdown/Modal (hỏi "đánh mấy lần" thay vì bắt gõ tay cả
-    // công thức) — KHÔNG ảnh hưởng gì tới lệnh text -encounter attack (vẫn luôn
-    // cho gõ tay dmgStr tuỳ ý như cũ). null nếu player chưa equip vũ khí nào rõ
-    // ràng (enemy luôn null — GM dùng lệnh text, không cần field này).
-    weaponBaseDamage, weaponType,
+    // weaponBaseDamage/weaponType/weaponName — CHỈ dùng để TỰ ĐỘNG TÍNH dmgStr cho
+    // nút "Đánh thường (M1)" qua dropdown/Modal (hỏi "đánh mấy lần" thay vì bắt gõ
+    // tay cả công thức), VÀ để check passive vũ khí ĐẶC THÙ theo TÊN (VD Eye Of
+    // Horus's "Foreclosure Task Force President") — KHÔNG ảnh hưởng gì tới lệnh
+    // text -encounter attack (vẫn luôn cho gõ tay dmgStr tuỳ ý như cũ). null nếu
+    // player chưa equip vũ khí nào rõ ràng (enemy luôn null — GM dùng lệnh text,
+    // không cần field này).
+    weaponBaseDamage, weaponType, weaponName,
+    // m1CountThisTurnByTarget — đếm số lần đánh thường (M1) lên TỪNG target riêng
+    // biệt TRONG TURN HIỆN TẠI (key = targetId, value = count) — dùng cho passive
+    // "Foreclosure Task Force President" (Eye Of Horus) leo thang theo số lần đánh
+    // lên CÙNG 1 đối tượng. Reset TOÀN BỘ mỗi endturn (xem advanceCombatantTurn).
+    m1CountThisTurnByTarget: {},
     resistance: resistance ?? { B: 1, P: 1, S: 1 },
     // 7 status effect — LƯU Ý quan trọng về AI mang gì: Poise/Charge là "trên bản
     // thân" (self) — combatant này tự mang, áp dụng khi NÓ là người TẤN CÔNG.
@@ -2637,6 +2675,9 @@ function advanceCombatantTurn(combatant) {
   }
   // Táo (item): -1 Dmg/hit CHỈ tới hết turn hiện tại — reset về false mỗi endturn.
   combatant.appleDmgReductionActive = false;
+  // Eye Of Horus (weapon passive "Foreclosure Task Force President") — reset TOÀN
+  // BỘ counter mỗi endturn (luật: "trong 1 turn khi tấn công 1 đối tượng").
+  combatant.m1CountThisTurnByTarget = {};
   // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
   // ngay) — giờ mới trừ THẬT lúc end turn.
   if ((combatant.poiseReductionPending ?? 0) > 0) {
@@ -2842,6 +2883,14 @@ async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw =
     }
     let cost = type === "guard" ? 10 : 20;
     if (type === "evade" && (combatant.injuries ?? []).includes("Gãy chân")) cost *= 2;
+    // Iron Horus (Abydos's Uniform - Lazy Style, outfit passive): Guard tốn 40 Sta
+    // (thay vì 10 mặc định) — ĐỔI LẠI giảm 100% dmg thay vì 90%/99% (xem
+    // guardReductionPct trong khối xử lý damage lúc confirm — check combatant.
+    // hasIronHorus ở đó). Set CỨNG 40 (không cộng dồn với Overflowing Guard/khác —
+    // outfit override hẳn cơ chế Guard cơ bản, không phải % giảm thêm).
+    if (type === "guard" && combatant.hasIronHorus) {
+      cost = 40;
+    }
     // Overflowing Guard (Envy, [45 Points]): ≥7 Charge → Guard giảm 1 nửa Stamina,
     // đồng thời giảm 1 Charge bản thân.
     let overflowingGuardUsed = false;
@@ -3266,7 +3315,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const encounter = await getEncounter(channelId);
     if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
     const player = encounter.players[playerId];
-    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
+    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join` trước (không cần gõ tham số gì, tự động lấy hết).");
     if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
 
@@ -3282,7 +3331,13 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch HOẶC player khác (PvP)"
     // → lấy RIÊNG cho từng target — tính calcMathCore riêng từng target.
     const previews = targets.map(t => {
-      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true });
+      // BUG ĐÃ SỬA: trước đây KHÔNG truyền targetId ở đây — khiến điều kiện
+      // "isM1 && targetId && ..." trong computeAttackerPerkContext LUÔN false (vì
+      // targetId mặc định null), nên TOÀN BỘ passive Eye Of Horus (Repeat Ammo +
+      // tier bonus % + Tremor/Charge tự thân) KHÔNG BAO GIỜ chạy dù logic bên trong
+      // đã viết đúng — verify bằng test thật phát hiện MỌI lần đánh đều ra dmg y hệt
+      // nhau (không có bonus nào áp dụng).
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true, targetId: t.id });
       const defReductionPct = computeDefenderDmgReduction(t.combatant);
       // Mang (Shin/Mang, đang active): True Dmg — Res target dưới 1x bị ép về 1x;
       // +10%/vòng Dmg M1+skill turn này.
@@ -3307,7 +3362,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // số dự kiến — KHÔNG sửa preview.totalDmg gốc (giữ nguyên cho breakdown), chỉ
       // tính finalDmgAfterReduction riêng để show + dùng lại lúc confirm.
       const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
-      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill };
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusSelfTremorCharge: perkCtx.eyeOfHorusSelfTremorCharge };
     });
     const hitCount = previews[0].preview.dmgValues.length;
     const staminaCost = WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
@@ -3320,7 +3375,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     encounter.pendingActions.push({
       id: pendingId, kind: "attack",
       attackerId: playerId, attackerType: "player",
-      targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
+      targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill, eyeOfHorusSelfTremorCharge: p.eyeOfHorusSelfTremorCharge })),
       dmgStr, staminaCost, isM1: true, defenseBypass,
       // Lưu lại kết quả verify — encconfirmall áp dụng emotionDelta + set cooldown
       // THẬT lúc confirm (không phải lúc declare — khớp nguyên tắc "chưa gì là thật
@@ -3371,7 +3426,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     const encounter = await getEncounter(channelId);
     if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
     const player = encounter.players[playerId];
-    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join hp: <số>` trước.");
+    if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join` trước (không cần gõ tham số gì, tự động lấy hết).");
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
 
     const verify = await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
@@ -5160,15 +5215,17 @@ client.on("messageCreate", async (message) => {
   // — để tránh case này, GIẢM/ĐIỀU CHỈNH LẠI vẫn cần GM qua `-setplayer` (admin,
   // có thể set tuyệt đối kể cả giảm, dùng cho các trường hợp đặc biệt/sửa lỗi).
   if (message.content.startsWith("-allocatepoints")) {
-    const kv = parseKeyValues(message.content.replace("-allocatepoints", "").trim());
+    const rawInputFull = message.content.replace("-allocatepoints", "").trim();
+    const { targetUserId, targetLabel, remainingInput } = resolveEquipTarget(message, rawInputFull);
+    const kv = parseKeyValues(remainingInput);
     const branchEntries = BRANCH_KEYS.filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
     if (branchEntries.length === 0) {
-      message.reply(`⚠️ Cú pháp: \`-allocatepoints <nhánh>: <số điểm muốn CỘNG THÊM>\` (CHỈ cộng, không trừ được qua lệnh này)\n> Nhánh hợp lệ: ${BRANCH_KEYS.join("/")}\n> VD: \`-allocatepoints sloth: 10\``);
+      message.reply(`⚠️ Cú pháp: \`-allocatepoints [@user] <nhánh>: <số điểm muốn CỘNG THÊM>\` (CHỈ cộng, không trừ được qua lệnh này; thêm @user nếu admin muốn phân bổ hộ)\n> Nhánh hợp lệ: ${BRANCH_KEYS.join("/")}\n> VD: \`-allocatepoints sloth: 10\``);
       return;
     }
     try {
-      await withLock(message.author.id, async () => {
-        const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      await withLock(targetUserId, async () => {
+        const { data, slot } = await getPlayerDataWithSlot(targetUserId);
         data.branchPoints = data.branchPoints ?? {};
         const proposedBranchPoints = { ...data.branchPoints };
         const changes = [];
@@ -5195,8 +5252,8 @@ client.on("messageCreate", async (message) => {
           data.branchPoints[key] = proposedBranchPoints[key];
           changes.push(`${key[0].toUpperCase() + key.slice(1)}: ${before} → **${data.branchPoints[key]}**`);
         }
-        await savePlayerData(message.author.id, data, slot);
-        message.reply(`✅ ${message.author}: ${changes.join(", ")} [tổng đã phân bổ: ${proposedTotal}/${pool}]${specialBranchNote}`);
+        await savePlayerData(targetUserId, data, slot);
+        message.reply(`✅ ${targetLabel ? `**${targetLabel}**` : message.author}: ${changes.join(", ")} [tổng đã phân bổ: ${proposedTotal}/${pool}]${specialBranchNote}`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);
@@ -5258,7 +5315,15 @@ client.on("messageCreate", async (message) => {
           results.push(`✅ ${user.username}: đã xoá "${perkName}".`);
         }
       }
-      message.reply(results.join("\n"));
+      // Bọc embed (4096 ký tự) thay vì reply string thẳng (giới hạn 2000) — phòng
+      // trường hợp admin mention NHIỀU user cùng lúc khiến kết quả gộp vượt giới
+      // hạn text thường (bài học từ bug helpBody y hệt).
+      const resultText = results.join("\n");
+      if (resultText.length > 1900) {
+        message.reply({ embeds: [{ description: resultText.slice(0, 4000), color: 0x5865f2 }] });
+      } else {
+        message.reply(resultText);
+      }
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -5341,13 +5406,14 @@ client.on("messageCreate", async (message) => {
   // ── -pages: xem loadout hiện tại (5 Page + 5 E.G.O Page) ───────────────────
   if (message.content.startsWith("-pages")) {
     try {
-      const { data } = await getPlayerDataWithSlot(message.author.id);
+      const targetUser = message.mentions.users.first() ?? message.author;
+      const { data } = await getPlayerDataWithSlot(targetUser.id);
       const pages = data.equippedPages ?? [null, null, null, null, null];
       const egoPages = data.equippedEgoPages ?? [null, null, null, null, null];
       const fmt = (list) => list.map((p, i) => `**#${i + 1}** ${p ?? "*(trống)*"}`).join("\n");
       message.reply({
         embeds: [{
-          title: "📖 Loadout Page",
+          title: `📖 Loadout Page — ${targetUser.username}`,
           description: `**5 Page thường:**\n${fmt(pages)}\n\n**5 E.G.O Page:**\n${fmt(egoPages)}`,
           color: 0x5865f2,
           footer: { text: "-equippage <slot> <skill> · -equipegopage <slot> <skill> · -unequippage/-unequipegopage <slot>" },
@@ -5466,7 +5532,8 @@ client.on("messageCreate", async (message) => {
   // ── -equipment: xem Weapon/Outfit/3 Accessory hiện tại ─────────────────────
   if (message.content.startsWith("-equipment")) {
     try {
-      const { data } = await getPlayerDataWithSlot(message.author.id);
+      const targetUser = message.mentions.users.first() ?? message.author;
+      const { data } = await getPlayerDataWithSlot(targetUser.id);
       const weapon = data.equippedWeapon ? findWeaponAnywhere(data.equippedWeapon) : null;
       const outfit = data.equippedOutfit ? findOutfit(data.equippedOutfit) : null;
       const accessories = (data.equippedAccessories ?? [null, null, null]).map(n => n ? findAccessory(n) : null);
@@ -5484,7 +5551,7 @@ client.on("messageCreate", async (message) => {
       });
       message.reply({
         embeds: [{
-          title: "🎒 Trang bị hiện tại",
+          title: `🎒 Trang bị hiện tại — ${targetUser.username}`,
           description: lines.join("\n"),
           color: 0x5865f2,
           footer: { text: "-equipweapon/-equipoutfit/-equipaccessory <slot> <tên> · -unequip... để gỡ" },
@@ -6009,6 +6076,7 @@ client.on("messageCreate", async (message) => {
             weaponWeight: weapon,
             weaponBaseDamage: equippedWeaponObj?.baseDamage ?? null,
             weaponType: equippedWeaponObj?.type ?? null,
+            weaponName: equippedWeaponObj?.name ?? null,
             resistance: res, speedRangeMin, speedRangeMax,
           });
           // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
@@ -6036,6 +6104,13 @@ client.on("messageCreate", async (message) => {
           // vũ khí giữa trận — xem -encounter swapweapon) — CHỐT lúc join, cùng
           // nguyên tắc snapshot như Page ở trên.
           joined.equippedAccessoriesSnapshot = (profileData.equippedAccessories ?? []).filter(Boolean);
+          // Cờ passive GẮN LIỀN 1 outfit/weapon CỤ THỂ (tự động hoá theo yêu cầu trực
+          // tiếp) — snapshot lúc join, cùng nguyên tắc như trên (đổi trang bị giữa
+          // trận cần join lại để cập nhật).
+          // Iron Horus (Abydos's Uniform - Lazy Style): Block tốn 40 Sta (thay vì 10)
+          // nhưng giảm sát thương TOÀN BỘ đòn (100%, thay vì 90%/99% mặc định) — xem
+          // performGuardEvade.
+          joined.hasIronHorus = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "") === "abydos's uniform - lazy style";
           // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
           // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
           // refill Light/Poise/Sanity mỗi lần gõ lại join).
@@ -6153,6 +6228,7 @@ client.on("messageCreate", async (message) => {
           player.weaponWeight = newWeapon.weight;
           player.weaponBaseDamage = newWeapon.baseDamage ?? null;
           player.weaponType = newWeapon.type ?? null;
+          player.weaponName = newWeapon.name ?? null;
           appendActionLog(encounter, `🔄 <@${message.author.id}> đổi vũ khí qua ${abilityName} (-${lightCost} Light): ${newWeapon.name} (${oldWeaponWeight} → ${newWeapon.weight}).`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(
@@ -6908,13 +6984,17 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    message.reply(
-      "⚠️ Lệnh không hợp lệ. Dùng:\n\n" +
+    // BUG ĐÃ SỬA: trước đây "-encounter help" (gõ ĐÚNG, có chủ đích xem hướng dẫn)
+    // rơi vào CHUNG message "⚠️ Lệnh không hợp lệ" — gây hiểu lầm nghiêm trọng (nội
+    // dung PHÍA SAU chính là help thật, nhưng tiêu đề khiến player tưởng mình gõ
+    // sai). Giờ TÁCH RIÊNG: "help" → tiêu đề tích cực "📖 Hướng dẫn"; MỌI sub khác
+    // không nhận diện được → giữ nguyên "⚠️ Lệnh không hợp lệ" (đúng bản chất).
+    const helpBody =
       "**Setup & quản lý trận**\n" +
       "> `-encounter start name: <tên trận> [permadeath: yes]` (admin/GM) — permadeath cho Night in the Backstreet/dungeon đặc biệt\n" +
       "> `-encounter addenemy key: <key> name: <tên> hp: <số>` (admin/GM, tùy chọn `stamina:`/`weapon:`/`res:`/`perks:`/`speedrange:`)\n" +
       "> `-encounter removeenemy key: <key>` (admin/GM) — gỡ khỏi board (bỏ chạy/bắt sống, KHÔNG tính là đã hạ)\n" +
-      "> `-encounter join hp: <số>` (player — không gõ hp:/light: thì tự tính theo Grade + HP còn lại từ trận trước; tự lấy weapon/outfit đã equip)\n" +
+      "> `-encounter join` — HOÀN TOÀN TỰ ĐỘNG (không cần gõ gì) — tự lấy HP còn lại từ trận trước (hoặc full theo Grade), Max Light theo Grade, weapon/outfit/Res đã equip. Gõ tay `hp:`/`stamina:`/`light:`/`weapon:`/`res:`/`speedrange:` CHỈ để ĐÈ LÊN mặc định nếu cần trường hợp đặc biệt\n" +
       "> `-encounter status` · `-encounter end` (GM, tự gửi lại action log đầy đủ trước khi xoá) · `-encounter rollspeed` (GM)\n" +
       "> `-encounter log [turn: <số>/all]` — xem lại lịch sử action đã confirm/reject (mặc định 5 turn gần nhất)\n\n" +
       "**Tấn công & phòng thủ**\n" +
@@ -6937,8 +7017,20 @@ client.on("messageCreate", async (message) => {
       "> `-equipweapon/-equipoutfit <tên>` · `-equipaccessory <slot 1-3> <tên>` · `-equippage/-equipegopage <slot 1-5> <tên>` · `-equipment`/`-pages`\n" +
       "> `-healitem <tên>` — hồi đầy HP ngoài trận bằng item · `-rewoundtime @user` — hồi sinh Permanent Death (miễn phí lần đầu/profile)\n" +
       "> `-healinjuryahn @user ahn: <số> index: <số>` (admin/GM, GM tự định giá) — chữa 1 chấn thương NGOÀI trận. Chấn thương PERSIST qua encounter — chỉ chữa được bằng Ahn (ngoài trận) hoặc K-Corp Ampule (trong trận, hồi đầy HP + chữa hết injury, dùng lần 2/trận = CHẾT)\n" +
-      "> Skill Tree dùng lệnh riêng `-unlockskilltree @user <perk>` (admin, lưu vĩnh viễn trên profile, tự trừ điểm theo Grade)"
-    );
+      "> `-allocatepoints <nhánh>: <số>` — TỰ phân bổ điểm Skill Tree (không cần GM) · `-unlockskilltree <perk>` — TỰ mở khoá perk cho chính mình\n" +
+      "> Admin có thể làm hộ player khác bằng cách thêm @user vào các lệnh equip/unlockskilltree ở trên";
+    // BUG ĐÃ SỬA (xác nhận trực tiếp: "-encounter help không hoạt động") — helpBody
+    // dài ~3468 ký tự, VƯỢT giới hạn 2000 ký tự Discord cho tin nhắn TEXT THƯỜNG
+    // (message.reply(string)) — Discord API THẬT âm thầm từ chối gửi tin nhắn quá
+    // dài, khiến lệnh "không phản hồi gì" (mock test trước đây không mô phỏng giới
+    // hạn ký tự thật của Discord nên không bắt được lỗi này). Chuyển sang EMBED
+    // (giới hạn description 4096 ký tự — đủ chỗ) cho CẢ "help" LẪN "invalid
+    // command" fallback bên dưới.
+    if (sub === "help") {
+      message.reply({ embeds: [{ title: "📖 Hướng dẫn -encounter", description: helpBody, color: 0x5865f2 }] });
+      return;
+    }
+    message.reply({ embeds: [{ title: "⚠️ Lệnh không hợp lệ", description: helpBody, color: 0xe74c3c }] });
     return;
   }
 
@@ -7276,6 +7368,16 @@ client.on("interactionCreate", async (interaction) => {
 
             const targetDmgLines = [];
             let totalHitsThisAction = 0; // tích luỹ TỔNG hit thật qua mọi target (AOE) trong action này — dùng cho Battle Ignition sau vòng lặp (xem dưới)
+            // Eye Of Horus — tích luỹ riêng (KHÔNG gán trực tiếp attacker.combatant.
+            // charge trong vòng lặp) — BUG ĐÃ SỬA: trước đây gán trực tiếp TRONG vòng
+            // lặp targets, nhưng dòng "attacker.combatant.charge = firstPreview.
+            // finalCharge" (SAU vòng lặp, xử lý Poise/Charge "trên bản thân" từ
+            // dmgStr's tag +Charge nếu có) GÁN THẲNG (không cộng dồn) — GHI ĐÈ MẤT
+            // HOÀN TOÀN +2 Charge Eye Of Horus vừa cộng mỗi lần đánh — verify bằng
+            // test thật phát hiện Tremor tăng đúng nhưng Charge KHÔNG BAO GIỜ tăng dù
+            // logic bên trong đúng. Giờ tích luỹ riêng, CỘNG THÊM (không ghi đè) SAU
+            // dòng gán finalCharge — xem chỗ dùng biến này bên dưới.
+            let eyeOfHorusChargeGainedThisAction = 0;
             for (const t of p.targets) {
               const targetResolved = resolveCombatant(encounter, t.targetId);
               if (!targetResolved) { targetDmgLines.push(`⚠️ target ${t.targetId} không còn tồn tại`); continue; }
@@ -7315,7 +7417,10 @@ client.on("interactionCreate", async (interaction) => {
                 const fraction = chargesUsed > 0 ? Math.min(1, (chargesUsed * hitsPerCharge) / hitCount) : 0;
                 return { chargesUsed, fraction };
               }
-              const guardReductionPct = hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9;
+              // Iron Horus (Abydos's Uniform - Lazy Style): Guard giảm 100% dmg
+              // (TOÀN BỘ đòn) — ưu tiên CAO NHẤT, ghi đè cả Fortified Resolve (99%)
+              // nếu có cả 2, vì "giảm TOÀN BỘ đòn" là mức tối đa tuyệt đối.
+              const guardReductionPct = target.hasIronHorus ? 1 : (hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9);
               if (isM1Type) {
                 // M1 NHIỀU HIT — cho phép TRỘN nhiều LOẠI phòng thủ khác nhau để chặn
                 // các CỤM hit khác nhau trong CÙNG 1 đòn M1 (xác nhận trực tiếp từ GM:
@@ -7482,6 +7587,30 @@ client.on("interactionCreate", async (interaction) => {
               if (target.appleDmgReductionActive && targetResolved.type === "player") {
                 finalDmg = Math.max(0, finalDmg - hitCount);
               }
+              // Foreclosure Task Force President (Eye of Horus, passive vũ khí — tự
+              // động hoá theo yêu cầu trực tiếp): leo thang theo SỐ LẦN đánh thường
+              // (M1) trong 1 TURN lên CÙNG 1 target. Áp dụng TẠI ĐÂY (lúc CONFIRM,
+              // không phải lúc declare) để tránh counter bị tăng NHẦM nếu GM sau đó
+              // reject action — đồng bộ đúng với thời điểm "hành động THỰC SỰ xảy
+              // ra". CHỈ áp cho M1 (p.isM1), không áp cho Page/skill.
+              // Phần TỰ ĐỘNG HOÁ ĐƯỢC: +50% dmg khi count 2-3, +2 Tremor +2 Charge
+              // lên BẢN THÂN (attacker) MỖI lần đánh thường bất kể count bao nhiêu.
+              // Phần KHÔNG tự động hoá (giữ nguyên GM/player tự áp — xem weapon.js):
+              // "Repeat Ammo" ở lần đầu (cơ chế không rõ ràng đủ để code chính xác),
+              // Base dmg 3→4 ở count 4-6 (CHỈ tự động được cho đường nút bấm "Đánh
+              // mấy lần" — xem encmenu handler đọc count HIỆN TẠI để tính base động,
+              // KHÔNG áp được cho lệnh text tự gõ dmgStr).
+              // Foreclosure Task Force President (Eye Of Horus) — logic THẬT nằm ở
+              // computeAttackerPerkContext (bonusPct theo tier, tính lúc DECLARE) +
+              // khối "eyeOfHorusSelfTremorCharge" phía trên (commit Tremor/Charge lúc
+              // CONFIRM) — xem 2 chỗ đó, KHÔNG áp dụng lại ở đây. (BUG ĐÃ SỬA: từng có
+              // 1 bản implementation THỨ HAI ở đây, dùng field khác (hasEyeOfHorus/
+              // eyeOfHorusHitCountByTarget) — SAI logic tier (+50% chỉ áp lần 2-3 thay
+              // vì 1-3), THIẾU Repeat Ammo + base 3→4, và Tremor/Charge KHÔNG check
+              // evadedCompletely — chạy SONG SONG với bản đúng khiến Tremor/Charge bị
+              // cộng ĐÚP mỗi lần đánh, verify bằng test thật phát hiện Tremor=16 thay
+              // vì 8 sau 4 lần đánh. Đã xoá hẳn, chỉ giữ 1 nguồn duy nhất.)
+              let eyeOfHorusNote = "";
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
               const justDied = wasAliveBefore && target.currentHp <= 0;
               // HP Persistence (luật: "HP vẫn giữ nguyên" sau khi encounter kết
@@ -7560,6 +7689,18 @@ client.on("interactionCreate", async (interaction) => {
                 if (hasPerk(target, "Convert Physical Trauma")) {
                   target.charge = Math.min(CHARGE_MAX, target.charge + 1);
                 }
+                // Eye Of Horus — COMMIT THẬT (khác PEEK lúc declare trong
+                // computeAttackerPerkContext) — CHỈ tăng counter thật + áp Tremor/
+                // Charge tự thân KHI action THỰC SỰ được confirm (không phải declare)
+                // VÀ KHÔNG bị né hoàn toàn (nằm trong khối !evadedCompletely — "đánh
+                // thường" né hoàn toàn thì không tính là đã đánh, nhất quán với mọi
+                // status effect khác trong khối này).
+                if (t.eyeOfHorusSelfTremorCharge && attacker.type === "player") {
+                  attacker.combatant.m1CountThisTurnByTarget = attacker.combatant.m1CountThisTurnByTarget ?? {};
+                  attacker.combatant.m1CountThisTurnByTarget[t.targetId] = (attacker.combatant.m1CountThisTurnByTarget[t.targetId] ?? 0) + 1;
+                  attacker.combatant.tremor = Math.min(TREMOR_MAX, attacker.combatant.tremor + 2);
+                  eyeOfHorusChargeGainedThisAction += 2;
+                }
               }
               checkStaggerPanic(target);
               // Chấn thương — nhận dmg >30% Max HP trong đòn NÀY → roll 10% nặng/40% nhẹ.
@@ -7576,7 +7717,7 @@ client.on("interactionCreate", async (interaction) => {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -7601,6 +7742,11 @@ client.on("interactionCreate", async (interaction) => {
                 attacker.combatant.poise = firstPreview.finalPoiseStacks;
               }
               attacker.combatant.charge = firstPreview.finalCharge;
+              // Eye Of Horus — cộng THÊM (không ghi đè) SAU dòng gán finalCharge ở
+              // trên — xem comment đầy đủ tại chỗ khai báo eyeOfHorusChargeGainedThisAction.
+              if (eyeOfHorusChargeGainedThisAction > 0) {
+                attacker.combatant.charge = Math.min(CHARGE_MAX, attacker.combatant.charge + eyeOfHorusChargeGainedThisAction);
+              }
             }
             // Bleed — "1 bleed count trên người địch sẽ gây dmg bằng 1/4 count mỗi
             // khi kẻ địch hành động tấn công trong turn" — áp dụng cho CHÍNH người
@@ -7794,6 +7940,14 @@ client.on("interactionCreate", async (interaction) => {
         // Type text (Blunt/Pierce/Slash) → chữ cái dmgStr cần (B/P/S).
         const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
         if (!typeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
+        // Foreclosure Task Force President (Eye Of Horus): base dmg 3→4 "≤6 lần"
+        // KHÔNG cần xử lý riêng ở đây — computeAttackerPerkContext ĐÃ áp dụng hiệu
+        // ứng này qua %bonus (+33,33%, tương đương 4/3) ngay khi doPlayerAttack chạy
+        // phía dưới, hoạt động ĐÚNG cho CẢ dmgStr tự tính từ Modal LẪN gõ tay — KHÔNG
+        // cần biết trước "base dmg" là bao nhiêu ở tầng Modal này. (BUG ĐÃ SỬA: từng
+        // có 1 bản cố đổi THẬT effectiveBaseDamage=4 rồi nhét vào dmgStr TRƯỚC khi
+        // gọi doPlayerAttack — nếu chạy CÙNG với %bonus trong computeAttackerPerkContext
+        // sẽ áp dụng hiệu ứng "base 3→4" HAI LẦN CHỒNG LÊN NHAU. Đã xoá hẳn.)
         dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${typeLetter}` : `${combatant.weaponBaseDamage}${typeLetter}`;
       } else {
         dmgStr = interaction.fields.getTextInputValue("dmgStr");
