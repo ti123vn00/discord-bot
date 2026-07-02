@@ -268,7 +268,7 @@ const SKILLS = {
     },
   },
   "light dash": {
-    name: "Light Dash",
+    name: "Light Dash", tags: "Light",
     cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "—",
     roll() {
       return [
@@ -1340,6 +1340,160 @@ roll(v = "no") {
   ];
 },
 },
+
+  // ── Book of The Keter ──
+  "fervent beats": {
+    name: "Fervent Beats",
+    tags: "Abnormalities <:The_Library:1474374220023857192>",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "??? Turn", diceMul: "1x",
+    roll() {
+      return [
+        `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `☠️ **Khi sử dụng, người dùng CHẮC CHẮN CHẾT sau 3 Turn** — không bị ảnh hưởng bởi bất kỳ lý do gì khác, kể cả vật phẩm bất tử.`,
+        `Đổi lại: nhận NGAY 10 Dice Up, 10 Defense Up, 10 Protection, 10 Haste — tồn tại cho tới lúc bản thân chết.`,
+      ];
+    },
+  },
+
+  // ── Book of The Hod ──
+  "look of the day": {
+    name: "Look of the Day",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
+    roll() {
+      return [
+        `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `Trong 3 turn kế tiếp: TẤT CẢ skill của bản thân được +2 Max Dice và -2 Min Dice.`,
+      ];
+    },
+  },
+
+  // ── Book of The Netzach ──
+  "echoes from the beyond": {
+    name: "Echoes from the Beyond",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "2 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(10, 20);
+      return [
+        `*Type: ??? — KHÔNG có Dice sát thương, đây là hiệu ứng thuần tuý.*`,
+        `<:Dice1:1508173590078558369> **${d1}** Stamina — TẤT CẢ đồng minh nhận lại số Stamina này. TẤT CẢ kẻ thù bị trừ số Stamina bằng số đồng minh đã hồi.`,
+      ];
+    },
+  },
+  "the finale": {
+    name: "The Finale",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:ALEPH:1449759474268242021>",
+    cost: "3 <:Light:1513786082502770719>Light & 50 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `Kích hoạt: nhận 1 stack **Orchestra**.`,
+        `Khi có **Orchestra** VÀ gây Stagger được bất kỳ 1 kẻ địch nào: TẤT CẢ kẻ địch bị trừ [1~6] Light, mất stack **Orchestra**.`,
+        `*CD chỉ bắt đầu tính TỪ LÚC mất stack Orchestra (không phải từ lúc kích hoạt).*`,
+      ];
+    },
+  },
+
+  // ── Book of The Yesod ──
+  "violence": {
+    name: "Violence",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
+    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
+    roll() {
+      return [
+        `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `Trong 3 turn kế tiếp: TẤT CẢ skill của bản thân có Min Dice LUÔN LÀ 1, Max Dice +4.`,
+      ];
+    },
+  },
+
+  // ── Book of The Malkuth ──
+  "display of affection": {
+    name: "Display of Affection",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
+    roll() {
+      return [
+        `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `Nhận 4 Dice Up trong 3 turn.`,
+      ];
+    },
+  },
+
+  // ── Book of The Chesed ──
+  "torn off wisdom": {
+    name: "Torn Off Wisdom",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(1, 4);
+      return [
+        `Type: None`,
+        `<:Dice1:1508173590078558369> **${d1}** — hồi Light cho turn sau tương ứng với số dice gieo ra (KHÔNG bị ảnh hưởng bởi Dice Up).`,
+      ];
+    },
+  },
+  "harvest": {
+    name: "Harvest",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(15, 25);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — +2 Dice Up cho MỖI đồng minh còn sống trên sân.`,
+      ];
+    },
+  },
+  "logging": {
+    name: "Logging",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7, 11), d2 = r(6, 10), d3 = r(6, 9), d4 = 6;
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — nếu Clash THẮNG với Dice này, Dice cuối nhận +10 Dice Up.`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable]`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Unblockable]`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 10 Bleed vào turn kế.`,
+      ];
+    },
+  },
+  "the homing instinct": {
+    name: "The Homing Instinct",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
+    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8, 18);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] — nếu TRÚNG: hồi 2 Light cho TOÀN BỘ đồng minh trong turn.`,
+      ];
+    },
+  },
+  "faded memories": {
+    name: "Faded Memories",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
+    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5, 10), d2 = r(5, 9);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] — nếu TRÚNG: hồi 20 Stamina cho TOÀN BỘ đồng minh.`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] — nếu TRÚNG: hồi 20 Stamina cho TOÀN BỘ đồng minh.`,
+      ];
+    },
+  },
+  "false throne": {
+    name: "False Throne",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:ALEPH:1449759474268242021>",
+    cost: "7 <:Light:1513786082502770719>Light & 40 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(6, 10), d2 = r(5, 9);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] [Unblockable]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] [Unblockable] — sau khi dùng: hồi sinh TOÀN BỘ đồng minh đã chết trong trận này trong 1 Turn (4 Light, mọi Buff trừ Emotion Level bị reset). [KHÔNG TỰ ĐỘNG HOÁ hồi sinh — GM tự thao tác trên board.]`,
+      ];
+    },
+  },
 
   // ── Sinking (Fused Blade) ──
   "greatsword rend": {
@@ -2679,7 +2833,7 @@ roll(v = "no") {
     },
   },
   "tactical suppression": {
-    name: "Tactical Suppression", weaponOf: "Eyes Of Horus", tags: "Weapon",
+    name: "Tactical Suppression", weaponOf: "Eye Of Horus", tags: "Weapon",
     // KHÔNG có Dice — đây là kích hoạt trạng thái (khiêu khích + Shield HP kéo dài
     // 2 turn), không phải 1 đòn sát thương đơn thuần. KHÔNG TỰ ĐỘNG HOÁ (Shield HP/
     // Tremor Reverb/Charge Shield không nằm trong 7 status effect hệ thống track
