@@ -1752,6 +1752,145 @@ const PERK_POINT_COSTS = {
 
 // PERK_BRANCH — map TÊN PERK → key nhánh (9 nhánh chuẩn hoá, khớp PERK_POINT_COSTS
 // phía trên) — dùng để biết 1 perk thuộc nhánh nào khi check ngưỡng mở khoá.
+// BOOK_GRANTS — map TÊN SÁCH CHÍNH THỨC (khớp VALID_BOOKS ở trên) → nội dung sách
+// dạy được (Page/Weapon/Outfit) — dùng cho lệnh -readbook. Xác nhận trực tiếp từ
+// GM: đọc sách KHÔNG chặn equip (equip vẫn tự do như trước), sách chỉ mang tính
+// GHI NHẬN/THAM KHẢO — tiêu 1 cuốn mỗi lần đọc.
+// LƯU Ý: "Reverbation Ensemble Book" GIỮ NGUYÊN chính tả (thiếu chữ "r" so với
+// "Reverberation") vì đây LÀ tên item CHÍNH THỨC đã tồn tại sẵn trong VALID_BOOKS
+// — không tự ý sửa để tránh làm gãy mapping với item thật trong inventory.
+const BOOK_GRANTS = {
+  // "Book Thường" = "Book of Fixer" theo cách gọi ngoài đời (xác nhận trực tiếp từ
+  // GM) — TÊN CHÍNH THỨC trong code/inventory LUÔN là "Book Thường".
+  "Book Thường": {
+    pages: [
+      "Light Attack", "Crush", "You're Too Slow", "Dodge and Strike", "Fleet Footsteps",
+      "Focused Strikes", "Charge and Cover", "Thrust", "Alleyway Counter", "Right Hook",
+      "Opportunistic Slash", "Y-you Only Live Once", "Deep Cuts", "Mutilate", "Sky Kick",
+      "Drop Kick", "Backstreets Scramble", "Stylish Sweeps", "Shocking Blow",
+      "Onslaught Command", "Preemptive Strike",
+    ],
+    weapons: [], outfits: ["Casual Outfit", "Rats Outfit", "Businessman", "Ambitious Fixer"],
+  },
+  "Zwei Association Book": {
+    pages: ["Blade Whirl", "Client Protection", "Standoff", "Law and Order"],
+    weapons: ["Zweihander"], outfits: ["Zwei Association"],
+  },
+  "Red Mist Book": {
+    pages: ["Level Slash", "Onrush", "Spear", "Focus Spirit"],
+    weapons: ["Mimicry Blade"], outfits: [],
+  },
+  "Hana Association Book": {
+    pages: ["Augury Crusher", "Augury Infusion", "Celestial Sight", "Augury Kick"],
+    weapons: ["Augury Spear"], outfits: ["Hana Association"],
+  },
+  "Kurokumo Syndicate Book": {
+    pages: ["Cloud Cutter", "Sky Clearing Cut", "Shadowcloud Shattercleaver", "Dark Cloud Cleaver", "Sober Up", "Silent Mist", "Shadowcloud Kick"],
+    weapons: ["Kurokumo Katana"], outfits: ["Kurokumo Wakashu"],
+  },
+  "Shi Association Book": {
+    pages: ["Catch Breath", "Extreme Edge", "Flying Sword"],
+    weapons: ["Shi Association Katana"], outfits: ["Shi Association"],
+  },
+  "Arbiter Book": {
+    pages: ["Degraded Fairy", "Degraded Pillar", "Degraded Lock", "Degraded Shockwave"],
+    weapons: [], outfits: [],
+  },
+  "Liu Association Book": {
+    pages: ["Perfected Death Fist", "Raging Storm", "Fiery Waltz", "Red Kick", "Flowing Flame", "Fleet Edge", "Flow of the Sword"],
+    weapons: ["Liu Martial Arts", "Liu Guan Dao"], outfits: ["Liu Association"],
+  },
+  "Dieci Association Book": {
+    pages: ["Weight of Knowledge", "Illuminate Thy Vacuity", "Studious Dedication", "Scorch Knowledge"],
+    weapons: ["Dieci Association Kata", "Dieci Association Key"], outfits: ["Dieci Association"],
+  },
+  "Thumb Syndicate Book": {
+    pages: ["Coin Trick", "Summary Judgement", "Pistol Draw"],
+    weapons: ["Soldato Rifle"], outfits: ["Thumb Soldato"],
+  },
+  "Black Silence Book": {
+    pages: ["Blade Flourish", "Waltz in White", "Waltz in Black"],
+    weapons: ["Durandal", "Mook Workshop", "Crystal Atelier", "Zelkova Workshop", "Atelier Logic", "Old Boys Workshop", "Wheel's Industry", "Allas Workshop", "Ranga Workshop"],
+    outfits: [],
+  },
+  "Middle Syndicate Book": {
+    pages: ["Proof of Loyalty", "Just A Vengeance", "Punching", "Kicking"],
+    weapons: ["Chains of Loyalty"], outfits: ["The Middle Little Sibling"],
+  },
+  "The Middle Big Brother Book": {
+    pages: ["My Hair Coupon", "Complete and Total Extermination!", "Vengeance Retaliation", "Stamp of Vengeance", "Punting"],
+    weapons: [], outfits: ["The Middle Big Sibling"],
+  },
+  "Seven Association Book": {
+    pages: ["Dissect Target", "Swash", "Profiling"],
+    weapons: ["Seven Association Longsword"], outfits: ["Seven Association"],
+  },
+  "Udjat Book": {
+    pages: ["Sand Split", "Furūsiyya", "Jamadhar", "Mirage Incision", "Khopesh Swordplay"],
+    weapons: ["Udjat Khopesh"], outfits: ["Udjat"],
+  },
+  "Warp Corp Book": {
+    pages: ["Charge Shield", "Leap", "Overcharged Ripple"],
+    weapons: ["WARP Corp. Dagger", "WARP Corp. Gauntlets"], outfits: ["WARP Corp. Cleaner"],
+  },
+  "Reverbation Ensemble Book": {
+    pages: ["Lupine Onslaught", "Kick And Stomps", "Rapacious Assault", "Pitch-Black Pulverizer"],
+    weapons: ["L'Heure du Loup", "Yesterday's Promise", "Reverberation Scythe", "The Crying Children"],
+    outfits: ["Reverberation Ensemble"],
+  },
+  "Cinq Association Book": {
+    pages: ["Contre Attaque", "Engagement", "Balestra Fente"],
+    weapons: ["Viriscent Pyrojade Ring", "Cinq Rapier"], outfits: ["Cinq Association"],
+  },
+  "Blade Lineage Syndicate Book": {
+    pages: ["Slash Series", "Overthrow", "Moon Splitting Draw", "Red Plum Blossom Scatter", "Fare-Thee Well", "Draw of The Sword", "Acupuncture"],
+    weapons: ["Blade Lineage Hwando"], outfits: ["Blade Lineage", "Blade Lineage Salsu", "Blade Lineage Mentor"],
+  },
+  "Ring Syndicate Book": {
+    pages: ["Sanguine Painting", "Hematic Coloring", "Paint Over"],
+    weapons: ["Pointillist Brush"], outfits: ["Pointillist's Uniform"],
+  },
+  "Fragment Book": {
+    pages: ["Greatsword Rend", "Beheading", "Smackdown", "Memorial Procession"],
+    weapons: ["Fused Blade of Ruined Mirror Worlds"], outfits: [],
+  },
+  "Index Syndicate Book": {
+    pages: ["Execute Prescript", "Somber Procuration", "Will of The City"],
+    weapons: ["Index Cleaver", "Index Longsword"], outfits: ["Index Proselyte"],
+  },
+  "Book of M.A.D.": {
+    pages: ["Soulburn", "Inferno Burst", "Celestial Fire", "Take this, Kid", "Learn again, Kid"],
+    weapons: [], outfits: [],
+  },
+  "Red Gaze Book": {
+    pages: ["Silence", "Scorching Incision", "Following the Flow"],
+    weapons: [], outfits: [],
+  },
+  "N Corp Book": {
+    pages: ["Purify", "Cackle"],
+    weapons: [], outfits: [],
+  },
+  "Sweeping Book": {
+    pages: ["Extract Fuel", "Trash Disposal"],
+    weapons: [], outfits: [],
+  },
+  "Library Book": {
+    pages: [
+      "Light Dash (E.G.O)",
+      "— Keter: Fervent Beats, Wrist Cutter, Marionette, Aspiration, Frost Splinter",
+      "— Hod: Look of the Day, Today's Expression, Sanguine Desire, Red Eyes, Laetitia, Black Swan",
+      "— Netzach: Echoes from the Beyond, The Finale, Fragments from Somewhere, Our Galaxy, Pleasure, Faint Aroma, Da Capo",
+      "— Yesod: Violence, Grinder Mk. 5-2, Harmony, Solemn Lament, Magic Bullet, Flooding Bullets, Magic Bullet (Der Freischütz — dùng `-skill magic bullet df`), Inevitable Bullet, Regret",
+      "— Malkuth: Display of Affection, Fourth Match Flame, Wingbeat, Hornet, Green Stem, The Forgotten",
+      "— Binah: Beak, Punishing Beak, Lamp, Eyes Lamp, Justitia, The Justice Scale, Twillight, Apocalypse (mỗi Page có bản Corrosion riêng, VD Beak↔Punishing Beak — vẫn là 1 Page, có điều kiện/tự chọn để lấy hiệu ứng Corrosion khác)",
+      "— Chesed: Torn Off Wisdom, Harvest, Logging, The Homing Instinct, Faded Memories, False Throne",
+    ],
+    weapons: [], outfits: [],
+    isEgoOnly: true,
+    note: "Học Light Dash (E.G.O Page) MỞ RA TOÀN BỘ 7 nhóm Page phía trên NGAY LẬP TỨC (Keter/Hod/Netzach/Yesod/Malkuth/Binah/Chesed) — đây KHÔNG PHẢI 7 cuốn sách riêng cần đọc thêm (không tồn tại trong inventory), chỉ là cách phân loại — TOÀN BỘ Page trên đều là E.G.O Page.",
+  },
+};
+
 const PERK_BRANCH = {
   // Pride
   "Claim Their Heart": "pride", "Pressure Point": "pride", "Shrouded Power": "pride", "Sharp Eyes": "pride",
@@ -3680,7 +3819,7 @@ function buildPendingListText(encounter) {
 }
 
 
-async function buildBalanceEmbed(targetUser) {
+async function buildBalanceEmbed(targetUser, isSelf = false) {
   const data = await getPlayerData(targetUser.id);
   const { grade, expInCurrentGrade, expNeeded } = calcGrade(data.exp ?? 0);
   const totalBooks = Object.values(data.books ?? {}).reduce((a, b) => a + b, 0);
@@ -3716,22 +3855,64 @@ async function buildBalanceEmbed(targetUser) {
     .map(([b, perks]) => `**${BRANCH_DISPLAY_NAME[b] ?? b}:** ${perks.join(", ")}`);
   const skillTreeValue = `${branchLines.join(" | ")}\n> **Chưa phân bổ:** ${pool - allocated}/${pool} điểm` +
     (perkLines.length > 0 ? `\n\n${perkLines.join("\n")}` : "\n\n*(chưa mở khoá perk nào)*");
-  return {
-    embeds: [{
-      title: `💼 Thông tin của ${targetUser.displayName ?? targetUser.username}`,
-      color: 0x5865f2,
-      thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
-      fields: [
-        { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
-        { name: "✨ Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
-        { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
-        { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
-        { name: "🔩 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
-        { name: "🌳 Skill Tree", value: skillTreeValue, inline: false },
-      ],
-      footer: { text: INVENTORY_HINT_TEXT },
-    }],
+  const embed = {
+    title: `💼 Thông tin của ${targetUser.displayName ?? targetUser.username}`,
+    color: 0x5865f2,
+    thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
+    fields: [
+      { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
+      { name: "✨ Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
+      { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
+      { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
+      { name: "🔩 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
+      { name: "🌳 Skill Tree", value: skillTreeValue, inline: false },
+    ],
+    footer: { text: INVENTORY_HINT_TEXT },
   };
+  // 2 dropdown TỰ PHỤC VỤ (theo yêu cầu trực tiếp: "-balance cần thêm nút cộng
+  // stats với unlock skill tree") — CHỈ hiện cho CHÍNH CHỦ profile (isSelf), tránh
+  // người khác vô tình/cố ý phân bổ điểm hộ người khác qua UI công khai.
+  const components = [];
+  if (isSelf) {
+    const branchOptions = BRANCH_KEYS.map(k =>
+      new StringSelectMenuOptionBuilder()
+        .setLabel(`${BRANCH_DISPLAY_NAME[k]} (hiện ${bp[k] ?? 0} điểm)`.slice(0, 100))
+        .setDescription("Phân bổ thêm điểm vào nhánh này")
+        .setValue(`branch:${k}`)
+    );
+    components.push(new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`balbranch:${targetUser.id}`)
+        .setPlaceholder("🌳 Phân bổ điểm vào 1 nhánh...")
+        .addOptions(branchOptions)
+    ));
+    // Perk ĐỦ ĐIỀU KIỆN unlock ngay (branchPoints đủ) NHƯNG CHƯA unlock — giới hạn
+    // 25 option (giới hạn cứng của Discord StringSelectMenu).
+    const unlockedSet = new Set(data.unlockedSkillTree ?? []);
+    const eligiblePerks = Object.entries(PERK_POINT_COSTS)
+      .filter(([perk, cost]) => {
+        if (unlockedSet.has(perk)) return false;
+        const branch = PERK_BRANCH[perk];
+        if (!branch) return false;
+        return (bp[branch] ?? 0) >= cost;
+      })
+      .slice(0, 25);
+    if (eligiblePerks.length > 0) {
+      const perkOptions = eligiblePerks.map(([perk, cost]) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(perk.slice(0, 100))
+          .setDescription(`${PERK_BRANCH[perk]} — ${cost} điểm`.slice(0, 100))
+          .setValue(`perk:${perk}`)
+      );
+      components.push(new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`balunlock:${targetUser.id}`)
+          .setPlaceholder("🔓 Mở khoá 1 perk đủ điều kiện...")
+          .addOptions(perkOptions)
+      ));
+    }
+  }
+  return { embeds: [embed], components };
 }
 
 // Số entry tối đa mỗi trang inventory
@@ -4264,6 +4445,48 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
 }
 
 
+/**
+ * executeReadBook — logic "đọc" 1 cuốn sách dùng CHUNG cho `-readbook` (text) VÀ
+ * nút "📚 Đọc" trong menu -inventory (button) — tiêu 1 cuốn, trả về nội dung
+ * Page/Weapon/Outfit sách đó dạy (tra BOOK_GRANTS). PHẢI gọi trong withLock(userId).
+ * BUG ĐÃ SỬA: hàm này TRƯỚC ĐÂY bị đặt LỒNG BÊN TRONG body của
+ * client.on("messageCreate", ...) — dù `node --check` vẫn PASS (hợp lệ về cú
+ * pháp), function declaration bên trong 1 arrow-function callback CHỈ có scope
+ * CỤC BỘ trong callback đó, KHÔNG được các client.on("interactionCreate", ...)
+ * KHÁC (định nghĩa Ở NƠI KHÁC trong file) truy cập được — verify bằng test thật
+ * phát hiện lỗi runtime "executeReadBook is not defined" khi bấm nút "📚 Đọc"
+ * trong menu -inventory. Giờ đặt ở TOP-LEVEL (ngoài mọi client.on callback) để
+ * MỌI listener đều truy cập được, giống các helper khác (hasPerk, v.v.).
+ * @returns {Promise<{ bookName: string, desc: string, remaining: number }>}
+ */
+async function executeReadBook(userId, bookNameRaw) {
+  const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
+  const bookName = findBook(bookNameRaw);
+  if (!bookName) throw new Error(`Không nhận diện được sách "${bookNameRaw}".`);
+  const owned = profileData.books?.[bookName] ?? 0;
+  if (owned < 1) throw new Error(`Bạn không có (hoặc đã hết) **${bookName}** trong inventory.`);
+  profileData.books[bookName] = owned - 1;
+  if (profileData.books[bookName] <= 0) delete profileData.books[bookName];
+  await savePlayerData(userId, profileData, slot);
+  const grants = BOOK_GRANTS[bookName];
+  let desc;
+  if (!grants) {
+    desc = `*(Chưa có dữ liệu nội dung cụ thể cho sách này trong hệ thống — GM tự narrate.)*`;
+  } else {
+    const parts = [];
+    if (grants.pages.length > 0) {
+      const hasGroupHeaders = grants.pages.some(p => p.startsWith("—"));
+      parts.push(`**📖 Page:**${hasGroupHeaders ? "\n" + grants.pages.join("\n") : " " + grants.pages.join(", ")}`);
+    }
+    if (grants.weapons.length > 0) parts.push(`**⚔️ Vũ khí:** ${grants.weapons.join(", ")}`);
+    if (grants.outfits.length > 0) parts.push(`**🧥 Outfit:** ${grants.outfits.join(", ")}`);
+    if (grants.isEgoOnly) parts.push(`*(Toàn bộ Page trên đều là E.G.O Page.)*`);
+    if (grants.note) parts.push(`> ${grants.note}`);
+    desc = parts.join("\n") || "*(Sách này không dạy Page/Weapon/Outfit cụ thể nào.)*";
+  }
+  return { bookName, desc, remaining: profileData.books[bookName] ?? 0 };
+}
+
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   try {
@@ -4654,7 +4877,7 @@ client.on("messageCreate", async (message) => {
     if (isOnCooldown(message.author.id, "balance", 2000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé."); return; }
     const targetUser = message.mentions.users.first() ?? message.author;
     try {
-      message.reply(await buildBalanceEmbed(targetUser));
+      message.reply(await buildBalanceEmbed(targetUser, targetUser.id === message.author.id));
     } catch (err) {
       log("error", "balance", targetUser.id, err.message);
       message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
@@ -4878,6 +5101,30 @@ client.on("messageCreate", async (message) => {
   // trên profile). Không có số liệu hồi cụ thể nào được luật cho — coi "dùng item
   // hồi phục" nghĩa là HỒI ĐẦY (full heal), hợp lý nhất cho 1 item hồi phục dùng
   // ngoài combat.
+  // ── -readbook — "đọc" 1 cuốn sách, tiêu 1 cuốn khỏi inventory, hiện ĐẦY ĐỦ
+  // Page/Weapon/Outfit sách đó dạy được (tra từ BOOK_GRANTS) — xác nhận trực tiếp
+  // từ GM: KHÔNG chặn equip nếu chưa đọc (equip vẫn tự do như trước, sách chỉ mang
+  // tính ghi nhận/tham khảo).
+  if (message.content.startsWith("-readbook")) {
+    const bookNameRaw = message.content.replace("-readbook", "").trim();
+    if (!bookNameRaw) { message.reply("⚠️ Cú pháp: `-readbook <tên sách>` (VD: `-readbook cinq association book`) — tiêu 1 cuốn, hiện Page/Weapon/Outfit sách đó dạy.\n> Mẹo: dùng `-inventory` rồi bấm nút 📚 Đọc cho tiện hơn."); return; }
+    try {
+      await withLock(message.author.id, async () => {
+        const { bookName, desc, remaining } = await executeReadBook(message.author.id, bookNameRaw);
+        message.reply({
+          embeds: [{
+            title: `📖 Đã đọc: ${bookName}`,
+            description: desc + `\n\n*Còn lại: ${remaining} cuốn.*\n*Lưu ý: đọc sách KHÔNG chặn equip — bạn vẫn có thể \`-equipweapon\`/\`-equippage\`/\`-equipoutfit\` các tên trên (hoặc bất kỳ tên hợp lệ nào khác) mà không cần đọc sách trước.*`,
+            color: 0x5865f2,
+          }],
+        });
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
   if (message.content.startsWith("-healitem")) {
     const itemNameRaw = message.content.replace("-healitem", "").trim();
     if (!itemNameRaw) { message.reply("⚠️ Cú pháp: `-healitem <tên item>` (hồi ĐẦY HP — dùng item hồi phục trong inventory, KHÔNG cần đang ở trong encounter)."); return; }
@@ -7016,6 +7263,7 @@ client.on("messageCreate", async (message) => {
       "**Ngoài encounter (profile, không cần đang trong trận)**\n" +
       "> `-equipweapon/-equipoutfit <tên>` · `-equipaccessory <slot 1-3> <tên>` · `-equippage/-equipegopage <slot 1-5> <tên>` · `-equipment`/`-pages`\n" +
       "> `-healitem <tên>` — hồi đầy HP ngoài trận bằng item · `-rewoundtime @user` — hồi sinh Permanent Death (miễn phí lần đầu/profile)\n" +
+      "> `-readbook <tên sách>` — tiêu 1 cuốn, hiện Page/Weapon/Outfit sách đó dạy (KHÔNG chặn equip — chỉ mang tính tham khảo)\n" +
       "> `-healinjuryahn @user ahn: <số> index: <số>` (admin/GM, GM tự định giá) — chữa 1 chấn thương NGOÀI trận. Chấn thương PERSIST qua encounter — chỉ chữa được bằng Ahn (ngoài trận) hoặc K-Corp Ampule (trong trận, hồi đầy HP + chữa hết injury, dùng lần 2/trận = CHẾT)\n" +
       "> `-allocatepoints <nhánh>: <số>` — TỰ phân bổ điểm Skill Tree (không cần GM) · `-unlockskilltree <perk>` — TỰ mở khoá perk cho chính mình\n" +
       "> Admin có thể làm hộ player khác bằng cách thêm @user vào các lệnh equip/unlockskilltree ở trên";
@@ -7161,6 +7409,34 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   // ── Nút Mở (sách) / Craft (item) — từ select menu inventory ──
+  // ── Nút "📚 Đọc" — từ select menu inventory, CHỈ cho sách có trong BOOK_GRANTS
+  // (khác invact's "Mở" dành cho Random Book/Sealed Book Cache/Chipboard Cache).
+  if (interaction.customId.startsWith("invread:")) {
+    const parts = interaction.customId.split(":");
+    const targetUserId = parts[1];
+    const itemName = parts.slice(3).join(":"); // parts[2] luôn là "book" ở đây, bỏ qua
+    if (interaction.user.id !== targetUserId) {
+      return interaction.reply({ content: "⚠️ Đây không phải inventory của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    if (isOnCooldown(interaction.user.id, "invread", 2000)) {
+      return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const { bookName, desc, remaining } = await withLock(targetUserId, () => executeReadBook(targetUserId, itemName));
+      await interaction.editReply({
+        embeds: [{
+          title: `📖 Đã đọc: ${bookName}`,
+          description: desc + `\n\n*Còn lại: ${remaining} cuốn.*\n*Lưu ý: đọc sách KHÔNG chặn equip — bạn vẫn có thể \`-equipweapon\`/\`-equippage\`/\`-equipoutfit\` mà không cần đọc sách trước.*`,
+          color: 0x5865f2,
+        }],
+      });
+    } catch (err) {
+      await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra."}` });
+    }
+    return;
+  }
+
   if (interaction.customId.startsWith("invact:")) {
     const parts = interaction.customId.split(":");
     const targetUserId = parts[1];
@@ -8104,6 +8380,95 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // ─── SELECT MENU INTERACTIONS (inventory) ────────────────────────────────────
+// ─── SELECT MENU INTERACTIONS (-balance: phân bổ điểm / unlock perk) ─────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("balbranch:")) return;
+  const [, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const branchKey = interaction.values[0].split(":")[1]; // "branch:sloth" → "sloth"
+  const modal = new ModalBuilder()
+    .setCustomId(`balmodal:${ownerId}:${branchKey}`)
+    .setTitle(`Phân bổ điểm — ${branchKey[0].toUpperCase() + branchKey.slice(1)}`);
+  const amountInput = new TextInputBuilder()
+    .setCustomId("amount")
+    .setLabel("Số điểm muốn cộng thêm")
+    .setPlaceholder("VD: 10")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+  modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
+  await interaction.showModal(modal).catch(() => {});
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.customId.startsWith("balmodal:")) return;
+  const [, ownerId, branchKey] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const addAmount = parseInt(interaction.fields.getTextInputValue("amount").trim(), 10);
+    if (!Number.isFinite(addAmount) || addAmount <= 0) throw new Error("Số điểm phải là số dương.");
+    await withLock(ownerId, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(ownerId);
+      data.branchPoints = data.branchPoints ?? {};
+      const before = data.branchPoints[branchKey] ?? 0;
+      const proposedBranchPoints = { ...data.branchPoints, [branchKey]: before + addAmount };
+      const proposedTotal = BRANCH_KEYS.reduce((sum, k) => sum + (proposedBranchPoints[k] ?? 0), 0);
+      const pool = calcSkillTreePointsEarned(data);
+      if (proposedTotal > pool) {
+        const currentAllocated = calcBranchPointsAllocated(data);
+        throw new Error(`Không đủ điểm — tổng sẽ thành ${proposedTotal}, vượt quá pool ${pool} (còn dư ${pool - currentAllocated} điểm).`);
+      }
+      data.branchPoints[branchKey] = proposedBranchPoints[branchKey];
+      await savePlayerData(ownerId, data, slot);
+      const specialNote = (branchKey === "shin" || branchKey === "light")
+        ? "\n⚠️ Nhánh Shin/Light chỉ dành cho nhân vật đủ điều kiện đặc biệt — xác nhận với GM nếu chưa chắc."
+        : "";
+      await interaction.editReply({ content: `✅ ${branchKey[0].toUpperCase() + branchKey.slice(1)}: ${before} → **${data.branchPoints[branchKey]}** [tổng: ${proposedTotal}/${pool}]${specialNote}\n> Dùng lại \`-balance\` để thấy cập nhật.` });
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("balunlock:")) return;
+  const [, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  if (isOnCooldown(interaction.user.id, "balunlock", 2000)) {
+    return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const perkName = interaction.values[0].split(":").slice(1).join(":"); // "perk:Fortified Resolve" → "Fortified Resolve" (giữ nguyên nếu tên perk có dấu ":")
+    await withLock(ownerId, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(ownerId);
+      data.unlockedSkillTree = data.unlockedSkillTree ?? [];
+      if (data.unlockedSkillTree.includes(perkName)) throw new Error(`Đã có "${perkName}" rồi.`);
+      const conflict = findExclusiveConflict(data.unlockedSkillTree, perkName);
+      if (conflict) throw new Error(`"${perkName}" loại trừ với "${conflict}" đã có sẵn.`);
+      const cost = PERK_POINT_COSTS[perkName];
+      const branch = PERK_BRANCH[perkName];
+      const branchHave = (data.branchPoints ?? {})[branch] ?? 0;
+      if (branchHave < cost) throw new Error(`Cần ${cost} điểm ${branch} — hiện chỉ có ${branchHave}.`);
+      data.unlockedSkillTree.push(perkName);
+      await savePlayerData(ownerId, data, slot);
+      await interaction.editReply({ content: `✅ Đã mở khoá **${perkName}** (nhánh ${branch}, ${cost} điểm)!\n> Dùng lại \`-balance\` để thấy cập nhật.` });
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (inventory) ────────────────────────────────────
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith("invsel:")) return;
@@ -8129,6 +8494,14 @@ client.on("interactionCreate", async (interaction) => {
 
     const canOpen = itemType === "book" && ["Random Book", "Sealed Book Cache", "Chipboard Cache"].includes(itemName);
     const canCraft = itemType === "item" && !!CRAFT_RECIPES[itemName];
+    // canRead — sách "kiến thức" (có trong BOOK_GRANTS, VD "Cinq Association Book")
+    // KHÁC hẳn "Random Book"/"Sealed Book Cache"/"Chipboard Cache" (hộp/gói ngẫu
+    // nhiên dùng nút "Mở") — GAP ĐÃ SỬA: trước đây các sách kiến thức hoàn toàn
+    // KHÔNG có nút hành động nào phù hợp trong menu này (chỉ "Xem info"/"Xóa"), dù
+    // lệnh text `-readbook` đã tồn tại — giờ thêm nút riêng "📚 Đọc" để dùng được
+    // ngay từ menu -inventory (xác nhận trực tiếp từ GM: "-readbook là phần sử
+    // dụng sách trong menu của -inventory").
+    const canRead = itemType === "book" && !!BOOK_GRANTS[itemName];
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -8136,10 +8509,10 @@ client.on("interactionCreate", async (interaction) => {
         .setLabel("ℹ️ Xem info")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId(`invact:${targetUserId}:${itemType}:${itemName}`)
-        .setLabel(itemType === "book" ? "📖 Mở" : "⚙️ Craft")
+        .setCustomId(canRead ? `invread:${targetUserId}:${itemType}:${itemName}` : `invact:${targetUserId}:${itemType}:${itemName}`)
+        .setLabel(canRead ? "📚 Đọc" : (itemType === "book" ? "📖 Mở" : "⚙️ Craft"))
         .setStyle(ButtonStyle.Success)
-        .setDisabled(!canOpen && !canCraft),
+        .setDisabled(!canOpen && !canCraft && !canRead),
       new ButtonBuilder()
         .setCustomId(`invdel:${targetUserId}:${itemType}:${itemName}`)
         .setLabel("🗑️ Xóa 1")
@@ -8458,7 +8831,7 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.deferReply();
     const targetUser = interaction.options.getUser("user") ?? interaction.user;
     try {
-      await interaction.editReply(await buildBalanceEmbed(targetUser));
+      await interaction.editReply(await buildBalanceEmbed(targetUser, targetUser.id === interaction.user.id));
     } catch (err) {
       log("error", "/balance", targetUser.id, err.message);
       await interaction.editReply({ content: "❌ Có lỗi xảy ra khi lấy dữ liệu." });
