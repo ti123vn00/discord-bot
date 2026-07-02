@@ -188,6 +188,16 @@ const SKILLS = {
       ];
     },
   },
+  "set fire": {
+    name: "Set Fire", tags: "Burn",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "6 Turn", diceMul: "—",
+    roll() {
+      return [
+        `*Không có Dice — page chỉ tự áp buff lên vũ khí bản thân*`,
+        `Đốt cháy vũ khí của bạn trong 3 Turn, khiến cho đòn đánh thường (M1) tự động áp 1/2/4 <:Burn:1513762753691652177>Burn [Light/Medium/Heavy] lên kẻ địch mỗi lần trúng.`,
+      ];
+    },
+  },
   "slash series": {
     name: "Slash Series",
     cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
