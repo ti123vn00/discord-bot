@@ -1760,6 +1760,11 @@ const PERK_POINT_COSTS = {
 // LƯU Ý: "Reverbation Ensemble Book" GIỮ NGUYÊN chính tả (thiếu chữ "r" so với
 // "Reverberation") vì đây LÀ tên item CHÍNH THỨC đã tồn tại sẵn trong VALID_BOOKS
 // — không tự ý sửa để tránh làm gãy mapping với item thật trong inventory.
+// UNIVERSALLY_KNOWN_WEAPONS — vũ khí AI CŨNG BIẾT DÙNG, bỏ qua ownership gate khi
+// equip (xác nhận trực tiếp từ GM: "Brawler là vũ khí tay không nên bất kỳ ai cũng
+// chọn được"). Danh sách CỐ Ý NGẮN — chỉ thêm khi có xác nhận rõ ràng tương tự.
+const UNIVERSALLY_KNOWN_WEAPONS = new Set(["brawler"]);
+
 const BOOK_GRANTS = {
   // "Book Thường" = "Book of Fixer" theo cách gọi ngoài đời (xác nhận trực tiếp từ
   // GM) — TÊN CHÍNH THỨC trong code/inventory LUÔN là "Book Thường".
@@ -2830,6 +2835,11 @@ function advanceCombatantTurn(combatant) {
   // Set Fire — đếm ngược 3 turn, hết thì tắt buff (KHÔNG reset về 0 ngay như apple —
   // đây là counter thật, giảm dần từ 3→2→1→0).
   if (combatant.setFireTurnsLeft > 0) combatant.setFireTurnsLeft -= 1;
+  // Iron Horus — Guard "cả turn chặn TOÀN BỘ đòn" nghĩa là hiệu lực ĐÚNG 1 turn
+  // (KHÔNG kéo dài mãi mãi) — vì charge KHÔNG BAO GIỜ tự trừ theo hit (xem khối xử
+  // lý Guard lúc confirm), cần RESET THỦ CÔNG ở đây mỗi endturn. Người KHÔNG có
+  // Iron Horus KHÔNG cần dòng này — charge của họ tự nhiên hết khi ăn đủ N hit.
+  if (combatant.hasIronHorus && combatant.guardCharges > 0) combatant.guardCharges = 0;
   // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
   // ngay) — giờ mới trừ THẬT lúc end turn.
   if ((combatant.poiseReductionPending ?? 0) > 0) {
@@ -3517,9 +3527,21 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusSelfTremorCharge: perkCtx.eyeOfHorusSelfTremorCharge };
     });
     const hitCount = previews[0].preview.dmgValues.length;
-    const staminaCost = WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
+    // Eye Of Horus — Stamina cost ĐẶC BIỆT: 20 Sta cho MỖI "lần bắn" (1 lần bắn = 9
+    // hit, 3 dmg/hit = 27 dmg), KHÔNG theo công thức thường (Heavy = 20/hit riêng
+    // lẻ) — xác nhận trực tiếp từ GM: "1 đánh thường của Eye of Horus, tốn 20
+    // stamina và là 3x9. 1 turn đánh mấy lần cũng được... Eye of Horus đánh 2 lần
+    // thì sẽ là 18 hit, 10 lần sẽ là 90 hit". BUG ĐÃ SỬA: hiểu sai "đánh mấy lần
+    // cũng được" (= KHÔNG giới hạn SỐ LẦN bắn/turn) thành "phí LUÔN CỐ ĐỊNH 20 dù
+    // bắn bao nhiêu lần" — ĐÚNG PHẢI LÀ 20 × SỐ LẦN BẮN (hitCount/9, làm tròn lên):
+    // 1 lần bắn (9 hit) = 20 Sta, 2 lần (18 hit) = 40 Sta, 10 lần (90 hit) = 200 Sta.
+    const isEyeOfHorus = (player.weaponName ?? "").toLowerCase() === "eye of horus";
+    const eyeOfHorusVolleys = Math.ceil(hitCount / 9);
+    const staminaCost = isEyeOfHorus ? eyeOfHorusVolleys * 20 : WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
     if (player.currentStamina < staminaCost) {
-      throw new Error(`Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
+      throw new Error(isEyeOfHorus
+        ? `Không đủ Stamina — Eye Of Horus tốn 20 Sta/lần bắn (9 hit) — ${hitCount} hit ≈ ${eyeOfHorusVolleys} lần bắn = ${staminaCost} Sta, còn ${player.currentStamina}.`
+        : `Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
     }
 
     const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -5282,7 +5304,7 @@ client.on("messageCreate", async (message) => {
         message.reply({
           embeds: [{
             title: `📖 Đã đọc: ${result.bookName}`,
-            description: `Nhận được: **${result.chosenName}** (${matchedType === "page" ? "Page" : matchedType === "weapon" ? "Vũ khí" : "Outfit"})\n\n*Còn lại: ${result.remaining} cuốn.*\n*Lưu ý: từ giờ equip weapon/outfit/page ĐỀU cần sở hữu trước — dùng \`-equipweapon\`/\`-equippage\`/\`-equipoutfit\` với đúng tên vừa nhận.*`,
+            description: `Nhận được: **${result.chosenName}** (${matchedType === "page" ? "Page" : matchedType === "weapon" ? "Vũ khí" : "Outfit"})\n\n*Còn lại: ${result.remaining} cuốn.*`,
             color: 0x5865f2,
           }],
         });
@@ -5893,7 +5915,8 @@ client.on("messageCreate", async (message) => {
       // người khác (targetLabel !== null) BỎ QUA check này — admin có toàn quyền
       // cấp phát trực tiếp không cần qua sách (đúng "hoặc GM cấp thẳng").
       const isAdminAction = targetLabel !== null;
-      if (!isAdminAction && (data.items?.[weapon.name] ?? 0) < 1) {
+      const isUniversallyKnown = UNIVERSALLY_KNOWN_WEAPONS.has(weapon.name.toLowerCase());
+      if (!isAdminAction && !isUniversallyKnown && (data.items?.[weapon.name] ?? 0) < 1) {
         throw new Error(`Bạn chưa sở hữu **${weapon.name}** — cần đọc sách tương ứng để nhận (xem \`-readbook\`), hoặc nhờ GM cấp.`);
       }
       data.equippedWeapon = weapon.name;
@@ -7964,12 +7987,26 @@ client.on("interactionCreate", async (interaction) => {
                 }
                 if (!bypass.blockGuard && (target.guardCharges ?? 0) > 0 && hitIdx < totalHits) {
                   const coverStart = hitIdx;
-                  let used = 0;
-                  while (target.guardCharges > 0 && hitIdx < totalHits) {
-                    target.guardCharges -= 1; used += 1;
-                    for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 1 - guardReductionPct;
+                  // Iron Horus (Abydos's Uniform passive) — BUG ĐÃ SỬA (xác nhận
+                  // trực tiếp từ GM, đang gây ăn dmg thật trên production): "1 lần
+                  // guard tốn 40 Sta nhưng CẢ TURN sẽ guard TOÀN BỘ đòn, 1 charge
+                  // KHÔNG BAO GIỜ tụt" — KHÁC HẲN cơ chế mặc định (charge chặn giới
+                  // hạn N hit theo weaponWeight rồi tự trừ hết). Với Iron Horus: che
+                  // TOÀN BỘ hit còn lại trong hit-group này, KHÔNG trừ guardCharges gì
+                  // cả (giữ nguyên charge, tiếp tục che các đòn KHÁC trong CÙNG turn
+                  // cho tới khi turn kết thúc — xem advanceCombatantTurn nơi charge
+                  // mới thực sự reset).
+                  if (target.hasIronHorus) {
+                    while (hitIdx < totalHits) { perHitMult[hitIdx] = 1 - guardReductionPct; hitIdx++; }
+                    noteParts.push(`🛡️**Guard (Iron Horus — chặn TOÀN BỘ, charge không tụt)** (giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
+                  } else {
+                    let used = 0;
+                    while (target.guardCharges > 0 && hitIdx < totalHits) {
+                      target.guardCharges -= 1; used += 1;
+                      for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 1 - guardReductionPct;
+                    }
+                    noteParts.push(`🛡️**Guard** (${used} charge, giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
                   }
-                  noteParts.push(`🛡️**Guard** (${used} charge, giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
                   // Guard Break: Guard VẪN cản được (đã giảm dmg ở trên), nhưng bên
                   // Guard bị Stagger NGAY (không đợi Stamina về 0) — xác nhận trực
                   // tiếp từ GM, KHÁC hẳn Unblockable (vốn làm Guard không cản được).
@@ -8020,10 +8057,17 @@ client.on("interactionCreate", async (interaction) => {
                   defenseNote = ` 🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta, ăn full dmg)`;
                 }
               } else if (!bypass.blockGuard && (target.guardCharges ?? 0) > 0) {
-                const { chargesUsed, fraction } = computeBlock(target.guardCharges);
-                target.guardCharges -= chargesUsed;
-                finalDmg *= (1 - fraction * guardReductionPct);
-                defenseNote = ` 🛡️**Guard** (giảm ${Math.round(guardReductionPct * 100)}% trên ${Math.round(fraction * 100)}% đòn — dùng ${chargesUsed} charge)`;
+                // Iron Horus — cùng nguyên tắc như nhánh M1 nhiều hit ở trên: che
+                // 100% đòn (fraction=1), KHÔNG trừ charge.
+                if (target.hasIronHorus) {
+                  finalDmg *= (1 - guardReductionPct);
+                  defenseNote = ` 🛡️**Guard (Iron Horus — chặn TOÀN BỘ, charge không tụt)** (giảm ${Math.round(guardReductionPct * 100)}%)`;
+                } else {
+                  const { chargesUsed, fraction } = computeBlock(target.guardCharges);
+                  target.guardCharges -= chargesUsed;
+                  finalDmg *= (1 - fraction * guardReductionPct);
+                  defenseNote = ` 🛡️**Guard** (giảm ${Math.round(guardReductionPct * 100)}% trên ${Math.round(fraction * 100)}% đòn — dùng ${chargesUsed} charge)`;
+                }
                 if (bypass.guardBreak) {
                   forceStagger(target);
                   defenseNote += ` 💥**Guard Break** — bị Stagger ngay (Res 2x từ giờ)`;
@@ -8444,8 +8488,23 @@ client.on("interactionCreate", async (interaction) => {
     const targetStr = interaction.fields.getTextInputValue("targetStr");
     if (action === "attack") {
       const isAutoCalc = parts[3] === "auto";
+      const isFixedBurst = parts[3] === "fixedburst";
       let dmgStr;
-      if (isAutoCalc) {
+      if (isFixedBurst) {
+        // Eye Of Horus — LUÔN CỐ ĐỊNH "baseDamage x 9" mỗi lần "đánh thường" (KHÔNG
+        // hỏi/nhận input số lần từ player — xác nhận trực tiếp từ GM: "1 lần đánh
+        // sẽ ra 9 hit, tổng là 27"). Ammo (giới hạn 8 viên/lượt) KHÔNG tự động hoá
+        // (không có hệ thống "đạn" trong bot, giống Light/Stamina/Sanity/Charge) —
+        // GM/player tự đếm 8 lượt bắn theo quy ước riêng của bàn chơi.
+        const encounter = await getEncounter(channelId);
+        const combatant = encounter?.players?.[interaction.user.id];
+        if (!combatant || !Number.isFinite(combatant.weaponBaseDamage) || !combatant.weaponType) {
+          throw new Error("Không tìm thấy dữ liệu vũ khí — dùng `-encounter attack target: ... dmg: ...` (lệnh text) thay vào đó.");
+        }
+        const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
+        if (!typeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
+        dmgStr = `${combatant.weaponBaseDamage}x9${typeLetter}`;
+      } else if (isAutoCalc) {
         const hitCountRaw = interaction.fields.getTextInputValue("hitCount");
         const hitCount = parseInt(hitCountRaw.trim(), 10);
         if (!Number.isFinite(hitCount) || hitCount < 1 || hitCount > 50) {
@@ -8515,8 +8574,15 @@ client.on("interactionCreate", async (interaction) => {
       const encounter = await getEncounter(channelId);
       const combatant = encounter?.players?.[interaction.user.id];
       const hasWeaponData = combatant && Number.isFinite(combatant.weaponBaseDamage) && combatant.weaponType;
+      // Eye Of Horus — BUG ĐÃ SỬA (xác nhận trực tiếp từ GM): "M1 của Eye of Horus
+      // là 3x9P — 1 lần đánh sẽ ra 9 hit" — nghĩa là số hit KHÔNG PHẢI player tự
+      // chọn (khác mọi vũ khí khác), mà LUÔN CỐ ĐỊNH 9 mỗi lần "đánh thường" (vũ
+      // khí burst cố định, gắn liền với cơ chế Ammo). Trước đây dùng CHUNG Modal
+      // "hỏi mấy lần" như vũ khí thường — sai hoàn toàn, cho phép player tự ý nhập
+      // số hit tuỳ ý thay vì luôn đúng 9.
+      const isFixedBurstWeapon = hasWeaponData && (combatant.weaponName ?? "").toLowerCase() === "eye of horus";
       const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:attack${hasWeaponData ? ":auto" : ""}`)
+        .setCustomId(`encmodal:${channelId}:attack${isFixedBurstWeapon ? ":fixedburst" : hasWeaponData ? ":auto" : ""}`)
         .setTitle("Đánh thường (M1)");
       const targetInput = new TextInputBuilder()
         .setCustomId("targetStr")
@@ -8524,7 +8590,10 @@ client.on("interactionCreate", async (interaction) => {
         .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
-      if (hasWeaponData) {
+      if (isFixedBurstWeapon) {
+        // CHỈ hỏi target — KHÔNG hỏi "mấy lần" (luôn cố định 9 hit/lần bắn).
+        modal.addComponents(new ActionRowBuilder().addComponents(targetInput));
+      } else if (hasWeaponData) {
         const hitCountInput = new TextInputBuilder()
           .setCustomId("hitCount")
           .setLabel(`Đánh mấy lần? (${combatant.weaponBaseDamage} ${combatant.weaponType}/hit, vũ khí ${combatant.weaponWeight})`.slice(0, 45))
@@ -8656,7 +8725,7 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply({
       embeds: [{
         title: `📖 Đã đọc: ${result.bookName}`,
-        description: `Nhận được: **${result.chosenName}** (${typeLabel})\n\n*Còn lại: ${result.remaining} cuốn.*\n*Lưu ý: từ giờ equip weapon/outfit/page ĐỀU cần sở hữu trước.*`,
+        description: `Nhận được: **${result.chosenName}** (${typeLabel})\n\n*Còn lại: ${result.remaining} cuốn.*`,
         color: 0x5865f2,
       }],
     });
