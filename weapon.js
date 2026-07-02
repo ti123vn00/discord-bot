@@ -80,8 +80,8 @@ const WEAPONS = {
     // tại không track tag "Airborne" của lần roll skill gần nhất) — GM tự áp dụng.
     criticalSkillKey: "grappling",
   },
-  "eyes of horus": {
-    name: "Eyes Of Horus",
+  "eye of horus": {
+    name: "Eye Of Horus",
     weight: "heavy",
     type: "Pierce",
     // "3x9" theo mô tả gốc: 1 LẦN BẮN (1 lượt M1) tự động ra 9 hit, mỗi hit 3 dmg
@@ -108,7 +108,7 @@ const WEAPONS = {
       },
     ],
     // Critical "Tactical Suppression" — có trong skills.js (key "tactical
-    // suppression", weaponOf: "Eyes Of Horus") — LƯU Ý: bản chất là kích hoạt
+    // suppression", weaponOf: "Eye Of Horus") — LƯU Ý: bản chất là kích hoạt
     // trạng thái Shield 2-turn phức tạp, KHÔNG phải 1 lần roll dmg đơn thuần — xem
     // đầy đủ comment ở entry skills.js tương ứng.
     criticalSkillKey: "tactical suppression",
