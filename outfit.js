@@ -8,7 +8,7 @@ const OUTFITS = {
   "black suit": {
     name: "Black Suit",
     resistance: { B: 1, P: 1.3, S: 1.3 },
-    speedRange: null, // chưa có thông tin Speed cho outfit này
+    speedRange: { min: 4, max: 7 },
     keypage: [
       "Mỗi khi đạt Emotion Level nhận được 1 <:DiceUp:1513767795681398894>Dice Up, 1 Clash Power và 1 Protection kéo dài cho đến hết encounter",
       "Refund 1/5 Stamina khi đánh thường",
