@@ -1159,6 +1159,12 @@ function calcMathCore(opts) {
                        // biết enemy hành động mấy lần nên cần nhập tay số này.
     tremorInit = 0,
     chargeInit = 0,
+    // flatDmgPerHit — Attack Power Up/Down (50-Status Nhóm 1): "+1/-1 dmg cho MỌI
+    // dmg gây ra" — CỘNG THẲNG (không phải %) vào MỖI hit TRƯỚC khi nhân bonus%/
+    // Res/DR, giống cách "dmg" gốc hoạt động. Default 0 — AN TOÀN TUYỆT ĐỐI, không
+    // ảnh hưởng bất kỳ caller nào hiện có KHÔNG truyền tham số này (mọi lệnh
+    // -math/-encounter cũ vẫn chạy y hệt trước, đã verify bằng test thật).
+    flatDmgPerHit = 0,
   } = opts;
 
   const resValues = { B: 1, P: 1, S: 1 };
@@ -1290,7 +1296,7 @@ function calcMathCore(opts) {
     const rawTotalPct = bonusPct + extraPct;
     const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0);
     const bonusFactor = 1 + effTotalPct / 100;
-    let instanceDmg = dmg * bonusFactor * multiplier * currentRes * currentDR;
+    let instanceDmg = Math.max(0, dmg + flatDmgPerHit) * bonusFactor * multiplier * currentRes * currentDR;
     if (isDice) instanceDmg *= diceMul;
 
     // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).
@@ -2081,6 +2087,18 @@ function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, ta
       bonusPct += 100 / hitCount; // Repeat Ammo — 1 hit chuẩn bổ sung
     }
     eyeOfHorusSelfTremorCharge = true;
+  }
+
+  // Unopposed Attack Boost (50-Status Nhóm 1): "+15% dmg nếu chiêu KHÔNG bị
+  // Clash, +30% thêm nếu địch Stagger". Trong hệ thống HIỆN TẠI, -encounter clash
+  // là 1 THAO TÁC TÁCH BIỆT (so 2 bên trực tiếp), KHÔNG can thiệp/chặn bất kỳ
+  // pending action (attack/hit) nào — nên "KHÔNG bị Clash" LUÔN ĐÚNG cho mọi
+  // attack/hit thông thường đi qua đây (không có cơ chế nào trong code khiến 1
+  // action "bị Clash"), do đó +15% LUÔN áp dụng khi có status này. Phần +30% có
+  // điều kiện RÕ RÀNG (target.staggered), check được chính xác.
+  if ((attacker.unopposedAttackBoost ?? 0) > 0) {
+    bonusPct += 15;
+    if (target.staggered) bonusPct += 30;
   }
 
   // Claim Their Heart: target Stagger + dưới 15% HP → kết liễu ngay
@@ -3352,6 +3370,34 @@ function buildEncounterActionPanel(channelId, combatant, playerId) {
   ];
 }
 
+/**
+ * buildBossActionPanel — dropdown GM dùng để điều khiển 1 ENEMY/BOSS cụ thể, theo
+ * yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI" — trước đây GM phải
+ * gõ tay TỪNG lệnh text (`-encounter enemyattack key: ... target: ... dmg: ...`)
+ * cho MỌI hành động của enemy, không có UI nào tương tự player action panel. Chỉ
+ * gồm Attack/Guard/Evade/Parry (4 hành động PHỔ BIẾN NHẤT) — Shin/Mang/Manifest
+ * E.G.O/Overcharge/Follow-Up là cơ chế RIÊNG của PLAYER (Skill Tree perk cá nhân),
+ * KHÔNG áp dụng cho enemy nên không đưa vào đây.
+ * @param enemyKey — key ngắn của enemy (VD "mo") — gắn vào customId để handler
+ *  biết đang điều khiển CON NÀO khi có NHIỀU enemy trong encounter.
+ */
+function buildBossActionPanel(channelId, enemyKey, gmUserId) {
+  const options = [
+    new StringSelectMenuOptionBuilder().setLabel("⚔️ Tấn công (M1/skill)").setValue("attack"),
+    new StringSelectMenuOptionBuilder().setLabel("🛡️ Guard").setValue("guard"),
+    new StringSelectMenuOptionBuilder().setLabel("💨 Evade").setValue("evade"),
+    new StringSelectMenuOptionBuilder().setLabel("🗡️ Parry").setValue("parry"),
+  ];
+  return [
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`bossmenu:${channelId}:${enemyKey}:${gmUserId}`)
+        .setPlaceholder(`Điều khiển ${enemyKey}...`)
+        .addOptions(...options)
+    ),
+  ];
+}
+
 /** parseSkillCooldownTurns — đọc field cd của skill ("2 Turn", "1 Turn sau khi...",
  *  "—", "???", text mô tả riêng) → số turn cooldown. Chỉ parse được dạng "<N> Turn"
  *  ở đầu chuỗi — các dạng đặc biệt (text, "—", "???") trả về 0 (không track tự động
@@ -3563,6 +3609,9 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         sanityBonusPct: getEffectiveSanityForDiceBonus(player),
         critDiv: perkCtx.critDivOverride ?? undefined,
         poiseInit: player.poise, chargeInit: player.charge,
+        // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
+        // CÔNG (attacker), KHÔNG áp cho target.
+        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
@@ -3675,6 +3724,9 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         critMul: manualCritMul ?? perkCtx.critMul, diceMul,
         critDiv: perkCtx.critDivOverride ?? critDiv,
         poiseInit: player.poise, chargeInit: player.charge,
+        // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
+        // CÔNG (attacker), KHÔNG áp cho target.
+        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
@@ -3754,6 +3806,8 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
         bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
         sanityBonusPct: getEffectiveSanityForDiceBonus(enemy),
         poiseInit: enemy.poise, chargeInit: enemy.charge,
+        // Attack Power Up/Down (50-Status Nhóm 1) — enemy ĐANG TẤN CÔNG.
+        flatDmgPerHit: (enemy.attackPowerUp ?? 0) - (enemy.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
@@ -7480,6 +7534,33 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    // -encounter bossmenu key: <enemy> — hiện dropdown điều khiển boss (theo yêu
+    // cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI"). Chỉ GM/admin dùng
+    // được (điều khiển enemy vốn đã giới hạn GM-only trong mọi lệnh liên quan).
+    if (sub === "bossmenu") {
+      const kv = parseKeyValues(rest);
+      const enemyKeyRaw = (kv["key"] ?? "").trim();
+      if (!enemyKeyRaw) {
+        message.reply("⚠️ Cú pháp: `-encounter bossmenu key: <enemy>` (VD: `-encounter bossmenu key: mo`)");
+        return;
+      }
+      try {
+        const encounter = await getEncounter(message.channel.id);
+        if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+        const isAdmin = ADMIN_IDS.has(message.author.id);
+        if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
+        const ekey = normalizeEnemyKey(enemyKeyRaw);
+        const enemy = encounter.enemies[ekey];
+        if (!enemy) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}" — dùng \`-encounter status\` để xem danh sách.`);
+        message.reply({
+          embeds: [{ title: `👹 Điều khiển: ${enemy.name} (${ekey})`, description: "Chọn hành động từ dropdown bên dưới.", color: 0xe74c3c }],
+          components: buildBossActionPanel(message.channel.id, ekey, message.author.id),
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
     if (sub === "clash") {
       const kv = parseKeyValues(rest);
       const targetRaw = (kv["target"] ?? "").trim();
@@ -7658,7 +7739,17 @@ client.on("messageCreate", async (message) => {
       message.reply({ embeds: [{ title: "📖 Hướng dẫn -encounter", description: helpBody, color: 0x5865f2 }] });
       return;
     }
-    message.reply({ embeds: [{ title: "⚠️ Lệnh không hợp lệ", description: helpBody, color: 0xe74c3c }] });
+    // BUG/UX ĐÃ SỬA (xác nhận trực tiếp từ GM: "mỗi lần gõ lệnh sai thì nó ra
+    // phần encounter help quá dài, khiến trôi chat rất nhiều") — trước đây fallback
+    // NÀY dump NGUYÊN helpBody dài ~3400 ký tự MỖI LẦN gõ sai — giờ chỉ báo NGẮN
+    // GỌN + trỏ user tự gõ `-encounter help` RIÊNG nếu cần xem đầy đủ. LƯU Ý KỸ
+    // THUẬT: `-encounter` là PREFIX COMMAND (tin nhắn text thường qua
+    // messageCreate), KHÔNG PHẢI slash command — Discord CHỈ hỗ trợ "ephemeral"
+    // (tin nhắn riêng tư, tự ẩn) cho INTERACTION RESPONSE (slash command/button/
+    // dropdown), KHÔNG CÓ CƠ CHẾ ephemeral nào cho message.reply() của tin nhắn
+    // text thường — đây là giới hạn CỦA DISCORD, không phải hạn chế của code, nên
+    // không thể "ẩn" phản hồi này dù muốn — rút ngắn là cách khả thi duy nhất.
+    message.reply({ embeds: [{ title: "⚠️ Lệnh không hợp lệ", description: `Không nhận diện được subcommand \`${sub}\`.\n> Dùng \`-encounter help\` để xem đầy đủ danh sách lệnh.`, color: 0xe74c3c }] });
     return;
   }
 
@@ -8693,6 +8784,13 @@ client.on("interactionCreate", async (interaction) => {
       }
       const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr);
       await interaction.reply({ embeds: [embed] });
+    } else if (action === "bossattack") {
+      // Boss UI (theo yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI")
+      // — enemyKey nằm ở parts[3] (thay vì encodedPageName như case "hit").
+      const enemyKey = parts[3];
+      const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, targetStr);
+      await interaction.reply({ embeds: [embed] });
     } else if (action === "hit") {
       const dmgStr = interaction.fields.getTextInputValue("dmgStr");
       // Chọn từ dropdown 1 Page cụ thể → tự điền skill: (bot tự roll thật kèm theo,
@@ -8848,6 +8946,58 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.reply({ content: resultMsg });
   } catch (err) {
     log("error", "encMenuSelect", interaction.user?.id ?? "unknown", err.message);
+    await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (bossmenu — GM điều khiển 1 enemy cụ thể) ───────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("bossmenu:")) return;
+  const [, channelId, enemyKey, gmUserId] = interaction.customId.split(":");
+  const isAdmin = ADMIN_IDS.has(interaction.user.id);
+  if (interaction.user.id !== gmUserId && !isAdmin) {
+    return interaction.reply({ content: "⚠️ Chỉ GM/admin điều khiển được enemy này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const value = interaction.values[0];
+  try {
+    if (value === "attack") {
+      // Boss KHÔNG có weaponBaseDamage/weaponType tự động (enemy dùng lệnh text
+      // tuỳ ý từ trước tới giờ, không gắn với hệ thống equip weapon) — luôn hỏi
+      // dmgStr gõ tay, giống -encounter enemyattack.
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:bossattack:${enemyKey}`)
+        .setTitle(`${enemyKey} tấn công`.slice(0, 45));
+      const targetInput = new TextInputBuilder()
+        .setCustomId("targetStr")
+        .setLabel("Target (mention player, hoặc all)")
+        .setPlaceholder("VD: @player  hoặc  all")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      const dmgInput = new TextInputBuilder()
+        .setCustomId("dmgStr")
+        .setLabel("Công thức dmg")
+        .setPlaceholder("VD: 50x2B+2Sinking")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(targetInput),
+        new ActionRowBuilder().addComponents(dmgInput),
+      );
+      await interaction.showModal(modal).catch(() => {});
+      return;
+    }
+    if (value === "guard" || value === "evade" || value === "parry") {
+      const label = { guard: "🛡️ Guard", evade: "💨 Evade", parry: "🗡️ Parry" }[value];
+      let resultMsg;
+      if (value === "parry") resultMsg = await performParry(channelId, interaction.user.id, isAdmin, enemyKey);
+      else resultMsg = await performGuardEvade(channelId, interaction.user.id, isAdmin, value, enemyKey);
+      await interaction.reply({ content: resultMsg });
+      return;
+    }
+    await interaction.reply({ content: "⚠️ Hành động không hợp lệ.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  } catch (err) {
+    log("error", "bossMenuSelect", interaction.user?.id ?? "unknown", err.message);
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
