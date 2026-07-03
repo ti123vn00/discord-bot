@@ -1579,7 +1579,7 @@ function normalizeEnemyKey(k) {
 }
 
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
-function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
+function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, weaponCriticalKey = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
   return {
     name,
     maxHp, currentHp: maxHp,
@@ -1598,7 +1598,15 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // text -encounter attack (vẫn luôn cho gõ tay dmgStr tuỳ ý như cũ). null nếu
     // player chưa equip vũ khí nào rõ ràng (enemy luôn null — GM dùng lệnh text,
     // không cần field này).
-    weaponBaseDamage, weaponType, weaponName,
+    // weaponCriticalKey — GAP ĐÃ SỬA (xác nhận trực tiếp: "không có dropdown để sử
+    // dụng critical của vũ khí") — tên skill Critical của vũ khí đã equip (dùng
+    // findSkill() để tra roll thật), lấy từ weapon.criticalSkillKey nếu có field
+    // RIÊNG (VD Brawler → "grappling", Eye Of Horus → "tactical suppression"),
+    // fallback dùng CHÍNH TÊN vũ khí nếu KHÔNG có field (đúng quy ước game: nhiều
+    // vũ khí có Critical TRÙNG TÊN, VD Durandal → Critical "Durandal"). null nếu
+    // vũ khí THỰC SỰ không có Critical nào (VD Patron Librarian Baton) — check qua
+    // findSkill() lúc build dropdown, không tự giả định.
+    weaponBaseDamage, weaponType, weaponName, weaponCriticalKey,
     // m1CountThisTurnByTarget — đếm số lần đánh thường (M1) lên TỪNG target riêng
     // biệt TRONG TURN HIỆN TẠI (key = targetId, value = count) — dùng cho passive
     // "Foreclosure Task Force President" (Eye Of Horus) leo thang theo số lần đánh
@@ -2624,6 +2632,14 @@ function buildEncounterActionPanel(channelId, combatant, playerId) {
   const options = [
     new StringSelectMenuOptionBuilder().setLabel("⚔️ Đánh thường (M1)").setValue("attack"),
   ];
+  // Critical vũ khí — GAP ĐÃ SỬA (xác nhận trực tiếp: "không có dropdown để sử
+  // dụng critical của vũ khí"). CHỈ hiện nếu findSkill() THỰC SỰ tìm được (loại
+  // đúng trường hợp vũ khí không có Critical nào, VD Patron Librarian Baton —
+  // không tự giả định dựa trên có/không field criticalSkillKey).
+  const criticalSkill = combatant.weaponCriticalKey ? findSkill(combatant.weaponCriticalKey) : null;
+  if (criticalSkill) {
+    options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`hit:${criticalSkill.name}`));
+  }
   for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
     if (pageName) options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${pageName}`).setValue(`hit:${pageName}`));
   }
@@ -5989,6 +6005,7 @@ client.on("messageCreate", async (message) => {
             weaponBaseDamage: equippedWeaponObj?.baseDamage ?? null,
             weaponType: equippedWeaponObj?.type ?? null,
             weaponName: equippedWeaponObj?.name ?? null,
+            weaponCriticalKey: equippedWeaponObj ? (equippedWeaponObj.criticalSkillKey ?? equippedWeaponObj.name) : null,
             resistance: res, speedRangeMin, speedRangeMax,
           });
           // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
@@ -6141,6 +6158,7 @@ client.on("messageCreate", async (message) => {
           player.weaponBaseDamage = newWeapon.baseDamage ?? null;
           player.weaponType = newWeapon.type ?? null;
           player.weaponName = newWeapon.name ?? null;
+          player.weaponCriticalKey = newWeapon.criticalSkillKey ?? newWeapon.name ?? null;
           appendActionLog(encounter, `🔄 <@${message.author.id}> đổi vũ khí qua ${abilityName} (-${lightCost} Light): ${newWeapon.name} (${oldWeaponWeight} → ${newWeapon.weight}).`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(
