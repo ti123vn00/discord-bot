@@ -374,6 +374,8 @@ function findItemAdmin(input) {
 const KNOWN_KEYS = new Set([
   "book", "count", "item", "itemcount", "ahn", "exp", "grade", "bonusskillpoints",
   "wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light", // 9 nhánh Skill Tree (branchPoints)
+  "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", // 4 cờ điều kiện đặc biệt
+  "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1
   "choose", // -readbook <sách> choose: <tên> — chốt lựa chọn qua text thay vì dropdown
   "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
@@ -834,7 +836,7 @@ async function getPlayerData(userId) {
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
       const raw = await withTimeout(redis.get(key));
-      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
+      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       return migratePlayerData(data);
     } catch (err) {
@@ -859,7 +861,7 @@ async function getPlayerDataWithSlot(userId) {
       const raw = await withTimeout(redis.get(key));
       const data = raw
         ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
-        : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
+        : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
       return { data, slot };
     } catch (err) {
       lastErr = err;
@@ -1031,7 +1033,7 @@ async function processDailyClaimForUser(userId) {
     const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
     let playerData = playerRaw
       ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
-      : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null] };
+      : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
     playerData = migratePlayerData(playerData);
 
     const today = getVNDateString();
@@ -1936,11 +1938,17 @@ const BRANCH_KEYS = ["wrath", "desire", "sloth", "gluttony", "gloom", "pride", "
 /** calcSkillTreePointsEarned — tổng điểm ĐÃ KIẾM ĐƯỢC (5 khởi điểm grade 9 + 5/grade
  *  đã lên + bonusSkillPoints admin cấp riêng cho "điều kiện đặc biệt" lên 50). Cap
  *  tuyệt đối ở 50 dù cộng dư bao nhiêu — đây là TỔNG POOL để PHÂN BỔ vào 9 nhánh
- *  (branchPoints), KHÔNG PHẢI để "mua" từng perk trực tiếp. */
+ *  (branchPoints), KHÔNG PHẢI để "mua" từng perk trực tiếp.
+ *  GATE "50StatUnlock" — theo yêu cầu trực tiếp (field track điều kiện đặc biệt
+ *  lên 50 điểm): bonusSkillPoints CHỈ thực sự cộng vào pool nếu profileData
+ *  ["50StatUnlock"] === true — GM có thể CẤP bonusSkillPoints TRƯỚC (VD chuẩn bị
+ *  sẵn) nhưng nó KHÔNG có hiệu lực cho tới khi field NÀY cũng được xác nhận true
+ *  (2 bước tách biệt, tránh GM lỡ tay cộng bonusSkillPoints mà quên xác nhận điều
+ *  kiện đặc biệt thực sự đã hoàn thành chưa). */
 function calcSkillTreePointsEarned(profileData) {
   const { grade } = calcGrade(profileData.exp ?? 0);
   const fromGrade = 5 + 5 * (GRADE_MIN - grade);
-  const bonus = profileData.bonusSkillPoints ?? 0;
+  const bonus = profileData["50StatUnlock"] ? (profileData.bonusSkillPoints ?? 0) : 0;
   return Math.min(50, fromGrade + bonus);
 }
 
@@ -2120,6 +2128,12 @@ function computeDefenderDmgReduction(defender) {
   let reductionPct = 0;
   if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
   if (hasPerk(defender, "No Will To Break") && defender.manifestedEGO) reductionPct += 20;
+  // 50-Status Nhóm 1 — Fragile TĂNG dmg nhận (dấu ÂM, ngược Protection/Charge
+  // Shield vốn GIẢM dmg nhận). Charge Shield reset về 0 SAU MỖI LẦN áp dụng (xem
+  // nơi gọi hàm này lúc confirm — decrement ngay sau khi tính finalDmg).
+  reductionPct -= (defender.fragile ?? 0) * 1;
+  reductionPct += (defender.protection ?? 0) * 5;
+  reductionPct += (defender.chargeShieldStack ?? 0) * 10;
   return reductionPct;
 }
 
@@ -2348,6 +2362,23 @@ function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMI
     // — đếm ngược mỗi endturn (KHÁC appleDmgReductionActive vốn hết NGAY cuối turn
     // hiện tại — Set Fire kéo dài NHIỀU turn nên cần counter, không phải boolean).
     setFireTurnsLeft: 0,
+    // ── 50-STATUS TRACKING — NHÓM 1 (quy luật đơn giản: stack + decay rõ ràng theo
+    // turn) — theo yêu cầu trực tiếp: "50 status đó cũng phải tự động tracking để
+    // cho giống 1 game đấy". Đây là ĐỢT ĐẦU TIÊN (status có cơ chế RÕ RÀNG NHẤT,
+    // không phụ thuộc phức tạp vào hệ thống khác) — CÒN NHIỀU status phức tạp hơn
+    // (6 biến thể Tremor, Gaze[Awe]/Contempt cycling, Index's Prescript, Airborne,
+    // Time Moratorium, Fairy...) SẼ LÀM Ở ĐỢT SAU, không nhồi hết 1 lần để đảm bảo
+    // chất lượng/test kỹ từng cái.
+    fragile: 0, // +1%/stack dmg NHẬN vào, max 25, hết sau endturn
+    attackPowerUp: 0, // +1 dmg/stack cho MỌI dmg gây ra, max 10, hết sau endturn
+    attackPowerDown: 0, // -1 dmg/stack cho MỌI dmg gây ra, max 10, hết sau endturn
+    defenseUp: 0, // +1%/stack giảm dmg của Block, max 20, hết sau endturn
+    defenseDown: 0, // -5%/stack giảm dmg của Block, max 20, hết sau endturn
+    clashAttackBoost: 0, // +1 điểm Clash/stack, max 8, hết sau endturn
+    unopposedAttackBoost: 0, // +15% dmg nếu không bị Clash, +30% thêm nếu địch Stagger, max 5, hết sau endturn
+    protection: 0, protectionTurnsLeft: 0, // -5%/stack dmg nhận vào, max 20, hết sau 2 turn (KHÁC — 2 turn, không phải 1)
+    regen: 0, // 1 stack = 1 HP hồi — CHỈ mất khi ĐÃ hồi (không tự decay theo turn)
+    chargeShieldStack: 0, // -10%/stack dmg nhận vào, max 20 — mất SAU MỖI LẦN bị tấn công (không theo turn)
     // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
     // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
     // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
@@ -2835,6 +2866,23 @@ function advanceCombatantTurn(combatant) {
   // Set Fire — đếm ngược 3 turn, hết thì tắt buff (KHÔNG reset về 0 ngay như apple —
   // đây là counter thật, giảm dần từ 3→2→1→0).
   if (combatant.setFireTurnsLeft > 0) combatant.setFireTurnsLeft -= 1;
+  // 50-Status NHÓM 1 — decay "biến mất sau End Turn" (Fragile/Attack Power Up-
+  // Down/Defense Up-Down/Clash Attack Boost/Unopposed Attack Boost) — reset THẲNG
+  // về 0, KHÔNG đếm ngược (đúng luật "biến mất sau End Turn", không phải "kéo dài
+  // N turn"). Protection KHÁC — "biến mất sau mỗi 2 turn" nên dùng counter riêng.
+  combatant.fragile = 0;
+  combatant.attackPowerUp = 0;
+  combatant.attackPowerDown = 0;
+  combatant.defenseUp = 0;
+  combatant.defenseDown = 0;
+  combatant.clashAttackBoost = 0;
+  combatant.unopposedAttackBoost = 0;
+  if ((combatant.protectionTurnsLeft ?? 0) > 0) {
+    combatant.protectionTurnsLeft -= 1;
+    if (combatant.protectionTurnsLeft <= 0) combatant.protection = 0;
+  }
+  // Regen/Charge Shield KHÔNG decay theo turn (chỉ mất khi ĐÃ hồi HP / ĐÃ bị tấn
+  // công tương ứng) — KHÔNG có dòng reset ở đây, đúng chủ ý.
   // Iron Horus — Guard "cả turn chặn TOÀN BỘ đòn" nghĩa là hiệu lực ĐÚNG 1 turn
   // (KHÔNG kéo dài mãi mãi) — vì charge KHÔNG BAO GIỜ tự trừ theo hit (xem khối xử
   // lý Guard lúc confirm), cần RESET THỦ CÔNG ở đây mỗi endturn. Người KHÔNG có
@@ -5519,6 +5567,21 @@ client.on("messageCreate", async (message) => {
       message.reply("❌ `hp:` phải là số ≥0.");
       return;
     }
+    // 4 cờ điều kiện đặc biệt — theo yêu cầu trực tiếp: lưu vào Upstash để TRACK
+    // xem player đã đủ điều kiện mở khoá Shin/Light/50 điểm/Manifested E.G.O tuỳ
+    // chỉnh hay chưa (KHÁC branchPoints.shin/light — 2 field NÀY là CỜ ĐIỀU KIỆN
+    // ĐỦ TƯ CÁCH, còn branchPoints là ĐIỂM ĐÃ PHÂN BỔ — 1 người có thể ĐỦ ĐIỀU KIỆN
+    // [Unlock=true] nhưng CHƯA phân bổ điểm nào [branchPoints=0], hoặc ngược lại
+    // không thể phân bổ nếu Unlock=false, xem gating ở -allocatepoints).
+    const UNLOCK_FLAG_KEYS = { shinunlock: "ShinUnlock", lightskilltreeunlock: "LightSkillTreeUnlock", "50statunlock": "50StatUnlock", manifestedegounlock: "ManifestedEGOUnlock" };
+    const unlockFlagUpdates = {};
+    for (const [paramKey, fieldName] of Object.entries(UNLOCK_FLAG_KEYS)) {
+      const raw = (kv[paramKey] ?? "").trim().toLowerCase();
+      if (!raw) continue;
+      if (["yes", "true", "1", "có"].includes(raw)) unlockFlagUpdates[fieldName] = true;
+      else if (["no", "false", "0", "không"].includes(raw)) unlockFlagUpdates[fieldName] = false;
+      else { message.reply(`❌ \`${paramKey}:\` phải là yes/no (hoặc true/false, có/không).`); return; }
+    }
     // Branch Points — PHÂN BỔ điểm Skill Tree vào 1 trong 9 nhánh (wrath/desire/
     // sloth/gluttony/gloom/pride/envy/shin/light) — KIẾN TRÚC ĐÃ SỬA (xác nhận trực
     // tiếp từ GM): mỗi nhánh có ngưỡng RIÊNG, KHÔNG dùng chung 1 pool toàn cục cho
@@ -5537,8 +5600,8 @@ client.on("messageCreate", async (message) => {
       branchUpdates[bKey] = { isAdd, value };
       hasBranchUpdate = true;
     }
-    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null) {
-      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, hoặc 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
+    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null && Object.keys(unlockFlagUpdates).length === 0) {
+      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}), hoặc 4 cờ điều kiện (\`shinunlock\`/\`lightskilltreeunlock\`/\`50statunlock\`/\`manifestedegounlock\`: yes/no).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
       return;
     }
 
@@ -5607,6 +5670,10 @@ client.on("messageCreate", async (message) => {
             data.currentHp = hpSetValue;
             data.hpLastResetCheck = Date.now();
             changes.push(`HP set → **${hpSetValue}**${before !== undefined ? ` (trước: ${before})` : ""}`);
+          }
+          for (const [fieldName, value] of Object.entries(unlockFlagUpdates)) {
+            data[fieldName] = value;
+            changes.push(`${fieldName}: ${value ? "✅ TRUE" : "❌ FALSE"}`);
           }
           if (Object.keys(branchUpdates).length > 0) {
             data.branchPoints = data.branchPoints ?? {};
@@ -5707,20 +5774,29 @@ client.on("messageCreate", async (message) => {
           const currentAllocated = calcBranchPointsAllocated(data);
           throw new Error(`Không đủ điểm — tổng sẽ thành ${proposedTotal}, vượt quá pool ${pool} (hiện đã phân bổ ${currentAllocated}, còn dư ${pool - currentAllocated} điểm để cộng).`);
         }
-        // Cảnh báo MỀM cho Shin/Light — 2 nhánh CHỈ dành cho nhân vật đủ điều kiện
-        // đặc biệt (xác nhận trực tiếp từ GM: "chỉ 1 số người đặc biệt đủ điều kiện
-        // mới thấy và cộng nó") — KHÔNG chặn cứng (không có luật số để verify điều
-        // kiện đó), chỉ nhắc để player/GM tự ý thức, tránh cộng nhầm/lạm dụng.
-        const specialBranchNote = branchEntries.some(e => e.key === "shin" || e.key === "light")
-          ? "\n⚠️ **Lưu ý**: Nhánh Shin/Light chỉ dành cho nhân vật đủ điều kiện đặc biệt trong cốt truyện — hãy xác nhận với GM trước khi dùng nếu chưa chắc chắn."
-          : "";
+        // Gate CỨNG cho Shin/Light — theo yêu cầu trực tiếp (đã có field ShinUnlock/
+        // LightSkillTreeUnlock để verify điều kiện, KHÔNG CÒN "cảnh báo mềm" như
+        // trước — trước đây không chặn được vì "không có luật số để verify điều
+        // kiện", giờ ĐÃ CÓ). Admin phân bổ HỘ người khác (targetLabel !== null) BỎ
+        // QUA check này — admin có toàn quyền, giống pattern equip gating.
+        const isAdminAction = targetLabel !== null;
+        if (!isAdminAction) {
+          const shinAttempt = branchEntries.find(e => e.key === "shin");
+          const lightAttempt = branchEntries.find(e => e.key === "light");
+          if (shinAttempt && !data.ShinUnlock) {
+            throw new Error(`Bạn CHƯA đủ điều kiện phân bổ điểm vào nhánh Shin (ShinUnlock chưa được GM xác nhận) — liên hệ GM.`);
+          }
+          if (lightAttempt && !data.LightSkillTreeUnlock) {
+            throw new Error(`Bạn CHƯA đủ điều kiện phân bổ điểm vào nhánh Light (LightSkillTreeUnlock chưa được GM xác nhận) — liên hệ GM.`);
+          }
+        }
         for (const { key, raw } of branchEntries) {
           const before = data.branchPoints[key] ?? 0;
           data.branchPoints[key] = proposedBranchPoints[key];
           changes.push(`${key[0].toUpperCase() + key.slice(1)}: ${before} → **${data.branchPoints[key]}**`);
         }
         await savePlayerData(targetUserId, data, slot);
-        message.reply(`✅ ${targetLabel ? `**${targetLabel}**` : message.author}: ${changes.join(", ")} [tổng đã phân bổ: ${proposedTotal}/${pool}]${specialBranchNote}`);
+        message.reply(`✅ ${targetLabel ? `**${targetLabel}**` : message.author}: ${changes.join(", ")} [tổng đã phân bổ: ${proposedTotal}/${pool}]`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);
@@ -6855,6 +6931,61 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    // -encounter setstatus — GM SET SỐ CỤ THỂ cho 10 status Nhóm 1 (khác buff/
+    // debuff vốn chỉ TEXT tự do, KHÔNG ảnh hưởng số liệu thật) — CỘNG THÊM (không
+    // set tuyệt đối) vào giá trị hiện có, cap đúng theo luật từng status. Theo
+    // yêu cầu trực tiếp: "50 status đó cũng phải tự động tracking để cho giống 1
+    // game đấy" — đây là lệnh GM dùng để ÁP các status này lên combatant trong
+    // trận thật (trước đó CHỈ có field+decay+công thức tính, HOÀN TOÀN chưa có
+    // cách nào set chúng vào combat).
+    if (sub === "setstatus") {
+      const kv = parseKeyValues(rest);
+      const targetRaw = (kv["target"] ?? "").trim();
+      const STATUS_CAPS = {
+        fragile: 25, attackpowerup: 10, attackpowerdown: 10, defenseup: 20, defensedown: 20,
+        clashattackboost: 8, unopposedattackboost: 5, protection: 20, regen: 99, chargeshield: 20,
+      };
+      const STATUS_FIELD_MAP = {
+        fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
+        defenseup: "defenseUp", defensedown: "defenseDown", clashattackboost: "clashAttackBoost",
+        unopposedattackboost: "unopposedAttackBoost", protection: "protection", regen: "regen",
+        chargeshield: "chargeShieldStack",
+      };
+      const entries = Object.keys(STATUS_CAPS).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
+      if (!targetRaw || entries.length === 0) {
+        message.reply(`⚠️ Cú pháp: \`-encounter setstatus target: <key/userId/me> <status>: <số>\` (CỘNG THÊM vào giá trị hiện có)\n> Status hợp lệ: ${Object.keys(STATUS_CAPS).join("/")}\n> VD: \`-encounter setstatus target: mo fragile: 5\``);
+        return;
+      }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
+          const resolved = resolveCombatant(encounter, targetId);
+          if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          const changes = [];
+          for (const { key, raw } of entries) {
+            const amount = parseInt(raw, 10);
+            if (!Number.isFinite(amount)) throw new Error(`\`${key}:\` phải là số.`);
+            const field = STATUS_FIELD_MAP[key];
+            const cap = STATUS_CAPS[key];
+            const before = resolved.combatant[field] ?? 0;
+            resolved.combatant[field] = Math.max(0, Math.min(cap, before + amount));
+            // Protection có Duration 2-turn RIÊNG (protectionTurnsLeft) — set/refresh
+            // về 2 mỗi lần CỘNG THÊM stack mới (không cộng dồn duration, chỉ refresh).
+            if (key === "protection" && amount > 0) resolved.combatant.protectionTurnsLeft = 2;
+            changes.push(`${key}: ${before} → **${resolved.combatant[field]}**`);
+          }
+          appendActionLog(encounter, `📊 ${resolved.label}: setstatus ${changes.join(", ")}`);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`✅ ${resolved.label}: ${changes.join(", ")}`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
     if (sub === "unbuff" || sub === "undebuff") {
       const kv = parseKeyValues(rest);
       const targetRaw = (kv["target"] ?? "").trim();
@@ -7409,8 +7540,9 @@ client.on("messageCreate", async (message) => {
           // Chấn thương (Gãy tay/Gãy chân/Mất Chân) trừ thẳng vào Dice dùng để clash.
           const myPenalty = getParryClashPenalty(forResolved.combatant);
           const oppPenalty = getParryClashPenalty(targetResolved.combatant);
-          const myEffectiveDice = myRoll.firstDiceValue - myPenalty;
-          const oppEffectiveDice = oppRoll.firstDiceValue - oppPenalty;
+          // Clash Attack Boost (50-Status Nhóm 1): +1 điểm Clash FLAT/stack (max 8).
+          const myEffectiveDice = myRoll.firstDiceValue - myPenalty + (forResolved.combatant.clashAttackBoost ?? 0);
+          const oppEffectiveDice = oppRoll.firstDiceValue - oppPenalty + (targetResolved.combatant.clashAttackBoost ?? 0);
 
           let resultText;
           if (myEffectiveDice > oppEffectiveDice) {
@@ -7423,7 +7555,7 @@ client.on("messageCreate", async (message) => {
             checkStaggerPanic(forResolved.combatant); checkStaggerPanic(targetResolved.combatant);
             const myDelta = forResolved.combatant.currentSanity - myBefore;
             const oppDelta = targetResolved.combatant.currentSanity - oppBefore;
-            resultText = `🏆 ${forResolved.label} THẮNG Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${myPenalty || oppPenalty ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã trừ chấn thương` : ""}) — ${myDelta >= 0 ? "+" : ""}${myDelta} Sanity +2 Coin cho ${forResolved.label}, ${oppDelta >= 0 ? "+" : ""}${oppDelta} Sanity -1 Coin cho ${targetResolved.label}.`;
+            resultText = `🏆 ${forResolved.label} THẮNG Clash! (${myEffectiveDice} vs ${oppEffectiveDice}${(myPenalty || oppPenalty || forResolved.combatant.clashAttackBoost || targetResolved.combatant.clashAttackBoost) ? `, gốc ${myRoll.firstDiceValue} vs ${oppRoll.firstDiceValue}, đã áp chấn thương/Clash Attack Boost` : ""}) — ${myDelta >= 0 ? "+" : ""}${myDelta} Sanity +2 Coin cho ${forResolved.label}, ${oppDelta >= 0 ? "+" : ""}${oppDelta} Sanity -1 Coin cho ${targetResolved.label}.`;
             // Voracity (Desire, [30 Points]): thắng Clash +2 Light, chỉ 1 lần/turn.
             if (hasPerk(forResolved.combatant, "Voracity") && !forResolved.combatant.voracityUsedThisTurn) {
               forResolved.combatant.currentLight = Math.min(forResolved.combatant.maxLight, forResolved.combatant.currentLight + 2);
@@ -7938,8 +8070,12 @@ client.on("interactionCreate", async (interaction) => {
               }
               // Iron Horus (Abydos's Uniform - Lazy Style): Guard giảm 100% dmg
               // (TOÀN BỘ đòn) — ưu tiên CAO NHẤT, ghi đè cả Fortified Resolve (99%)
-              // nếu có cả 2, vì "giảm TOÀN BỘ đòn" là mức tối đa tuyệt đối.
-              const guardReductionPct = target.hasIronHorus ? 1 : (hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9);
+              // nếu có cả 2, vì "giảm TOÀN BỘ đòn" là mức tối đa tuyệt đối — Defense
+              // Up/Down (50-Status) KHÔNG ảnh hưởng nhánh Iron Horus (không thể vượt
+              // 100%), CHỈ cộng vào 2 nhánh còn lại, cap tối đa 1 (100%).
+              const baseGuardPct = target.hasIronHorus ? 1 : (hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9);
+              const defenseUpDownPct = target.hasIronHorus ? 0 : ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
+              const guardReductionPct = Math.min(1, Math.max(0, baseGuardPct + defenseUpDownPct));
               if (isM1Type) {
                 // M1 NHIỀU HIT — cho phép TRỘN nhiều LOẠI phòng thủ khác nhau để chặn
                 // các CỤM hit khác nhau trong CÙNG 1 đòn M1 (xác nhận trực tiếp từ GM:
@@ -8152,6 +8288,18 @@ client.on("interactionCreate", async (interaction) => {
               // vì 8 sau 4 lần đánh. Đã xoá hẳn, chỉ giữ 1 nguồn duy nhất.)
               let eyeOfHorusNote = "";
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              // Regen (50-Status Nhóm 1) — "CHỈ khi mất máu mới tự động tiêu thụ để
+              // hồi HP" (xác nhận trực tiếp từ GM) — KHÔNG tự hồi mỗi turn, CHỈ kích
+              // hoạt NGAY SAU khi vừa nhận dmg thật (finalDmg > 0, không tính đòn bị
+              // né/chặn hoàn toàn thành 0 dmg). Tiêu thụ tối đa min(regen, finalDmg)
+              // — mỗi 1 Regen hồi lại đúng 1 HP, KHÔNG hồi vượt quá lượng vừa mất.
+              let regenHealNote = "";
+              if (finalDmg > 0 && (target.regen ?? 0) > 0) {
+                const regenConsumed = Math.min(target.regen, finalDmg);
+                target.regen -= regenConsumed;
+                target.currentHp = Math.min(target.maxHp, target.currentHp + regenConsumed);
+                regenHealNote = ` 💚+${regenConsumed} HP (Regen, còn ${target.regen})`;
+              }
               const justDied = wasAliveBefore && target.currentHp <= 0;
               // HP Persistence (luật: "HP vẫn giữ nguyên" sau khi encounter kết
               // thúc) — đồng bộ NGAY mỗi lần HP player thay đổi (không chỉ lúc
@@ -8229,6 +8377,19 @@ client.on("interactionCreate", async (interaction) => {
                 if (hasPerk(target, "Convert Physical Trauma")) {
                   target.charge = Math.min(CHARGE_MAX, target.charge + 1);
                 }
+                // Charge Shield (50-Status Nhóm 1) — "biến mất sau mỗi khi bị tấn
+                // công" — reset về 0 NGAY SAU KHI đã phát huy tác dụng (đã cộng vào
+                // defReductionPct ở trên, TRONG khối !evadedCompletely — né hoàn
+                // toàn thì coi như CHƯA thực sự "bị tấn công", giữ nguyên Charge
+                // Shield cho lần sau, nhất quán với mọi status khác trong khối này).
+                if ((target.chargeShieldStack ?? 0) > 0) target.chargeShieldStack = 0;
+                // Charge Shield (50-Status Nhóm 1): "Biến mất sau MỖI KHI bị tấn
+                // công" — TOÀN BỘ stack reset về 0 (không phải trừ dần từng đòn),
+                // ngay sau khi ĐÃ dùng để giảm dmg đòn NÀY (defReductionPct ở trên
+                // đã tính bằng giá trị TRƯỚC khi reset). Nằm trong !evadedCompletely
+                // — né hoàn toàn thì không tính là "bị tấn công", Charge Shield giữ
+                // nguyên.
+                if ((target.chargeShieldStack ?? 0) > 0) target.chargeShieldStack = 0;
                 // Eye Of Horus — COMMIT THẬT (khác PEEK lúc declare trong
                 // computeAttackerPerkContext) — CHỈ tăng counter thật + áp Tremor/
                 // Charge tự thân KHI action THỰC SỰ được confirm (không phải declare)
@@ -8270,7 +8431,7 @@ client.on("interactionCreate", async (interaction) => {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${regenHealNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -8778,12 +8939,14 @@ client.on("interactionCreate", async (interaction) => {
         const currentAllocated = calcBranchPointsAllocated(data);
         throw new Error(`Không đủ điểm — tổng sẽ thành ${proposedTotal}, vượt quá pool ${pool} (còn dư ${pool - currentAllocated} điểm).`);
       }
+      // Gate CỨNG — đồng bộ với -allocatepoints text command (xem comment đầy đủ ở
+      // đó). Dropdown này LUÔN self-service (đã check user.id===ownerId ở trên).
+      if ((branchKey === "shin" && !data.ShinUnlock) || (branchKey === "light" && !data.LightSkillTreeUnlock)) {
+        throw new Error(`Bạn CHƯA đủ điều kiện phân bổ điểm vào nhánh ${branchKey[0].toUpperCase() + branchKey.slice(1)} (chưa được GM xác nhận) — liên hệ GM.`);
+      }
       data.branchPoints[branchKey] = proposedBranchPoints[branchKey];
       await savePlayerData(ownerId, data, slot);
-      const specialNote = (branchKey === "shin" || branchKey === "light")
-        ? "\n⚠️ Nhánh Shin/Light chỉ dành cho nhân vật đủ điều kiện đặc biệt — xác nhận với GM nếu chưa chắc."
-        : "";
-      await interaction.editReply({ content: `✅ ${branchKey[0].toUpperCase() + branchKey.slice(1)}: ${before} → **${data.branchPoints[branchKey]}** [tổng: ${proposedTotal}/${pool}]${specialNote}\n> Dùng lại \`-balance\` để thấy cập nhật.` });
+      await interaction.editReply({ content: `✅ ${branchKey[0].toUpperCase() + branchKey.slice(1)}: ${before} → **${data.branchPoints[branchKey]}** [tổng: ${proposedTotal}/${pool}]\n> Dùng lại \`-balance\` để thấy cập nhật.` });
     });
   } catch (err) {
     await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
