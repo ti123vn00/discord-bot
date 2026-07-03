@@ -122,19 +122,23 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
   const BRANCH_KEYS = ["wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light"];
   
   /** calcSkillTreePointsEarned — tổng điểm ĐÃ KIẾM ĐƯỢC (5 khởi điểm grade 9 + 5/grade
-   *  đã lên + bonusSkillPoints admin cấp riêng cho "điều kiện đặc biệt" lên 50). Cap
-   *  tuyệt đối ở 50 dù cộng dư bao nhiêu — đây là TỔNG POOL để PHÂN BỔ vào 9 nhánh
+   *  đã lên + 5 điểm CUỐI CÙNG nếu đã hoàn thành "điều kiện đặc biệt"). Cap tuyệt
+   *  đối ở 50 dù cộng dư bao nhiêu — đây là TỔNG POOL để PHÂN BỔ vào 9 nhánh
    *  (branchPoints), KHÔNG PHẢI để "mua" từng perk trực tiếp.
-   *  GATE "50StatUnlock" — theo yêu cầu trực tiếp (field track điều kiện đặc biệt
-   *  lên 50 điểm): bonusSkillPoints CHỈ thực sự cộng vào pool nếu profileData
-   *  ["50StatUnlock"] === true — GM có thể CẤP bonusSkillPoints TRƯỚC (VD chuẩn bị
-   *  sẵn) nhưng nó KHÔNG có hiệu lực cho tới khi field NÀY cũng được xác nhận true
-   *  (2 bước tách biệt, tránh GM lỡ tay cộng bonusSkillPoints mà quên xác nhận điều
-   *  kiện đặc biệt thực sự đã hoàn thành chưa). */
+   *  ĐÃ ĐƠN GIẢN HOÁ (xác nhận trực tiếp từ GM: "50statunlock đã true rồi nhưng
+   *  profile vẫn 45, đáng lẽ là 50") — TRƯỚC ĐÂY thiết kế "2 bước tách biệt"
+   *  (50StatUnlock chỉ là cờ VERIFY, bonusSkillPoints là SỐ THẬT cần set THÊM
+   *  RIÊNG) — nhưng GM chỉ set cờ, KHÔNG set thêm bonusSkillPoints, dẫn tới pool
+   *  vẫn giữ 45 dù cờ đã true — GÂY NHẦM LẪN THẬT (không khớp kỳ vọng tự nhiên
+   *  "bật cờ là đủ"). Giờ 50StatUnlock=true → +5 CỐ ĐỊNH luôn, KHÔNG cần bước
+   *  phụ nào nữa — khớp đúng ý nghĩa gốc "5 điểm CUỐI luôn là đúng 5, không phải
+   *  số tuỳ chỉnh". bonusSkillPoints/lệnh -setplayer bonusskillpoints: VẪN GIỮ
+   *  NGUYÊN cú pháp (không xoá, tránh lỗi nếu ai gõ) nhưng KHÔNG CÒN ẢNH HƯỞNG
+   *  gì tới công thức này nữa. */
   function calcSkillTreePointsEarned(profileData) {
     const { grade } = calcGrade(profileData.exp ?? 0);
     const fromGrade = 5 + 5 * (GRADE_MIN - grade);
-    const bonus = profileData["50StatUnlock"] ? (profileData.bonusSkillPoints ?? 0) : 0;
+    const bonus = profileData["50StatUnlock"] ? 5 : 0;
     return Math.min(50, fromGrade + bonus);
   }
   
