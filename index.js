@@ -644,12 +644,22 @@ function migratePlayerData(data) {
   if (data.books !== undefined || data.items !== undefined) {
     data.books = data.books ?? {};
     data.items = data.items ?? {};
+    data.pages = data.pages ?? {};
     data.unlockedSkillTree = data.unlockedSkillTree ?? [];
     data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
     data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
     data.equippedWeapon = data.equippedWeapon ?? null;
     data.equippedOutfit = data.equippedOutfit ?? null;
     data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+    // BUG ĐÃ SỬA (phát hiện qua GM trực tiếp xem JSON thật trong Upstash và không
+    // thấy field này đâu cả) — 4 cờ điều kiện đặc biệt + "pages" KHÔNG được backfill
+    // cho player ĐÃ TỒN TẠI TỪ TRƯỚC khi các field này được thêm vào hệ thống —
+    // profile CŨ hoàn toàn THIẾU field, KHÔNG PHẢI = false, gây khó hiểu khi GM tự
+    // xem/sửa JSON trực tiếp trong Upstash.
+    data.ShinUnlock = data.ShinUnlock ?? false;
+    data.LightSkillTreeUnlock = data.LightSkillTreeUnlock ?? false;
+    data["50StatUnlock"] = data["50StatUnlock"] ?? false;
+    data.ManifestedEGOUnlock = data.ManifestedEGOUnlock ?? false;
     return data;
   }
   const inv = data.inventory ?? {};
@@ -665,12 +675,17 @@ function migratePlayerData(data) {
   }
   data.books = books;
   data.items = items;
+  data.pages = data.pages ?? {};
   data.unlockedSkillTree = data.unlockedSkillTree ?? [];
   data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
   data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
   data.equippedWeapon = data.equippedWeapon ?? null;
   data.equippedOutfit = data.equippedOutfit ?? null;
   data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+  data.ShinUnlock = data.ShinUnlock ?? false;
+  data.LightSkillTreeUnlock = data.LightSkillTreeUnlock ?? false;
+  data["50StatUnlock"] = data["50StatUnlock"] ?? false;
+  data.ManifestedEGOUnlock = data.ManifestedEGOUnlock ?? false;
   delete data.inventory;
   return data;
 }
