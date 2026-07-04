@@ -1246,23 +1246,34 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // số dự kiến — KHÔNG sửa preview.totalDmg gốc (giữ nguyên cho breakdown), chỉ
       // tính finalDmgAfterReduction riêng để show + dùng lại lúc confirm.
       const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
-      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusSelfTremorCharge: perkCtx.eyeOfHorusSelfTremorCharge };
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusTremorChargeAmount: perkCtx.eyeOfHorusTremorChargeAmount };
     });
     const hitCount = previews[0].preview.dmgValues.length;
+    // BUG ĐÃ SỬA (phát hiện qua test thật, không phải chỉ đọc code): lần đánh ĐẦU
+    // TIÊN của Eye Of Horus (Repeat Ammo trigger) tính RA GẤP ĐÔI Stamina cần thiết
+    // (40 thay vì 20) — vì `hitCount` ở trên lấy từ dmgValues SAU KHI
+    // computeAttackerPerkContext đã NHÂN ĐÔI hit count trong dmgStrRewritten (Repeat
+    // Ammo = thêm 1 volley đầy đủ). Với Eye Of Horus, "số lần bắn" (dùng để tính 20
+    // Sta/lần) phải dựa vào Ý ĐỊNH GỐC của người chơi (dmgStr THẬT SỰ nhập, TRƯỚC
+    // rewrite), không phải số hit ĐÃ bị nhân đôi. Parse riêng từ dmgStr gốc — vũ
+    // khí khác (không rewrite gì) không bị ảnh hưởng, vẫn dùng hitCount như cũ.
+    const originalHitCountMatch = dmgStr.match(/x\s*(\d+)/i);
+    const originalHitCount = originalHitCountMatch ? parseInt(originalHitCountMatch[1], 10) : hitCount;
     // Eye Of Horus — Stamina cost ĐẶC BIỆT: 20 Sta cho MỖI "lần bắn" (1 lần bắn = 9
     // hit, 3 dmg/hit = 27 dmg), KHÔNG theo công thức thường (Heavy = 20/hit riêng
     // lẻ) — xác nhận trực tiếp từ GM: "1 đánh thường của Eye of Horus, tốn 20
     // stamina và là 3x9. 1 turn đánh mấy lần cũng được... Eye of Horus đánh 2 lần
     // thì sẽ là 18 hit, 10 lần sẽ là 90 hit". BUG ĐÃ SỬA: hiểu sai "đánh mấy lần
     // cũng được" (= KHÔNG giới hạn SỐ LẦN bắn/turn) thành "phí LUÔN CỐ ĐỊNH 20 dù
-    // bắn bao nhiêu lần" — ĐÚNG PHẢI LÀ 20 × SỐ LẦN BẮN (hitCount/9, làm tròn lên):
-    // 1 lần bắn (9 hit) = 20 Sta, 2 lần (18 hit) = 40 Sta, 10 lần (90 hit) = 200 Sta.
+    // bắn bao nhiêu lần" — ĐÚNG PHẢI LÀ 20 × SỐ LẦN BẮN (originalHitCount/9, làm
+    // tròn lên): 1 lần bắn (9 hit) = 20 Sta, 2 lần (18 hit) = 40 Sta, 10 lần (90
+    // hit) = 200 Sta.
     const isEyeOfHorus = (player.weaponName ?? "").toLowerCase() === "eye of horus";
-    const eyeOfHorusVolleys = Math.ceil(hitCount / 9);
+    const eyeOfHorusVolleys = Math.ceil(originalHitCount / 9);
     const staminaCost = isEyeOfHorus ? eyeOfHorusVolleys * 20 : WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
     if (player.currentStamina < staminaCost) {
       throw new Error(isEyeOfHorus
-        ? `Không đủ Stamina — Eye Of Horus tốn 20 Sta/lần bắn (9 hit) — ${hitCount} hit ≈ ${eyeOfHorusVolleys} lần bắn = ${staminaCost} Sta, còn ${player.currentStamina}.`
+        ? `Không đủ Stamina — Eye Of Horus tốn 20 Sta/lần bắn (9 hit) — ${originalHitCount} hit ≈ ${eyeOfHorusVolleys} lần bắn = ${staminaCost} Sta, còn ${player.currentStamina}.`
         : `Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
     }
 
@@ -1271,7 +1282,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     encounter.pendingActions.push({
       id: pendingId, kind: "attack",
       attackerId: playerId, attackerType: "player",
-      targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill, eyeOfHorusSelfTremorCharge: p.eyeOfHorusSelfTremorCharge })),
+      targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill, eyeOfHorusTremorChargeAmount: p.eyeOfHorusTremorChargeAmount })),
       dmgStr, staminaCost, isM1: true, defenseBypass,
       // Lưu lại kết quả verify — encconfirmall áp dụng emotionDelta + set cooldown
       // THẬT lúc confirm (không phải lúc declare — khớp nguyên tắc "chưa gì là thật
@@ -3239,10 +3250,24 @@ client.on("messageCreate", async (message) => {
       // page trong yêu cầu gốc, đây là suy luận nhất quán, ĐIỀU CHỈNH nếu không
       // đúng ý.
       const isAdminAction = targetLabel !== null;
-      if (!isAdminAction && (data.items?.[accessory.name] ?? 0) < 1) {
+      const ownedCount = data.items?.[accessory.name] ?? 0;
+      if (!isAdminAction && ownedCount < 1) {
         throw new Error(`Bạn chưa sở hữu **${accessory.name}** — nhờ GM cấp (hiện chưa có cơ chế sách nào dạy accessory).`);
       }
       data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+      // BUG ĐÃ SỬA (xác nhận trực tiếp: "1 player chỉ có 1 item accessory duy nhất
+      // nhưng lại equip được cả ở 3 slot accessory") — trước đây CHỈ check "sở hữu
+      // ≥1", KHÔNG check đã dùng accessory NÀY ở CÁC SLOT KHÁC bao nhiêu lần rồi —
+      // với 3 slot nhưng chỉ 1 lần kiểm tra "sở hữu tối thiểu", 1 cái duy nhất có
+      // thể nhét vào cả 3 slot cùng lúc. Đếm số slot KHÁC (không tính slot đang ghi
+      // đè) đã dùng CÙNG accessory này, cộng 1 (cho slot sắp ghi) rồi so với số sở
+      // hữu — admin bypass giống các gate khác.
+      if (!isAdminAction) {
+        const usedInOtherSlots = data.equippedAccessories.filter((name, idx) => idx !== slotNum - 1 && name === accessory.name).length;
+        if (usedInOtherSlots + 1 > ownedCount) {
+          throw new Error(`Bạn chỉ sở hữu **${ownedCount}** **${accessory.name}** nhưng đã dùng **${usedInOtherSlots}** ở slot khác rồi — không đủ để equip thêm slot này.`);
+        }
+      }
       data.equippedAccessories[slotNum - 1] = accessory.name;
       await savePlayerData(targetUserId, data, slot);
       message.reply(`✅ Đã equip accessory **${accessory.name}** vào slot #${slotNum}${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
@@ -5493,7 +5518,7 @@ client.on("interactionCreate", async (interaction) => {
               // KHÔNG áp được cho lệnh text tự gõ dmgStr).
               // Foreclosure Task Force President (Eye Of Horus) — logic THẬT nằm ở
               // computeAttackerPerkContext (bonusPct theo tier, tính lúc DECLARE) +
-              // khối "eyeOfHorusSelfTremorCharge" phía trên (commit Tremor/Charge lúc
+              // khối "eyeOfHorusTremorChargeAmount" phía trên (commit Tremor/Charge lúc
               // CONFIRM) — xem 2 chỗ đó, KHÔNG áp dụng lại ở đây. (BUG ĐÃ SỬA: từng có
               // 1 bản implementation THỨ HAI ở đây, dùng field khác (hasEyeOfHorus/
               // eyeOfHorusHitCountByTarget) — SAI logic tier (+50% chỉ áp lần 2-3 thay
@@ -5607,15 +5632,23 @@ client.on("interactionCreate", async (interaction) => {
                 if ((target.chargeShieldStack ?? 0) > 0) target.chargeShieldStack = 0;
                 // Eye Of Horus — COMMIT THẬT (khác PEEK lúc declare trong
                 // computeAttackerPerkContext) — CHỈ tăng counter thật + áp Tremor/
-                // Charge tự thân KHI action THỰC SỰ được confirm (không phải declare)
-                // VÀ KHÔNG bị né hoàn toàn (nằm trong khối !evadedCompletely — "đánh
+                // Charge KHI action THỰC SỰ được confirm (không phải declare) VÀ
+                // KHÔNG bị né hoàn toàn (nằm trong khối !evadedCompletely — "đánh
                 // thường" né hoàn toàn thì không tính là đã đánh, nhất quán với mọi
                 // status effect khác trong khối này).
-                if (t.eyeOfHorusSelfTremorCharge && attacker.type === "player") {
+                // BUG ĐÃ SỬA (xác nhận trực tiếp: "gắn lên kẻ địch 4 tremor và bản
+                // thân 4 [charge]... bản thân lại nhận chỉ có 2 charge và nhận cả 2
+                // tremor dù đáng lẽ nó là của kẻ địch") — 2 lỗi cùng lúc: (1) Tremor
+                // trước đây gắn lên attacker.combatant (BẢN THÂN) — SAI, phải gắn
+                // lên target (KẺ ĐỊCH đang bị đánh). (2) amount LUÔN cố định +2, dù
+                // Repeat Ammo (lần đầu tiên trong turn) đáng lẽ phải nhân đôi thành
+                // +4 cho CẢ Tremor lẫn Charge. Charge vẫn đúng là gắn lên bản thân
+                // (resource của người dùng vũ khí), chỉ Tremor đổi target.
+                if (t.eyeOfHorusTremorChargeAmount > 0 && attacker.type === "player") {
                   attacker.combatant.m1CountThisTurnByTarget = attacker.combatant.m1CountThisTurnByTarget ?? {};
                   attacker.combatant.m1CountThisTurnByTarget[t.targetId] = (attacker.combatant.m1CountThisTurnByTarget[t.targetId] ?? 0) + 1;
-                  attacker.combatant.tremor = Math.min(TREMOR_MAX, attacker.combatant.tremor + 2);
-                  eyeOfHorusChargeGainedThisAction += 2;
+                  target.tremor = Math.min(TREMOR_MAX, (target.tremor ?? 0) + t.eyeOfHorusTremorChargeAmount);
+                  eyeOfHorusChargeGainedThisAction += t.eyeOfHorusTremorChargeAmount;
                 }
                 // Set Fire (Page): "đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy]
                 // Burn... mỗi lần trúng" — CHỈ áp cho M1 (p.isM1), KHÔNG áp cho Page/
@@ -6389,6 +6422,15 @@ client.on("interactionCreate", async (interaction) => {
       } else if (chosenType === "accessory") {
         const accessory = findAccessory(chosenName);
         data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+        // BUG ĐÃ SỬA (xác nhận trực tiếp: "1 player chỉ có 1 item accessory duy
+        // nhất nhưng lại equip được cả ở 3 slot accessory") — đếm số slot ĐÃ dùng
+        // CÙNG accessory này trước khi tự chọn slot trống/ghi đè — chặn nếu vượt
+        // quá số lượng sở hữu (đã re-check ở dòng trên, ownedCount = data.items).
+        const ownedCount = data.items?.[accessory.name] ?? 0;
+        const usedInAnySlot = data.equippedAccessories.filter(name => name === accessory.name).length;
+        if (usedInAnySlot >= ownedCount) {
+          throw new Error(`Bạn chỉ sở hữu **${ownedCount}** **${accessory.name}** và đã dùng hết ở các slot hiện tại — không đủ để equip thêm.`);
+        }
         // Tự chọn slot TRỐNG đầu tiên — nếu cả 3 đã đầy, ghi đè slot 1 (kèm cảnh
         // báo) — muốn chọn slot cụ thể, dùng lệnh text `-equipaccessory <slot>`.
         let targetSlot = data.equippedAccessories.findIndex(s => !s);
