@@ -257,6 +257,13 @@ module.exports = function ({ findBook, getPlayerDataWithSlot, savePlayerData }) 
     if (!isValidBookChoice(bookName, chosenType, chosenName)) {
       throw new Error(`"${chosenName}" không thuộc **${bookName}**.`);
     }
+    // BUG ĐÃ SỬA (xác nhận trực tiếp: "mọi page chỉ có 1 cái thôi; không cho học
+    // duplicate tránh lãng phí sách") — CHỈ áp dụng cho page (weapon/outfit không
+    // bị chặn tương tự, không có yêu cầu tương ứng cho 2 loại đó). Chặn TRƯỚC khi
+    // trừ sách, để không lãng phí nếu chọn nhầm page đã có.
+    if (chosenType === "page" && (profileData.pages?.[chosenName] ?? 0) >= 1) {
+      throw new Error(`Bạn ĐÃ sở hữu **${chosenName}** rồi — mỗi page chỉ cần 1 bản, không học trùng được. Xem \`-inventory\` để biết các page đang có, chọn page khác.`);
+    }
     profileData.books[bookName] = owned - 1;
     if (profileData.books[bookName] <= 0) delete profileData.books[bookName];
     if (chosenType === "page") {
