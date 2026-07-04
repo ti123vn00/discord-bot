@@ -4648,4 +4648,68 @@ function findByKeyword(keyword) {
   return results;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+// autoBuildDmgStrFromSkillRoll — GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll
+// Durandal, tự cho vào phần modal Dmg ra dmg đầu cuối lên kẻ địch") — best-effort
+// TỰ ĐỘNG dựng dmgStr TỪ kết quả roll() thật của 1 skill, dùng để pre-fill Modal
+// (KHÔNG PHẢI thay thế hoàn toàn việc GM/player tự kiểm tra — vẫn SỬA ĐƯỢC trước
+// khi gửi).
+//
+// GIỚI HẠN THẬT (đã kiểm tra cụ thể với nhiều skill, KHÔNG PHẢI lý thuyết):
+// - Durandal có 3 dice RIÊNG, tag KHÁC NHAU mỗi dice (dice1 [Unblockable], dice3
+//   [Guard Break] + "nhận 3 Dice Up") — dmgStr KHÔNG CÓ CÁCH biểu diễn "tag riêng
+//   theo từng dice" (chỉ có tag CHUNG cho toàn bộ action) — nên hàm này CHỈ ghép
+//   đúng số+type của từng dice, CÒN tag phòng thủ/hiệu ứng phụ được liệt kê riêng
+//   trong `warnings` để hiển thị cho GM/player TỰ THÊM TAY (KHÔNG tự động áp,
+//   tránh trường hợp Guard Break bị "quên" mất vì gộp nhầm).
+// - Tactical Suppression (Eye Of Horus) HOÀN TOÀN không có dice (kích hoạt trạng
+//   thái, không phải đòn sát thương) — hàm này trả `dmgStr: null` cho trường hợp
+//   đó, KHÔNG cố bịa ra số.
+// - Grappling có điều kiện "Hakuda" (dice đổi range nếu vừa dùng skill Airborne
+//   trước đó) — hệ thống KHÔNG track được điều kiện này, nên số dice trả về LUÔN
+//   là range gốc — warnings sẽ nhắc GM tự kiểm tra nếu skill có ghi chú dạng này.
+//
+// @returns { dmgStr: string|null, warnings: string[], skillRollEmbed }
+function autoBuildDmgStrFromSkillRoll(skill) {
+  startEmotionTracking();
+  const lines = skill.roll();
+  const tracked = stopEmotionTracking();
+  const totalEmotionDelta = tracked.reduce((sum, t) => sum + t.delta, 0);
+
+  const warnings = [];
+  const diceTypeByLine = []; // { result, type } theo ĐÚNG thứ tự tracked[]
+  const TYPE_MAP = { Slash: "S", Blunt: "B", Pierce: "P" };
+  let trackedIdx = 0;
+  for (const line of lines) {
+    // Chỉ những dòng BẮT ĐẦU bằng emoji DiceN mới là 1 dice THẬT — các dòng khác
+    // (ghi chú điều kiện, mô tả hiệu ứng phụ...) không tính.
+    if (!/^<:Dice\d+:/.test(line)) continue;
+    const typeMatch = line.match(/\[<:(?:Slash|Blunt|Pierce):\d+>(Slash|Blunt|Pierce)\]/);
+    if (typeMatch && tracked[trackedIdx]) {
+      diceTypeByLine.push({ result: tracked[trackedIdx].result, type: TYPE_MAP[typeMatch[1]] });
+    }
+    trackedIdx++;
+  }
+
+  // Tag phòng thủ/hiệu ứng phụ — CHỈ liệt kê để GM tự thêm tay, KHÔNG tự áp (xem
+  // giải thích đầy đủ ở comment hàm).
+  const bypassTagPattern = /\[(Unblockable|Undodgeable|Unevadeable|Unparriable|Guard Break|Unclashable)\]/gi;
+  const foundTags = new Set();
+  for (const line of lines) {
+    let m;
+    while ((m = bypassTagPattern.exec(line)) !== null) foundTags.add(m[1]);
+  }
+  if (foundTags.size > 0) {
+    warnings.push(`Skill có tag: ${[...foundTags].join(", ")} — dmgStr KHÔNG tự thêm được (áp theo TỪNG dice riêng), tự gõ thêm vào ô "tags" khi confirm nếu cần.`);
+  }
+  if (/Dice Up|Poise|Light|Rupture|Bleed|Tremor|Sinking/i.test(lines.join(" ")) && diceTypeByLine.length > 0) {
+    warnings.push(`Skill có ghi chú hiệu ứng phụ (Dice Up/Poise/Light/status...) — xem embed roll bên dưới để tự áp dụng, dmgStr chỉ chứa phần sát thương.`);
+  }
+
+  if (diceTypeByLine.length === 0) {
+    return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines };
+  }
+  const dmgStr = diceTypeByLine.map(d => `${d.result}${d.type}`).join(" + ");
+  return { dmgStr, warnings, tracked, totalEmotionDelta, lines };
+}
+
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
