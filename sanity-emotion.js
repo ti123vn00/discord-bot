@@ -40,7 +40,10 @@ module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, E
   function applyEmotionDelta(combatant, delta) {
     const notes = [];
     if (!delta) return notes;
-    combatant.emotionCoin = (combatant.emotionCoin ?? 0) + delta;
+    // BUG ĐÃ SỬA (xác nhận trực tiếp: "emotion level thì không cho âm coin, dù có
+    // trừ thì tới 0 là dừng") — trước đây cộng delta trực tiếp KHÔNG clamp, coin
+    // có thể âm vô hạn (VD Shin/Mang tốn 1 Coin nhiều lần liên tiếp).
+    combatant.emotionCoin = Math.max(0, (combatant.emotionCoin ?? 0) + delta);
     const maxLevel = getMaxEmotionLevel(combatant);
     while (
       combatant.emotionLevel < maxLevel &&
