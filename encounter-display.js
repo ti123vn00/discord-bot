@@ -147,7 +147,13 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if ((combatant.buffs ?? []).length > 0) lines.push(`> 🟢 Buff: ${combatant.buffs.map(b => b.text).join(" | ")}`);
     if ((combatant.debuffs ?? []).length > 0) lines.push(`> 🔴 Debuff: ${combatant.debuffs.map(d => d.text).join(" | ")}`);
     const cds = Object.entries(combatant.skillCooldowns ?? {});
-    if (cds.length > 0) lines.push(`> ⏱️ CD: ${cds.map(([k, v]) => `${k} (${v}T)`).join(" | ")}`);
+    // BUG ĐÃ SỬA (xác nhận trực tiếp: "Durandal CD có 2 turn nhưng ở đây lại hiện
+    // 3 turn") — giá trị NỘI BỘ (combatant.skillCooldowns) cố ý lưu = cooldownTurns
+    // + 1 (xem comment đầy đủ ở nơi set giá trị này, lúc confirm action) để đảm
+    // bảo đúng số turn phải chờ thật — nhưng HIỂN THỊ phải trừ lại 1 để khớp đúng
+    // số CD ghi trên skill (VD "CD: 2 Turn" → hiện "2T" ngay lúc vừa dùng, không
+    // phải "3T").
+    if (cds.length > 0) lines.push(`> ⏱️ CD: ${cds.map(([k, v]) => `${k} (${v - 1}T)`).join(" | ")}`);
     return lines.join("\n");
   }
 
