@@ -28,7 +28,11 @@ module.exports = function ({ findSkill, hasPerk }) {
     // không tự giả định dựa trên có/không field criticalSkillKey).
     const criticalSkill = combatant.weaponCriticalKey ? findSkill(combatant.weaponCriticalKey) : null;
     if (criticalSkill) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`hit:${criticalSkill.name}`));
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần
+      // modal Dmg ra dmg đầu cuối lên kẻ địch") — value RIÊNG "critical:" (khác
+      // "hit:" của Page thường) để handler biết cần TỰ ROLL + pre-fill dmgStr,
+      // xem xử lý đầy đủ ở customId "critical:" trong encmenu select handler.
+      options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`critical:${criticalSkill.name}`));
     }
     for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
       if (pageName) options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${pageName}`).setValue(`hit:${pageName}`));
