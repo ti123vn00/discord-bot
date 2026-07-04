@@ -1315,7 +1315,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
  *  multi-target AOE giống doPlayerAttack. */
 async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr, extra = {}) {
   if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
-  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul: manualCritMul, diceMul = 1, critDiv = 0, skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw } = extra;
+  const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul: manualCritMul, diceMul = 1, critDiv = 0, skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, prefilledVerify } = extra;
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
@@ -1325,7 +1325,13 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join` trước (không cần gõ tham số gì, tự động lấy hết).");
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
 
-    const verify = await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần
+    // modal Dmg ra dmg đầu cuối lên kẻ địch") — nếu ĐÃ có verify roll SẴN từ
+    // trước (chọn "Critical" từ dropdown, roll lúc đó rồi pre-fill dmgStr vào
+    // Modal), TÁI DÙNG NGUYÊN kết quả đó, KHÔNG gọi resolveSkillVerification lại
+    // (sẽ roll dice MỚI KHÁC, làm dmgStr pre-fill không khớp embed thật hiển thị
+    // lúc confirm).
+    const verify = prefilledVerify ?? await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
     const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), manualTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
@@ -1553,7 +1559,7 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
-const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking } = require("./skills");
+const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, autoBuildDmgStrFromSkillRoll } = require("./skills");
 const { buildEncounterActionPanel, buildBossActionPanel } = require("./encounter-panels")({ findSkill, hasPerk }); // ĐÃ TÁCH sang file riêng (encounter-panels.js) — đặt SAU import skills.js để tránh TDZ (findSkill là const)
 const { performGuardEvade, performParry, performShinMang, performManifestEgo, performOvercharge, performFollowUp } = require("./encounter-actions")({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
 const { findWeapon } = require("./weapon");
@@ -1637,7 +1643,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX }); // ĐÃ TÁCH sang file riêng (skill-verification.js) — đặt SAU khai báo client (const, có TDZ); isEgoSkill/buildSkillRollResult là function declaration nên hoisted, không cần lo vị trí
+const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll }); // ĐÃ TÁCH sang file riêng (skill-verification.js) — đặt SAU khai báo client (const, có TDZ); isEgoSkill/buildSkillRollResult/annotateLinesWithEmotion là function declaration nên hoisted, không cần lo vị trí. BUG ĐÃ SỬA: thiếu annotateLinesWithEmotion/autoBuildDmgStrFromSkillRoll trong injection dù resolveSkillVerification's autoFillDmg branch cần cả 2 — gây lỗi "is not a function" khi dùng qua dropdown Critical.
 // Tăng giới hạn listener — kiến trúc CÓ CHỦ Ý dùng NHIỀU client.on("interactionCreate",
 // ...) riêng biệt (mỗi cái tự check customId prefix, return sớm nếu không khớp) thay
 // vì 1 handler khổng lồ — KHÔNG PHẢI memory leak thật, chỉ là số lượng listener hợp lệ
@@ -5916,6 +5922,27 @@ client.on("interactionCreate", async (interaction) => {
       const skillFromDropdown = encodedPageName ? decodeURIComponent(encodedPageName) : undefined;
       const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { skill: skillFromDropdown });
       await interaction.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
+    } else if (action === "criticalhit") {
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần modal
+      // Dmg ra dmg đầu cuối lên kẻ địch") — TÁI DÙNG kết quả roll ĐÃ LƯU lúc chọn
+      // dropdown (xem case "critical:" ở encmenu select handler), KHÔNG roll lại.
+      const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+      const pendingKey = `${channelId}:${interaction.user.id}`;
+      const pending = pendingCriticalRolls.get(pendingKey);
+      if (!pending) {
+        return interaction.reply({ content: "⚠️ Phiên roll Critical đã hết hạn (quá 5 phút) hoặc không tìm thấy — chọn lại \"Critical\" từ dropdown để roll mới.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      pendingCriticalRolls.delete(pendingKey); // single-use — không tái sử dụng cho lần confirm khác
+      const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, {
+        prefilledVerify: {
+          skillRollEmbed: pending.skillRollEmbed, skillKey: pending.skillKey, cooldownTurns: pending.cooldownTurns,
+          emotionDelta: pending.emotionDelta, lightCost: pending.lightCost, sanityCost: pending.sanityCost,
+          refSnippet: null, refLink: null,
+        },
+      });
+      const warningNote = (pending.autoWarnings ?? []).length > 0 ? `\n\n⚠️ ${pending.autoWarnings.join("\n⚠️ ")}` : "";
+      if (warningNote) embed.description += warningNote;
+      await interaction.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
     } else if (action === "followup") {
       const { followupEmbed, hitEmbed } = await performFollowUp(channelId, interaction.user.id, interaction.user.toString(), targetStr);
       await interaction.reply({ embeds: [followupEmbed] });
@@ -5926,6 +5953,23 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
+
+// GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần modal
+// Dmg ra dmg đầu cuối lên kẻ địch") — Map<key, session> lưu TẠM kết quả roll thật
+// giữa lúc chọn "Critical" từ dropdown (roll + build Modal) và lúc submit Modal
+// (tính dmg cuối) — Discord KHÔNG cho hiện cả embed lẫn Modal cùng lúc trên 1
+// interaction, nên roll THẬT phải xảy ra lúc chọn dropdown (pre-fill dmgStr vào
+// Modal), rồi lúc submit PHẢI tái dùng CHÍNH kết quả đó (không roll lại lần 2 —
+// nếu roll lại sẽ ra dice khác, dmgStr pre-fill không khớp embed thật, sai lệch
+// nghiêm trọng). TTL ngắn (RAM, không cần Upstash) — cùng pattern webParrySessions
+// (rtparry.js): key sống vài phút, nếu bot restart giữa chừng thì coi như hỏng
+// phiên, chấp nhận được vì tần suất cực thấp.
+const pendingCriticalRolls = new Map();
+const PENDING_CRITICAL_ROLL_TTL_MS = 5 * 60_000; // 5 phút — đủ để mở Modal và điền
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, s] of pendingCriticalRolls) if (s.expiresAt < now) pendingCriticalRolls.delete(key);
+}, 60_000);
 
 // ─── SELECT MENU INTERACTIONS (encounter) ────────────────────────────────────
 // Dropdown hành động ĐỘNG (xem buildEncounterActionPanel) — thay cho 2 nút
@@ -5993,6 +6037,66 @@ client.on("interactionCreate", async (interaction) => {
           new ActionRowBuilder().addComponents(dmgInput),
         );
       }
+      await interaction.showModal(modal).catch(() => {});
+      return;
+    }
+    if (value.startsWith("critical:")) {
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần
+      // modal Dmg ra dmg đầu cuối lên kẻ địch") — roll skill THẬT NGAY LÚC CHỌN
+      // dropdown (Discord không cho hiện embed + Modal cùng lúc trên 1 interaction),
+      // lưu kết quả vào pendingCriticalRolls để MODAL SUBMIT tái dùng (không roll
+      // lại lần 2 — xem comment đầy đủ ở khai báo Map phía trên), rồi pre-fill
+      // field dmgStr với công thức đã tính.
+      const critSkillName = value.slice(9);
+      const encounter = await getEncounter(channelId);
+      const combatant = encounter?.players?.[interaction.user.id];
+      if (!combatant) {
+        return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      let verify;
+      try {
+        verify = await resolveSkillVerification(channelId, combatant, critSkillName, null, true);
+      } catch (err) {
+        return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      if (!verify.autoDmgStr) {
+        // VD Tactical Suppression — kích hoạt trạng thái, không có dice sát thương
+        // nào để tự tính — fallback: hiện embed roll qua reply thường + hướng dẫn
+        // GM tự narrate/dùng -encounter buff, KHÔNG mở Modal đòi dmgStr vô nghĩa.
+        return interaction.reply({
+          embeds: [verify.skillRollEmbed, { description: `*(Critical này không có dice sát thương trực tiếp để tự tính dmg — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*`, color: 0x95a5a6 }],
+        }).catch(() => {});
+      }
+      const pendingKey = `${channelId}:${interaction.user.id}`;
+      pendingCriticalRolls.set(pendingKey, {
+        skillRollEmbed: verify.skillRollEmbed,
+        skillKey: verify.skillKey,
+        cooldownTurns: verify.cooldownTurns,
+        emotionDelta: verify.emotionDelta,
+        lightCost: verify.lightCost,
+        sanityCost: verify.sanityCost,
+        autoWarnings: verify.autoWarnings,
+        expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
+      });
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:criticalhit:${encodeURIComponent(critSkillName)}`)
+        .setTitle(`Critical: ${critSkillName}`.slice(0, 45));
+      const targetInput = new TextInputBuilder()
+        .setCustomId("targetStr")
+        .setLabel("Target (key enemy, key1,key2, hoặc all)")
+        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      const dmgInput = new TextInputBuilder()
+        .setCustomId("dmgStr")
+        .setLabel("Dmg (đã tự roll — sửa nếu cần)")
+        .setValue(verify.autoDmgStr)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(targetInput),
+        new ActionRowBuilder().addComponents(dmgInput),
+      );
       await interaction.showModal(modal).catch(() => {});
       return;
     }
