@@ -92,7 +92,12 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // "Mỗi lần đánh thường: +2 Tremor +2 Charge lên bản thân" trả về qua
     // eyeOfHorusSelfTremorCharge (KHÔNG nhét vào dmgStrRewritten vì đó áp lên
     // TARGET, không phải bản thân — cần xử lý riêng ở nơi gọi).
-    let eyeOfHorusSelfTremorCharge = false;
+    // BUG ĐÃ SỬA (xác nhận trực tiếp: "khi bắn 1 lần được hiệu ứng repeat ammo tức
+    // là gắn lên kẻ địch 4 tremor và bản thân 4 tremor" — ý là Charge, xem sửa ở
+    // nơi commit) — trước đây LUÔN cố định +2 Tremor/Charge dù có Repeat Ammo hay
+    // không (SAI — Repeat Ammo = gấp đôi 1 volley, nên lượng Tremor/Charge cũng
+    // phải gấp đôi thành 4 ở đúng lần đó). Đổi từ boolean sang SỐ LƯỢNG cụ thể.
+    let eyeOfHorusTremorChargeAmount = 0;
     if (isM1 && targetId && (attacker.weaponName ?? "").toLowerCase() === "eye of horus") {
       // CHỈ PEEK (đọc, KHÔNG ghi) ở đây — hàm này chạy lúc DECLARE (build preview),
       // KHÔNG PHẢI lúc CONFIRM. BUG ĐÃ TRÁNH: nếu tự TĂNG counter ngay tại đây, GM
@@ -113,7 +118,7 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
         dmgStrRewritten = dmgStrRewritten.replace(/x\s*(\d+)/i, (m, n) => `x${parseInt(n, 10) * 2}`);
       }
       if (thisAttackNumber <= 3) bonusPct += 50;
-      eyeOfHorusSelfTremorCharge = true;
+      eyeOfHorusTremorChargeAmount = thisAttackNumber === 1 ? 4 : 2;
     }
   
     // Unopposed Attack Boost (50-Status Nhóm 1): "+15% dmg nếu chiêu KHÔNG bị
@@ -164,7 +169,7 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
       }
     }
   
-    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusSelfTremorCharge };
+    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount };
   }
   
 
