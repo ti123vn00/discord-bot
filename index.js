@@ -1453,38 +1453,7 @@ const SEVERE_INJURIES = ["Mất tay", "Mất Chân", "Vết thương lớn"];
  */
 /** getParryClashPenalty — tổng penalty dice Parry/Clash từ TẤT CẢ chấn thương đang
  *  có (Gãy tay -5, Gãy chân -3, Mất Chân -10 — cộng dồn nếu có nhiều). */
-function getParryClashPenalty(combatant) {
-  const injuries = combatant.injuries ?? [];
-  let penalty = 0;
-  if (injuries.includes("Gãy tay")) penalty += 5;
-  if (injuries.includes("Gãy chân")) penalty += 3;
-  if (injuries.includes("Mất Chân")) penalty += 10;
-  return penalty;
-}
-
-function rollInjury(combatant, dmgDealtThisHit) {
-  if (dmgDealtThisHit <= combatant.maxHp * 0.3) return null;
-  const roll = Math.random();
-  let injuryName;
-  if (roll < 0.10) injuryName = SEVERE_INJURIES[Math.floor(Math.random() * SEVERE_INJURIES.length)];
-  else if (roll < 0.50) injuryName = MINOR_INJURIES[Math.floor(Math.random() * MINOR_INJURIES.length)];
-  else return null;
-
-  combatant.injuries = combatant.injuries ?? [];
-  if (injuryName === "Gãy Xương") {
-    combatant.maxHp = Math.max(1, combatant.maxHp - 30);
-    combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);
-    combatant.injuries.push("Gãy Xương (-30 Max HP)");
-  } else if (injuryName === "Vết thương lớn") {
-    combatant.maxHp = Math.max(1, combatant.maxHp - 100);
-    combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);
-    combatant.injuries.push("Vết thương lớn (-100 Max HP)");
-  } else {
-    combatant.injuries.push(injuryName);
-  }
-  return injuryName;
-}
-
+const { getParryClashPenalty, rollInjury } = require("./injury-system")({ SEVERE_INJURIES, MINOR_INJURIES }); // ĐÃ TÁCH sang file riêng (injury-system.js)
 function advanceCombatantTurn(combatant) {
   combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
   // Burn — gây dmg = count×2 lúc CUỐI turn, SAU ĐÓ mới giảm nửa (đúng thứ tự luật:
@@ -2039,34 +2008,7 @@ const { executeGive, executeRemove, buildProfileInfoEmbed } = require("./player-
  * Phải được gọi bên trong withLock của userId.
  * @returns {Promise<{ outputLines: string[], costLines: string[] }>}
  */
-async function executeCraft(userId, itemName, craftCount) {
-  const recipe = CRAFT_RECIPES[itemName];
-  const { data, slot } = await getPlayerDataWithSlot(userId);
-  const totalCost = {};
-  for (const [mat, qty] of Object.entries(recipe.inputs)) totalCost[mat] = qty * craftCount;
-  const shortages = [];
-  for (const [mat, needed] of Object.entries(totalCost)) {
-    const owned = data.items[mat] ?? 0;
-    if (owned < needed) shortages.push(`• **${mat}**: cần **${needed}**, có **${owned}** (thiếu **${needed - owned}**)`);
-  }
-  if (shortages.length > 0) {
-    throw new Error(`Không đủ nguyên liệu để craft **${craftCount}× ${itemName}**:\n` + shortages.join("\n"));
-  }
-  for (const [mat, needed] of Object.entries(totalCost)) {
-    data.items[mat] = (data.items[mat] ?? 0) - needed;
-    if (data.items[mat] <= 0) delete data.items[mat];
-  }
-  const outputLines = [];
-  for (const [out, qty] of Object.entries(recipe.output)) {
-    const gained = qty * craftCount;
-    data.items[out] = (data.items[out] ?? 0) + gained;
-    outputLines.push(`**${gained}× ${out}**`);
-  }
-  await savePlayerData(userId, data, slot);
-  const costLines = Object.entries(totalCost)
-    .map(([mat, qty]) => `• -${qty} **${mat}** (còn lại: ${data.items[mat] ?? 0})`);
-  return { outputLines, costLines };
-}
+const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDataWithSlot, savePlayerData }); // ĐÃ TÁCH sang file riêng (craft-system.js)
 
 /**
  * parseBatchEntries — parse chuỗi "Tên x<số>, Tên x<số>" thành mảng entries
@@ -2075,26 +2017,7 @@ async function executeCraft(userId, itemName, craftCount) {
  * @param {string} entityLabel  — "sách" hoặc "vật phẩm" (dùng trong thông báo lỗi)
  * @returns {{ entries: Array<{name:string,count:number}> } | { error: string }}
  */
-function parseBatchEntries(raw, findFn, entityLabel) {
-  // Dùng Map để tự động gộp entries cùng tên (VD: "Random Book x2, Random Book x3" → x5)
-  const entryMap = new Map();
-  const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
-  for (const part of parts) {
-    const match = part.match(/^(.+?)\s+x(\d+)$/i);
-    if (!match) {
-      return { error: `❌ Định dạng ${entityLabel} sai: \`${part}\`\nĐúng: \`Tên ${entityLabel === "sách" ? "Sách" : "Item"} x<số>\` (VD: \`${entityLabel === "sách" ? "Random Book x2" : "Chipboard MK1 x3"}\`)` };
-    }
-    const count = parseInt(match[2], 10);
-    if (count <= 0) {
-      return { error: `❌ Số lượng ${entityLabel} phải lớn hơn 0: \`${part}\`` };
-    }
-    const name = findFn(match[1].trim());
-    if (!name) return { error: `❌ Tên ${entityLabel} không hợp lệ: \`${match[1].trim()}\`` };
-    entryMap.set(name, (entryMap.get(name) ?? 0) + count);
-  }
-  const entries = Array.from(entryMap.entries()).map(([name, count]) => ({ name, count }));
-  return { entries };
-}
+const { parseBatchEntries } = require("./parse-batch"); // ĐÃ TÁCH sang file riêng (parse-batch.js)
 
 
 
