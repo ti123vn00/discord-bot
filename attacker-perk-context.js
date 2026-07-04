@@ -13,6 +13,10 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
   function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null } = {}) {
     let bonusPct = 0;
+    // dmgStrRewritten khai báo NGAY ĐẦU (thay vì giữa hàm như trước) — vì Eye Of
+    // Horus (BUG ĐÃ SỬA, xem chi tiết bên dưới) giờ CẦN sửa THẬT dmgStr (không chỉ
+    // %bonus), và block đó nằm TRƯỚC vị trí khai báo cũ.
+    let dmgStrRewritten = dmgStr;
     // BUG ĐÃ SỬA: trước đây critMul khởi tạo = 1 (không có bonus crit dmg nào trừ
     // khi có Sharp Eyes) — SAI hoàn toàn so với luật ("crit dmg [1,3x]" là mặc định
     // CHO MỌI NGƯỜI, không phải đặc quyền của 1 perk). Mọi crit từ trước tới giờ
@@ -64,17 +68,30 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if ((attacker.overchargedTurnsLeft ?? 0) > 0) bonusPct += attacker.overchargedDmgBonusPct ?? 0;
   
     // Eye Of Horus — passive vũ khí "Foreclosure Task Force President" (CHỈ áp cho
-    // M1 — "nếu đánh thường") — xác nhận trực tiếp từ GM: các mốc "≤3 lần"/"≤6 lần"
-    // đều tính TỪ LẦN ĐÁNH ĐẦU TIÊN (KHÔNG PHẢI ngưỡng riêng biệt "bắt đầu từ lần
-    // đó") — cụ thể: lần 1-3 có CẢ +50% dmg VÀ +33,33% dmg (tương đương base 3→4/
-    // hit dùng % thay vì đổi số dice thật — an toàn hơn vì hoạt động đúng cho CẢ
-    // dmgStr gõ tay lẫn dmgStr tự tính từ nút "Đánh mấy lần"), lần 4-6 CHỈ +33,33%,
-    // lần 7+ về bình thường. Lần ĐẦU TIÊN (count===1) CÒN có thêm "Repeat Ammo" — 1
-    // hit sát thương CHUẨN bổ sung, tính tương đương +(100/hitCount)% (hitCount parse
-    // từ dmgStr dạng "NxM", đúng cho M1 đơn giản — không dùng cho Page/skill phức
-    // tạp, đã giới hạn isM1). "Mỗi lần đánh thường: +2 Tremor +2 Charge lên bản
-    // thân" trả về qua eyeOfHorusSelfTremorCharge (KHÔNG nhét vào dmgStrRewritten vì
-    // đó áp lên TARGET, không phải bản thân — cần xử lý riêng ở nơi gọi).
+    // M1 — "nếu đánh thường"). BUG ĐÃ SỬA HOÀN TOÀN (xác nhận trực tiếp từ GM kèm
+    // ví dụ số cụ thể: "Dmg: 4x9P + 4x9P, Bonus: 50%, Tổng = 108 dmg" cho lần đánh
+    // ĐẦU TIÊN — trước đây code coi "Repeat Ammo" là +(100/hitCount)% (một lượng
+    // RẤT NHỎ, ~11% cho volley 9 hit) — SAI HOÀN TOÀN. Theo đúng luật: "Bắn thêm 1
+    // Repeat Ammo, gây sát thương CHUẨN" nghĩa là bắn thêm 1 VOLLEY ĐẦY ĐỦ (toàn bộ
+    // 9 hit lần nữa, cùng rate hiện tại), TỨC LÀ NHÂN ĐÔI SỐ HIT — không phải cộng
+    // thêm 1 hit đơn lẻ. Tương tự, "≤6 lần: Base dmg được nâng lên 4x9" là SỐ DICE
+    // THẬT bị đổi (3→4/hit), không phải % tương đương — vì phải NHÂN ĐÔI ĐÚNG GIÁ
+    // TRỊ ĐÃ BOOST khi kết hợp với Repeat Ammo (nếu vẫn dùng %, base-boost và
+    // repeat-ammo sẽ cộng dồn SAI vì áp 2 lần trên cùng 1 factor thay vì đúng thứ
+    // tự "cộng volley TRƯỚC, nhân %bonus SAU CÙNG").
+    //
+    // Thứ tự tính ĐÚNG cho lần đầu tiên (thisAttackNumber===1, dmgStr gốc "3x9P"):
+    //   1. Base 3→4 (rewrite dmgStr thật): "3x9P" → "4x9P"
+    //   2. Repeat Ammo — nhân đôi hit count (rewrite dmgStr thật): "4x9P" → "4x18P"
+    //   3. +50% bonusPct (tier ≤3) áp SAU CÙNG lên TOÀN BỘ: calcMathCore tính
+    //      4×18=72 (raw), rồi nhân bonusFactor 1.5 → 108 ✓ khớp đúng ví dụ GM cho.
+    // Lần 2-3 (≤3 VÀ ≤6, KHÔNG có Repeat Ammo): base→4 + %50 = 4×9×1.5 = 54.
+    // Lần 4-6 (chỉ ≤6, KHÔNG +50%): base→4, không nhân % = 4×9 = 36.
+    // Lần 7+: không còn gì cả, dmgStr gốc giữ nguyên.
+    //
+    // "Mỗi lần đánh thường: +2 Tremor +2 Charge lên bản thân" trả về qua
+    // eyeOfHorusSelfTremorCharge (KHÔNG nhét vào dmgStrRewritten vì đó áp lên
+    // TARGET, không phải bản thân — cần xử lý riêng ở nơi gọi).
     let eyeOfHorusSelfTremorCharge = false;
     if (isM1 && targetId && (attacker.weaponName ?? "").toLowerCase() === "eye of horus") {
       // CHỈ PEEK (đọc, KHÔNG ghi) ở đây — hàm này chạy lúc DECLARE (build preview),
@@ -84,13 +101,18 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
       // (commit) chỉ xảy ra ở confirm handler — xem comment "Eye Of Horus — commit"
       // trong khối xử lý M1 lúc confirm.
       const thisAttackNumber = (attacker.m1CountThisTurnByTarget?.[targetId] ?? 0) + 1;
-      if (thisAttackNumber <= 6) bonusPct += 100 / 3; // base 3→4/hit (+33,33%)
-      if (thisAttackNumber <= 3) bonusPct += 50;
-      if (thisAttackNumber === 1) {
-        const hitCountMatch = dmgStr.match(/^[\d.]+\s*x\s*(\d+)/i);
-        const hitCount = hitCountMatch ? parseInt(hitCountMatch[1], 10) : 1;
-        bonusPct += 100 / hitCount; // Repeat Ammo — 1 hit chuẩn bổ sung
+      if (thisAttackNumber <= 6) {
+        // Base dmg → 4/hit (SỐ THẬT, không phải %) — chỉ thay số NGAY TRƯỚC "x",
+        // giữ nguyên toàn bộ phần còn lại (hit count, type letter, các tag status
+        // khác nếu có, VD "+2Sinking").
+        dmgStrRewritten = dmgStrRewritten.replace(/^[\d.]+(?=\s*x)/, "4");
       }
+      if (thisAttackNumber === 1) {
+        // Repeat Ammo — bắn thêm 1 volley ĐẦY ĐỦ = NHÂN ĐÔI số hit (SỐ THẬT), áp
+        // SAU KHI base đã được rewrite ở trên (để dùng đúng rate đã boost).
+        dmgStrRewritten = dmgStrRewritten.replace(/x\s*(\d+)/i, (m, n) => `x${parseInt(n, 10) * 2}`);
+      }
+      if (thisAttackNumber <= 3) bonusPct += 50;
       eyeOfHorusSelfTremorCharge = true;
     }
   
@@ -118,7 +140,7 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     }
   
     // Multiplier áp status — viết lại dmgStr TRƯỚC khi đưa vào calcMathCore.
-    let dmgStrRewritten = dmgStr;
+    // (dmgStrRewritten đã khai báo ở đầu hàm, chỉ tiếp tục dùng ở đây)
     if (hasPerk(attacker, "Tear To Shreds")) dmgStrRewritten = applyStatusMultiplierToDmgStr(dmgStrRewritten, "Rupture", 1.5);
     if (hasPerk(attacker, "A Beautiful Mess") && target.bleed >= 7) dmgStrRewritten = applyStatusMultiplierToDmgStr(dmgStrRewritten, "Bleed", 1.5);
     if (hasPerk(attacker, "Cry On Deaf Ears") && attacker.currentSanity < -25) dmgStrRewritten = applyStatusMultiplierToDmgStr(dmgStrRewritten, "Sinking", 1.5);
