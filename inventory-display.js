@@ -12,12 +12,15 @@ module.exports = function ({ getPlayerData, INV_PAGE_SIZE }) {
   function buildInventoryPages(targetUser, data) {
     const books = data.books ?? {};
     const items = data.items ?? {};
+    const pages_owned = data.pages ?? {};
     const bookEntries = Object.entries(books).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
     const itemEntries = Object.entries(items).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
-    if (bookEntries.length === 0 && itemEntries.length === 0) return null;
+    const pageEntries = Object.entries(pages_owned).filter(([, c]) => c > 0).sort(([a], [b]) => a.localeCompare(b));
+    if (bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0) return null;
   
     const totalBooks = bookEntries.reduce((s, [, c]) => s + c, 0);
     const totalItems = itemEntries.reduce((s, [, c]) => s + c, 0);
+    const totalPages = pageEntries.reduce((s, [, c]) => s + c, 0);
     const pages = [];
   
     // ── Sách ──
@@ -31,6 +34,22 @@ module.exports = function ({ getPlayerData, INV_PAGE_SIZE }) {
         inline: false,
       }];
       if (isLast) fields.push({ name: "📊 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true });
+      pages.push(fields);
+    }
+  
+    // ── Page đã học (từ đọc sách — GAP ĐÃ SỬA, xác nhận trực tiếp: "nên hiện
+    // những page bản thân đang có trong -inventory" — mỗi page chỉ cần 1 bản, hiện
+    // ở đây để biết page nào ĐÃ có, tránh chọn nhầm học trùng lãng phí sách) ──
+    for (let i = 0; i < pageEntries.length; i += INV_PAGE_SIZE) {
+      const chunk = pageEntries.slice(i, i + INV_PAGE_SIZE);
+      const isLast = i + INV_PAGE_SIZE >= pageEntries.length;
+      const from = i + 1, to = Math.min(i + INV_PAGE_SIZE, pageEntries.length);
+      const fields = [{
+        name: `📖 Page đã học (${from}–${to} / ${pageEntries.length})`,
+        value: chunk.map(([name]) => `• **${name}**`).join("\n"),
+        inline: false,
+      }];
+      if (isLast) fields.push({ name: "📊 Tổng page", value: `**${totalPages}** page`, inline: true });
       pages.push(fields);
     }
   
