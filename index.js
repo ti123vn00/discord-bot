@@ -1047,7 +1047,7 @@ const { BOOK_GRANTS, getBookTopLevelChoices, getBookGroupChoices, isValidBookCho
 const { computeAttackerPerkContext } = require("./attacker-perk-context")({ hasPerk, applyStatusMultiplierToDmgStr }); // ĐÃ TÁCH sang file riêng (attacker-perk-context.js)
 /** computeDefenderDmgReduction — % giảm dmg NHẬN VÀO của bên BỊ tấn công, dựa trên
  *  perk tự thân (Smoldering Resolve) + trạng thái Manifested E.G.O (No Will To Break). */
-const { computeDefenderDmgReduction } = require("./damage-reduction")({ hasPerk }); // ĐÃ TÁCH sang file riêng (damage-reduction.js)
+const { computeDefenderDmgReduction, resolveEquipTarget, buildPendingListText, parseBatchEntries } = require("./misc-helpers")({ hasPerk, ADMIN_IDS }); // Gộp 4 hàm nhỏ vào 1 file chung (misc-helpers.js) — theo phản hồi trực tiếp: file 24-30 dòng không đáng tách riêng
 
 /**
  * applyEmotionDelta — cộng/trừ Emotion Coin, xử lý TOÀN BỘ logic lên level (heal%
@@ -1115,7 +1115,6 @@ function normalizeWeaponWeight(w) {
  * item).
  * @returns { targetUserId, targetLabel, remainingInput }
  */
-const { resolveEquipTarget } = require("./equip-target")({ ADMIN_IDS }); // ĐÃ TÁCH sang file riêng (equip-target.js)
 
 function normalizeEnemyKey(k) {
   return (k ?? "").trim().toLowerCase().replace(/\s+/g, "");
@@ -1491,7 +1490,6 @@ const { buildEncounterBoardEmbed } = require("./encounter-board")({ buildTurnOrd
  *  (gửi qua DM) và `/dothihelp` (ephemeral) — tách riêng để không lặp code 2 nơi. */
 const { buildDothihelpEmbed } = require("./dothihelp")({ RTPARRY_WINDOW_MS, POISE_MAX, EXP_MAX }); // ĐÃ TÁCH sang file riêng (dothihelp.js)
 
-const { buildPendingListText } = require("./pending-list"); // ĐÃ TÁCH sang file riêng (pending-list.js)
 
 
 
@@ -1550,7 +1548,6 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
  * @param {string} entityLabel  — "sách" hoặc "vật phẩm" (dùng trong thông báo lỗi)
  * @returns {{ entries: Array<{name:string,count:number}> } | { error: string }}
  */
-const { parseBatchEntries } = require("./parse-batch"); // ĐÃ TÁCH sang file riêng (parse-batch.js)
 
 
 
