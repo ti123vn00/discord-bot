@@ -49,8 +49,13 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
         combatant.currentSanity = 0; // reset Sanity về 0 sau khi hết Panic
       }
     }
-    if (combatant.staminaUsedThisTurn >= 20 && combatant.currentLight < combatant.maxLight) {
-      combatant.currentLight += 1;
+    // BUG ĐÃ SỬA (xác nhận trực tiếp: "cứ đánh đủ 20 Stamina sẽ được 1 Light...
+    // đánh 40 stamina = 2 light, 60 = 3, 80 = 4, 100 = 5. Chứ không phải giới hạn
+    // 1 light") — trước đây CHỈ cộng +1 CỐ ĐỊNH nếu đạt ngưỡng ≥20, KHÔNG scale
+    // theo số Stamina thật đã dùng — SAI, đúng phải là floor(staminaUsed/20).
+    if (combatant.staminaUsedThisTurn >= 20) {
+      const lightGained = Math.floor(combatant.staminaUsedThisTurn / 20);
+      combatant.currentLight = Math.min(combatant.maxLight, combatant.currentLight + lightGained);
     }
     // Light Dash perk (mở khóa từ Skill Tree) — +2 Light mỗi turn start, CỘNG THÊM
     // (không thay thế) cơ chế +1 Light từ staminaUsedThisTurn>=20 phía trên.
