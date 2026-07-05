@@ -12,7 +12,7 @@
 
 module.exports = function ({ hasPerk, ADMIN_IDS }) {
 
-  function computeDefenderDmgReduction(defender) {
+  function computeDefenderDmgReduction(defender, { isM1 = false, isMiddleSkill = false } = {}) {
     let reductionPct = 0;
     if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
     if (hasPerk(defender, "No Will To Break") && defender.manifestedEGO) reductionPct += 20;
@@ -22,6 +22,12 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     reductionPct -= (defender.fragile ?? 0) * 1;
     reductionPct += (defender.protection ?? 0) * 5;
     reductionPct += (defender.chargeShieldStack ?? 0) * 10;
+    // Smoke (50-Status Nhóm 2, xác nhận trực tiếp): "+2,5%/stack sát thương từ
+    // ĐÁNH THƯỜNG vào bản thân (Max 15)" — CHỈ áp dụng khi đòn này LÀ M1.
+    if (isM1) reductionPct -= (defender.smoke ?? 0) * 2.5;
+    // Vengeance Mark (xác nhận trực tiếp): "+5%/stack dmg từ skill của The Middle
+    // [Max 10]" — CHỈ áp dụng khi skill đang dùng thuộc "The Middle".
+    if (isMiddleSkill) reductionPct -= (defender.vengeanceMark ?? 0) * 5;
     return reductionPct;
   }
 
