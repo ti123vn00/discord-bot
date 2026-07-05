@@ -183,6 +183,21 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
     // [dice không thể dưới 1]" — dùng CHUNG side-channel diceModifier (âm) với
     // Dice Up/Down, nhưng KHÔNG reset theo turn như Dice Down — decay /2 riêng.
     freeble: 0,
+    // 6 biến thể Tremor + Spectro Frazzle (50-Status Nhóm 2, xác nhận trực tiếp
+    // từng cái từ tài liệu gốc) — 5 cái đầu đặt TRÊN NGƯỜI BỊ Tremor Burst kích
+    // hoạt lên (ảnh hưởng tới CHÍNH họ khi bị burst), xử lý trong calcMathCore
+    // (damage-calc.js) — xem comment đầy đủ ở đó.
+    tremorEverlasting: 0, tremorFracture: 0, tremorReverb: 0, tremorDecay: 0, tremorChain: 0,
+    // Scorch/Hemorrhage: "Khi kích hoạt Tremor Burst, gây dmg = (Tremor+Burn hoặc
+    // Bleed)/2" — đặt TRÊN NGƯỜI TẤN CÔNG (attacker gây Tremor Burst), không phải
+    // target — boolean vì bản mô tả gốc không nêu stack/max.
+    tremorScorch: false, tremorHemorrhage: false,
+    // Spectro Frazzle: "Unique Tremor, giảm Stamina TRỰC TIẾP không cần Tremor
+    // Burst. Mỗi 1 stack giảm 10 Sta + 1 Bind. Nếu địch Stagger/0 Sta thì lưu
+    // phần thừa, nhân đôi, giảm khi hồi lại Stamina. Max 10" — ĐẶT TRÊN TARGET
+    // (kẻ mang Spectro Frazzle là kẻ BỊ giảm Stamina) — spectroFrazzlePendingLoss
+    // lưu phần Sta "nợ" (đã nhân đôi) chờ áp khi combatant hồi Stamina trở lại.
+    spectroFrazzle: 0, spectroFrazzlePendingLoss: 0,
       // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
       // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
       // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
