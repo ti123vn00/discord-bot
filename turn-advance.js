@@ -42,6 +42,14 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     } else {
       combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + ENCOUNTER_STAMINA_REGEN_PER_TURN);
     }
+    // Spectro Frazzle (xác nhận trực tiếp): "giảm khi hồi lại Stamina" — áp dụng
+    // NGAY SAU khi Stamina vừa hồi (bất kể từ nhánh regen thường hay hồi đầy sau
+    // Stagger ở trên) — trừ tiếp từ pending "nợ" (đã nhân đôi từ lúc gán stack).
+    if ((combatant.spectroFrazzlePendingLoss ?? 0) > 0 && combatant.currentStamina > 0) {
+      const applied = Math.min(combatant.currentStamina, combatant.spectroFrazzlePendingLoss);
+      combatant.currentStamina -= applied;
+      combatant.spectroFrazzlePendingLoss -= applied;
+    }
     if (combatant.panic) {
       combatant.panicTurnsLeft -= 1;
       if (combatant.panicTurnsLeft <= 0) {
