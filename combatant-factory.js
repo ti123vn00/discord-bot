@@ -211,6 +211,9 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // theo vũ khí của BÊN TẤN CÔNG M1 (Light=4 hit/charge, Medium=2, Heavy=1 — đúng
       // luật thật, xem WEAPON_DEFENSE_HITS). Ưu tiên Evade trước nếu có cả 2.
       guardCharges: 0, evadeCharges: 0,
+      // Guard chọn hit cụ thể (xác nhận trực tiếp) — danh sách hit index (1-based)
+      // muốn che, thay vì che tuần tự từ đầu — xem performGuardEvade/confirm handler.
+      guardHitSelections: [],
       // parryRolls: mỗi lần dùng -encounter parry sẽ roll d20 NGAY và đẩy vào đây — 1
       // phần tử = 1 lần parry sẵn sàng, KHÔNG phải số nguyên đơn giản như guard/evade
       // (vì mỗi lần parry có kết quả roll RIÊNG, ăn/thua phụ thuộc so với roll của bên
