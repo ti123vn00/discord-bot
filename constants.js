@@ -27,6 +27,14 @@ module.exports = {
   // /math: Charge stacks tối đa (trên bản thân, dùng để kích hoạt vũ khí/skill đặc biệt)
   CHARGE_MAX: 99,
 
+  // -encounter setstatus: 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/
+  // Chain) — max cap dùng CHUNG 99, xác nhận trực tiếp: "các stack tremor này đều
+  // có max count là 99".
+  TREMOR_VARIANT_MAX: 99,
+  // -encounter setstatus: Spectro Frazzle — "Max 10 Count" theo đúng mô tả gốc,
+  // KHÁC mốc 99 của 5 biến thể Tremor trên (không dùng chung TREMOR_VARIANT_MAX).
+  SPECTRO_FRAZZLE_MAX: 10,
+
   // /parry: số lần roll tối đa mỗi lệnh
   PARRY_MAX_ROLLS: 30,
 
