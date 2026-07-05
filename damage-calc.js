@@ -127,6 +127,21 @@ function calcMathCore(opts) {
     // ảnh hưởng bất kỳ caller nào hiện có KHÔNG truyền tham số này (mọi lệnh
     // -math/-encounter cũ vẫn chạy y hệt trước, đã verify bằng test thật).
     flatDmgPerHit = 0,
+    // 6 biến thể Tremor (50-Status Nhóm 2, xác nhận trực tiếp từng cái) — TRÊN
+    // TARGET đang bị Tremor Burst kích hoạt lên người:
+    //   Everlasting: 50% (100% nếu target có Borrowed Time active) re-trigger
+    //     THÊM 1 lần Burst nữa KHÔNG tốn thêm Tremor.
+    //   Fracture: nếu Tremor ≥12 lúc kích hoạt, +10 Sta loss (1 lần/lần kích hoạt).
+    //   Reverb: +dmg = Tremor hiện tại (TRƯỚC khi giảm nửa) mỗi lần kích hoạt.
+    //   Decay/Chain: +5 Sta loss/stack mỗi lần kích hoạt (CỘNG THÊM vào cơ chế
+    //     gốc) — giảm 1 count decay/chain mỗi lần NHẬN Tremor Burst (trả về qua
+    //     tremorDecayConsumed/tremorChainConsumed để caller tự trừ field thật).
+    tremorEverlastingStacks = 0,
+    tremorEverlastingBoosted = false, // true nếu target ĐANG có Borrowed Time active
+    tremorFractureStacks = 0,
+    tremorReverbStacks = 0,
+    tremorDecayStacks = 0,
+    tremorChainStacks = 0,
   } = opts;
 
   const resValues = { B: 1, P: 1, S: 1 };
@@ -224,6 +239,7 @@ function calcMathCore(opts) {
   let enemySinking = Math.min(sinkingInit, SINKING_MAX);
   let enemyTremor = Math.min(tremorInit, TREMOR_MAX);
   let totalTremorStaminaLoss = 0; // tích lũy từ các hit có +TremorBurst
+  let totalTremorDecayConsumed = 0, totalTremorChainConsumed = 0; // tích lũy số lần Tremor Decay/Chain bị tiêu thụ (mỗi lần kích hoạt Tremor Burst)
   let enemyRupture = Math.min(ruptureInit, RUPTURE_MAX);
   // Burn/Bleed giờ là biến THEO DÕI được (giống enemySinking/enemyRupture), KHÔNG còn
   // là input tĩnh chỉ dùng 1 lần — vì dmg tag +N/-NBurn, +N/-NBleed có thể sửa số
@@ -339,13 +355,49 @@ function calcMathCore(opts) {
     // LẦN trên CÙNG hit này (mặc định N=1 nếu chỉ ghi "+TremorBurst" không số). Dừng
     // sớm nếu tremor về 0 giữa chừng (không có gì để Burst tiếp). LÀM TRÒN XUỐNG sau
     // mỗi lần giảm nửa (VD: 7→3, không phải 3.5) — Math.floor thay vì chia thường.
+    //
+    // 5 biến thể Tremor (50-Status Nhóm 2, xác nhận trực tiếp) tích hợp NGAY TẠI
+    // ĐÂY — mỗi biến thể áp dụng cho MỖI LẦN burstIdx thật sự kích hoạt (nhất quán
+    // độ hạt với cơ chế +5 Sta/Tremor gốc):
+    //   Fracture: Tremor≥12 lúc kích hoạt → +10 Sta loss CỐ ĐỊNH (không nhân stack
+    //     — khác phần "-5 Sta/stack Fracture" ngay sau, CÓ nhân stack).
+    //   Reverb: +dmg = Tremor hiện tại × số stack Reverb (giả định nhất quán với
+    //     Fracture/Decay/Chain đều /stack — bản mô tả gốc không ghi rõ "/stack"
+    //     cho riêng Reverb, nhưng cùng nhóm nên suy luận tương tự).
+    //   Decay/Chain: +5 Sta loss × stack MỖI lần kích hoạt.
+    //   Everlasting: SAU khi burst gốc xong, 50% (100% nếu Borrowed Time active)
+    //     re-trigger THÊM 1 lần (Sta loss tính theo Tremor HIỆN TẠI, nhưng KHÔNG
+    //     giảm nửa Tremor thêm — "không tốn số Tremor có trên người"). Cap an
+    //     toàn 10 lần re-trigger liên tiếp/hit (phòng lý thuyết vô hạn nếu luôn
+    //     may mắn trúng — xác suất thực tế cực thấp, không ảnh hưởng gameplay).
     let tremorStaminaLoss = 0;
+    let tremorVariantBonusDmg = 0;
+    let tremorDecayConsumed = 0, tremorChainConsumed = 0;
     for (let burstIdx = 0; burstIdx < tremorBurstCount; burstIdx++) {
       if (enemyTremor <= 0) break;
+      if (tremorFractureStacks > 0 && enemyTremor >= 12) tremorStaminaLoss += 10;
+      if (tremorReverbStacks > 0) tremorVariantBonusDmg += enemyTremor * tremorReverbStacks;
       tremorStaminaLoss += enemyTremor * 5;
+      tremorStaminaLoss += tremorDecayStacks * 5;
+      tremorStaminaLoss += tremorChainStacks * 5;
+      if (tremorDecayStacks > 0) tremorDecayConsumed += 1;
+      if (tremorChainStacks > 0) tremorChainConsumed += 1;
       enemyTremor = Math.floor(enemyTremor / 2);
+      // Everlasting — re-trigger (KHÔNG tính vào burstIdx gốc, không giảm nửa
+      // Tremor thêm nữa mỗi lần re-trigger, chỉ tính Sta loss lặp lại).
+      if (tremorEverlastingStacks > 0) {
+        const chance = tremorEverlastingBoosted ? 1 : 0.5;
+        let retriggerGuard = 0;
+        while (enemyTremor > 0 && Math.random() < chance && retriggerGuard < 10) {
+          tremorStaminaLoss += enemyTremor * 5;
+          retriggerGuard += 1;
+        }
+      }
     }
     totalTremorStaminaLoss += tremorStaminaLoss;
+    totalTremorDecayConsumed += tremorDecayConsumed;
+    totalTremorChainConsumed += tremorChainConsumed;
+    totalDmg += tremorVariantBonusDmg;
 
     if (sinkingToApply > 0) enemySinking = Math.min(enemySinking + sinkingToApply, SINKING_MAX);
     if (ruptureToApply > 0) enemyRupture = Math.min(enemyRupture + ruptureToApply, RUPTURE_MAX);
@@ -379,7 +431,7 @@ function calcMathCore(opts) {
       burnApplied: burnToApply, burnStacksAfter: enemyBurn, burnShortfall,
       bleedApplied: bleedToApply, bleedStacksAfter: enemyBleed, bleedShortfall,
       tremorApplied: tremorToApply, tremorStacksAfter: enemyTremor, tremorShortfall,
-      tremorStaminaLoss, tremorBurstCount,
+      tremorStaminaLoss, tremorBurstCount, tremorVariantBonusDmg, tremorDecayConsumed, tremorChainConsumed,
       effectsStr, isDice,
       departedBonus, livingHeal,
       livingApplied: livingToApply,
@@ -432,6 +484,7 @@ function calcMathCore(opts) {
     bleedDmgThisTurn, finalBleed: bleedAfter,
     // Tremor Burst (per-hit, đã tích lũy trong loop ở trên)
     totalTremorStaminaLoss, finalTremor: enemyTremor,
+    totalTremorDecayConsumed, totalTremorChainConsumed,
     // Chi tiết — dùng để build breakdown display trong calcMath()
     instanceResults, dmgValues, resRaw, resValues, hasDR, drMult, drRawPct, effectiveSanityBonus,
   };
