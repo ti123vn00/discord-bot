@@ -160,7 +160,11 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // Freeble (xác nhận trực tiếp): "giảm số dice bằng số count của MỌI skill
       // trong turn của kẻ địch" — trừ trực tiếp vào diceModifier (cùng cơ chế với
       // Dice Up/Down, r() đã tự clamp không dưới 1 — xem comment ở skills.js).
-      const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0);
+      // Tremor Chain (xác nhận trực tiếp): "giảm 1 điểm Dice với mỗi 10 Tremor có
+      // trên bản thân" — LIÊN TỤC, dựa trên Tremor HIỆN TẠI của CHÍNH người đang
+      // roll skill (không phải target).
+      const tremorChainPenalty = (attacker.tremorChain ?? 0) > 0 ? Math.floor((attacker.tremor ?? 0) / 10) : 0;
+      const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0) - tremorChainPenalty;
       const rollResult = buildSkillRollResult({ skill, rollCount: 1, forceMinDice: hasParalyze, diceModifier });
       if (rollResult.error) throw new Error(rollResult.error);
       if (hasParalyze) attacker.paralyze -= 1;
