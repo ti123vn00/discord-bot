@@ -15,9 +15,9 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit }) {
+module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS }) {
 
-  async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "") {
+  async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
     let result;
     await withLock(encounterKey(channelId), async () => {
       const encounter = await getEncounter(channelId);
@@ -38,7 +38,27 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       if (type === "evade" && (combatant.injuries ?? []).includes("Mất Chân")) {
         throw new Error(`${label} đã Mất Chân — không thể Evade được nữa.`);
       }
-      let cost = type === "guard" ? 10 : 20;
+      // GAP ĐÃ SỬA (xác nhận trực tiếp): "Guard không tùy chọn được guard đòn nào
+      // — chỉ có thể guard lần lượt 1 2 3 4 5, trong khi chơi thủ công có thể
+      // chọn tùy thích (VD guard đòn 3 và 5)" — quy trình đã thống nhất: player
+      // ĐỢI enemyattack declare trước (thấy rõ số hit), rồi gọi guard KÈM
+      // `attacker:` (biết hitsPerCharge đúng của enemy đó) + `hits:` (danh sách
+      // hit muốn che, 1-based, không cần liên tục). Số charge cần = SỐ HIT chỉ
+      // định / hitsPerCharge (làm tròn lên) — GIỮ NGUYÊN ý nghĩa "1 charge = N
+      // hit-worth" như cũ, chỉ đổi cách PHÂN BỔ (tùy chọn thay vì tuần tự).
+      let selectedHits = null;
+      let chargesNeeded = 1;
+      if (type === "guard" && hitsRaw && hitsRaw.trim()) {
+        selectedHits = [...new Set(hitsRaw.split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n >= 1))];
+        if (selectedHits.length === 0) throw new Error(`"hits:" không hợp lệ — cần danh sách số nguyên ≥1, cách nhau bằng dấu phẩy (VD: hits: 3,5).`);
+        if (!attackerKeyRaw) throw new Error(`Dùng "hits:" cần kèm "attacker: <key enemy đang tấn công>" để tính đúng số charge cần (mỗi loại vũ khí che số hit khác nhau).`);
+        const attackerCombatant = resolveCombatant(encounter, normalizeEnemyKey(attackerKeyRaw))?.combatant
+          ?? resolveCombatant(encounter, attackerKeyRaw.replace(/[<@!>]/g, ""))?.combatant;
+        if (!attackerCombatant) throw new Error(`Không tìm thấy "attacker: ${attackerKeyRaw}" trong encounter.`);
+        const hitsPerCharge = WEAPON_DEFENSE_HITS[attackerCombatant.weaponWeight ?? "medium"] ?? 1;
+        chargesNeeded = Math.ceil(selectedHits.length / hitsPerCharge);
+      }
+      let cost = (type === "guard" ? 10 : 20) * chargesNeeded;
       if (type === "evade" && (combatant.injuries ?? []).includes("Gãy chân")) cost *= 2;
       // Iron Horus (Abydos's Uniform - Lazy Style, outfit passive): Guard tốn 40 Sta
       // (thay vì 10 mặc định) — ĐỔI LẠI giảm 100% dmg thay vì 90%/99% (xem
@@ -47,6 +67,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       // outfit override hẳn cơ chế Guard cơ bản, không phải % giảm thêm).
       if (type === "guard" && combatant.hasIronHorus) {
         cost = 40;
+        chargesNeeded = 1; // Iron Horus tự che TOÀN BỘ đòn với 1 charge duy nhất — không cần tính theo hitsPerCharge nữa dù có dùng "hits:" hay không.
       }
       // Defense Up (50-Status Nhóm 2, xác nhận trực tiếp): "Nếu block đạt 100%
       // giảm sát thương sẽ đổi qua với mỗi 3 Defense Up giảm 1 Stamina cho Block."
@@ -95,9 +116,15 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       // trước đây Guard/Evade vô tình làm Light-gain/Pounce kích hoạt sai khi người
       // chơi CHỈ phòng thủ, chưa hề M1).
       const chargeField = type === "guard" ? "guardCharges" : "evadeCharges";
-      combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
+      combatant[chargeField] = (combatant[chargeField] ?? 0) + chargesNeeded;
+      // Lưu danh sách hit CỤ THỂ muốn che (nếu dùng "hits:") — QUEUE gộp từ nhiều
+      // lần gọi guard khác nhau, tiêu thụ ở confirm handler (index.js) thay vì
+      // "che tuần tự từ đầu" như logic cũ.
+      if (selectedHits) {
+        combatant.guardHitSelections = [...new Set([...(combatant.guardHitSelections ?? []), ...selectedHits])].sort((a, b) => a - b);
+      }
       checkStaggerPanic(combatant);
-      result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""}${overflowingGuardUsed ? " (Overflowing Guard — giảm 1 nửa Sta, -1 Charge)" : ""}${defenseUpStaminaDiscount > 0 ? ` (Defense Up dư — giảm thêm ${defenseUpStaminaDiscount} Sta)` : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
+      result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""}${overflowingGuardUsed ? " (Overflowing Guard — giảm 1 nửa Sta, -1 Charge)" : ""}${defenseUpStaminaDiscount > 0 ? ` (Defense Up dư — giảm thêm ${defenseUpStaminaDiscount} Sta)` : ""}${selectedHits ? ` (chỉ định che hit: ${selectedHits.join(",")})` : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
       appendActionLog(encounter, result);
       await saveEncounter(channelId, encounter);
     });
