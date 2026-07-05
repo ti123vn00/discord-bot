@@ -136,14 +136,35 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       if (sanityCost > 0 && isEgoSkill(skill) && hasPerk(attacker, "Tap Of The Light")) {
         sanityCost = Math.floor(sanityCost / 2);
       }
+      // BlackSilence/Struggling (xác nhận trực tiếp): "giảm mọi Light Cost của
+      // Page đi 1 (Không thể giảm thành 0)" — floor tại 1 nếu vốn có cost >0.
+      if (attacker.blackSilence && lightCost > 1) lightCost -= 1;
+      // Chains (xác nhận trực tiếp): "skill tiếp theo của kẻ thù tăng 1 Light để
+      // sử dụng (1 Turn)" — cộng thêm NGAY vào lightCost trước khi check đủ/không
+      // đủ, tiêu thụ (chains=false) NGAY sau khi skill roll thành công (dùng xong
+      // 1 skill là hết hiệu lực, dù còn turn hay không).
+      const hasChains = attacker.chains === true;
+      if (hasChains) lightCost += 1;
       if (lightCost > 0 && attacker.currentLight < lightCost) {
-        throw new Error(`Không đủ Light cho "${skill.name}" — cần ${lightCost}, hiện có ${attacker.currentLight}.`);
+        throw new Error(`Không đủ Light cho "${skill.name}" — cần ${lightCost}${hasChains ? " (đã +1 do Chains)" : ""}, hiện có ${attacker.currentLight}.`);
       }
       if (sanityCost > 0 && attacker.currentSanity - sanityCost < -ENCOUNTER_SANITY_MAX) {
         throw new Error(`Sanity không đủ cho "${skill.name}" — cần ${sanityCost}, hiện tại ${attacker.currentSanity} (sẽ vượt mốc Panic -${ENCOUNTER_SANITY_MAX}).`);
       }
-      const rollResult = buildSkillRollResult({ skill, rollCount: 1 });
+      // Paralyze (xác nhận trực tiếp): "khi trên người kẻ thù có 1 paralyze sẽ
+      // khiến cho 1 skill của kẻ thù sử dụng sẽ 100% Min Dice, sau khi sử dụng
+      // skill Min Dice sẽ giảm 1 count Paralyze" — nhất quán với cooldown/Light/
+      // Sanity ở trên (đều trừ/áp dụng NGAY lúc declare, không đợi confirm, theo
+      // đúng thiết kế gốc của hàm này — roll skill là RNG thật, không thể "hoãn").
+      const hasParalyze = (attacker.paralyze ?? 0) > 0;
+      // Freeble (xác nhận trực tiếp): "giảm số dice bằng số count của MỌI skill
+      // trong turn của kẻ địch" — trừ trực tiếp vào diceModifier (cùng cơ chế với
+      // Dice Up/Down, r() đã tự clamp không dưới 1 — xem comment ở skills.js).
+      const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0);
+      const rollResult = buildSkillRollResult({ skill, rollCount: 1, forceMinDice: hasParalyze, diceModifier });
       if (rollResult.error) throw new Error(rollResult.error);
+      if (hasParalyze) attacker.paralyze -= 1;
+      if (hasChains) attacker.chains = false;
       skillRollEmbed = rollResult.embed;
       emotionDelta = rollResult.totalEmotionDelta ?? 0;
       cooldownTurns = parseSkillCooldownTurns(skill.cd);
