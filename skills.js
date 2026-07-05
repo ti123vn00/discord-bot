@@ -32,6 +32,41 @@ const D10 = "<:Dice10:1517712814314225704>";
 // của user khác giữa lúc đó — không có race condition.
 let emotionTracker = null; // null = không track; Array nếu đang track
 
+// ─── PARALYZE — ép Min Dice ─────────────────────────────────────────────────
+// Status Paralyze (xác nhận trực tiếp): "khi trên người kẻ thù có 1 paralyze sẽ
+// khiến cho 1 skill của kẻ thù sử dụng sẽ 100% Min Dice, sau khi sử dụng skill
+// Min Dice sẽ giảm 1 count Paralyze" — dùng CÙNG side-channel pattern với
+// emotionTracker ở trên (r() là điểm DUY NHẤT mọi skill roll() gọi để lấy dice
+// value, nên can thiệp tại đây thay vì sửa tay ~300 skill). Khi bật, r(min,max)
+// LUÔN trả về min (bỏ qua random) — vẫn ghi nhận đúng vào emotionTracker nếu
+// đang track đồng thời (dùng min/max THẬT, không phải giá trị đã ép, để Emotion
+// Coin tính đúng — dù kết quả luôn min nên delta luôn -1 nếu min≠max, đúng bản
+// chất "Paralyze ép Min Dice" nghĩa là chắc chắn mất Emotion Coin lần đó).
+let forceMinDiceActive = false;
+
+function startForceMinDice() {
+  forceMinDiceActive = true;
+}
+
+function stopForceMinDice() {
+  forceMinDiceActive = false;
+}
+
+// ─── DICE UP/DOWN (Value Power Up/Down) — cộng/trừ trực tiếp vào kết quả roll ──
+// "Dice Up: +1 Dice. Biến mất sau End Turn" / "Dice Down: -1 Dice..." (xác nhận
+// trực tiếp) — CÙNG side-channel pattern, khác Paralyze ở chỗ đây là CỘNG THÊM
+// (không phải ép cứng về 1 giá trị), và KHÔNG clamp vào [min,max] gốc — Dice Up
+// có thể đẩy kết quả VƯỢT max bình thường (đúng bản chất buff "tăng dice").
+let diceModifierActive = 0;
+
+function setDiceModifier(delta) {
+  diceModifierActive = delta;
+}
+
+function clearDiceModifier() {
+  diceModifierActive = 0;
+}
+
 function computeEmotionDelta(min, max, result) {
   if (min === max) return 0; // dice cố định 1 giá trị — không tính
   if (result === max) return 1;
@@ -51,9 +86,18 @@ function stopEmotionTracking() {
 }
 
 function r(min, max) {
-  const result = Math.floor(Math.random() * (max - min + 1)) + min;
+  let result;
+  if (forceMinDiceActive) {
+    result = min;
+  } else {
+    result = Math.max(1, Math.floor(Math.random() * (max - min + 1)) + min + diceModifierActive);
+  }
   if (emotionTracker) {
-    emotionTracker.push({ min, max, result, delta: computeEmotionDelta(min, max, result) });
+    // Emotion Coin tính theo kết quả GỐC (trước Dice Up/Down) để giữ đúng ý nghĩa
+    // "roll đúng max/min của DICE GỐC" — Dice Up/Down là buff cộng thêm bên ngoài,
+    // không phải bản chất của dice đó.
+    const rawResult = forceMinDiceActive ? min : result - diceModifierActive;
+    emotionTracker.push({ min, max, result: rawResult, delta: computeEmotionDelta(min, max, rawResult) });
   }
   return result;
 }
@@ -4712,4 +4756,4 @@ function autoBuildDmgStrFromSkillRoll(skill) {
   return { dmgStr, warnings, tracked, totalEmotionDelta, lines };
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
