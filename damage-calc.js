@@ -142,6 +142,11 @@ function calcMathCore(opts) {
     tremorReverbStacks = 0,
     tremorDecayStacks = 0,
     tremorChainStacks = 0,
+    // Scorch/Hemorrhage (xác nhận trực tiếp): "Khi kích hoạt Tremor Burst, gây dmg
+    // = (Tremor+Burn hoặc Bleed)/2" — TRÊN ATTACKER (người gây Tremor Burst),
+    // KHÁC 5 biến thể trên (đặt trên target).
+    tremorScorchActive = false,
+    tremorHemorrhageActive = false,
   } = opts;
 
   const resValues = { B: 1, P: 1, S: 1 };
@@ -377,6 +382,8 @@ function calcMathCore(opts) {
       if (enemyTremor <= 0) break;
       if (tremorFractureStacks > 0 && enemyTremor >= 12) tremorStaminaLoss += 10;
       if (tremorReverbStacks > 0) tremorVariantBonusDmg += enemyTremor * tremorReverbStacks;
+      if (tremorScorchActive) tremorVariantBonusDmg += (enemyTremor + enemyBurn) / 2;
+      if (tremorHemorrhageActive) tremorVariantBonusDmg += (enemyTremor + enemyBleed) / 2;
       tremorStaminaLoss += enemyTremor * 5;
       tremorStaminaLoss += tremorDecayStacks * 5;
       tremorStaminaLoss += tremorChainStacks * 5;
