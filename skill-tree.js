@@ -90,6 +90,14 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
   // equip (xác nhận trực tiếp từ GM: "Brawler là vũ khí tay không nên bất kỳ ai cũng
   // chọn được"). Danh sách CỐ Ý NGẮN — chỉ thêm khi có xác nhận rõ ràng tương tự.
   const UNIVERSALLY_KNOWN_WEAPONS = new Set(["brawler"]);
+  // MIDDLE_SYNDICATE_SKILLS — dùng cho Vengeance Mark (50-Status Nhóm 2, xác nhận
+  // trực tiếp: "tăng 5% dmg từ skill của the middle với mỗi 1 stack") — gộp page
+  // từ CẢ 2 sách liên quan tới "The Middle" (Middle Syndicate Book + The Middle
+  // Big Brother Book — xem book-system.js's BOOK_GRANTS để đối chiếu nếu sách đổi).
+  const MIDDLE_SYNDICATE_SKILLS = new Set([
+    "proof of loyalty", "just a vengeance", "punching", "kicking",
+    "my hair coupon", "complete and total extermination!", "vengeance retaliation", "stamp of vengeance", "punting",
+  ]);
   const PERK_BRANCH = {
     // Pride
     "Claim Their Heart": "pride", "Pressure Point": "pride", "Shrouded Power": "pride", "Sharp Eyes": "pride",
@@ -192,6 +200,7 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
     PERK_BRANCH,
     BRANCH_KEYS,
     UNIVERSALLY_KNOWN_WEAPONS,
+    MIDDLE_SYNDICATE_SKILLS,
     MUTUALLY_EXCLUSIVE_PERKS,
   };
 };
