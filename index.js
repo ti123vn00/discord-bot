@@ -37,6 +37,8 @@ const {
   TREMOR_MAX,
   BLEED_MAX,
   CHARGE_MAX,
+  TREMOR_VARIANT_MAX,
+  SPECTRO_FRAZZLE_MAX,
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
@@ -4196,8 +4198,8 @@ client.on("messageCreate", async (message) => {
         paralyze: 99,
         diceup: 99, dicedown: 99, smoke: 15, vengeancemark: 10, nails: 99, redplumblossom: 99, freeble: 5,
         borrowedtime: 2, fairy: 30,
-        tremoreverlasting: 99, tremorfracture: 99, tremorreverb: 99, tremordecay: 99, tremorchain: 99,
-        spectrofrazzle: 10,
+        tremoreverlasting: TREMOR_VARIANT_MAX, tremorfracture: TREMOR_VARIANT_MAX, tremorreverb: TREMOR_VARIANT_MAX, tremordecay: TREMOR_VARIANT_MAX, tremorchain: TREMOR_VARIANT_MAX,
+        spectrofrazzle: SPECTRO_FRAZZLE_MAX,
       };
       const STATUS_FIELD_MAP = {
         fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
