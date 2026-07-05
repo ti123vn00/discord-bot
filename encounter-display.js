@@ -156,6 +156,14 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.sizzlingWound) statusParts.push(`Sizzling Wound`);
     if (combatant.perceptionBlockingMask) statusParts.push(`Perception Blocking Mask`);
     if (combatant.blackSilence) statusParts.push(`Struggling`);
+    if (combatant.tremorEverlasting > 0) statusParts.push(`Tremor Everlasting${combatant.tremorEverlasting}`);
+    if (combatant.tremorFracture > 0) statusParts.push(`Tremor Fracture${combatant.tremorFracture}`);
+    if (combatant.tremorReverb > 0) statusParts.push(`Tremor Reverb${combatant.tremorReverb}`);
+    if (combatant.tremorDecay > 0) statusParts.push(`Tremor Decay${combatant.tremorDecay}`);
+    if (combatant.tremorChain > 0) statusParts.push(`Tremor Chain${combatant.tremorChain}`);
+    if (combatant.tremorScorch) statusParts.push(`Tremor Scorch`);
+    if (combatant.tremorHemorrhage) statusParts.push(`Tremor Hemorrhage`);
+    if (combatant.spectroFrazzle > 0) statusParts.push(`Spectro Frazzle${combatant.spectroFrazzle}${combatant.spectroFrazzlePendingLoss > 0 ? ` (nợ ${combatant.spectroFrazzlePendingLoss} Sta chờ hồi)` : ""}`);
     if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
     if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
     if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
