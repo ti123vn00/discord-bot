@@ -17,7 +17,9 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // mang Bleed hành động tấn công — xử lý ở CONFIRM HANDLER (mỗi lần attacker thực
     // hiện attack/hit/enemyattack), KHÔNG ở đây — chỉ giảm nửa COUNT của Bleed ở đây.
     if ((combatant.burn ?? 0) > 0) {
-      const burnDmg = combatant.burn * 2;
+      // Sizzling Wound (50-Status Nhóm 2, xác nhận trực tiếp): "+50% Dmg từ Burn
+      // và Bleed" — nhân trực tiếp vào dmg Burn thật gây ra.
+      const burnDmg = combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1);
       combatant.currentHp = Math.max(0, combatant.currentHp - burnDmg);
     }
     combatant.burn = Math.floor((combatant.burn ?? 0) / 2);
@@ -139,6 +141,56 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // lý Guard lúc confirm), cần RESET THỦ CÔNG ở đây mỗi endturn. Người KHÔNG có
     // Iron Horus KHÔNG cần dòng này — charge của họ tự nhiên hết khi ăn đủ N hit.
     if (combatant.hasIronHorus && combatant.guardCharges > 0) combatant.guardCharges = 0;
+    // BUG THẬT ĐÃ SỬA (phát hiện khi rà lại theo tài liệu mới): Haste/Bind chưa
+    // TỪNG có decay logic thật nào — chỉ có comment mô tả ý định từ trước, chưa
+    // triển khai. "Sau turn end của turn được cộng speed từ Haste thì toàn bộ
+    // stack sẽ mất" (xác nhận trực tiếp) — reset THẲNG về 0 mỗi endturn, giống
+    // Nhóm 1. Đặt TRƯỚC khối Borrowed Time bên dưới — Borrowed Time cấp Haste MỚI
+    // cho turn TIẾP THEO, không phải giữ Haste cũ của turn vừa dùng để roll Speed.
+    combatant.haste = 0;
+    combatant.bind = 0;
+    // — 50-STATUS NHÓM 2 (batch 1, xác nhận trực tiếp từng cái từ tài liệu gốc) —
+    // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
+    combatant.diceUp = 0;
+    combatant.diceDown = 0;
+    // Smoke: "sau mỗi 1 turn sẽ mất 1 stack" — decay -1 (KHÔNG reset thẳng về 0
+    // như Nhóm 1 — đây là "mất DẦN", floor tại 0).
+    if ((combatant.smoke ?? 0) > 0) combatant.smoke = Math.max(0, combatant.smoke - 1);
+    // Airborne: "nhận 10 Dmg vào End Turn. Biến mất sau End Turn..." — gây dmg
+    // NGAY tại đây rồi tắt flag (nhánh còn lại "hoặc sau dính đòn có condition
+    // Airborne" xử lý riêng ở nơi resolve defense-bypass tags, không phải ở đây).
+    if (combatant.airborne) {
+      combatant.currentHp = Math.max(0, combatant.currentHp - 10);
+      combatant.airborne = false;
+    }
+    // Borrowed Time: "2 Haste và 1 Attack Power Up MỖI TURN (max 2 stack Borrowed
+    // Time) tồn tại 3 turn" — áp SAU khi attackPowerUp đã reset về 0 ở trên (dòng
+    // 126), để buff của turn MỚI này không bị chính dòng reset đó xoá mất. Haste
+    // KHÔNG bị reset ở khối Nhóm 1 phía trên (Haste có decay riêng — xem dưới),
+    // nên cộng thẳng vào.
+    if ((combatant.borrowedTimeTurnsLeft ?? 0) > 0) {
+      combatant.haste = Math.min(20, (combatant.haste ?? 0) + 2);
+      combatant.attackPowerUp = Math.min(10, combatant.attackPowerUp + 1);
+      combatant.borrowedTimeTurnsLeft -= 1;
+      if (combatant.borrowedTimeTurnsLeft <= 0) combatant.borrowedTime = 0;
+    }
+    // Fairy: "biến mất khi hiệu lực đủ 2 Turn" — đếm ngược, hết HẲN (không giảm
+    // dần như Smoke).
+    if ((combatant.fairyTurnsLeft ?? 0) > 0) {
+      combatant.fairyTurnsLeft -= 1;
+      if (combatant.fairyTurnsLeft <= 0) combatant.fairy = 0;
+    }
+    // Chains: "(1 Turn)" — hết sau 1 turn NẾU chưa dùng skill nào để tiêu thụ
+    // (việc tiêu thụ khi DÙNG skill xử lý ở resolveSkillVerification).
+    if ((combatant.chainsTurnsLeft ?? 0) > 0) {
+      combatant.chainsTurnsLeft -= 1;
+      if (combatant.chainsTurnsLeft <= 0) combatant.chains = false;
+    }
+    // Freeble: "Max 5 Stack, mỗi turn trừ một nửa. Nếu dưới 1 thì hết."
+    if ((combatant.freeble ?? 0) > 0) {
+      combatant.freeble = Math.floor(combatant.freeble / 2);
+      if (combatant.freeble < 1) combatant.freeble = 0;
+    }
     // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
     // ngay) — giờ mới trừ THẬT lúc end turn.
     if ((combatant.poiseReductionPending ?? 0) > 0) {
