@@ -28,6 +28,12 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     // Vengeance Mark (xác nhận trực tiếp): "+5%/stack dmg từ skill của The Middle
     // [Max 10]" — CHỈ áp dụng khi skill đang dùng thuộc "The Middle".
     if (isMiddleSkill) reductionPct -= (defender.vengeanceMark ?? 0) * 5;
+    // Tremor Decay (xác nhận trực tiếp): "nhận 1 Fragile mỗi 4 Tremor có trên bản
+    // thân" — LIÊN TỤC (không chỉ lúc Tremor Burst), dựa trên Tremor HIỆN TẠI —
+    // chỉ áp nếu defender CÓ tremorDecay (status này chỉ ảnh hưởng người MANG NÓ).
+    if ((defender.tremorDecay ?? 0) > 0) {
+      reductionPct -= Math.floor((defender.tremor ?? 0) / 4) * 1;
+    }
     return reductionPct;
   }
 
