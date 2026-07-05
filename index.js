@@ -273,7 +273,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", // -encounter
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", // -encounter
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -1611,7 +1611,7 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
 const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll } = require("./skills");
 const { buildEncounterActionPanel, buildBossActionPanel } = require("./encounter-panels")({ findSkill, hasPerk }); // ĐÃ TÁCH sang file riêng (encounter-panels.js) — đặt SAU import skills.js để tránh TDZ (findSkill là const)
-const { performGuardEvade, performParry, performShinMang, performManifestEgo, performOvercharge, performFollowUp } = require("./encounter-actions")({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
+const { performGuardEvade, performParry, performShinMang, performManifestEgo, performOvercharge, performFollowUp } = require("./encounter-actions")({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
 const { findWeapon } = require("./weapon");
 
 /**
@@ -4599,8 +4599,13 @@ client.on("messageCreate", async (message) => {
     if (sub === "guard" || sub === "evade") {
       const kv = parseKeyValues(rest);
       const enemyKeyRaw = (kv["key"] ?? "").trim();
+      // GAP ĐÃ SỬA (xác nhận trực tiếp): cho phép chọn CỤ THỂ hit muốn che thay vì
+      // chỉ tuần tự — VD `-encounter guard attacker: mo hits: 3,5`. Xem comment đầy
+      // đủ ở performGuardEvade (encounter-actions.js).
+      const attackerKeyRaw = (kv["attacker"] ?? "").trim();
+      const hitsRaw = (kv["hits"] ?? "").trim();
       try {
-        const resultMsg = await performGuardEvade(message.channel.id, message.author.id, isAdmin, sub, enemyKeyRaw);
+        const resultMsg = await performGuardEvade(message.channel.id, message.author.id, isAdmin, sub, enemyKeyRaw, attackerKeyRaw, hitsRaw);
         message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -5539,6 +5544,22 @@ client.on("interactionCreate", async (interaction) => {
                   if (target.hasIronHorus) {
                     while (hitIdx < totalHits) { perHitMult[hitIdx] = 1 - guardReductionPct; hitIdx++; }
                     noteParts.push(`🛡️**Guard (Iron Horus — chặn TOÀN BỘ, charge không tụt)** (giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
+                  } else if ((target.guardHitSelections ?? []).length > 0) {
+                    // GAP ĐÃ SỬA (xác nhận trực tiếp): "Guard không tùy chọn được
+                    // guard đòn nào — chỉ có thể tuần tự 1 2 3 4 5, trong khi chơi
+                    // thủ công có thể chọn tùy thích (VD guard đòn 3 và 5)" — NẾU
+                    // player đã gọi "guard hits: X,Y" trước đó (lưu sẵn trong
+                    // guardHitSelections), dùng ĐÚNG các hit index đó thay vì che
+                    // tuần tự từ hitIdx hiện tại. Chỉ lấy các index HỢP LỆ nằm
+                    // trong phạm vi đòn này (1..totalHits) — số dư (nếu chỉ định
+                    // hit vượt quá totalHits của đòn thực tế) giữ lại cho đòn sau.
+                    const validSelected = target.guardHitSelections.filter(h => h >= 1 && h <= totalHits);
+                    for (const h of validSelected) perHitMult[h - 1] = 1 - guardReductionPct;
+                    const chargesUsed = Math.min(target.guardCharges, Math.ceil(validSelected.length / hitsPerCharge));
+                    target.guardCharges = Math.max(0, target.guardCharges - chargesUsed);
+                    target.guardHitSelections = target.guardHitSelections.filter(h => !(h >= 1 && h <= totalHits));
+                    hitIdx = totalHits; // đã xử lý xong khối Guard này (dù không tuần tự) — không loại khác che tiếp lên các hit CHƯA được chỉ định
+                    noteParts.push(`🛡️**Guard (chọn riêng)** (${chargesUsed} charge, giảm ${Math.round(guardReductionPct * 100)}% — hit ${validSelected.join(",")})`);
                   } else {
                     let used = 0;
                     while (target.guardCharges > 0 && hitIdx < totalHits) {
@@ -5864,9 +5885,16 @@ client.on("interactionCreate", async (interaction) => {
                 }
               }
               checkStaggerPanic(target);
-              // Chấn thương — nhận dmg >30% Max HP trong đòn NÀY → roll 10% nặng/40% nhẹ.
-              // Bỏ qua nếu đã chết (kill/death) — không cần lo chấn thương khi đã ra trận.
-              const injuryGained = (killNote || deathNote) ? null : rollInjury(target, finalDmg);
+              // BUG ĐÃ SỬA (xác nhận trực tiếp): "Điều kiện Injury là 1 HIT phải
+              // vượt qua 30% Max HP" — trước đây SO SÁNH SAI: dùng `finalDmg`
+              // (TỔNG cả đòn, gồm nhiều hit) thay vì TỪNG HIT RIÊNG LẺ — VD "3x10"
+              // (10 hit, mỗi hit 3 dmg) lên target 60 HP: finalDmg=30 (>18=30%
+              // MaxHp) → SAI trigger Injury dù mỗi hit CHỈ 3 dmg (thấp hơn NHIỀU
+              // so với 18). Đúng phải lấy dmg hit LỚN NHẤT trong đòn này để so
+              // sánh — nếu KHÔNG có hit nào đơn lẻ vượt ngưỡng, dù tổng cả đòn có
+              // lớn tới đâu vẫn KHÔNG trigger.
+              const maxSingleHitDmg = Math.max(0, ...(t.preview.instanceResults ?? []).map(r => r.instanceDmg ?? 0));
+              const injuryGained = (killNote || deathNote) ? null : rollInjury(target, maxSingleHitDmg);
               const injuryNote = injuryGained ? ` 🩻**${injuryGained}**` : "";
               // Injury Persistence — sync NGAY vào profile mỗi khi player nhận chấn
               // thương MỚI (giống cách HP sync ở trên) — không đợi -encounter end,
