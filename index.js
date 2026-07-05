@@ -263,6 +263,7 @@ const KNOWN_KEYS = new Set([
   "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", // 4 cờ điều kiện đặc biệt
   "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1
   "paralyze", "diceup", "dicedown", "smoke", "vengeancemark", "nails", "redplumblossom", "freeble", "borrowedtime", "fairy", "airborne", "chains", "sizzlingwound", "perceptionblockingmask", "blacksilence", // 50-Status Nhóm 2
+  "tremoreverlasting", "tremorfracture", "tremorreverb", "tremordecay", "tremorchain", "spectrofrazzle", "tremorscorch", "tremorhemorrhage", // Tremor variants
   "choose", // -readbook <sách> choose: <tên> — chốt lựa chọn qua text thay vì dropdown
   "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
@@ -1256,6 +1257,17 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         // CÔNG (attacker), KHÔNG áp cho target.
         flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
+        // 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/Chain) — TRÊN
+        // TARGET đang bị Tremor Burst kích hoạt lên (xem comment đầy đủ ở
+        // damage-calc.js's calcMathCore).
+        tremorEverlastingStacks: t.combatant.tremorEverlasting ?? 0,
+        tremorEverlastingBoosted: (t.combatant.borrowedTime ?? 0) > 0,
+        tremorFractureStacks: t.combatant.tremorFracture ?? 0,
+        tremorReverbStacks: t.combatant.tremorReverb ?? 0,
+        tremorDecayStacks: t.combatant.tremorDecay ?? 0,
+        tremorChainStacks: t.combatant.tremorChain ?? 0,
+        tremorScorchActive: !!player.tremorScorch,
+        tremorHemorrhageActive: !!player.tremorHemorrhage,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
       };
@@ -1372,6 +1384,17 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // CÔNG (attacker), KHÔNG áp cho target.
         flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
+        // 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/Chain) — TRÊN
+        // TARGET đang bị Tremor Burst kích hoạt lên (xem comment đầy đủ ở
+        // damage-calc.js's calcMathCore).
+        tremorEverlastingStacks: t.combatant.tremorEverlasting ?? 0,
+        tremorEverlastingBoosted: (t.combatant.borrowedTime ?? 0) > 0,
+        tremorFractureStacks: t.combatant.tremorFracture ?? 0,
+        tremorReverbStacks: t.combatant.tremorReverb ?? 0,
+        tremorDecayStacks: t.combatant.tremorDecay ?? 0,
+        tremorChainStacks: t.combatant.tremorChain ?? 0,
+        tremorScorchActive: !!player.tremorScorch,
+        tremorHemorrhageActive: !!player.tremorHemorrhage,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
       };
@@ -1454,6 +1477,17 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
         // Attack Power Up/Down (50-Status Nhóm 1) — enemy ĐANG TẤN CÔNG.
         flatDmgPerHit: (enemy.attackPowerUp ?? 0) - (enemy.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
+        // 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/Chain) — TRÊN
+        // TARGET đang bị Tremor Burst kích hoạt lên (xem comment đầy đủ ở
+        // damage-calc.js's calcMathCore).
+        tremorEverlastingStacks: t.combatant.tremorEverlasting ?? 0,
+        tremorEverlastingBoosted: (t.combatant.borrowedTime ?? 0) > 0,
+        tremorFractureStacks: t.combatant.tremorFracture ?? 0,
+        tremorReverbStacks: t.combatant.tremorReverb ?? 0,
+        tremorDecayStacks: t.combatant.tremorDecay ?? 0,
+        tremorChainStacks: t.combatant.tremorChain ?? 0,
+        tremorScorchActive: !!enemy.tremorScorch,
+        tremorHemorrhageActive: !!enemy.tremorHemorrhage,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
       };
@@ -4162,6 +4196,8 @@ client.on("messageCreate", async (message) => {
         paralyze: 99,
         diceup: 99, dicedown: 99, smoke: 15, vengeancemark: 10, nails: 99, redplumblossom: 99, freeble: 5,
         borrowedtime: 2, fairy: 30,
+        tremoreverlasting: 99, tremorfracture: 99, tremorreverb: 99, tremordecay: 99, tremorchain: 99,
+        spectrofrazzle: 10,
       };
       const STATUS_FIELD_MAP = {
         fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
@@ -4172,6 +4208,9 @@ client.on("messageCreate", async (message) => {
         diceup: "diceUp", dicedown: "diceDown", smoke: "smoke", vengeancemark: "vengeanceMark",
         nails: "nails", redplumblossom: "redPlumBlossom", freeble: "freeble",
         borrowedtime: "borrowedTime", fairy: "fairy",
+        tremoreverlasting: "tremorEverlasting", tremorfracture: "tremorFracture", tremorreverb: "tremorReverb",
+        tremordecay: "tremorDecay", tremorchain: "tremorChain",
+        spectrofrazzle: "spectroFrazzle",
       };
       const entries = Object.keys(STATUS_CAPS).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
       if (!targetRaw || entries.length === 0) {
@@ -4200,6 +4239,26 @@ client.on("messageCreate", async (message) => {
             if (key === "borrowedtime" && amount > 0) resolved.combatant.borrowedTimeTurnsLeft = 3;
             // Fairy: "biến mất khi hiệu lực đủ 2 Turn" — set/refresh Duration.
             if (key === "fairy" && amount > 0) resolved.combatant.fairyTurnsLeft = 2;
+            // Spectro Frazzle (xác nhận trực tiếp): "Mỗi 1 stack giảm 10 Stamina và
+            // gây 1 Bind... Nếu địch đang Stagger hoặc 0 Stamina thì lưu phần thừa,
+            // nhân đôi, giảm khi hồi lại Stamina" — áp dụng NGAY lúc gán stack MỚI
+            // (không đợi Tremor Burst nào — "không cần Tremor Burst" theo đúng mô
+            // tả gốc), không phải lúc combat hit nào.
+            if (key === "spectrofrazzle" && amount > 0) {
+              resolved.combatant.bind = Math.min(20, (resolved.combatant.bind ?? 0) + amount);
+              const staLoss = amount * 10;
+              if (resolved.combatant.staggered || resolved.combatant.currentStamina <= 0) {
+                resolved.combatant.spectroFrazzlePendingLoss = (resolved.combatant.spectroFrazzlePendingLoss ?? 0) + staLoss * 2;
+              } else if (resolved.combatant.currentStamina < staLoss) {
+                const shortfall = staLoss - resolved.combatant.currentStamina;
+                resolved.combatant.currentStamina = 0;
+                resolved.combatant.spectroFrazzlePendingLoss = (resolved.combatant.spectroFrazzlePendingLoss ?? 0) + shortfall * 2;
+                checkStaggerPanic(resolved.combatant);
+              } else {
+                resolved.combatant.currentStamina -= staLoss;
+                checkStaggerPanic(resolved.combatant);
+              }
+            }
             changes.push(`${key}: ${before} → **${resolved.combatant[field]}**`);
           }
           appendActionLog(encounter, `📊 ${resolved.label}: setstatus ${changes.join(", ")}`);
@@ -4222,6 +4281,7 @@ client.on("messageCreate", async (message) => {
       const FLAG_FIELD_MAP = {
         airborne: "airborne", chains: "chains", sizzlingwound: "sizzlingWound",
         perceptionblockingmask: "perceptionBlockingMask", blacksilence: "blackSilence",
+        tremorscorch: "tremorScorch", tremorhemorrhage: "tremorHemorrhage",
       };
       const entries = Object.keys(FLAG_FIELD_MAP).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: (kv[k] ?? "").trim().toLowerCase() }));
       if (!targetRaw || entries.length === 0) {
@@ -5710,6 +5770,16 @@ client.on("interactionCreate", async (interaction) => {
                 // Tremor Burst rút STAMINA của TARGET (kẻ mang Tremor bị rút Sta).
                 if (t.preview.totalTremorStaminaLoss > 0) {
                   target.currentStamina = Math.max(0, target.currentStamina - t.preview.totalTremorStaminaLoss);
+                }
+                // Tremor Decay/Chain: "giảm 1 count mỗi khi nhận đòn có Tremor
+                // Burst" — trừ THẬT theo số lần Tremor Burst thực sự kích hoạt
+                // trong đòn này (totalTremorDecayConsumed/totalTremorChainConsumed
+                // từ calcMathCore — xem damage-calc.js).
+                if ((t.preview.totalTremorDecayConsumed ?? 0) > 0) {
+                  target.tremorDecay = Math.max(0, (target.tremorDecay ?? 0) - t.preview.totalTremorDecayConsumed);
+                }
+                if ((t.preview.totalTremorChainConsumed ?? 0) > 0) {
+                  target.tremorChain = Math.max(0, (target.tremorChain ?? 0) - t.preview.totalTremorChainConsumed);
                 }
                 // Defenseless (perk của ATTACKER): gây dmg lên target ĐANG có Rupture → -5 Stamina target.
                 if (hasPerk(attacker.combatant, "Defenseless") && hadRuptureBeforeHit) {
