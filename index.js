@@ -5388,7 +5388,18 @@ client.on("interactionCreate", async (interaction) => {
               // nếu có cả 2, vì "giảm TOÀN BỘ đòn" là mức tối đa tuyệt đối — Defense
               // Up/Down (50-Status) KHÔNG ảnh hưởng nhánh Iron Horus (không thể vượt
               // 100%), CHỈ cộng vào 2 nhánh còn lại, cap tối đa 1 (100%).
-              const baseGuardPct = target.hasIronHorus ? 1 : (hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9);
+              // BUG ĐÃ SỬA (xác nhận trực tiếp, kèm log thật cho thấy nhân vật có
+              // CẢ Iron Horus lẫn Fortified Resolve cùng lúc — Guard tốn đúng 40
+              // Sta của Iron Horus, nhưng hiện "giảm 100%" thay vì đúng 99% của
+              // Fortified Resolve): "đáng lẽ nó chỉ có giảm 99% thôi, tức là vẫn
+              // phải nhận tí sát thương" — trước đây hasIronHorus được check TRƯỚC
+              // (ưu tiên tuyệt đối 100%), HOÀN TOÀN bỏ qua Fortified Resolve nếu có
+              // cả 2 — SAI theo xác nhận mới. Đổi thứ tự: Fortified Resolve (nếu
+              // có) LUÔN cap ở 99%, BẤT KỂ có Iron Horus hay không — cơ chế RIÊNG
+              // của Iron Horus (chặn TOÀN BỘ hit trong turn, charge KHÔNG tụt) VẪN
+              // giữ nguyên (gate ở target.hasIronHorus bên dưới, không đổi), chỉ
+              // % dmg giảm thay đổi khi có cả 2.
+              const baseGuardPct = hasPerk(target, "Fortified Resolve") ? 0.99 : (target.hasIronHorus ? 1 : 0.9);
               const defenseUpDownPct = target.hasIronHorus ? 0 : ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
               const guardReductionPct = Math.min(1, Math.max(0, baseGuardPct + defenseUpDownPct));
               if (isM1Type) {
@@ -7585,10 +7596,16 @@ const PORT = process.env.PORT || 10000;
 const server = app.listen(PORT, "0.0.0.0", () => log("info", "startup", "system", `Server running on port ${PORT}`));
 
 // Clear timer khi process shutdown để tránh memory leak
+// BUG THẬT ĐÃ SỬA (phát hiện qua test thật, không phải yêu cầu trực tiếp):
+// webParrySessionCleanupTimer đã CHUYỂN sang rtparry.js từ session tách file
+// trước đó và KHÔNG được export ra ngoài — dòng clearInterval cũ tham chiếu 1
+// biến KHÔNG TỒN TẠI trong scope index.js, gây ReferenceError MỖI LẦN graceful
+// shutdown (SIGTERM/SIGINT) chạy — process bị crash thay vì thoát êm. Bỏ dòng
+// đó — timer của rtparry.js tự quản lý riêng, process.exit() tự dọn dẹp mọi
+// interval khi process thực sự kết thúc, không cần clear thủ công ở đây.
 function gracefulShutdown(signal) {
   log("info", "shutdown", "system", `${signal} received, shutting down.`);
   clearInterval(cooldownCleanupTimer);
-  clearInterval(webParrySessionCleanupTimer);
   server.close(() => process.exit(0));
 }
 
