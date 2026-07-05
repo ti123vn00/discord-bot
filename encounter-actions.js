@@ -48,6 +48,24 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       if (type === "guard" && combatant.hasIronHorus) {
         cost = 40;
       }
+      // Defense Up (50-Status Nhóm 2, xác nhận trực tiếp): "Nếu block đạt 100%
+      // giảm sát thương sẽ đổi qua với mỗi 3 Defense Up giảm 1 Stamina cho Block."
+      // Tính % giảm dmg Guard RAW (giống hệt công thức lúc commit dmg — xem
+      // guardReductionPct trong index.js) — nếu RAW (chưa clamp) vượt quá 100%,
+      // phần Defense Up "dư" (không còn tác dụng giảm dmg vì đã chạm trần) đổi
+      // sang giảm Stamina, cứ 3 điểm dư = -1 Stamina (làm tròn xuống). KHÔNG áp
+      // dụng cho Iron Horus (đã set cứng 100% + cost 40 riêng, không cộng dồn).
+      let defenseUpStaminaDiscount = 0;
+      if (type === "guard" && !combatant.hasIronHorus) {
+        const baseGuardPctForCost = hasPerk(combatant, "Fortified Resolve") ? 0.99 : 0.9;
+        const defenseUpDownPctForCost = ((combatant.defenseUp ?? 0) * 1 - (combatant.defenseDown ?? 0) * 5) / 100;
+        const rawGuardPct = baseGuardPctForCost + defenseUpDownPctForCost;
+        if (rawGuardPct > 1) {
+          const excessDefenseUpPct = (rawGuardPct - 1) * 100; // %-điểm dư, = số Defense Up dư (vì +1%/stack)
+          defenseUpStaminaDiscount = Math.floor(excessDefenseUpPct / 3);
+          cost = Math.max(0, cost - defenseUpStaminaDiscount);
+        }
+      }
       // Overflowing Guard (Envy, [45 Points]): ≥7 Charge → Guard giảm 1 nửa Stamina,
       // đồng thời giảm 1 Charge bản thân.
       let overflowingGuardUsed = false;
@@ -79,7 +97,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       const chargeField = type === "guard" ? "guardCharges" : "evadeCharges";
       combatant[chargeField] = (combatant[chargeField] ?? 0) + 1;
       checkStaggerPanic(combatant);
-      result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""}${overflowingGuardUsed ? " (Overflowing Guard — giảm 1 nửa Sta, -1 Charge)" : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
+      result = `${type === "guard" ? "🛡️ Guard" : "💨 Evade"}! ${label} -${cost} Stamina${freeFromFleetingSteps ? " (Fleeting Steps — FREE lần này!)" : ""}${overflowingGuardUsed ? " (Overflowing Guard — giảm 1 nửa Sta, -1 Charge)" : ""}${defenseUpStaminaDiscount > 0 ? ` (Defense Up dư — giảm thêm ${defenseUpStaminaDiscount} Sta)` : ""} → đang có ${combatant[chargeField]} charge ${type} (1 charge chặn 4 hit M1 Light / 2 hit Medium / 1 hit Heavy của đối phương).`;
       appendActionLog(encounter, result);
       await saveEncounter(channelId, encounter);
     });
