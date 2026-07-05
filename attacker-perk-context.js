@@ -11,7 +11,7 @@
 
 module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
-  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null } = {}) {
+  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null } = {}) {
     let bonusPct = 0;
     // dmgStrRewritten khai báo NGAY ĐẦU (thay vì giữa hàm như trước) — vì Eye Of
     // Horus (BUG ĐÃ SỬA, xem chi tiết bên dưới) giờ CẦN sửa THẬT dmgStr (không chỉ
@@ -68,57 +68,35 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if ((attacker.overchargedTurnsLeft ?? 0) > 0) bonusPct += attacker.overchargedDmgBonusPct ?? 0;
   
     // Eye Of Horus — passive vũ khí "Foreclosure Task Force President" (CHỈ áp cho
-    // M1 — "nếu đánh thường"). BUG ĐÃ SỬA HOÀN TOÀN (xác nhận trực tiếp từ GM kèm
-    // ví dụ số cụ thể: "Dmg: 4x9P + 4x9P, Bonus: 50%, Tổng = 108 dmg" cho lần đánh
-    // ĐẦU TIÊN — trước đây code coi "Repeat Ammo" là +(100/hitCount)% (một lượng
-    // RẤT NHỎ, ~11% cho volley 9 hit) — SAI HOÀN TOÀN. Theo đúng luật: "Bắn thêm 1
-    // Repeat Ammo, gây sát thương CHUẨN" nghĩa là bắn thêm 1 VOLLEY ĐẦY ĐỦ (toàn bộ
-    // 9 hit lần nữa, cùng rate hiện tại), TỨC LÀ NHÂN ĐÔI SỐ HIT — không phải cộng
-    // thêm 1 hit đơn lẻ. Tương tự, "≤6 lần: Base dmg được nâng lên 4x9" là SỐ DICE
-    // THẬT bị đổi (3→4/hit), không phải % tương đương — vì phải NHÂN ĐÔI ĐÚNG GIÁ
-    // TRỊ ĐÃ BOOST khi kết hợp với Repeat Ammo (nếu vẫn dùng %, base-boost và
-    // repeat-ammo sẽ cộng dồn SAI vì áp 2 lần trên cùng 1 factor thay vì đúng thứ
-    // tự "cộng volley TRƯỚC, nhân %bonus SAU CÙNG").
+    // M1 — "nếu đánh thường"). MÔ HÌNH ĐÃ SỬA HOÀN TOÀN LẦN THỨ 2 (xác nhận trực
+    // tiếp từ GM kèm 8 ví dụ cụ thể N=1..8) — trước đây hiểu "N lần" là ĐẾM CỘNG
+    // DỒN qua NHIỀU LẦN bấm M1 riêng biệt lên CÙNG 1 target (m1CountThisTurnByTarget
+    // counter) — SAI HOÀN TOÀN. Đúng phải là: "N lần" = SỐ VOLLEY người chơi TỰ
+    // CHỌN bắn NGAY TRONG 1 HÀNH ĐỘNG duy nhất (giống chọn "đánh mấy lần" của vũ
+    // khí thường, nhưng đơn vị là VOLLEY 9-hit thay vì HIT đơn lẻ) — KHÔNG CÓ
+    // counter nào cả, N luôn được cung cấp TRỰC TIẾP bởi nơi gọi (verifyOpts /
+    // modal / text command param "volleys:"), tính ĐỘC LẬP mỗi hành động, mỗi
+    // target riêng biệt (không có state gì lưu lại giữa các hành động).
     //
-    // Thứ tự tính ĐÚNG cho lần đầu tiên (thisAttackNumber===1, dmgStr gốc "3x9P"):
-    //   1. Base 3→4 (rewrite dmgStr thật): "3x9P" → "4x9P"
-    //   2. Repeat Ammo — nhân đôi hit count (rewrite dmgStr thật): "4x9P" → "4x18P"
-    //   3. +50% bonusPct (tier ≤3) áp SAU CÙNG lên TOÀN BỘ: calcMathCore tính
-    //      4×18=72 (raw), rồi nhân bonusFactor 1.5 → 108 ✓ khớp đúng ví dụ GM cho.
-    // Lần 2-3 (≤3 VÀ ≤6, KHÔNG có Repeat Ammo): base→4 + %50 = 4×9×1.5 = 54.
-    // Lần 4-6 (chỉ ≤6, KHÔNG +50%): base→4, không nhân % = 4×9 = 36.
-    // Lần 7+: không còn gì cả, dmgStr gốc giữ nguyên.
+    // Công thức (verify khớp chính xác cả 8 ví dụ N=1..8 GM cho):
+    //   totalVolleys = N + (N===1 ? 1 : 0)   // Repeat Ammo = +1 volley CHỈ khi N=1
+    //   base         = N<=6 ? 4 : 3          // "Base dmg nâng lên 4x9" nếu ≤6 lần
+    //   bonusPct    += N<=3 ? 50 : 0          // "+50% sát thương" nếu ≤3 lần
+    //   tremorCharge = 2 * totalVolleys       // "mỗi lần đánh thường: +2 Tremor +2
+    //                                         // Charge" — nhân theo SỐ VOLLEY THẬT
+    //                                         // (bao gồm cả volley Repeat Ammo)
+    // dmgStr đã được XÂY DỰNG SẴN ở nơi gọi (đủ totalVolleys term nối bằng "+",
+    // đúng base) — hàm này KHÔNG rewrite dmgStr nữa (khác cách cũ), chỉ cần tính
+    // bonusPct + tremorChargeAmount dựa trên N nhận được.
     //
-    // "Mỗi lần đánh thường: +2 Tremor +2 Charge lên bản thân" trả về qua
-    // eyeOfHorusSelfTremorCharge (KHÔNG nhét vào dmgStrRewritten vì đó áp lên
-    // TARGET, không phải bản thân — cần xử lý riêng ở nơi gọi).
-    // BUG ĐÃ SỬA (xác nhận trực tiếp: "khi bắn 1 lần được hiệu ứng repeat ammo tức
-    // là gắn lên kẻ địch 4 tremor và bản thân 4 tremor" — ý là Charge, xem sửa ở
-    // nơi commit) — trước đây LUÔN cố định +2 Tremor/Charge dù có Repeat Ammo hay
-    // không (SAI — Repeat Ammo = gấp đôi 1 volley, nên lượng Tremor/Charge cũng
-    // phải gấp đôi thành 4 ở đúng lần đó). Đổi từ boolean sang SỐ LƯỢNG cụ thể.
+    // "Mỗi lần đánh thường: +2 Tremor +2 Charge" — Tremor gắn lên TARGET (kẻ địch),
+    // Charge gắn lên BẢN THÂN (đã sửa ở lần trước — vẫn giữ nguyên đúng).
     let eyeOfHorusTremorChargeAmount = 0;
-    if (isM1 && targetId && (attacker.weaponName ?? "").toLowerCase() === "eye of horus") {
-      // CHỈ PEEK (đọc, KHÔNG ghi) ở đây — hàm này chạy lúc DECLARE (build preview),
-      // KHÔNG PHẢI lúc CONFIRM. BUG ĐÃ TRÁNH: nếu tự TĂNG counter ngay tại đây, GM
-      // reject action này sau đó vẫn để counter tăng sai (action không thực sự xảy
-      // ra) — giống bài học evadedCompletely trước đó trong dự án này. Tăng THẬT
-      // (commit) chỉ xảy ra ở confirm handler — xem comment "Eye Of Horus — commit"
-      // trong khối xử lý M1 lúc confirm.
-      const thisAttackNumber = (attacker.m1CountThisTurnByTarget?.[targetId] ?? 0) + 1;
-      if (thisAttackNumber <= 6) {
-        // Base dmg → 4/hit (SỐ THẬT, không phải %) — chỉ thay số NGAY TRƯỚC "x",
-        // giữ nguyên toàn bộ phần còn lại (hit count, type letter, các tag status
-        // khác nếu có, VD "+2Sinking").
-        dmgStrRewritten = dmgStrRewritten.replace(/^[\d.]+(?=\s*x)/, "4");
-      }
-      if (thisAttackNumber === 1) {
-        // Repeat Ammo — bắn thêm 1 volley ĐẦY ĐỦ = NHÂN ĐÔI số hit (SỐ THẬT), áp
-        // SAU KHI base đã được rewrite ở trên (để dùng đúng rate đã boost).
-        dmgStrRewritten = dmgStrRewritten.replace(/x\s*(\d+)/i, (m, n) => `x${parseInt(n, 10) * 2}`);
-      }
-      if (thisAttackNumber <= 3) bonusPct += 50;
-      eyeOfHorusTremorChargeAmount = thisAttackNumber === 1 ? 4 : 2;
+    if (isM1 && eyeOfHorusVolleys && (attacker.weaponName ?? "").toLowerCase() === "eye of horus") {
+      const N = eyeOfHorusVolleys;
+      const totalVolleys = N + (N === 1 ? 1 : 0);
+      if (N <= 3) bonusPct += 50;
+      eyeOfHorusTremorChargeAmount = 2 * totalVolleys;
     }
   
     // Unopposed Attack Boost (50-Status Nhóm 1): "+15% dmg nếu chiêu KHÔNG bị
