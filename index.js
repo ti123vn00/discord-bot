@@ -262,6 +262,7 @@ const KNOWN_KEYS = new Set([
   "wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light", // 9 nhánh Skill Tree (branchPoints)
   "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", // 4 cờ điều kiện đặc biệt
   "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1
+  "paralyze", "diceup", "dicedown", "smoke", "vengeancemark", "nails", "redplumblossom", "freeble", "borrowedtime", "fairy", "airborne", "chains", "sizzlingwound", "perceptionblockingmask", "blacksilence", // 50-Status Nhóm 2
   "choose", // -readbook <sách> choose: <tên> — chốt lựa chọn qua text thay vì dropdown
   "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
@@ -1031,7 +1032,7 @@ function getMaxEmotionLevel(combatant) {
 }
 // Các cặp perk LOẠI TRỪ NHAU theo skill tree (không ai có cả 2 cùng lúc) — check
 // lúc -unlockskilltree, KHÔNG cho mở cái thứ 2 nếu đã có cái đầu trong cặp.
-const { hasPerk, findExclusiveConflict, calcSkillTreePointsEarned, calcBranchPointsAllocated, applyStatusMultiplierToDmgStr, PERK_POINT_COSTS, PERK_BRANCH, BRANCH_KEYS, UNIVERSALLY_KNOWN_WEAPONS, MUTUALLY_EXCLUSIVE_PERKS } = require("./skill-tree")({ calcGrade, GRADE_MIN }); // ĐÃ TÁCH sang file riêng (skill-tree.js)
+const { hasPerk, findExclusiveConflict, calcSkillTreePointsEarned, calcBranchPointsAllocated, applyStatusMultiplierToDmgStr, PERK_POINT_COSTS, PERK_BRANCH, BRANCH_KEYS, UNIVERSALLY_KNOWN_WEAPONS, MIDDLE_SYNDICATE_SKILLS, MUTUALLY_EXCLUSIVE_PERKS } = require("./skill-tree")({ calcGrade, GRADE_MIN }); // ĐÃ TÁCH sang file riêng (skill-tree.js)
 
 const { BOOK_GRANTS, getBookTopLevelChoices, getBookGroupChoices, isValidBookChoice, buildBookChoiceComponents, executeReadBookChoose } = require("./book-system")({ findBook, getPlayerDataWithSlot, savePlayerData }); // ĐÃ TÁCH sang file riêng (book-system.js)
 
@@ -1229,7 +1230,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // → lấy RIÊNG cho từng target — tính calcMathCore riêng từng target.
     const previews = targets.map(t => {
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true, targetId: t.id, eyeOfHorusVolleys });
-      const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: true });
       // Mang (Shin/Mang, đang active): True Dmg — Res target dưới 1x bị ép về 1x;
       // +10%/vòng Dmg M1+skill turn này.
       const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
@@ -1250,7 +1251,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         // — cả 2 đều sai, vì luật nói đây là cơ chế MẶC ĐỊNH không cần khai báo).
         sanityBonusPct: getEffectiveSanityForDiceBonus(player),
         critDiv: perkCtx.critDivOverride ?? undefined,
-        poiseInit: player.poise, chargeInit: player.charge,
+        poiseInit: player.poise + (perkCtx.redPlumBlossomPoiseBonus ?? 0), chargeInit: player.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
         // CÔNG (attacker), KHÔNG áp cho target.
         flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
@@ -1348,7 +1349,8 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     const previews = targets.map(t => {
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false });
-      const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
+      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill });
       const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten,
@@ -1365,7 +1367,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // trực tiếp xem người dùng có gõ critmul: hay không).
         critMul: manualCritMul ?? perkCtx.critMul, diceMul,
         critDiv: perkCtx.critDivOverride ?? critDiv,
-        poiseInit: player.poise, chargeInit: player.charge,
+        poiseInit: player.poise + (perkCtx.redPlumBlossomPoiseBonus ?? 0), chargeInit: player.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
         // CÔNG (attacker), KHÔNG áp cho target.
         flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
@@ -1442,12 +1444,13 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     // TARGET (player) là người bị tấn công → 5 status kia lấy từ TỪNG TARGET riêng.
     const previews = targets.map(t => {
       const perkCtx = computeAttackerPerkContext(enemy, t.combatant, dmgStr, { isM1: false });
-      const defReductionPct = computeDefenderDmgReduction(t.combatant);
+      const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
+      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill });
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten, resStr: combatantResStr(t.combatant),
         bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
         sanityBonusPct: getEffectiveSanityForDiceBonus(enemy),
-        poiseInit: enemy.poise, chargeInit: enemy.charge,
+        poiseInit: enemy.poise + (perkCtx.redPlumBlossomPoiseBonus ?? 0), chargeInit: enemy.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — enemy ĐANG TẤN CÔNG.
         flatDmgPerHit: (enemy.attackPowerUp ?? 0) - (enemy.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
@@ -1570,7 +1573,7 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
-const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, autoBuildDmgStrFromSkillRoll } = require("./skills");
+const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll } = require("./skills");
 const { buildEncounterActionPanel, buildBossActionPanel } = require("./encounter-panels")({ findSkill, hasPerk }); // ĐÃ TÁCH sang file riêng (encounter-panels.js) — đặt SAU import skills.js để tránh TDZ (findSkill là const)
 const { performGuardEvade, performParry, performShinMang, performManifestEgo, performOvercharge, performFollowUp } = require("./encounter-actions")({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
 const { findWeapon } = require("./weapon");
@@ -1799,14 +1802,18 @@ function annotateLinesWithEmotion(lines, tracked) {
  * hàm này KHÔNG tự parse chuỗi lệnh, để prefix/slash tự lo phần đó theo cách riêng.
  * @returns {{ error: string } | { embed: object }}
  */
-function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, forceDullahan = false }) {
+function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, forceDullahan = false, forceMinDice = false, diceModifier = 0 }) {
   // Skill đặc biệt cần arg — dùng promptArg nếu có (VD: Thrust cần nhập Light hiện tại)
   if (skill.promptArg) {
     const { parse, validate, errorMsg, buildHeader } = skill.promptArg;
     const parsed = parse(promptArgRaw ?? "");
     if (!validate(parsed)) return { error: errorMsg };
     startEmotionTracking();
+    if (forceMinDice) startForceMinDice();
+    if (diceModifier !== 0) setDiceModifier(diceModifier);
     const lines = skill.roll(parsed);
+    if (forceMinDice) stopForceMinDice();
+    if (diceModifier !== 0) clearDiceModifier();
     const tracked = stopEmotionTracking();
     const header = buildHeader(parsed, skill);
     return {
@@ -1848,7 +1855,11 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
   for (let i = 0; i < rollCount; i++) {
     const reuseIndex = i;
     startEmotionTracking();
+    if (forceMinDice) startForceMinDice();
+    if (diceModifier !== 0) setDiceModifier(diceModifier);
     const lines = skill.hasDullahanRoll ? skill.roll(forceDullahan, reuseIndex) : skill.roll(reuseIndex);
+    if (forceMinDice) stopForceMinDice();
+    if (diceModifier !== 0) clearDiceModifier();
     const tracked = stopEmotionTracking();
     allTracked.push(...tracked);
     const block = annotateLinesWithEmotion(lines, tracked);
@@ -4148,12 +4159,19 @@ client.on("messageCreate", async (message) => {
       const STATUS_CAPS = {
         fragile: 25, attackpowerup: 10, attackpowerdown: 10, defenseup: 20, defensedown: 20,
         clashattackboost: 8, unopposedattackboost: 5, protection: 20, regen: 99, chargeshield: 20,
+        paralyze: 99,
+        diceup: 99, dicedown: 99, smoke: 15, vengeancemark: 10, nails: 99, redplumblossom: 99, freeble: 5,
+        borrowedtime: 2, fairy: 30,
       };
       const STATUS_FIELD_MAP = {
         fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
         defenseup: "defenseUp", defensedown: "defenseDown", clashattackboost: "clashAttackBoost",
         unopposedattackboost: "unopposedAttackBoost", protection: "protection", regen: "regen",
         chargeshield: "chargeShieldStack",
+        paralyze: "paralyze",
+        diceup: "diceUp", dicedown: "diceDown", smoke: "smoke", vengeancemark: "vengeanceMark",
+        nails: "nails", redplumblossom: "redPlumBlossom", freeble: "freeble",
+        borrowedtime: "borrowedTime", fairy: "fairy",
       };
       const entries = Object.keys(STATUS_CAPS).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
       if (!targetRaw || entries.length === 0) {
@@ -4178,9 +4196,55 @@ client.on("messageCreate", async (message) => {
             // Protection có Duration 2-turn RIÊNG (protectionTurnsLeft) — set/refresh
             // về 2 mỗi lần CỘNG THÊM stack mới (không cộng dồn duration, chỉ refresh).
             if (key === "protection" && amount > 0) resolved.combatant.protectionTurnsLeft = 2;
+            // Borrowed Time: "tồn tại 3 turn" — set/refresh Duration mỗi lần cộng stack mới.
+            if (key === "borrowedtime" && amount > 0) resolved.combatant.borrowedTimeTurnsLeft = 3;
+            // Fairy: "biến mất khi hiệu lực đủ 2 Turn" — set/refresh Duration.
+            if (key === "fairy" && amount > 0) resolved.combatant.fairyTurnsLeft = 2;
             changes.push(`${key}: ${before} → **${resolved.combatant[field]}**`);
           }
           appendActionLog(encounter, `📊 ${resolved.label}: setstatus ${changes.join(", ")}`);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`✅ ${resolved.label}: ${changes.join(", ")}`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "setflag") {
+      // Status DẠNG FLAG (có/không, KHÔNG stack số) — khác setstatus (số nguyên,
+      // cộng dồn có cap). Airborne/Chains/Sizzling Wound/PerceptionBlockingMask/
+      // BlackSilence (Struggling) đều là boolean theo mô tả gốc (không nêu số
+      // stack/max nào).
+      const kv = parseKeyValues(rest);
+      const targetRaw = (kv["target"] ?? "").trim();
+      const FLAG_FIELD_MAP = {
+        airborne: "airborne", chains: "chains", sizzlingwound: "sizzlingWound",
+        perceptionblockingmask: "perceptionBlockingMask", blacksilence: "blackSilence",
+      };
+      const entries = Object.keys(FLAG_FIELD_MAP).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: (kv[k] ?? "").trim().toLowerCase() }));
+      if (!targetRaw || entries.length === 0) {
+        message.reply(`⚠️ Cú pháp: \`-encounter setflag target: <key/userId/me> <flag>: on/off\`\n> Flag hợp lệ: ${Object.keys(FLAG_FIELD_MAP).join("/")}\n> VD: \`-encounter setflag target: mo airborne: on\``);
+        return;
+      }
+      try {
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
+          const resolved = resolveCombatant(encounter, targetId);
+          if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          const changes = [];
+          for (const { key, raw } of entries) {
+            if (raw !== "on" && raw !== "off") throw new Error(`\`${key}:\` phải là "on" hoặc "off".`);
+            const field = FLAG_FIELD_MAP[key];
+            resolved.combatant[field] = raw === "on";
+            // Chains: "(1 Turn)" — set Duration khi bật.
+            if (key === "chains" && raw === "on") resolved.combatant.chainsTurnsLeft = 1;
+            changes.push(`${key}: **${raw}**`);
+          }
+          appendActionLog(encounter, `📊 ${resolved.label}: setflag ${changes.join(", ")}`);
           await saveEncounter(message.channel.id, encounter);
           message.reply(`✅ ${resolved.label}: ${changes.join(", ")}`);
         });
@@ -5658,6 +5722,34 @@ client.on("interactionCreate", async (interaction) => {
                   target.tremor = Math.min(TREMOR_MAX, (target.tremor ?? 0) + t.eyeOfHorusTremorChargeAmount);
                   eyeOfHorusChargeGainedThisAction += t.eyeOfHorusTremorChargeAmount;
                 }
+                // Nails (50-Status Nhóm 2, xác nhận trực tiếp): "mỗi đòn kẻ thù
+                // NHẬN sẽ nhận thêm số Bleed bằng số count Nails, mỗi lần nhận 1
+                // đòn giảm 1/3 count Nails" — 1 ĐÒN (action), không phải mỗi hit —
+                // dùng floor(count/3) theo đúng nghĩa đen "1/3 số count" (count
+                // nhỏ 1-2 sẽ chưa giảm cho tới khi tích đủ 3, chấp nhận được vì
+                // không có mô tả riêng cho trường hợp nhỏ).
+                if ((target.nails ?? 0) > 0) {
+                  target.bleed = Math.min(BLEED_MAX, (target.bleed ?? 0) + target.nails);
+                  target.nails = Math.max(0, target.nails - Math.floor(target.nails / 3));
+                }
+                // Red Plum Blossom (50-Status Nhóm 2, xác nhận trực tiếp): "nếu
+                // Critical sẽ gắn 1 Bleed lên kẻ địch [mang Red Plum Blossom],
+                // giảm 1 Count" — dùng lastHitForStatus.didCrit (đòn CUỐI của
+                // action này — nhất quán với cách đọc burn/bleed stacks ở trên).
+                if ((target.redPlumBlossom ?? 0) > 0 && lastHitForStatus?.didCrit) {
+                  target.bleed = Math.min(BLEED_MAX, (target.bleed ?? 0) + 1);
+                  target.redPlumBlossom = Math.max(0, target.redPlumBlossom - 1);
+                }
+                // Fairy (50-Status Nhóm 2, xác nhận trực tiếp): "trừ HP = count/3
+                // MỖI Action" — giả định (đã nêu ở combatant-factory.js): "mỗi
+                // Action" = mỗi lần CHÍNH attacker (người mang Fairy) hành động —
+                // tự trừ HP BẢN THÂN, KHÔNG liên quan tới target đang đánh. Đặt
+                // trong loop targets.map nên với AOE nhiều target CÙNG 1 action sẽ
+                // CHỈ tính đúng 1 lần cho action đó — kiểm tra targetIdx===0 để
+                // tránh trừ lặp lại theo số target.
+                if (p.targets.indexOf(t) === 0 && (attacker.combatant.fairy ?? 0) > 0) {
+                  attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - Math.floor(attacker.combatant.fairy / 3));
+                }
                 // Set Fire (Page): "đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy]
                 // Burn... mỗi lần trúng" — CHỈ áp cho M1 (p.isM1), KHÔNG áp cho Page/
                 // skill khác. BUG ĐÃ SỬA: "mỗi lần trúng" nghĩa là MỖI HIT (không
@@ -5726,7 +5818,8 @@ client.on("interactionCreate", async (interaction) => {
             // chung. Count KHÔNG đổi ở đây (chỉ giảm nửa lúc end turn thật).
             let bleedSelfNote = "";
             if ((attacker.combatant.bleed ?? 0) > 0) {
-              const bleedSelfDmg = Math.floor(attacker.combatant.bleed / 4);
+              // Sizzling Wound: "+50% Dmg từ Burn và Bleed" — nhân vào đây tương tự Burn.
+              const bleedSelfDmg = Math.floor((attacker.combatant.bleed / 4) * (attacker.combatant.sizzlingWound ? 1.5 : 1));
               if (bleedSelfDmg > 0) {
                 attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - bleedSelfDmg);
                 checkStaggerPanic(attacker.combatant);
