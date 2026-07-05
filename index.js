@@ -5399,8 +5399,24 @@ client.on("interactionCreate", async (interaction) => {
               // của Iron Horus (chặn TOÀN BỘ hit trong turn, charge KHÔNG tụt) VẪN
               // giữ nguyên (gate ở target.hasIronHorus bên dưới, không đổi), chỉ
               // % dmg giảm thay đổi khi có cả 2.
-              const baseGuardPct = hasPerk(target, "Fortified Resolve") ? 0.99 : (target.hasIronHorus ? 1 : 0.9);
-              const defenseUpDownPct = target.hasIronHorus ? 0 : ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
+              // BUG ĐÃ SỬA (hiểu sai HOÀN TOÀN từ đầu, xác nhận trực tiếp kèm
+              // nguyên văn passive card): "Iron Horus: Block tốn 40 stamina NHƯNG
+              // giảm sát thương TOÀN BỘ ĐÒN" — "toàn bộ đòn" ở đây nói về PHẠM VI
+              // (chặn được HẾT các hit trong đòn M1/action đó, nhờ charge KHÔNG
+              // TỤT và kéo dài cả turn), KHÔNG PHẢI mức độ giảm dmg. Iron Horus
+              // KHÔNG đổi % giảm dmg từ 90% mặc định lên 100% — vẫn CHỈ 90% như
+              // Guard thường (hoặc 99% nếu có Fortified Resolve, không liên quan
+              // gì tới Iron Horus). Toàn bộ hiệu ứng ĐẶC BIỆT của Iron Horus chỉ
+              // là: (1) cost 40 Sta thay vì 10, (2) 1 charge chặn được MỌI hit
+              // trong SUỐT turn đó (không giới hạn theo weaponWeight, không tự
+              // tụt) — cả 2 phần này đã đúng sẵn ở nơi khác (performGuardEvade's
+              // cost, và nhánh "while(hitIdx<totalHits)" bên dưới), CHỈ RIÊNG dòng
+              // này (% giảm dmg) là sai, đã xoá hẳn nhánh hasIronHorus khỏi đây.
+              const baseGuardPct = hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9;
+              // Iron Horus KHÔNG còn đặc biệt gì về % nữa (xem comment đầy đủ ở
+              // baseGuardPct ngay trên) — Defense Up/Down áp dụng BÌNH THƯỜNG dù
+              // có Iron Horus hay không, giống mọi combatant khác.
+              const defenseUpDownPct = ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
               const guardReductionPct = Math.min(1, Math.max(0, baseGuardPct + defenseUpDownPct));
               if (isM1Type) {
                 // M1 NHIỀU HIT — cho phép TRỘN nhiều LOẠI phòng thủ khác nhau để chặn
