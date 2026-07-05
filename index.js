@@ -269,7 +269,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", // -encounter
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", // -encounter
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -1188,8 +1188,7 @@ const { resolveCombatant, resolveTargets, formatCombatantBlock } = require("./en
  * @throws Error nếu input/điều kiện không hợp lệ
  */
 async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, targetStr, verifyOpts = {}) {
-  if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
-  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw } = verifyOpts;
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, volleys: volleysRaw } = verifyOpts;
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
@@ -1199,6 +1198,23 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join` trước (không cần gõ tham số gì, tự động lấy hết).");
     if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
+
+    const isEyeOfHorus = (player.weaponName ?? "").toLowerCase() === "eye of horus";
+    // MÔ HÌNH MỚI (xác nhận trực tiếp, 8 ví dụ cụ thể N=1..8) — "N lần" = số volley
+    // TỰ CHỌN bắn NGAY trong hành động NÀY (không phải đếm cộng dồn qua nhiều lần
+    // bấm M1 riêng biệt như bản trước) — với Eye Of Horus, dmgStr được TỰ ĐỘNG XÂY
+    // DỰNG từ N (không cần/không dùng dmgStr người chơi tự gõ nữa).
+    let eyeOfHorusVolleys = null;
+    if (isEyeOfHorus && volleysRaw !== undefined && volleysRaw !== null && `${volleysRaw}`.trim() !== "") {
+      const N = parseInt(volleysRaw, 10);
+      if (!Number.isFinite(N) || N < 1) throw new Error(`"volleys" (số lần bắn) phải là số nguyên ≥1 (nhận được: "${volleysRaw}").`);
+      eyeOfHorusVolleys = N;
+      const totalVolleys = N + (N === 1 ? 1 : 0);
+      const base = N <= 6 ? 4 : 3;
+      const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[player.weaponType] ?? "P";
+      dmgStr = Array(totalVolleys).fill(`${base}x9${typeLetter}`).join(" + ");
+    }
+    if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`), hoặc `volleys: <N>` nếu đang dùng Eye Of Horus.");
 
     // skill:/ref: — xem comment đầy đủ ở resolveSkillVerification. Gọi TRƯỚC khi
     // build preview vì có thể throw (skill không tồn tại/đang cooldown) — fail sớm,
@@ -1212,20 +1228,21 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch HOẶC player khác (PvP)"
     // → lấy RIÊNG cho từng target — tính calcMathCore riêng từng target.
     const previews = targets.map(t => {
-      // BUG ĐÃ SỬA: trước đây KHÔNG truyền targetId ở đây — khiến điều kiện
-      // "isM1 && targetId && ..." trong computeAttackerPerkContext LUÔN false (vì
-      // targetId mặc định null), nên TOÀN BỘ passive Eye Of Horus (Repeat Ammo +
-      // tier bonus % + Tremor/Charge tự thân) KHÔNG BAO GIỜ chạy dù logic bên trong
-      // đã viết đúng — verify bằng test thật phát hiện MỌI lần đánh đều ra dmg y hệt
-      // nhau (không có bonus nào áp dụng).
-      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true, targetId: t.id });
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true, targetId: t.id, eyeOfHorusVolleys });
       const defReductionPct = computeDefenderDmgReduction(t.combatant);
       // Mang (Shin/Mang, đang active): True Dmg — Res target dưới 1x bị ép về 1x;
       // +10%/vòng Dmg M1+skill turn này.
       const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
+      // Eye Of Horus — "sát thương chuẩn" (xác nhận trực tiếp: "tức là sẽ luôn
+      // được tính là 1x res khi tấn công kẻ địch, nếu res của chúng dưới 1x") —
+      // CÙNG cơ chế "True Dmg" đã có sẵn cho Shin/Mang (trueDmgResStr — ép Res
+      // dưới 1x về đúng 1x, không khuếch đại nếu Res đã ≥1x). Tái dùng nguyên hàm
+      // đó thay vì viết lại — áp dụng cho MỌI lần bắn Eye Of Horus (không chỉ
+      // riêng volley Repeat Ammo), theo đúng yêu cầu "áp dụng tag này luôn".
+      const useTrueDmg = player.shinMangActive || isEyeOfHorus;
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten,
-        resStr: player.shinMangActive ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant),
+        resStr: useTrueDmg ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant),
         bonusPct: perkCtx.bonusPct + mangBonusPct, critMul: perkCtx.critMul,
         // Sanity dice bonus ("+1 Sanity = +1% dice value, -1 Sanity = -1%") LUÔN tự
         // áp dụng từ Sanity HIỆN TẠI của người tấn công — KHÔNG phải tham số tự gõ
@@ -1249,31 +1266,14 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusTremorChargeAmount: perkCtx.eyeOfHorusTremorChargeAmount };
     });
     const hitCount = previews[0].preview.dmgValues.length;
-    // BUG ĐÃ SỬA (phát hiện qua test thật, không phải chỉ đọc code): lần đánh ĐẦU
-    // TIÊN của Eye Of Horus (Repeat Ammo trigger) tính RA GẤP ĐÔI Stamina cần thiết
-    // (40 thay vì 20) — vì `hitCount` ở trên lấy từ dmgValues SAU KHI
-    // computeAttackerPerkContext đã NHÂN ĐÔI hit count trong dmgStrRewritten (Repeat
-    // Ammo = thêm 1 volley đầy đủ). Với Eye Of Horus, "số lần bắn" (dùng để tính 20
-    // Sta/lần) phải dựa vào Ý ĐỊNH GỐC của người chơi (dmgStr THẬT SỰ nhập, TRƯỚC
-    // rewrite), không phải số hit ĐÃ bị nhân đôi. Parse riêng từ dmgStr gốc — vũ
-    // khí khác (không rewrite gì) không bị ảnh hưởng, vẫn dùng hitCount như cũ.
-    const originalHitCountMatch = dmgStr.match(/x\s*(\d+)/i);
-    const originalHitCount = originalHitCountMatch ? parseInt(originalHitCountMatch[1], 10) : hitCount;
-    // Eye Of Horus — Stamina cost ĐẶC BIỆT: 20 Sta cho MỖI "lần bắn" (1 lần bắn = 9
-    // hit, 3 dmg/hit = 27 dmg), KHÔNG theo công thức thường (Heavy = 20/hit riêng
-    // lẻ) — xác nhận trực tiếp từ GM: "1 đánh thường của Eye of Horus, tốn 20
-    // stamina và là 3x9. 1 turn đánh mấy lần cũng được... Eye of Horus đánh 2 lần
-    // thì sẽ là 18 hit, 10 lần sẽ là 90 hit". BUG ĐÃ SỬA: hiểu sai "đánh mấy lần
-    // cũng được" (= KHÔNG giới hạn SỐ LẦN bắn/turn) thành "phí LUÔN CỐ ĐỊNH 20 dù
-    // bắn bao nhiêu lần" — ĐÚNG PHẢI LÀ 20 × SỐ LẦN BẮN (originalHitCount/9, làm
-    // tròn lên): 1 lần bắn (9 hit) = 20 Sta, 2 lần (18 hit) = 40 Sta, 10 lần (90
-    // hit) = 200 Sta.
-    const isEyeOfHorus = (player.weaponName ?? "").toLowerCase() === "eye of horus";
-    const eyeOfHorusVolleys = Math.ceil(originalHitCount / 9);
-    const staminaCost = isEyeOfHorus ? eyeOfHorusVolleys * 20 : WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
+    // Eye Of Horus — Stamina cost ĐẶC BIỆT: 20 Sta cho MỖI "lần bắn" (volley 9-hit)
+    // — tính TRỰC TIẾP từ N (eyeOfHorusVolleys), KHÔNG parse từ dmgStr/hitCount nữa
+    // (mô hình mới N đã rõ ràng ngay từ đầu, không cần suy luận ngược).
+    const totalVolleysForStamina = eyeOfHorusVolleys ? eyeOfHorusVolleys + (eyeOfHorusVolleys === 1 ? 1 : 0) : 0;
+    const staminaCost = isEyeOfHorus ? totalVolleysForStamina * 20 : WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
     if (player.currentStamina < staminaCost) {
       throw new Error(isEyeOfHorus
-        ? `Không đủ Stamina — Eye Of Horus tốn 20 Sta/lần bắn (9 hit) — ${originalHitCount} hit ≈ ${eyeOfHorusVolleys} lần bắn = ${staminaCost} Sta, còn ${player.currentStamina}.`
+        ? `Không đủ Stamina — Eye Of Horus tốn 20 Sta/volley — ${eyeOfHorusVolleys} lần bắn ≈ ${totalVolleysForStamina} volley = ${staminaCost} Sta, còn ${player.currentStamina}.`
         : `Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
     }
 
@@ -1606,7 +1606,7 @@ function findWeaponAnywhere(raw) {
 }
 const { findOutfit } = require("./outfit");
 const { findAccessory } = require("./accessory");
-const { buildBalanceEmbed } = require("./balance-display")({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier }); // ĐÃ TÁCH sang file riêng (balance-display.js) — đặt SAU findOutfit/findAccessory (const, TDZ)
+const { buildBalanceEmbed } = require("./balance-display")({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }); // ĐÃ TÁCH sang file riêng (balance-display.js) — đặt SAU findOutfit/findAccessory (const, TDZ)
 
 /** isEgoSkill — check skill.tags có chứa "EGO"/"E.G.O" không (case-insensitive,
  *  bỏ qua dấu chấm/khoảng trắng) — dùng để phân biệt Page thường vs E.G.O Page lúc
@@ -3793,7 +3793,14 @@ client.on("messageCreate", async (message) => {
       const equippedOutfitObj = profileDataForDefaults.equippedOutfit ? findOutfit(profileDataForDefaults.equippedOutfit) : null;
       const weapon = normalizeWeaponWeight(kv["weapon"] ?? equippedWeaponObj?.weight ?? "medium");
       const resRaw = kv["res"] ?? "";
-      const res = equippedOutfitObj ? { ...equippedOutfitObj.resistance } : { B: 1, P: 1, S: 1 };
+      // BUG ĐÃ SỬA (xác nhận trực tiếp: "khi player không có outfit trên người thì
+      // sẽ mặc định 3 loại kháng là 2x và speed range là 3~6, không có passive") —
+      // trước đây mặc định 1x khi KHÔNG có outfit — SAI, đúng phải là 2x (không mặc
+      // outfit = dễ bị tổn thương hơn, gấp đôi dmg nhận). Speed range 3~6 ĐÃ ĐÚNG
+      // sẵn (xem speedRangeMin/Max bên dưới, fallback 6/3 khi không có outfit).
+      // "Không có passive" tự động đúng — passive outfit (VD Iron Horus) check
+      // equippedOutfit KHỚP TÊN CỤ THỂ, tự nhiên false khi null, không cần sửa gì.
+      const res = equippedOutfitObj ? { ...equippedOutfitObj.resistance } : { B: 2, P: 2, S: 2 };
       for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
       const speedRangeMatch = (kv["speedrange"] ?? "").match(/(\d+)\s*[~\-]\s*(\d+)/);
       const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : (equippedOutfitObj?.speedRange?.min ?? 3);
@@ -4377,17 +4384,21 @@ client.on("messageCreate", async (message) => {
       const kv = parseKeyValues(rest);
       const dmgStr = kv["dmg"] ?? "";
       const targetStr = kv["target"] ?? "";
-      if (!dmgStr.trim() || !targetStr.trim()) {
+      // "volleys:" — dành riêng cho Eye Of Horus (mô hình mới: N = số volley TỰ
+      // CHỌN bắn ngay trong hành động này, xem doPlayerAttack) — cho phép bỏ trống
+      // dmg: nếu có volleys: (dmgStr sẽ được TỰ ĐỘNG xây dựng từ N).
+      if ((!dmgStr.trim() && !kv["volleys"]) || !targetStr.trim()) {
         message.reply(
           "⚠️ Cú pháp: `-encounter attack target: <key hoặc key1,key2 hoặc all> dmg: <công thức>` (M1 — tự trừ Stamina theo vũ khí của bạn).\n" +
           "> VD: `-encounter attack target: mo dmg: 20B`\n" +
+          "> Đang dùng Eye Of Horus? Dùng `volleys: <N>` thay cho `dmg:` (VD: `-encounter attack target: mo volleys: 4`).\n" +
           "> Tùy chọn `skill: <tên skill>` hoặc `ref: <link message>` để GM dễ verify."
         );
         return;
       }
       try {
         const { embed, skillRollEmbed } = await doPlayerAttack(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {
-          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"],
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], volleys: kv["volleys"],
         });
         await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
       } catch (err) {
@@ -5631,22 +5642,19 @@ client.on("interactionCreate", async (interaction) => {
                 // nguyên.
                 if ((target.chargeShieldStack ?? 0) > 0) target.chargeShieldStack = 0;
                 // Eye Of Horus — COMMIT THẬT (khác PEEK lúc declare trong
-                // computeAttackerPerkContext) — CHỈ tăng counter thật + áp Tremor/
-                // Charge KHI action THỰC SỰ được confirm (không phải declare) VÀ
-                // KHÔNG bị né hoàn toàn (nằm trong khối !evadedCompletely — "đánh
-                // thường" né hoàn toàn thì không tính là đã đánh, nhất quán với mọi
-                // status effect khác trong khối này).
-                // BUG ĐÃ SỬA (xác nhận trực tiếp: "gắn lên kẻ địch 4 tremor và bản
-                // thân 4 [charge]... bản thân lại nhận chỉ có 2 charge và nhận cả 2
-                // tremor dù đáng lẽ nó là của kẻ địch") — 2 lỗi cùng lúc: (1) Tremor
-                // trước đây gắn lên attacker.combatant (BẢN THÂN) — SAI, phải gắn
-                // lên target (KẺ ĐỊCH đang bị đánh). (2) amount LUÔN cố định +2, dù
-                // Repeat Ammo (lần đầu tiên trong turn) đáng lẽ phải nhân đôi thành
-                // +4 cho CẢ Tremor lẫn Charge. Charge vẫn đúng là gắn lên bản thân
-                // (resource của người dùng vũ khí), chỉ Tremor đổi target.
+                // computeAttackerPerkContext) — áp Tremor/Charge KHI action THỰC SỰ
+                // được confirm (không phải declare) VÀ KHÔNG bị né hoàn toàn (nằm
+                // trong khối !evadedCompletely — "đánh thường" né hoàn toàn thì
+                // không tính là đã đánh, nhất quán với mọi status effect khác trong
+                // khối này).
+                // MÔ HÌNH MỚI (xác nhận trực tiếp, 8 ví dụ N=1..8) — KHÔNG còn
+                // counter m1CountThisTurnByTarget nữa (N giờ luôn được cung cấp trực
+                // tiếp mỗi hành động, không cộng dồn qua nhiều lần bấm riêng biệt).
+                // Tremor gắn lên target (KẺ ĐỊCH), Charge gắn lên bản thân (resource
+                // người dùng vũ khí) — amount đã tính SẴN đúng theo N ở
+                // computeAttackerPerkContext (2 × tổng số volley thật, bao gồm cả
+                // volley Repeat Ammo nếu có).
                 if (t.eyeOfHorusTremorChargeAmount > 0 && attacker.type === "player") {
-                  attacker.combatant.m1CountThisTurnByTarget = attacker.combatant.m1CountThisTurnByTarget ?? {};
-                  attacker.combatant.m1CountThisTurnByTarget[t.targetId] = (attacker.combatant.m1CountThisTurnByTarget[t.targetId] ?? 0) + 1;
                   target.tremor = Math.min(TREMOR_MAX, (target.tremor ?? 0) + t.eyeOfHorusTremorChargeAmount);
                   eyeOfHorusChargeGainedThisAction += t.eyeOfHorusTremorChargeAmount;
                 }
@@ -5898,21 +5906,15 @@ client.on("interactionCreate", async (interaction) => {
     if (action === "attack") {
       const isAutoCalc = parts[3] === "auto";
       const isFixedBurst = parts[3] === "fixedburst";
-      let dmgStr;
+      let dmgStr, eyeOfHorusVolleysInput;
       if (isFixedBurst) {
-        // Eye Of Horus — LUÔN CỐ ĐỊNH "baseDamage x 9" mỗi lần "đánh thường" (KHÔNG
-        // hỏi/nhận input số lần từ player — xác nhận trực tiếp từ GM: "1 lần đánh
-        // sẽ ra 9 hit, tổng là 27"). Ammo (giới hạn 8 viên/lượt) KHÔNG tự động hoá
-        // (không có hệ thống "đạn" trong bot, giống Light/Stamina/Sanity/Charge) —
-        // GM/player tự đếm 8 lượt bắn theo quy ước riêng của bàn chơi.
-        const encounter = await getEncounter(channelId);
-        const combatant = encounter?.players?.[interaction.user.id];
-        if (!combatant || !Number.isFinite(combatant.weaponBaseDamage) || !combatant.weaponType) {
-          throw new Error("Không tìm thấy dữ liệu vũ khí — dùng `-encounter attack target: ... dmg: ...` (lệnh text) thay vào đó.");
-        }
-        const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
-        if (!typeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
-        dmgStr = `${combatant.weaponBaseDamage}x9${typeLetter}`;
+        // MÔ HÌNH MỚI (xác nhận trực tiếp, 8 ví dụ N=1..8) — "N lần bắn" (volleys)
+        // giờ đọc TRỰC TIẾP từ field Modal, TRUYỀN QUA verifyOpts.volleys để
+        // doPlayerAttack tự xây dmgStr (nhất quán với lệnh text `volleys:`) — không
+        // còn tự xây dmgStr ở tầng Modal này nữa (khác bản trước).
+        const volleysRaw = interaction.fields.getTextInputValue("volleys");
+        eyeOfHorusVolleysInput = volleysRaw;
+        dmgStr = ""; // doPlayerAttack tự xây dựng từ volleys, không cần dmgStr ở đây
       } else if (isAutoCalc) {
         const hitCountRaw = interaction.fields.getTextInputValue("hitCount");
         const hitCount = parseInt(hitCountRaw.trim(), 10);
@@ -5927,19 +5929,11 @@ client.on("interactionCreate", async (interaction) => {
         // Type text (Blunt/Pierce/Slash) → chữ cái dmgStr cần (B/P/S).
         const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
         if (!typeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
-        // Foreclosure Task Force President (Eye Of Horus): base dmg 3→4 "≤6 lần"
-        // KHÔNG cần xử lý riêng ở đây — computeAttackerPerkContext ĐÃ áp dụng hiệu
-        // ứng này qua %bonus (+33,33%, tương đương 4/3) ngay khi doPlayerAttack chạy
-        // phía dưới, hoạt động ĐÚNG cho CẢ dmgStr tự tính từ Modal LẪN gõ tay — KHÔNG
-        // cần biết trước "base dmg" là bao nhiêu ở tầng Modal này. (BUG ĐÃ SỬA: từng
-        // có 1 bản cố đổi THẬT effectiveBaseDamage=4 rồi nhét vào dmgStr TRƯỚC khi
-        // gọi doPlayerAttack — nếu chạy CÙNG với %bonus trong computeAttackerPerkContext
-        // sẽ áp dụng hiệu ứng "base 3→4" HAI LẦN CHỒNG LÊN NHAU. Đã xoá hẳn.)
         dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${typeLetter}` : `${combatant.weaponBaseDamage}${typeLetter}`;
       } else {
         dmgStr = interaction.fields.getTextInputValue("dmgStr");
       }
-      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr);
+      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { volleys: eyeOfHorusVolleysInput });
       await interaction.reply({ embeds: [embed] });
     } else if (action === "bossattack") {
       // Boss UI (theo yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI")
@@ -6045,8 +6039,19 @@ client.on("interactionCreate", async (interaction) => {
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
       if (isFixedBurstWeapon) {
-        // CHỈ hỏi target — KHÔNG hỏi "mấy lần" (luôn cố định 9 hit/lần bắn).
-        modal.addComponents(new ActionRowBuilder().addComponents(targetInput));
+        // MÔ HÌNH MỚI (xác nhận trực tiếp, 8 ví dụ N=1..8) — HỎI "N lần bắn" (số
+        // volley TỰ CHỌN cho hành động NÀY) — khác trước đây (chỉ hỏi target, vì
+        // dùng counter cộng dồn qua nhiều lần bấm riêng biệt, giờ không còn nữa).
+        const volleysInput = new TextInputBuilder()
+          .setCustomId("volleys")
+          .setLabel("Bắn mấy lần? (volley 9-hit/lần)")
+          .setPlaceholder("VD: 4")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(targetInput),
+          new ActionRowBuilder().addComponents(volleysInput),
+        );
       } else if (hasWeaponData) {
         const hitCountInput = new TextInputBuilder()
           .setCustomId("hitCount")
@@ -6408,7 +6413,11 @@ client.on("interactionCreate", async (interaction) => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
       // Re-check sở hữu NGAY LÚC BẤM (không chỉ lúc build dropdown) — phòng
       // trường hợp đã dùng/mất item giữa lúc dropdown hiện và lúc bấm chọn.
-      if ((data.items?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu **${chosenName}** — dùng lại \`-balance\` để cập nhật danh sách.`);
+      // BUG ĐÃ SỬA (xác nhận trực tiếp: "chưa thấy brawler được free... vẫn chưa
+      // pick được") — vũ khí UNIVERSALLY_KNOWN_WEAPONS (VD Brawler) BYPASS check
+      // này, nhất quán với -equipweapon text command.
+      const isUniversalChosen = chosenType === "weapon" && UNIVERSALLY_KNOWN_WEAPONS.has(chosenName.toLowerCase());
+      if (!isUniversalChosen && (data.items?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu **${chosenName}** — dùng lại \`-balance\` để cập nhật danh sách.`);
       let resultMsg;
       if (chosenType === "weapon") {
         const weapon = findWeaponAnywhere(chosenName);
