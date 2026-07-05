@@ -125,6 +125,64 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       protection: 0, protectionTurnsLeft: 0, // -5%/stack dmg nhận vào, max 20, hết sau 2 turn (KHÁC — 2 turn, không phải 1)
       regen: 0, // 1 stack = 1 HP hồi — CHỈ mất khi ĐÃ hồi (không tự decay theo turn)
       chargeShieldStack: 0, // -10%/stack dmg nhận vào, max 20 — mất SAU MỖI LẦN bị tấn công (không theo turn)
+    // — 50-STATUS NHÓM 2 (bắt đầu, xác nhận trực tiếp từng cái) —
+    // Paralyze: mỗi lần dùng 1 skill (không phải M1) sẽ bị ép 100% Min Dice, SAU
+    // đó giảm 1 count — xử lý ở resolveSkillVerification (skill-verification.js).
+    paralyze: 0,
+    // Dice Up/Down (Value Power Up/Down): "+1/-1 Dice. Biến mất sau End Turn" —
+    // cộng/trừ TRỰC TIẾP vào MỌI roll skill (side-channel diceModifier ở skills.js,
+    // qua resolveSkillVerification) — reset về 0 mỗi endturn (turn-advance.js).
+    diceUp: 0, diceDown: 0,
+    // Smoke: "+2,5%/stack sát thương từ ĐÁNH THƯỜNG vào bản thân (Max 15). Sau mỗi
+    // 1 turn mất 1 stack" — áp dụng ở doPlayerAttack/doEnemyAttack (M1 only, không
+    // phải skill) khi combatant này là TARGET bị M1 đánh — decay -1/turn (KHÔNG
+    // reset về 0 như Nhóm 1, chỉ giảm dần).
+    smoke: 0,
+    // Vengeance Mark: "+5%/stack dmg từ skill của The Middle [Max 10]" — chỉ áp
+    // khi hit đến từ 1 skill thuộc "The Middle" (Middle Syndicate Book / The
+    // Middle Big Brother Book — xem MIDDLE_SYNDICATE_SKILLS ở skill-tree.js).
+    vengeanceMark: 0,
+    // Airborne: "hất tung — kẻ địch bị hất tung nhận 10 Dmg vào End Turn. Biến
+    // mất sau End Turn hoặc sau bị dính đòn có condition Airborne" — flag đơn
+    // giản (không stack).
+    airborne: false,
+    // Borrowed Time: "2 Haste và 1 Attack Power Up MỖI TURN (max 2 [stack Borrowed
+    // Time]) tồn tại 3 turn" — borrowedTime = số stack Borrowed Time (không phải
+    // Haste/AtkUp trực tiếp), mỗi turn CÒN active tự cộng thêm 2 Haste + 1
+    // AttackPowerUp (xem turn-advance.js).
+    borrowedTime: 0, borrowedTimeTurnsLeft: 0,
+    // Fairy: "trừ HP = count/3 MỖI Action (Max 30) [biến mất khi hiệu lực đủ 2
+    // Turn]" — giả định "mỗi Action" = mỗi lần CHÍNH người mang Fairy hành động
+    // (M1/skill) — xử lý ở doPlayerAttack/doPlayerHit/doEnemyAttack khi ATTACKER
+    // (không phải target) có Fairy.
+    fairy: 0, fairyTurnsLeft: 0,
+    // Chains: "skill TIẾP THEO của kẻ thù +1 Light để dùng (1 Turn)" — flag đơn
+    // giản, tiêu thụ NGAY khi dùng 1 skill (bất kể còn turn hay không), hoặc hết
+    // sau 1 turn nếu chưa dùng skill nào.
+    chains: false, chainsTurnsLeft: 0,
+    // Sizzling Wound: "+50% Dmg từ Burn và Bleed" — flag đơn giản (không thấy nêu
+    // stack/max trong bản mô tả gốc — coi là boolean có/không).
+    sizzlingWound: false,
+    // Mặt nạ chống nhận thức (PerceptionBlockingMask): "đòn tấn công CUỐI CÙNG ở
+    // mỗi turn thành [Undodgeable][Unparriable][Unblockable][Unclashable]" — flag
+    // — người chơi tự đánh dấu hành động nào là "cuối turn" qua tham số riêng
+    // (lastAction: true) vì hệ thống không tự biết trước thứ tự hành động.
+    perceptionBlockingMask: false,
+    // BlackSilence (Struggling): "giảm mọi Light Cost của Page đi 1 (không về 0)
+    // và +4 Dice Up cho Critical vũ khí" — flag.
+    blackSilence: false,
+    // Nails: "mỗi đòn kẻ thù NHẬN sẽ nhận thêm Bleed = count Nails, mỗi lần nhận 1
+    // đòn giảm 1/3 count Nails" — áp dụng khi combatant này là TARGET bị tấn công.
+    nails: 0,
+    // Red Plum Blossom: "trên kẻ địch, NGƯỜI TẤN CÔNG +10% Crit và +1 Bleed/Crit
+    // lên kẻ địch đó, nếu Crit thì giảm 1 Count" — đặt trên TARGET nhưng ảnh
+    // hưởng tới ATTACKER đang tấn công target đó.
+    redPlumBlossom: 0,
+    // Freeble: "giảm GIÁ TRỊ dice (không phải số lượng dice) = count, của MỌI
+    // skill trong turn của kẻ địch [Max 5, mỗi turn trừ 1 nửa, dưới 1 thì hết]
+    // [dice không thể dưới 1]" — dùng CHUNG side-channel diceModifier (âm) với
+    // Dice Up/Down, nhưng KHÔNG reset theo turn như Dice Down — decay /2 riêng.
+    freeble: 0,
       // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
       // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
       // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
