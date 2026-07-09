@@ -239,6 +239,18 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
     // khái niệm "kẻ địch đang giao tranh" (hệ thống hiện không có). sourceId lưu
     // định danh "người buff nó".
     busyAsTribbie: false, busyAsTribbieSourceId: null, busyAsTribbieTriggeredThisTurn: false,
+    // Time Moratorium (xác nhận trực tiếp): "khi bị nhận sát thương... KHÔNG NHẬN
+    // sát thương trong turn đó mà tích lại, sau 3 turn gây (dmg tích lại) x
+    // (Tremor/2)%, giảm 10% dmg nhận vào" — chặn+tích luỹ dmg xử lý ở COMMIT
+    // HANDLER (index.js), "nổ" sau 3 turn xử lý ở turn-advance.js.
+    timeMoratorium: false, timeMoratoriumAccumulated: 0, timeMoratoriumTurnsLeft: 0,
+    // Ammo system (xác nhận trực tiếp) — "Stack dành cho vũ khí có sử dụng đạn.
+    // Nhận qua Reload, tiêu hao đạn trong Inventory mỗi khi Reload. Max 99 trong
+    // Inventory VÀ mỗi khi vào Encounter." — ammo = đạn thường (encounter-only,
+    // reset mỗi encounter). frostAmmo/incendiaryAmmo = đạn đặc biệt riêng, cùng cơ
+    // chế Reload từ Inventory. lastAmmoTypeUsed lưu loại đạn VỪA bắn (để Repeat
+    // Ammo — "lặp lại viên đạn trước mà không tốn Stack" — biết dùng lại loại nào).
+    ammo: 0, frostAmmo: 0, incendiaryAmmo: 0, lastAmmoTypeUsed: null,
       // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
       // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
       // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
