@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX }) {
+module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -113,7 +113,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
   }
   
   async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw) {
-    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0;
+    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "";
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
   
@@ -169,6 +169,20 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       if (rollResult.error) throw new Error(rollResult.error);
       if (hasParalyze) attacker.paralyze -= 1;
       if (hasChains) attacker.chains = false;
+      // Busy as Tribbie (xác nhận trực tiếp): "mỗi khi sử dụng Page hoặc Critical
+      // sẽ làm cho người buff nó tung ra một lần FUA [10~20][Blunt][Undodgeable].
+      // Một turn chỉ kích một lần" — GIẢ ĐỊNH FUA nhắm THẲNG vào chính người mang
+      // status này (xem comment đầy đủ ở combatant-factory.js). Undodgeable = trừ
+      // THẲNG, không qua Guard/Evade/Parry — vẫn nhân đúng Res Blunt của target.
+      if (attacker.busyAsTribbie && !attacker.busyAsTribbieTriggeredThisTurn) {
+        const fuaRaw = r(10, 20);
+        const resMatch = combatantResStr(attacker).match(/([\d.]+)xB/);
+        const resB = resMatch ? parseFloat(resMatch[1]) : 1;
+        const fuaDmg = Math.round(fuaRaw * resB * 1000) / 1000;
+        attacker.currentHp = Math.max(0, attacker.currentHp - fuaDmg);
+        attacker.busyAsTribbieTriggeredThisTurn = true;
+        busyAsTribbieNote = ` [💢Busy as Tribbie — FUA ${fuaDmg} dmg]`;
+      }
       skillRollEmbed = rollResult.embed;
       emotionDelta = rollResult.totalEmotionDelta ?? 0;
       cooldownTurns = parseSkillCooldownTurns(skill.cd);
@@ -188,7 +202,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       }
     }
   
-    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost };
+    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote };
   }
 
   return {
