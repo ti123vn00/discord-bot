@@ -84,6 +84,10 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       blockParry: /\[Unparriable\]/i.test(t),
       guardBreak: /\[Guard Break\]/i.test(t),
       unclashable: /\[Unclashable\]/i.test(t),
+      // Airborne (xác nhận trực tiếp): "biến mất... sau bị dính đòn có condition
+      // Airborne" — 1 tag riêng trên ĐÒN TẤN CÔNG (giống Unblockable...), KHÔNG
+      // phải status trên combatant nào — đòn có tag này sẽ tắt airborne của target.
+      airborneCondition: /\[Airborne\]/i.test(t),
     };
   }
   
@@ -98,6 +102,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       blockParry: autoTags.blockParry || manual.includes("unparriable"),
       guardBreak: autoTags.guardBreak || manual.includes("guard break") || manual.includes("guardbreak"),
       unclashable: autoTags.unclashable || manual.includes("unclashable"),
+      airborneCondition: autoTags.airborneCondition || manual.includes("airborne"),
     };
   }
   
@@ -112,7 +117,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     }
   }
   
-  async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw) {
+  async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false) {
     let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "";
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
@@ -164,7 +169,11 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // trên bản thân" — LIÊN TỤC, dựa trên Tremor HIỆN TẠI của CHÍNH người đang
       // roll skill (không phải target).
       const tremorChainPenalty = (attacker.tremorChain ?? 0) > 0 ? Math.floor((attacker.tremor ?? 0) / 10) : 0;
-      const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0) - tremorChainPenalty;
+      // BlackSilence/Struggling (xác nhận trực tiếp): "+4 Dice Up cho Critical của
+      // vũ khí" — CHỈ áp khi đây là Critical (isCritical=true), không áp cho Page
+      // thường.
+      const blackSilenceCritBonus = isCritical && attacker.blackSilence ? 4 : 0;
+      const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0) - tremorChainPenalty + blackSilenceCritBonus;
       const rollResult = buildSkillRollResult({ skill, rollCount: 1, forceMinDice: hasParalyze, diceModifier });
       if (rollResult.error) throw new Error(rollResult.error);
       if (hasParalyze) attacker.paralyze -= 1;
