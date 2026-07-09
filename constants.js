@@ -49,6 +49,11 @@ module.exports = {
   // -encounter setstatus: Hemorrhage — "Tối đa 5 stack" theo đúng mô tả gốc.
   HEMORRHAGE_MAX: 5,
 
+  // -encounter reload / -inventory: Ammo (và Frost/Incendiary Ammo) — "chỉ có thể
+  // chứa tới 99 là Max ở trong Inventory VÀ mỗi khi vào Encounter" — dùng CHUNG 1
+  // mốc cho cả 2 nơi (Inventory persistent + Encounter combat stack).
+  AMMO_MAX: 99,
+
   // /parry: số lần roll tối đa mỗi lệnh
   PARRY_MAX_ROLLS: 30,
 
