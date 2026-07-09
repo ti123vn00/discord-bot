@@ -176,6 +176,10 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.hemorrhage > 0) statusParts.push(`Hemorrhage${combatant.hemorrhage}`);
     if (combatant.burningSensation) statusParts.push(`Burning Sensation`);
     if (combatant.busyAsTribbie) statusParts.push(`Busy as Tribbie${combatant.busyAsTribbieSourceId ? ` (↔${combatant.busyAsTribbieSourceId})` : ""}`);
+    if (combatant.timeMoratorium) statusParts.push(`Time Moratorium (tích ${combatant.timeMoratoriumAccumulated.toFixed(1)} dmg, còn ${combatant.timeMoratoriumTurnsLeft}T)`);
+    if (combatant.ammo > 0) statusParts.push(`🔫Ammo${combatant.ammo}`);
+    if (combatant.frostAmmo > 0) statusParts.push(`🔫Frost Ammo${combatant.frostAmmo}`);
+    if (combatant.incendiaryAmmo > 0) statusParts.push(`🔫Incendiary Ammo${combatant.incendiaryAmmo}`);
     if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
     if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
     if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
