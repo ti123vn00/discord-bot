@@ -164,6 +164,18 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.tremorScorch) statusParts.push(`Tremor Scorch`);
     if (combatant.tremorHemorrhage) statusParts.push(`Tremor Hemorrhage`);
     if (combatant.spectroFrazzle > 0) statusParts.push(`Spectro Frazzle${combatant.spectroFrazzle}${combatant.spectroFrazzlePendingLoss > 0 ? ` (nợ ${combatant.spectroFrazzlePendingLoss} Sta chờ hồi)` : ""}`);
+    if (combatant.gazeAwe > 0) statusParts.push(`Gaze[Awe]${combatant.gazeAwe}${combatant.gazeAweSourceId ? ` (↔${combatant.gazeAweSourceId})` : ""}`);
+    if (combatant.contempt > 0) statusParts.push(`Contempt${combatant.contempt}${combatant.contemptSourceId ? ` (↔${combatant.contemptSourceId})` : ""}`);
+    if (combatant.gazeOfContempt > 0) statusParts.push(`Gaze of Contempt${combatant.gazeOfContempt}`);
+    if (combatant.contemptOfTheGaze) statusParts.push(`Contempt of the Gaze`);
+    if (combatant.haouFlame > 0) statusParts.push(`Haou Flame${combatant.haouFlame}`);
+    if (combatant.haouBleed > 0) statusParts.push(`Haou Bleed${combatant.haouBleed}`);
+    if (combatant.haouTremor > 0) statusParts.push(`Haou Tremor${combatant.haouTremor}`);
+    if (combatant.haouRupture > 0) statusParts.push(`Haou Rupture${combatant.haouRupture}`);
+    if (combatant.haouSinking > 0) statusParts.push(`Haou Sinking${combatant.haouSinking}`);
+    if (combatant.hemorrhage > 0) statusParts.push(`Hemorrhage${combatant.hemorrhage}`);
+    if (combatant.burningSensation) statusParts.push(`Burning Sensation`);
+    if (combatant.busyAsTribbie) statusParts.push(`Busy as Tribbie${combatant.busyAsTribbieSourceId ? ` (↔${combatant.busyAsTribbieSourceId})` : ""}`);
     if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
     if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
     if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
