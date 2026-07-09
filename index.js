@@ -43,6 +43,7 @@ const {
   CONTEMPT_MAX,
   HAOU_MAX,
   HEMORRHAGE_MAX,
+  AMMO_MAX,
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
@@ -282,7 +283,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", // -encounter
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", "type", "ammotype", // -encounter
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -1201,7 +1202,7 @@ const { resolveCombatant, resolveTargets, formatCombatantBlock } = require("./en
  * @throws Error nếu input/điều kiện không hợp lệ
  */
 async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, targetStr, verifyOpts = {}) {
-  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, volleys: volleysRaw } = verifyOpts;
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, volleys: volleysRaw, ammotype: ammoTypeRaw } = verifyOpts;
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
@@ -1228,6 +1229,25 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       dmgStr = Array(totalVolleys).fill(`${base}x9${typeLetter}`).join(" + ");
     }
     if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`), hoặc `volleys: <N>` nếu đang dùng Eye Of Horus.");
+
+    // Ammo system (xác nhận trực tiếp): "Frost Ammo: gây 1 Paralyze. Incendiary
+    // Ammo: gây 2 Burn." + "Repeat Ammo: Lặp lại viên đạn trước mà không tốn Stack
+    // Ammo." — ammotype: frost/incendiary tiêu 1 stack tương ứng (throw nếu không
+    // đủ), ammotype: repeat dùng lại lastAmmoTypeUsed KHÔNG tốn gì cả. Hiệu ứng
+    // thật (+1 Paralyze/+2 Burn) áp SAU KHI commit thành công (không phải lúc
+    // declare) — effectiveAmmoType lưu lại để commit handler biết áp gì.
+    let effectiveAmmoType = null;
+    const ammoTypeNormalized = (ammoTypeRaw ?? "").trim().toLowerCase();
+    if (ammoTypeNormalized === "frost" || ammoTypeNormalized === "incendiary") {
+      const field = ammoTypeNormalized === "frost" ? "frostAmmo" : "incendiaryAmmo";
+      if ((player[field] ?? 0) < 1) throw new Error(`Không đủ ${ammoTypeNormalized === "frost" ? "Frost Ammo" : "Incendiary Ammo"} (0) trong Encounter — dùng \`-encounter reload type: ${ammoTypeNormalized}\` trước.`);
+      player[field] -= 1;
+      player.lastAmmoTypeUsed = ammoTypeNormalized;
+      effectiveAmmoType = ammoTypeNormalized;
+    } else if (ammoTypeNormalized === "repeat") {
+      if (!player.lastAmmoTypeUsed) throw new Error(`Chưa có viên đạn đặc biệt nào bắn trước đó để "Repeat Ammo" lặp lại.`);
+      effectiveAmmoType = player.lastAmmoTypeUsed; // KHÔNG trừ stack — đúng bản chất Repeat Ammo
+    }
 
     // skill:/ref: — xem comment đầy đủ ở resolveSkillVerification. Gọi TRƯỚC khi
     // build preview vì có thể throw (skill không tồn tại/đang cooldown) — fail sớm,
@@ -1328,7 +1348,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
-      lightCost: verify.lightCost, sanityCost: verify.sanityCost,
+      lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType,
     });
     await saveEncounter(channelId, encounter);
 
@@ -4394,6 +4414,52 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    if (sub === "reload") {
+      // Ammo system (xác nhận trực tiếp): "Nhận được thông qua hành động Reload, 1
+      // turn có thể Reload bao nhiêu tùy ý, nhưng sẽ tiêu hao số đạn trong
+      // Inventory của bạn mỗi khi Reload." — chuyển đạn từ Inventory (persistent,
+      // profileData.items) sang stack Encounter (combatant field), KHÔNG giới hạn
+      // số lần gọi/turn (mỗi lần tự trừ đúng Inventory hiện có).
+      const kv = parseKeyValues(rest);
+      const amount = parseInt(kv["amount"] ?? "1", 10);
+      const typeRaw = (kv["type"] ?? "ammo").trim().toLowerCase();
+      const AMMO_ITEM_MAP = { ammo: { item: "Ammo", field: "ammo" }, frost: { item: "Frost Ammo", field: "frostAmmo" }, incendiary: { item: "Incendiary Ammo", field: "incendiaryAmmo" } };
+      const ammoType = AMMO_ITEM_MAP[typeRaw];
+      if (!Number.isFinite(amount) || amount < 1 || !ammoType) {
+        message.reply(`⚠️ Cú pháp: \`-encounter reload amount: <số> type: ammo/frost/incendiary\` (mặc định type: ammo nếu bỏ trống)\n> VD: \`-encounter reload amount: 5\` hoặc \`-encounter reload amount: 2 type: frost\``);
+        return;
+      }
+      try {
+        // Bước 1: trừ Inventory (persistent, lock RIÊNG theo user — KHÔNG lồng
+        // trong lock encounter để tránh deadlock nếu 2 lock khác thứ tự ở nơi khác).
+        let actualAmount = 0;
+        await withLock(message.author.id, async () => {
+          const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
+          const owned = profileData.items?.[ammoType.item] ?? 0;
+          actualAmount = Math.min(amount, owned);
+          if (actualAmount <= 0) throw new Error(`Không còn **${ammoType.item}** nào trong Inventory để Reload.`);
+          profileData.items[ammoType.item] = owned - actualAmount;
+          if (profileData.items[ammoType.item] <= 0) delete profileData.items[ammoType.item];
+          await savePlayerData(message.author.id, profileData, slot);
+        });
+        // Bước 2: cộng vào stack Encounter (lock riêng của encounter).
+        await withLock(encounterKey(message.channel.id), async () => {
+          const encounter = await getEncounter(message.channel.id);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const player = encounter.players[message.author.id];
+          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+          const before = player[ammoType.field] ?? 0;
+          player[ammoType.field] = Math.min(AMMO_MAX, before + actualAmount);
+          appendActionLog(encounter, `🔫 <@${message.author.id}>: reload ${ammoType.item} +${actualAmount} (${before} → ${player[ammoType.field]})`);
+          await saveEncounter(message.channel.id, encounter);
+          message.reply(`🔫 Reload **${ammoType.item}**: +${actualAmount} (từ Inventory) → đang có **${player[ammoType.field]}** trong Encounter.`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
     if (sub === "unbuff" || sub === "undebuff") {
       const kv = parseKeyValues(rest);
       const targetRaw = (kv["target"] ?? "").trim();
@@ -4602,7 +4668,7 @@ client.on("messageCreate", async (message) => {
       }
       try {
         const { embed, skillRollEmbed } = await doPlayerAttack(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {
-          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], volleys: kv["volleys"],
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], volleys: kv["volleys"], ammotype: kv["ammotype"],
         });
         await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
       } catch (err) {
@@ -6014,6 +6080,15 @@ client.on("interactionCreate", async (interaction) => {
                 // tránh trừ lặp lại theo số target.
                 if (p.targets.indexOf(t) === 0 && (attacker.combatant.fairy ?? 0) > 0) {
                   attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - Math.floor(attacker.combatant.fairy / 3));
+                }
+                // Ammo system — Frost/Incendiary Ammo (xác nhận trực tiếp): "Frost
+                // Ammo: gây 1 Paralyze. Incendiary Ammo: gây 2 Burn." — áp lên
+                // TARGET đang bị bắn, CHỈ khi đòn thực sự trúng (không evaded hoàn
+                // toàn — kiểm tra ở ngoài khối này qua !evadedCompletely).
+                if (p.effectiveAmmoType === "frost") {
+                  target.paralyze = Math.min(99, (target.paralyze ?? 0) + 1);
+                } else if (p.effectiveAmmoType === "incendiary") {
+                  target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + 2);
                 }
                 // Set Fire (Page): "đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy]
                 // Burn... mỗi lần trúng" — CHỈ áp cho M1 (p.isM1), KHÔNG áp cho Page/
