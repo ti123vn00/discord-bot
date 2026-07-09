@@ -19,11 +19,35 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     if ((combatant.burn ?? 0) > 0) {
       // Sizzling Wound (50-Status Nhóm 2, xác nhận trực tiếp): "+50% Dmg từ Burn
       // và Bleed" — nhân trực tiếp vào dmg Burn thật gây ra.
-      const burnDmg = combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1);
+      const burnDmg = combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1) * (combatant.burningSensation ? 3 : 1);
       combatant.currentHp = Math.max(0, combatant.currentHp - burnDmg);
     }
     combatant.burn = Math.floor((combatant.burn ?? 0) / 2);
     combatant.bleed = Math.floor((combatant.bleed ?? 0) / 2);
+    // Haou Flame (xác nhận trực tiếp): "Gây x10 Dmg... vào end turn sau đó /2,
+    // nếu đạt về 0,5 thì kết thúc" — CÙNG cấu trúc Burn (dmg TRƯỚC, decay SAU),
+    // chỉ khác hệ số (x10 thay vì x2) và field riêng (max 99, không chung "burn").
+    if ((combatant.haouFlame ?? 0) > 0) {
+      combatant.currentHp = Math.max(0, combatant.currentHp - combatant.haouFlame * 10);
+    }
+    combatant.haouFlame = Math.floor((combatant.haouFlame ?? 0) / 2);
+    // Haou Bleed (xác nhận trực tiếp): dmg tự gây mỗi hành động xử lý riêng ở
+    // COMMIT HANDLER (index.js, cùng chỗ với Bleed thường) — ở đây chỉ /2 count
+    // mỗi end turn, giống hệt Bleed thường.
+    combatant.haouBleed = Math.floor((combatant.haouBleed ?? 0) / 2);
+    // Haou Sinking (xác nhận trực tiếp): "mất sạch count khi end turn" — KHÁC
+    // Haou Bleed/Flame (chỉ /2), Sinking mất HOÀN TOÀN mỗi turn.
+    combatant.haouSinking = 0;
+    // Hemorrhage (xác nhận trực tiếp): "reset sau 1 turn KHÔNG áp Bleed" — nếu
+    // turn này KHÔNG có Bleed mới được áp (hemorrhageAppliedThisTurn vẫn false),
+    // reset hẳn về 0. Luôn reset flag về false cho turn tiếp theo (dù có hay
+    // không), để turn kế tiếp phải tự áp Bleed mới lại từ đầu mới giữ được stack.
+    if (!combatant.hemorrhageAppliedThisTurn) {
+      combatant.hemorrhage = 0;
+    }
+    combatant.hemorrhageAppliedThisTurn = false;
+    // Busy as Tribbie: "Một turn chỉ kích một lần" — reset cho turn mới.
+    combatant.busyAsTribbieTriggeredThisTurn = false;
     if (combatant.staggered) {
       combatant.staggerTurnsLeft -= 1;
       if (combatant.staggerTurnsLeft <= 0) {
@@ -41,6 +65,18 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       // động được", hồi đầy 1 LẦN lúc hết stagger (đã xử lý ở trên).
     } else {
       combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + ENCOUNTER_STAMINA_REGEN_PER_TURN);
+    }
+    // Haou Tremor (xác nhận trực tiếp): "Khi end turn sẽ tự động kích Tremor
+    // Burst trên người kẻ địch [chính mình], ứng với mỗi 1 stack thì giảm kẻ địch
+    // 15 Stamina, sau end turn sẽ tiêu thụ hết stack" — tự trừ Sta trực tiếp
+    // (không qua calcMathCore vì không phải từ 1 hit cụ thể nào), tiêu TOÀN BỘ
+    // stack ngay sau đó (KHÁC Tremor thường vốn chỉ /2). BUG THẬT ĐÃ SỬA (phát
+    // hiện qua test thật): đặt SAU regen/stagger (không phải TRƯỚC như bản đầu) —
+    // nếu đặt trước, +30 Sta regen chạy SAU sẽ "bù lại" một phần khoản đã trừ
+    // (VD 3 stack đáng lẽ -45 nhưng vì regen bù nên chỉ còn -15 thực tế).
+    if ((combatant.haouTremor ?? 0) > 0) {
+      combatant.currentStamina = Math.max(0, combatant.currentStamina - combatant.haouTremor * 15);
+      combatant.haouTremor = 0;
     }
     // Spectro Frazzle (xác nhận trực tiếp): "giảm khi hồi lại Stamina" — áp dụng
     // NGAY SAU khi Stamina vừa hồi (bất kể từ nhánh regen thường hay hồi đầy sau
@@ -204,6 +240,34 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       combatant.freeble = Math.floor(combatant.freeble / 2);
       if (combatant.freeble < 1) combatant.freeble = 0;
     }
+    // Gaze[Awe]/Contempt (xác nhận trực tiếp): "Khi có 7 Gaze[Awe] vào end turn,
+    // sẽ chuyển thành Contempt vào turn kế" / "Contempt chuyển thành 7 Gaze[Awe]
+    // vào turn kế" — chu kỳ 2 chiều, GIỮ NGUYÊN sourceId (vẫn cùng 1 "kẻ đã gắn").
+    // Gaze[Awe] CHỈ chuyển hoá khi ĐẠT ĐÚNG 7 (max) — dưới 7 thì giữ nguyên,
+    // không tự mất (khác Contempt luôn chuyển về Gaze[Awe] mỗi turn vì max chỉ 1).
+    if (combatant.gazeAwe >= 7) {
+      combatant.contempt = 1;
+      combatant.contemptSourceId = combatant.gazeAweSourceId;
+      combatant.gazeAwe = 0;
+      combatant.gazeAweSourceId = null;
+    } else if (combatant.contempt > 0) {
+      combatant.gazeAwe = 7;
+      combatant.gazeAweSourceId = combatant.contemptSourceId;
+      combatant.contempt = 0;
+      combatant.contemptSourceId = null;
+    }
+    // Gaze of Contempt/Contempt of the Gaze (xác nhận trực tiếp): "Chuyển hóa
+    // thành Contempt of the Gaze vào Turn end khi đủ 7 Stack. Toàn bộ stack biến
+    // mất khi turn end" (Gaze of Contempt) + "Stack biến mất khi turn end"
+    // (Contempt of the Gaze) — THỨ TỰ ĐÚNG: (1) Contempt of the Gaze đã tồn tại
+    // từ turn trước thì HẾT HẠN ngay tại đây (đã sống đủ 1 turn), (2) SAU ĐÓ mới
+    // xét gazeOfContempt đạt 7 chưa để chuyển hoá MỚI (cho turn kế tiếp), (3)
+    // gazeOfContempt LUÔN reset về 0 dù có đạt 7 hay không.
+    combatant.contemptOfTheGaze = false;
+    if (combatant.gazeOfContempt >= 7) {
+      combatant.contemptOfTheGaze = true;
+    }
+    combatant.gazeOfContempt = 0;
     // Smoke Overload: Poise ĐÁNG LẼ bị giảm do crit trong turn (đã dồn lại, không trừ
     // ngay) — giờ mới trừ THẬT lúc end turn.
     if ((combatant.poiseReductionPending ?? 0) > 0) {
