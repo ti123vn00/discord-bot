@@ -11,7 +11,7 @@
 
 module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
-  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null } = {}) {
+  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null } = {}) {
     let bonusPct = 0;
     // dmgStrRewritten khai báo NGAY ĐẦU (thay vì giữa hàm như trước) — vì Eye Of
     // Horus (BUG ĐÃ SỬA, xem chi tiết bên dưới) giờ CẦN sửa THẬT dmgStr (không chỉ
@@ -147,6 +147,21 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
       }
     }
   
+    // Gaze[Awe]/Contempt (xác nhận trực tiếp): "mục tiêu có hiệu ứng này sẽ NHẬN
+    // và GÂY thêm X% sát thương LÊN kẻ đã gắn nó" — đây là NỬA "GÂY" của mutual
+    // bonus: nếu CHÍNH attacker (đang tấn công) có Gaze[Awe]/Contempt do target
+    // HIỆN TẠI gắn lên, attacker tự gây thêm dmg. BUG ĐÃ SỬA (double-counting):
+    // trước đây nhầm dùng target.gazeAwe (test thực tế cho 169=100×1.3² thay vì
+    // 130=100×1.3 — chứng tỏ bonus bị cộng 2 lần cùng 1 hit) — SAI vì đó là kiểm
+    // tra "target có Gaze[Awe] không", không phải "attacker có Gaze[Awe] không".
+    // Nửa "NHẬN" còn lại nằm ở computeDefenderDmgReduction (misc-helpers.js).
+    if (attacker.gazeAwe > 0 && attacker.gazeAweSourceId === targetId) bonusPct += attacker.gazeAwe * 10;
+    if (attacker.contempt > 0 && attacker.contemptSourceId === targetId) bonusPct -= 50;
+    // Gaze of Contempt/Contempt of the Gaze — SELF-buff của ATTACKER, không liên
+    // quan gì tới target đang đánh (khác 2 cái trên).
+    if ((attacker.gazeOfContempt ?? 0) > 0) bonusPct += attacker.gazeOfContempt * 7;
+    if (attacker.contemptOfTheGaze) bonusPct -= 70;
+
     return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount };
   }
   
