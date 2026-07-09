@@ -198,6 +198,47 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
     // (kẻ mang Spectro Frazzle là kẻ BỊ giảm Stamina) — spectroFrazzlePendingLoss
     // lưu phần Sta "nợ" (đã nhân đôi) chờ áp khi combatant hồi Stamina trở lại.
     spectroFrazzle: 0, spectroFrazzlePendingLoss: 0,
+    // Gaze[Awe]/Contempt (50-Status Nhóm 2, xác nhận trực tiếp) — GẮN LÊN TARGET
+    // bởi 1 attacker CỤ THỂ ("kẻ đã gắn nó") — mutual +10%/-50% dmg CHỈ giữa target
+    // và ĐÚNG attacker đó (không áp dụng với ai khác). sourceId lưu định danh
+    // (playerId hoặc enemyKey) của người đã gắn.
+    gazeAwe: 0, gazeAweSourceId: null,
+    contempt: 0, contemptSourceId: null,
+    // Gaze of Contempt/Contempt of the Gaze — SELF-buff/debuff, KHÔNG gắn với đối
+    // tượng cụ thể nào (khác 2 cái trên) — +7%/stack Dmg Up chung, hoặc -70% dmg
+    // nhận+gây khi chuyển hoá.
+    gazeOfContempt: 0,
+    contemptOfTheGaze: false,
+    // Haou tier (50-Status Nhóm 2, xác nhận trực tiếp) — 5 status "siêu cấp",
+    // TRÊN TARGET (kẻ bị áp), Max 99 mỗi cái:
+    // Flame: x10 dmg count vào end turn, sau đó /2 (floor, về 0 khi <1).
+    // Bleed: dmg = count mỗi khi CHÍNH kẻ mang hành động (giống Bleed thường),
+    //   NHƯNG max riêng 99 (không chung field "bleed" gốc) + /2 mỗi end turn.
+    // Tremor: end turn TỰ ĐỘNG kích Tremor Burst lên CHÍNH mình, -15 Sta/stack,
+    //   tiêu hết TOÀN BỘ stack sau đó (không /2 như Tremor thường).
+    // Rupture: mỗi đòn NHẬN ép Res về tối thiểu 1.5x (nếu đang <1.5x), -1 stack
+    //   MỖI LẦN thực sự áp dụng (res gốc <1.5x).
+    // Sinking: mỗi đòn NHẬN lúc Sanity ≤0 → -1 Sanity thêm + bonus dmg = count;
+    //   mất sạch stack vào end turn.
+    haouFlame: 0, haouBleed: 0, haouTremor: 0, haouRupture: 0, haouSinking: 0,
+    // Hemorrhage (xác nhận trực tiếp, KHÁC Tremor-Hemorrhage — status riêng về
+    // Bleed scaling) — TRÊN TARGET (kẻ bị áp Bleed liên tục): +1 stack MỖI LẦN
+    // nhận Bleed MỚI (max 5), mỗi stack ứng 1 tier (+10%/tier dmg nhận, và Bleed
+    // dmg tự gây nhân /3|/2|x1|x1.5|x2 theo tier 1-5). Reset về 0 nếu KHÔNG có
+    // Bleed mới trong 1 turn — appliedThisTurn track để biết reset hay không.
+    hemorrhage: 0, hemorrhageAppliedThisTurn: false,
+    // Burning Sensation (xác nhận trực tiếp): "gây x3 sát thương burn (Có thể mul
+    // dmg), giảm 1/2 lượng hồi phục" — flag boolean (không stack, mô tả gốc không
+    // nêu số lượng).
+    burningSensation: false,
+    // Busy as Tribbie (xác nhận trực tiếp): "mỗi khi sử dụng Page hoặc Critical sẽ
+    // làm cho người buff nó tung ra một lần FUA [10~20][Blunt][Undodgeable]. Một
+    // turn chỉ kích một lần" — GIẢ ĐỊNH (mô tả gốc không nói rõ FUA nhằm vào ai):
+    // FUA nhắm THẲNG vào chính người mang status này (source tự động phản công
+    // lại) — cách diễn giải đơn giản nhất có thể tự động hoá mà không cần thêm
+    // khái niệm "kẻ địch đang giao tranh" (hệ thống hiện không có). sourceId lưu
+    // định danh "người buff nó".
+    busyAsTribbie: false, busyAsTribbieSourceId: null, busyAsTribbieTriggeredThisTurn: false,
       // ── Speed/Turn Order (update mới) — mỗi Outfit có 1 Range Speed riêng (VD 3~6),
       // roll trong range đó mỗi turn để quyết định thứ tự hành động. Haste/Bind là 2
       // status MỚI ảnh hưởng Speed (+1 Speed/Haste, -1 Speed/Bind) — chỉnh tay qua
