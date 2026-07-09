@@ -35,6 +35,20 @@ module.exports = {
   // KHÁC mốc 99 của 5 biến thể Tremor trên (không dùng chung TREMOR_VARIANT_MAX).
   SPECTRO_FRAZZLE_MAX: 10,
 
+  // -encounter setstatus: Gaze[Awe] / Gaze of Contempt — "Max 7 Count" (đúng mô tả
+  // gốc, dùng chung 1 mốc vì cùng giá trị 7).
+  GAZE_AWE_MAX: 7,
+  // -encounter setstatus: Contempt — "Max 1 Count" (khác Gaze[Awe]/Gaze of
+  // Contempt, chỉ 1 stack duy nhất theo đúng mô tả gốc).
+  CONTEMPT_MAX: 1,
+
+  // -encounter setstatus: Haou tier (Flame/Bleed/Tremor/Rupture/Sinking) — "Max 99
+  // Count" dùng chung cho cả 5, theo đúng mô tả gốc.
+  HAOU_MAX: 99,
+
+  // -encounter setstatus: Hemorrhage — "Tối đa 5 stack" theo đúng mô tả gốc.
+  HEMORRHAGE_MAX: 5,
+
   // /parry: số lần roll tối đa mỗi lệnh
   PARRY_MAX_ROLLS: 30,
 
