@@ -271,6 +271,7 @@ const KNOWN_KEYS = new Set([
   "paralyze", "diceup", "dicedown", "smoke", "vengeancemark", "nails", "redplumblossom", "freeble", "borrowedtime", "fairy", "airborne", "chains", "sizzlingwound", "perceptionblockingmask", "blacksilence", // 50-Status Nhóm 2
   "tremoreverlasting", "tremorfracture", "tremorreverb", "tremordecay", "tremorchain", "spectrofrazzle", "tremorscorch", "tremorhemorrhage", "burningsensation", // Tremor variants + Burning Sensation
   "busyastribbie", // Busy as Tribbie
+  "timemoratorium", // Time Moratorium
   "gazeawe", "contempt", "gazeofcontempt", "contemptofthegaze", "source", // Gaze/Contempt
   "haouflame", "haoubleed", "haoutremor", "haourupture", "haousinking", // Haou tier
   "hemorrhage", // Hemorrhage
@@ -1232,7 +1233,15 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // build preview vì có thể throw (skill không tồn tại/đang cooldown) — fail sớm,
     // tránh tính toán dư.
     const verify = await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
-    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), manualTagsRaw);
+    // Mặt nạ chống nhận thức / PerceptionBlockingMask (xác nhận trực tiếp): "đòn
+    // tấn công CUỐI CÙNG ở mỗi turn thành [Undodgeable][Unparriable][Unblockable]
+    // [Unclashable]" — người chơi tự đánh dấu "đây là đòn cuối turn của tôi" qua
+    // `tags: lastaction` (hệ thống không tự biết trước thứ tự hành động trong
+    // turn) — nếu CÓ status này VÀ đánh dấu, tự mở rộng thành cả 4 tag.
+    const effectiveTagsRaw = player.perceptionBlockingMask && (manualTagsRaw ?? "").toLowerCase().includes("lastaction")
+      ? `${manualTagsRaw},undodgeable,unparriable,unblockable,unclashable`
+      : manualTagsRaw;
+    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     // QUAN TRỌNG: Poise/Charge là "trên bản thân" → lấy từ PLAYER (người tấn công),
@@ -1372,7 +1381,10 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     // (sẽ roll dice MỚI KHÁC, làm dmgStr pre-fill không khớp embed thật hiển thị
     // lúc confirm).
     const verify = prefilledVerify ?? await resolveSkillVerification(channelId, player, skillNameRaw, refRaw);
-    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), manualTagsRaw);
+    const effectiveTagsRaw = player.perceptionBlockingMask && (manualTagsRaw ?? "").toLowerCase().includes("lastaction")
+      ? `${manualTagsRaw},undodgeable,unparriable,unblockable,unclashable`
+      : manualTagsRaw;
+    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     const previews = targets.map(t => {
@@ -1479,7 +1491,10 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — xử lý trước.`);
 
     const verify = await resolveSkillVerification(channelId, enemy, skillNameRaw, refRaw);
-    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), manualTagsRaw);
+    const effectiveTagsRaw = enemy.perceptionBlockingMask && (manualTagsRaw ?? "").toLowerCase().includes("lastaction")
+      ? `${manualTagsRaw},undodgeable,unparriable,unblockable,unclashable`
+      : manualTagsRaw;
+    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "player");
     // QUAN TRỌNG: chiều này ENEMY là người tấn công → Poise/Charge lấy từ ENEMY.
@@ -4336,6 +4351,7 @@ client.on("messageCreate", async (message) => {
         burningsensation: "burningSensation",
         contemptofthegaze: "contemptOfTheGaze",
         busyastribbie: "busyAsTribbie",
+        timemoratorium: "timeMoratorium",
       };
       const entries = Object.keys(FLAG_FIELD_MAP).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: (kv[k] ?? "").trim().toLowerCase() }));
       if (!targetRaw || entries.length === 0) {
@@ -4357,6 +4373,8 @@ client.on("messageCreate", async (message) => {
             resolved.combatant[field] = raw === "on";
             // Chains: "(1 Turn)" — set Duration khi bật.
             if (key === "chains" && raw === "on") resolved.combatant.chainsTurnsLeft = 1;
+            // Time Moratorium: "sau 3 turn" — set Duration khi bật.
+            if (key === "timemoratorium" && raw === "on") resolved.combatant.timeMoratoriumTurnsLeft = 3;
             // Busy as Tribbie: cần source: để biết "người buff nó" (ai bị FUA phản
             // công) — GIẢ ĐỊNH FUA nhắm vào chính target (xem combatant-factory.js).
             if (key === "busyastribbie" && raw === "on") {
@@ -5499,6 +5517,14 @@ client.on("interactionCreate", async (interaction) => {
               // skill roll thật, gộp với tags: gõ tay nếu có) — loại đúng phòng thủ
               // KHÔNG cản được đòn này, áp dụng CẢ cho M1-mix lẫn Page/skill 1-charge.
               const bypass = p.defenseBypass ?? { blockEvade: false, blockGuard: false, blockParry: false };
+              // Airborne (xác nhận trực tiếp): "biến mất... sau bị dính đòn có
+              // condition Airborne" — tắt NGAY (không đợi end turn) nếu đòn này có
+              // tag [Airborne] VÀ target đang airborne=true. Đặt SỚM (không phụ
+              // thuộc finalDmg/evadedCompletely) vì đây là hiệu ứng của TAG, không
+              // phải sát thương — nên xảy ra dù đòn có né/chặn hay không.
+              if (bypass.airborneCondition && target.airborne) {
+                target.airborne = false;
+              }
               // computeBlock — trả { chargesUsed, fraction } cho 1 lượt thử block.
               // hitsPerCharge=null (Page/skill) → 1 charge LUÔN chặn 100% action.
               function computeBlock(chargesAvailable) {
@@ -5772,6 +5798,21 @@ client.on("interactionCreate", async (interaction) => {
               // cộng ĐÚP mỗi lần đánh, verify bằng test thật phát hiện Tremor=16 thay
               // vì 8 sau 4 lần đánh. Đã xoá hẳn, chỉ giữ 1 nguồn duy nhất.)
               let eyeOfHorusNote = "";
+              // Time Moratorium (xác nhận trực tiếp): "khi bị nhận sát thương mà có
+              // hiệu ứng này... KHÔNG NHẬN sát thương trong turn đó mà tích lại...
+              // khi mục tiêu có hiệu ứng này giảm 10% dmg nhận vào" — chặn TOÀN BỘ
+              // finalDmg CUỐI CÙNG (sau khi Guard/Evade/Parry đã áp dụng xong ở
+              // trên), tích luỹ 90% (đã giảm 10%) vào timeMoratoriumAccumulated,
+              // rồi set finalDmg=0 để mọi logic PHÍA SAU (regen, justDied, injury...)
+              // tự nhiên coi đây là "không nhận dmg" — an toàn nhất, không cần sửa
+              // lại từng chỗ phụ thuộc finalDmg riêng lẻ.
+              let timeMoratoriumNote = "";
+              if (target.timeMoratorium && finalDmg > 0) {
+                const accumulatedGain = finalDmg * 0.9;
+                target.timeMoratoriumAccumulated = (target.timeMoratoriumAccumulated ?? 0) + accumulatedGain;
+                timeMoratoriumNote = ` ⏳[Time Moratorium hoãn ${accumulatedGain.toFixed(3)} dmg, tích lũy ${target.timeMoratoriumAccumulated.toFixed(3)}]`;
+                finalDmg = 0;
+              }
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
               // Regen (50-Status Nhóm 1) — "CHỈ khi mất máu mới tự động tiêu thụ để
               // hồi HP" (xác nhận trực tiếp từ GM) — KHÔNG tự hồi mỗi turn, CHỈ kích
@@ -6010,7 +6051,7 @@ client.on("interactionCreate", async (interaction) => {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${regenHealNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${regenHealNote}${timeMoratoriumNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
