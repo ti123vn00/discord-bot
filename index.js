@@ -1109,6 +1109,39 @@ const WEAPON_STAMINA_COST = { light: 5, medium: 10, heavy: 20 };
 // nói rõ về "đòn đánh thường", không nói gì về skill có hit-count khác biệt.
 const WEAPON_DEFENSE_HITS = { light: 4, medium: 2, heavy: 1 };
 
+/** computeDefenseOptions — tính cost/khả dụng của Guard/Evade/Parry cho 1 đòn tấn
+ *  công CỤ THỂ sắp tới (dùng cho reactive defense prompt — xác nhận trực tiếp:
+ *  "khi bị tấn công thì mới hiện ra hành động phòng thủ, cũng như check coi đủ
+ *  sta để làm hành động đó không"). KHÔNG áp dụng gì lên target — chỉ TÍNH TOÁN
+ *  để hiển thị, giống hệt công thức cost đã có trong performGuardEvade nhưng
+ *  KHÔNG cần "attacker:"/"hits:" tự gõ tay (đã biết sẵn từ pendingAction). */
+function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type, bypass) {
+  const hitsPerCharge = isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeaponWeight] ?? 1) : null;
+  const chargesNeeded = target.hasIronHorus ? 1 : (hitsPerCharge === null ? 1 : Math.ceil(hitCount / hitsPerCharge));
+
+  const guardCostPerCharge = target.hasIronHorus ? 40 : 10;
+  const guardCost = chargesNeeded * guardCostPerCharge;
+  const guardAvailable = !bypass.blockGuard && target.currentStamina >= guardCost;
+
+  const evadeBlocked = (target.injuries ?? []).includes("Mất Chân");
+  const evadeCostPerCharge = 20 * ((target.injuries ?? []).includes("Gãy chân") ? 2 : 1);
+  const evadeCost = chargesNeeded * evadeCostPerCharge;
+  const evadeAvailable = !bypass.blockEvade && !evadeBlocked && target.currentStamina >= evadeCost;
+
+  // Parry: 0 Stamina lúc "kích hoạt" — nhưng CÓ THỂ tốn Sta SAU NẾU roll thua
+  // (40/30 tùy perk, x2 nếu Gãy tay) — không chặn hiển thị option theo Sta hiện
+  // tại vì bản chất Parry "miễn phí lúc quyết định", rủi ro nằm ở kết quả roll.
+  const parryAvailable = !bypass.blockParry;
+
+  return {
+    chargesNeeded, hitsPerCharge,
+    guard: { available: guardAvailable, cost: guardCost },
+    evade: { available: evadeAvailable, cost: evadeCost, blockedReason: evadeBlocked ? "Mất Chân" : null },
+    parry: { available: parryAvailable },
+  };
+}
+
+
 function normalizeWeaponWeight(w) {
   const x = (w ?? "").trim().toLowerCase();
   if (x === "light" || x === "l") return "light";
@@ -1563,6 +1596,13 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
     await saveEncounter(channelId, encounter);
+    // Reactive Defense Prompt (xác nhận trực tiếp, mô hình Yugioh Master Duel
+    // Chain): gửi NGAY prompt phòng thủ cho target — KHÔNG chờ GM "Confirm tất
+    // cả" nữa. Fire-and-forget (không await, không throw nếu gửi lỗi) — action
+    // vẫn tồn tại an toàn trong pendingActions làm fallback (GM vẫn có thể
+    // confirm thủ công qua `-encounter pending`/"Confirm tất cả" như cũ nếu
+    // prompt gặp trục trặc).
+    sendReactiveDefensePrompt(channelId, pendingId).catch(() => {});
 
     const targetLines = previews.map(p => {
       let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
@@ -6012,6 +6052,78 @@ async function resolveOnePendingAction(encounter, p) {
 
   return resultLines;
 }
+
+/** sendReactiveDefensePrompt — Yu-Gi-Oh Chain-style: khi A tấn công B, gửi NGAY
+ *  1 message với nút phòng thủ cho B (xác nhận trực tiếp: "khi bị tấn công thì
+ *  mới hiện ra hành động phòng thủ... check coi đủ sta để làm hành động đó
+ *  không"). Dùng customId (KHÔNG dùng collector) — pendingAction vẫn nằm trong
+ *  Redis nên nút vẫn hoạt động dù bot restart giữa chừng (đợi "vô thời hạn" một
+ *  cách AN TOÀN, không cần giữ 1 Promise treo trong bộ nhớ process).
+ *  targetUserId=null nghĩa là target là ENEMY (GM bấm thay) — vẫn gửi prompt
+ *  nhưng filter cho phép GM/admin bấm thay vì đúng targetUserId. */
+async function sendReactiveDefensePrompt(channelId, pendingId) {
+  try {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) return;
+    const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
+    if (!p) return; // đã bị xử lý/xoá trước đó (VD GM lỡ tay confirm cả loạt)
+    const attacker = resolveCombatant(encounter, p.attackerId);
+    if (!attacker) return;
+    const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+    const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
+    const bypass = p.defenseBypass ?? {};
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel) return;
+
+    // AOE nhiều target — MỖI target 1 prompt riêng (mỗi người tự quyết định
+    // phòng thủ của mình, độc lập với người khác).
+    for (const t of p.targets) {
+      const targetResolved = resolveCombatant(encounter, t.targetId);
+      if (!targetResolved) continue;
+      const target = targetResolved.combatant;
+      const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
+      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:guard`)
+          .setLabel(`🛡️ Guard (-${opts.guard.cost} Sta)`)
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(!opts.guard.available),
+        new ButtonBuilder()
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:evade`)
+          .setLabel(`💨 Evade (-${opts.evade.cost} Sta)`)
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(!opts.evade.available),
+        new ButtonBuilder()
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:parry`)
+          .setLabel(`🗡️ Parry (miễn phí, rủi ro)`)
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(!opts.parry.available),
+        new ButtonBuilder()
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:none`)
+          .setLabel(`❌ Không phòng thủ`)
+          .setStyle(ButtonStyle.Danger),
+      );
+
+      const dmgPreview = t.preview?.totalDmg?.toFixed(3) ?? "?";
+      await channel.send({
+        content: `<@${t.targetId}>`,
+        embeds: [{
+          title: "⚔️ Đang bị tấn công!",
+          description: `${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\` (${hitCount} hit, dự kiến **${dmgPreview}** dmg nếu không phòng thủ)\n> Bạn có **${target.currentStamina} Stamina**. Chọn phòng thủ:`,
+          color: 0xe67e22,
+          footer: { text: opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}` : "GM cũng có thể bấm thay nếu bạn không phản hồi được." },
+        }],
+        components: [row],
+      }).catch(() => {});
+    }
+  } catch (err) {
+    log("error", "sendReactiveDefensePrompt", "system", err.message);
+  }
+}
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   try {
@@ -6323,6 +6435,74 @@ client.on("interactionCreate", async (interaction) => {
       });
     } catch (err) {
       log("error", "encounterConfirmAll", interaction.user?.id ?? "unknown", err.message);
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  if (interaction.customId.startsWith("encreactivedef:")) {
+    const [, channelId, pendingId, targetId, choice] = interaction.customId.split(":");
+    try {
+      let resultText = null;
+      await withLock(encounterKey(channelId), async () => {
+        const encounter = await getEncounter(channelId);
+        if (!encounter) throw new Error("Encounter không còn tồn tại.");
+        const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
+        if (!p) throw new Error("Action này đã được xử lý rồi (có thể GM đã confirm/reject cả loạt trước đó).");
+        const isAdmin = ADMIN_IDS.has(interaction.user.id);
+        // Chỉ ĐÚNG người bị nhắm (targetId) hoặc GM/admin mới được bấm thay.
+        if (interaction.user.id !== targetId && !isAdmin && interaction.user.id !== encounter.gmId) {
+          throw new Error("Chỉ người bị tấn công (hoặc GM) mới được chọn phòng thủ này.");
+        }
+        const targetResolved = resolveCombatant(encounter, targetId);
+        if (!targetResolved) throw new Error("Không tìm thấy target.");
+        const target = targetResolved.combatant;
+        const attacker = resolveCombatant(encounter, p.attackerId);
+        if (!attacker) throw new Error("Không tìm thấy attacker.");
+        const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+        const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
+        const bypass = p.defenseBypass ?? {};
+        const t = p.targets.find(tg => tg.targetId === targetId);
+        const hitCount = Math.max(1, t?.preview?.dmgValues?.length ?? 1);
+        // Tính LẠI option TẠI THỜI ĐIỂM BẤM (không dùng số đã tính lúc gửi prompt —
+        // Stamina/injury có thể đã đổi giữa lúc gửi và lúc bấm).
+        const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
+        let choiceNote = "";
+        if (choice === "guard") {
+          if (!opts.guard.available) throw new Error(`Không đủ Stamina để Guard (cần ${opts.guard.cost}, hiện có ${target.currentStamina}).`);
+          target.currentStamina -= opts.guard.cost;
+          // CỘNG THÊM (không ghi đè) — nếu target đã có sẵn charge dư từ trước
+          // (VD từ lệnh -encounter guard chủ động khác), giữ nguyên phần dư đó.
+          target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
+          choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
+        } else if (choice === "evade") {
+          if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
+          target.currentStamina -= opts.evade.cost;
+          target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
+          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)`;
+        } else if (choice === "parry") {
+          if (!opts.parry.available) throw new Error("Parry bị khoá cho đòn này (Unparriable).");
+          target.parryRolls = target.parryRolls ?? [];
+          const penalty = getParryClashPenalty(target);
+          for (let i = 0; i < opts.chargesNeeded; i++) {
+            const rawRoll = 1 + Math.floor(Math.random() * 20);
+            target.parryRolls.push(rawRoll - penalty);
+          }
+          choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)`;
+        } else {
+          choiceNote = "❌ Không phòng thủ";
+        }
+        checkStaggerPanic(target);
+        const lines = await resolveOnePendingAction(encounter, p);
+        encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
+        await saveEncounter(channelId, encounter);
+        resultText = `${interaction.user.toString()} chọn **${choiceNote}**\n${lines.join("\n")}`;
+      });
+      await interaction.update({
+        embeds: [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }],
+        components: [],
+      }).catch(() => {});
+    } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     return;
