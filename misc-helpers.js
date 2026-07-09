@@ -12,7 +12,7 @@
 
 module.exports = function ({ hasPerk, ADMIN_IDS }) {
 
-  function computeDefenderDmgReduction(defender, { isM1 = false, isMiddleSkill = false } = {}) {
+  function computeDefenderDmgReduction(defender, { isM1 = false, isMiddleSkill = false, attackerId = null } = {}) {
     let reductionPct = 0;
     if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
     if (hasPerk(defender, "No Will To Break") && defender.manifestedEGO) reductionPct += 20;
@@ -34,6 +34,16 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     if ((defender.tremorDecay ?? 0) > 0) {
       reductionPct -= Math.floor((defender.tremor ?? 0) / 4) * 1;
     }
+    // Gaze[Awe]/Contempt (xác nhận trực tiếp): defender NHẬN thêm X% dmg CHỈ khi
+    // đòn này đến từ ĐÚNG "kẻ đã gắn" (so khớp sourceId), không áp dụng chung.
+    if (defender.gazeAwe > 0 && defender.gazeAweSourceId === attackerId) reductionPct -= defender.gazeAwe * 10;
+    if (defender.contempt > 0 && defender.contemptSourceId === attackerId) reductionPct += 50;
+    // Contempt of the Gaze — SELF-debuff giảm dmg NHẬN (bù lại việc giảm dmg gây
+    // ra ở computeAttackerPerkContext).
+    if (defender.contemptOfTheGaze) reductionPct += 70;
+    // Hemorrhage (xác nhận trực tiếp): "+10%/20%/30%/40%/50% sát thương phải chịu"
+    // theo tier (= số stack) — dùng dấu ÂM (giống Fragile) vì TĂNG dmg nhận.
+    if ((defender.hemorrhage ?? 0) > 0) reductionPct -= defender.hemorrhage * 10;
     return reductionPct;
   }
 
