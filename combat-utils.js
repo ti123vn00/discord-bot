@@ -115,6 +115,24 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     const matches = [...base.matchAll(/([\d.]+)x([BPS])/g)];
     return matches.map(([, val, type]) => `${Math.max(1, parseFloat(val))}x${type}`).join(" ");
   }
+
+  /** haouRuptureResStr — Haou Rupture (50-Status Nhóm 2, xác nhận trực tiếp):
+   *  "bằng 1 lần đòn đánh xuyên qua resistance của địch (luôn luôn là 1.5x Res)
+   *  nếu nó dưới 1.5x" — CÙNG pattern trueDmgResStr nhưng floor 1.5x thay vì 1x.
+   *  Trả về cả `applied` (có ít nhất 1 loại Res thực sự bị ép lên không) để caller
+   *  biết có nên trừ 1 stack hay không ("Mỗi lần địch chịu 1 đòn tấn công sẽ trừ 1
+   *  stack NẾU resistance thấp hơn 1.5x Res" — chỉ tiêu khi thực sự có tác dụng). */
+  function haouRuptureResStr(target) {
+    const base = combatantResStr(target);
+    const matches = [...base.matchAll(/([\d.]+)x([BPS])/g)];
+    let applied = false;
+    const resStr = matches.map(([, val, type]) => {
+      const num = parseFloat(val);
+      if (num < 1.5) applied = true;
+      return `${Math.max(1.5, num)}x${type}`;
+    }).join(" ");
+    return { resStr, applied };
+  }
   
   /** Kiểm tra + set Stagger (Stamina=0) / Panic (Sanity=-45) sau khi 1 combatant vừa
    *  bị trừ Stamina/Sanity — gọi MỖI LẦN sau khi thay đổi 2 giá trị này. Không tự bỏ
@@ -308,6 +326,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     buildTurnOrderText,
     combatantResStr,
     trueDmgResStr,
+    haouRuptureResStr,
     applyParrySuccessPerks,
     applyEvadeSuccessPerks,
     restoreInjuryMaxHp,
