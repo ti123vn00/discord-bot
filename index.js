@@ -39,6 +39,10 @@ const {
   CHARGE_MAX,
   TREMOR_VARIANT_MAX,
   SPECTRO_FRAZZLE_MAX,
+  GAZE_AWE_MAX,
+  CONTEMPT_MAX,
+  HAOU_MAX,
+  HEMORRHAGE_MAX,
   PARRY_MAX_ROLLS,
   OPEN_COUNT_MAX,
   MAX_PROFILES,
@@ -265,7 +269,11 @@ const KNOWN_KEYS = new Set([
   "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", // 4 cờ điều kiện đặc biệt
   "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1
   "paralyze", "diceup", "dicedown", "smoke", "vengeancemark", "nails", "redplumblossom", "freeble", "borrowedtime", "fairy", "airborne", "chains", "sizzlingwound", "perceptionblockingmask", "blacksilence", // 50-Status Nhóm 2
-  "tremoreverlasting", "tremorfracture", "tremorreverb", "tremordecay", "tremorchain", "spectrofrazzle", "tremorscorch", "tremorhemorrhage", // Tremor variants
+  "tremoreverlasting", "tremorfracture", "tremorreverb", "tremordecay", "tremorchain", "spectrofrazzle", "tremorscorch", "tremorhemorrhage", "burningsensation", // Tremor variants + Burning Sensation
+  "busyastribbie", // Busy as Tribbie
+  "gazeawe", "contempt", "gazeofcontempt", "contemptofthegaze", "source", // Gaze/Contempt
+  "haouflame", "haoubleed", "haoutremor", "haourupture", "haousinking", // Haou tier
+  "hemorrhage", // Hemorrhage
   "choose", // -readbook <sách> choose: <tên> — chốt lựa chọn qua text thay vì dropdown
   "dmg", "res", "dr", "bonus", "critmul", "critdiv",
   "sanity", "sanitybonus", "sinking", "rupture", "dicemul",
@@ -1127,7 +1135,7 @@ function normalizeEnemyKey(k) {
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
 const { createCombatant } = require("./combatant-factory")({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }); // ĐÃ TÁCH sang file riêng (combatant-factory.js)
 
-const { rollSpeedValue, determineTurnOrder, buildTurnOrderText, combatantResStr, trueDmgResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX }); // ĐÃ TÁCH sang file riêng (combat-utils.js)
+const { rollSpeedValue, determineTurnOrder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX }); // ĐÃ TÁCH sang file riêng (combat-utils.js)
 
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
@@ -1232,8 +1240,8 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch HOẶC player khác (PvP)"
     // → lấy RIÊNG cho từng target — tính calcMathCore riêng từng target.
     const previews = targets.map(t => {
-      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true, targetId: t.id, eyeOfHorusVolleys });
-      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: true });
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: true, targetId: t.id, eyeOfHorusVolleys, attackerId: playerId });
+      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: true, attackerId: playerId });
       // Mang (Shin/Mang, đang active): True Dmg — Res target dưới 1x bị ép về 1x;
       // +10%/vòng Dmg M1+skill turn này.
       const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
@@ -1244,9 +1252,14 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // đó thay vì viết lại — áp dụng cho MỌI lần bắn Eye Of Horus (không chỉ
       // riêng volley Repeat Ammo), theo đúng yêu cầu "áp dụng tag này luôn".
       const useTrueDmg = player.shinMangActive || isEyeOfHorus;
+      // Haou Rupture (xác nhận trực tiếp) — ưu tiên CAO NHẤT (floor 1.5x mạnh hơn
+      // True Dmg 1x thường) — chỉ dùng khi THỰC SỰ có tác dụng (ít nhất 1 loại Res
+      // đang <1.5x), lưu `applied` để commit handler biết có tiêu 1 stack không.
+      const haouRuptureCheck = (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
+      const finalResStr = haouRuptureCheck?.applied ? haouRuptureCheck.resStr : (useTrueDmg ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant));
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten,
-        resStr: useTrueDmg ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant),
+        resStr: finalResStr,
         bonusPct: perkCtx.bonusPct + mangBonusPct, critMul: perkCtx.critMul,
         // Sanity dice bonus ("+1 Sanity = +1% dice value, -1 Sanity = -1%") LUÔN tự
         // áp dụng từ Sanity HIỆN TẠI của người tấn công — KHÔNG phải tham số tự gõ
@@ -1278,7 +1291,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // số dự kiến — KHÔNG sửa preview.totalDmg gốc (giữ nguyên cho breakdown), chỉ
       // tính finalDmgAfterReduction riêng để show + dùng lại lúc confirm.
       const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
-      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusTremorChargeAmount: perkCtx.eyeOfHorusTremorChargeAmount };
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusTremorChargeAmount: perkCtx.eyeOfHorusTremorChargeAmount, haouRuptureApplied: haouRuptureCheck?.applied ?? false };
     });
     const hitCount = previews[0].preview.dmgValues.length;
     // Eye Of Horus — Stamina cost ĐẶC BIỆT: 20 Sta cho MỖI "lần bắn" (volley 9-hit)
@@ -1320,6 +1333,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     if (verify.skillKey) verifyNote += `\n> 🎲 Đã tự roll skill **${verify.skillKey}** kèm theo (xem embed dưới) — Emotion Coin ${verify.emotionDelta >= 0 ? "+" : ""}${verify.emotionDelta} (tự động), CD ${verify.cooldownTurns} turn nếu confirm.`;
     if (manualCoin) verifyNote += `\n> 🪙 Coin tự khai (Clash/kill/...): ${manualCoin >= 0 ? "+" : ""}${manualCoin}`;
     if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
+    if (verify.busyAsTribbieNote) verifyNote += `\n>${verify.busyAsTribbieNote}`;
     result = {
       embed: {
         title: "🎯 M1 đã thêm vào hàng chờ",
@@ -1362,13 +1376,15 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     const previews = targets.map(t => {
-      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false });
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false, attackerId: playerId, targetId: t.id });
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
-      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill });
+      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill, attackerId: playerId });
       const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
+      const haouRuptureCheck = !resStr && (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
+      const finalResStr = resStr || (haouRuptureCheck?.applied ? haouRuptureCheck.resStr : (player.shinMangActive ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant)));
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten,
-        resStr: resStr || (player.shinMangActive ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant)), drStr,
+        resStr: finalResStr, drStr,
         bonusPct: bonusPct + perkCtx.bonusPct + mangBonusPct,
         // Tự động cộng Sanity HIỆN TẠI của người dùng Page vào dice bonus (xem
         // comment đầy đủ ở doPlayerAttack) — sanityBonusPct (tham số tự gõ tay nếu
@@ -1402,7 +1418,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       };
       const preview = calcMathCore(calcOpts);
       const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
-      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill };
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, haouRuptureApplied: haouRuptureCheck?.applied ?? false };
     });
 
     const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1428,6 +1444,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     if (verify.skillKey) verifyNote += `\n> 🎲 Đã tự roll skill **${verify.skillKey}** kèm theo (xem embed dưới) — Emotion Coin ${verify.emotionDelta >= 0 ? "+" : ""}${verify.emotionDelta} (tự động), CD ${verify.cooldownTurns} turn nếu confirm.`;
     if (manualCoin) verifyNote += `\n> 🪙 Coin tự khai (Clash/kill/...): ${manualCoin >= 0 ? "+" : ""}${manualCoin}`;
     if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
+    if (verify.busyAsTribbieNote) verifyNote += `\n>${verify.busyAsTribbieNote}`;
     result = {
       embed: {
         title: "🎯 Action đã thêm vào hàng chờ",
@@ -1468,11 +1485,12 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     // QUAN TRỌNG: chiều này ENEMY là người tấn công → Poise/Charge lấy từ ENEMY.
     // TARGET (player) là người bị tấn công → 5 status kia lấy từ TỪNG TARGET riêng.
     const previews = targets.map(t => {
-      const perkCtx = computeAttackerPerkContext(enemy, t.combatant, dmgStr, { isM1: false });
+      const perkCtx = computeAttackerPerkContext(enemy, t.combatant, dmgStr, { isM1: false, attackerId: enemyKey, targetId: t.id });
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
-      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill });
+      const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill, attackerId: enemyKey });
+      const haouRuptureCheck = (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
       const calcOpts = {
-        dmgStr: perkCtx.dmgStrRewritten, resStr: combatantResStr(t.combatant),
+        dmgStr: perkCtx.dmgStrRewritten, resStr: haouRuptureCheck?.applied ? haouRuptureCheck.resStr : combatantResStr(t.combatant),
         bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
         sanityBonusPct: getEffectiveSanityForDiceBonus(enemy),
         poiseInit: enemy.poise + (perkCtx.redPlumBlossomPoiseBonus ?? 0), chargeInit: enemy.charge,
@@ -1495,7 +1513,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       };
       const preview = calcMathCore(calcOpts);
       const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
-      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill };
+      return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, haouRuptureApplied: haouRuptureCheck?.applied ?? false };
     });
 
     const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -1521,6 +1539,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     if (verify.skillKey) verifyNote += `\n> 🎲 Đã tự roll skill **${verify.skillKey}** kèm theo (xem embed dưới) — Emotion Coin ${verify.emotionDelta >= 0 ? "+" : ""}${verify.emotionDelta} (tự động), CD ${verify.cooldownTurns} turn nếu confirm.`;
     if (manualCoin) verifyNote += `\n> 🪙 Coin tự khai (Clash/kill/...): ${manualCoin >= 0 ? "+" : ""}${manualCoin}`;
     if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
+    if (verify.busyAsTribbieNote) verifyNote += `\n>${verify.busyAsTribbieNote}`;
     result = {
       embed: {
         title: "🎯 Enemy attack đã thêm vào hàng chờ",
@@ -1693,7 +1712,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll }); // ĐÃ TÁCH sang file riêng (skill-verification.js) — đặt SAU khai báo client (const, có TDZ); isEgoSkill/buildSkillRollResult/annotateLinesWithEmotion là function declaration nên hoisted, không cần lo vị trí. BUG ĐÃ SỬA: thiếu annotateLinesWithEmotion/autoBuildDmgStrFromSkillRoll trong injection dù resolveSkillVerification's autoFillDmg branch cần cả 2 — gây lỗi "is not a function" khi dùng qua dropdown Critical.
+const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll, r, combatantResStr });
 // Tăng giới hạn listener — kiến trúc CÓ CHỦ Ý dùng NHIỀU client.on("interactionCreate",
 // ...) riêng biệt (mỗi cái tự check customId prefix, return sớm nếu không khớp) thay
 // vì 1 handler khổng lồ — KHÔNG PHẢI memory leak thật, chỉ là số lượng listener hợp lệ
@@ -4200,6 +4219,9 @@ client.on("messageCreate", async (message) => {
         borrowedtime: 2, fairy: 30,
         tremoreverlasting: TREMOR_VARIANT_MAX, tremorfracture: TREMOR_VARIANT_MAX, tremorreverb: TREMOR_VARIANT_MAX, tremordecay: TREMOR_VARIANT_MAX, tremorchain: TREMOR_VARIANT_MAX,
         spectrofrazzle: SPECTRO_FRAZZLE_MAX,
+        gazeawe: GAZE_AWE_MAX, contempt: CONTEMPT_MAX, gazeofcontempt: GAZE_AWE_MAX,
+        haouflame: HAOU_MAX, haoubleed: HAOU_MAX, haoutremor: HAOU_MAX, haourupture: HAOU_MAX, haousinking: HAOU_MAX,
+        hemorrhage: HEMORRHAGE_MAX,
       };
       const STATUS_FIELD_MAP = {
         fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
@@ -4213,6 +4235,9 @@ client.on("messageCreate", async (message) => {
         tremoreverlasting: "tremorEverlasting", tremorfracture: "tremorFracture", tremorreverb: "tremorReverb",
         tremordecay: "tremorDecay", tremorchain: "tremorChain",
         spectrofrazzle: "spectroFrazzle",
+        gazeawe: "gazeAwe", contempt: "contempt", gazeofcontempt: "gazeOfContempt",
+        haouflame: "haouFlame", haoubleed: "haouBleed", haoutremor: "haouTremor", haourupture: "haouRupture", haousinking: "haouSinking",
+        hemorrhage: "hemorrhage",
       };
       const entries = Object.keys(STATUS_CAPS).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
       if (!targetRaw || entries.length === 0) {
@@ -4226,14 +4251,34 @@ client.on("messageCreate", async (message) => {
           const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
           const resolved = resolveCombatant(encounter, targetId);
           if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          // Gaze[Awe]/Contempt (xác nhận trực tiếp): cần biết "kẻ đã gắn nó" — dùng
+          // param riêng `source:` (key enemy hoặc mention player), KHÔNG nằm trong
+          // STATUS_CAPS (không phải 1 giá trị số cộng dồn như status khác).
+          const sourceRaw = (kv["source"] ?? "").trim();
+          let sourceId = null;
+          if (sourceRaw) {
+            const sourceEnemyKey = normalizeEnemyKey(sourceRaw);
+            sourceId = encounter.enemies[sourceEnemyKey] ? sourceEnemyKey : sourceRaw.replace(/[<@!>]/g, "");
+          }
           const changes = [];
           for (const { key, raw } of entries) {
             const amount = parseInt(raw, 10);
             if (!Number.isFinite(amount)) throw new Error(`\`${key}:\` phải là số.`);
+            // Gaze of Contempt (xác nhận trực tiếp): "Không thể nhận Gaze of
+            // Contempt khi đang có Contempt of the Gaze."
+            if (key === "gazeofcontempt" && amount > 0 && resolved.combatant.contemptOfTheGaze) {
+              throw new Error(`${resolved.label} đang có Contempt of the Gaze — không thể nhận thêm Gaze of Contempt lúc này.`);
+            }
             const field = STATUS_FIELD_MAP[key];
             const cap = STATUS_CAPS[key];
             const before = resolved.combatant[field] ?? 0;
             resolved.combatant[field] = Math.max(0, Math.min(cap, before + amount));
+            // Gaze[Awe]/Contempt: gán sourceId ("kẻ đã gắn") mỗi lần CỘNG THÊM stack
+            // mới — bắt buộc phải có `source:` nếu đang thêm mới (amount > 0).
+            if ((key === "gazeawe" || key === "contempt") && amount > 0) {
+              if (!sourceId) throw new Error(`Dùng "${key}:" cần kèm "source: <key enemy hoặc mention player>" để biết ai là "kẻ đã gắn".`);
+              resolved.combatant[key === "gazeawe" ? "gazeAweSourceId" : "contemptSourceId"] = sourceId;
+            }
             // Protection có Duration 2-turn RIÊNG (protectionTurnsLeft) — set/refresh
             // về 2 mỗi lần CỘNG THÊM stack mới (không cộng dồn duration, chỉ refresh).
             if (key === "protection" && amount > 0) resolved.combatant.protectionTurnsLeft = 2;
@@ -4241,6 +4286,10 @@ client.on("messageCreate", async (message) => {
             if (key === "borrowedtime" && amount > 0) resolved.combatant.borrowedTimeTurnsLeft = 3;
             // Fairy: "biến mất khi hiệu lực đủ 2 Turn" — set/refresh Duration.
             if (key === "fairy" && amount > 0) resolved.combatant.fairyTurnsLeft = 2;
+            // Hemorrhage: GM tự gán tay qua setstatus cũng tính là "đã áp trong
+            // turn này" — nhất quán với đường tự động (commit handler khi Bleed
+            // mới thực sự được áp), tránh bị reset ngay endturn kế tiếp.
+            if (key === "hemorrhage" && amount > 0) resolved.combatant.hemorrhageAppliedThisTurn = true;
             // Spectro Frazzle (xác nhận trực tiếp): "Mỗi 1 stack giảm 10 Stamina và
             // gây 1 Bind... Nếu địch đang Stagger hoặc 0 Stamina thì lưu phần thừa,
             // nhân đôi, giảm khi hồi lại Stamina" — áp dụng NGAY lúc gán stack MỚI
@@ -4284,10 +4333,13 @@ client.on("messageCreate", async (message) => {
         airborne: "airborne", chains: "chains", sizzlingwound: "sizzlingWound",
         perceptionblockingmask: "perceptionBlockingMask", blacksilence: "blackSilence",
         tremorscorch: "tremorScorch", tremorhemorrhage: "tremorHemorrhage",
+        burningsensation: "burningSensation",
+        contemptofthegaze: "contemptOfTheGaze",
+        busyastribbie: "busyAsTribbie",
       };
       const entries = Object.keys(FLAG_FIELD_MAP).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: (kv[k] ?? "").trim().toLowerCase() }));
       if (!targetRaw || entries.length === 0) {
-        message.reply(`⚠️ Cú pháp: \`-encounter setflag target: <key/userId/me> <flag>: on/off\`\n> Flag hợp lệ: ${Object.keys(FLAG_FIELD_MAP).join("/")}\n> VD: \`-encounter setflag target: mo airborne: on\``);
+        message.reply(`⚠️ Cú pháp: \`-encounter setflag target: <key/userId/me> <flag>: on/off\`\n> Flag hợp lệ: ${Object.keys(FLAG_FIELD_MAP).join("/")}\n> VD: \`-encounter setflag target: mo airborne: on\`\n> Busy as Tribbie cần thêm \`source: <key enemy hoặc mention player>\` để biết "người buff nó".`);
         return;
       }
       try {
@@ -4297,6 +4349,7 @@ client.on("messageCreate", async (message) => {
           const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
           const resolved = resolveCombatant(encounter, targetId);
           if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
+          const sourceRaw = (kv["source"] ?? "").trim();
           const changes = [];
           for (const { key, raw } of entries) {
             if (raw !== "on" && raw !== "off") throw new Error(`\`${key}:\` phải là "on" hoặc "off".`);
@@ -4304,6 +4357,13 @@ client.on("messageCreate", async (message) => {
             resolved.combatant[field] = raw === "on";
             // Chains: "(1 Turn)" — set Duration khi bật.
             if (key === "chains" && raw === "on") resolved.combatant.chainsTurnsLeft = 1;
+            // Busy as Tribbie: cần source: để biết "người buff nó" (ai bị FUA phản
+            // công) — GIẢ ĐỊNH FUA nhắm vào chính target (xem combatant-factory.js).
+            if (key === "busyastribbie" && raw === "on") {
+              if (!sourceRaw) throw new Error(`Dùng "busyastribbie: on" cần kèm "source: <key enemy hoặc mention player>".`);
+              const sourceEnemyKey = normalizeEnemyKey(sourceRaw);
+              resolved.combatant.busyAsTribbieSourceId = encounter.enemies[sourceEnemyKey] ? sourceEnemyKey : sourceRaw.replace(/[<@!>]/g, "");
+            }
             changes.push(`${key}: **${raw}**`);
           }
           appendActionLog(encounter, `📊 ${resolved.label}: setflag ${changes.join(", ")}`);
@@ -5720,10 +5780,26 @@ client.on("interactionCreate", async (interaction) => {
               // — mỗi 1 Regen hồi lại đúng 1 HP, KHÔNG hồi vượt quá lượng vừa mất.
               let regenHealNote = "";
               if (finalDmg > 0 && (target.regen ?? 0) > 0) {
-                const regenConsumed = Math.min(target.regen, finalDmg);
+                let regenConsumed = Math.min(target.regen, finalDmg);
+                // Hemorrhage stack 5 (xác nhận trực tiếp): "giảm hồi máu của mục
+                // tiêu dính Bleed đi 1/3" — chỉ áp ở tier CAO NHẤT (đúng 5, không
+                // phải mọi tier).
+                let hemorrhageHealNote = "";
+                if (target.hemorrhage === HEMORRHAGE_MAX) {
+                  const reduced = Math.floor(regenConsumed / 3);
+                  regenConsumed -= reduced;
+                  if (reduced > 0) hemorrhageHealNote = ` (Hemorrhage giảm hồi ${reduced})`;
+                }
+                // Burning Sensation (xác nhận trực tiếp): "giảm 1/2 lượng hồi phục"
+                // — áp ĐỘC LẬP với Hemorrhage ở trên (cả 2 cùng có thì cộng dồn).
+                if (target.burningSensation) {
+                  const reducedBS = Math.floor(regenConsumed / 2);
+                  regenConsumed -= reducedBS;
+                  if (reducedBS > 0) hemorrhageHealNote += ` (Burning Sensation giảm hồi ${reducedBS})`;
+                }
                 target.regen -= regenConsumed;
                 target.currentHp = Math.min(target.maxHp, target.currentHp + regenConsumed);
-                regenHealNote = ` 💚+${regenConsumed} HP (Regen, còn ${target.regen})`;
+                regenHealNote = ` 💚+${regenConsumed} HP (Regen, còn ${target.regen}${hemorrhageHealNote})`;
               }
               const justDied = wasAliveBefore && target.currentHp <= 0;
               // HP Persistence (luật: "HP vẫn giữ nguyên" sau khi encounter kết
@@ -5787,9 +5863,31 @@ client.on("interactionCreate", async (interaction) => {
                 // THẬT giờ chỉ xảy ra trong advanceCombatantTurn (xem comment ở đó).
                 const lastHitForStatus = t.preview.instanceResults[t.preview.instanceResults.length - 1];
                 target.burn = lastHitForStatus?.burnStacksAfter ?? target.burn;
+                const bleedBeforeThisHit = target.bleed ?? 0;
                 target.bleed = bleedOverride ?? (lastHitForStatus?.bleedStacksAfter ?? target.bleed);
+                // Hemorrhage (xác nhận trực tiếp): "+1 stack MỖI LẦN áp Bleed" —
+                // phát hiện bằng cách so sánh Bleed TRƯỚC/SAU đòn này (tăng = có áp
+                // Bleed mới). Reset check ("không áp Bleed trong 1 turn") xử lý ở
+                // turn-advance.js dựa vào hemorrhageAppliedThisTurn.
+                if (target.bleed > bleedBeforeThisHit) {
+                  target.hemorrhage = Math.min(HEMORRHAGE_MAX, (target.hemorrhage ?? 0) + 1);
+                  target.hemorrhageAppliedThisTurn = true;
+                }
                 target.tremor = t.preview.finalTremor;
+                // Haou Sinking (xác nhận trực tiếp): "khi có stack... sẽ bị -1
+                // sanity và gây bonus dmg bằng số count MỖI ĐÒN chúng bị tấn công
+                // TRONG TURN LÚC -45 sanity HOẶC KHÔNG có sanity" — kiểm tra ĐIỀU
+                // KIỆN bằng Sanity TRƯỚC khi đòn này ghi đè (currentSanity vẫn là
+                // giá trị CŨ tại đây), nhưng ÁP DỤNG SAU khi finalSanity đã ghi
+                // (nếu áp trước, dòng currentSanity=finalSanity ngay sau sẽ ghi đè
+                // mất — cùng lỗi thứ tự đã gặp với Contempt of the Gaze trước đó).
+                const haouSinkingTriggered = (target.haouSinking ?? 0) > 0 && target.currentSanity <= 0;
                 target.currentSanity = t.preview.finalSanity;
+                if (haouSinkingTriggered) {
+                  target.currentHp = Math.max(0, target.currentHp - target.haouSinking);
+                  target.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, target.currentSanity - 1);
+                  checkStaggerPanic(target);
+                }
                 // Tremor Burst rút STAMINA của TARGET (kẻ mang Tremor bị rút Sta).
                 if (t.preview.totalTremorStaminaLoss > 0) {
                   target.currentStamina = Math.max(0, target.currentStamina - t.preview.totalTremorStaminaLoss);
@@ -5803,6 +5901,12 @@ client.on("interactionCreate", async (interaction) => {
                 }
                 if ((t.preview.totalTremorChainConsumed ?? 0) > 0) {
                   target.tremorChain = Math.max(0, (target.tremorChain ?? 0) - t.preview.totalTremorChainConsumed);
+                }
+                // Haou Rupture (xác nhận trực tiếp): "Mỗi lần địch chịu 1 đòn tấn
+                // công sẽ trừ 1 stack NẾU resistance thấp hơn 1.5x Res" — chỉ tiêu
+                // khi thực sự có tác dụng (đã xác định ở preview qua haouRuptureApplied).
+                if (t.haouRuptureApplied) {
+                  target.haouRupture = Math.max(0, (target.haouRupture ?? 0) - 1);
                 }
                 // Defenseless (perk của ATTACKER): gây dmg lên target ĐANG có Rupture → -5 Stamina target.
                 if (hasPerk(attacker.combatant, "Defenseless") && hadRuptureBeforeHit) {
@@ -5946,12 +6050,26 @@ client.on("interactionCreate", async (interaction) => {
             let bleedSelfNote = "";
             if ((attacker.combatant.bleed ?? 0) > 0) {
               // Sizzling Wound: "+50% Dmg từ Burn và Bleed" — nhân vào đây tương tự Burn.
-              const bleedSelfDmg = Math.floor((attacker.combatant.bleed / 4) * (attacker.combatant.sizzlingWound ? 1.5 : 1));
+              // Hemorrhage (xác nhận trực tiếp): "Bleed khi gây dmg sẽ /3|/2|x1|
+              // x1.5|x2" theo tier 1-5 — nhân thêm vào công thức Bleed tự gây dmg.
+              const HEMORRHAGE_BLEED_MULT = { 0: 1, 1: 1 / 3, 2: 1 / 2, 3: 1, 4: 1.5, 5: 2 };
+              const hemorrhageMult = HEMORRHAGE_BLEED_MULT[attacker.combatant.hemorrhage ?? 0] ?? 1;
+              const bleedSelfDmg = Math.floor((attacker.combatant.bleed / 4) * (attacker.combatant.sizzlingWound ? 1.5 : 1) * hemorrhageMult);
               if (bleedSelfDmg > 0) {
                 attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - bleedSelfDmg);
                 checkStaggerPanic(attacker.combatant);
                 bleedSelfNote = ` [🩸Bleed tự gây ${bleedSelfDmg} dmg lên ${attacker.label}]`;
               }
+            }
+            // Haou Bleed (xác nhận trực tiếp): "Gây Dmg cho kẻ địch dựa vào số
+            // count mỗi khi CHÚNG hành động" — tự gây dmg = FULL count (KHÔNG /4
+            // như Bleed thường, mô tả gốc không nhắc chia) mỗi khi CHÍNH kẻ mang
+            // Haou Bleed hành động — cùng vị trí commit với Bleed thường.
+            if ((attacker.combatant.haouBleed ?? 0) > 0) {
+              const haouBleedSelfDmg = attacker.combatant.haouBleed;
+              attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - haouBleedSelfDmg);
+              checkStaggerPanic(attacker.combatant);
+              bleedSelfNote += ` [🩸Haou Bleed tự gây ${haouBleedSelfDmg} dmg lên ${attacker.label}]`;
             }
             // Battle Ignition/Overbearing/Blessed Sparks: đếm M1 (chỉ attack mới có
             // p.isM1=true, hit/Page không tính). 2 counter TÁCH BIỆT, đếm KHÁC kiểu:
