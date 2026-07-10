@@ -1408,6 +1408,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
     // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
     advanceToNextTurnHolder(encounter);
+    announceCurrentTurn(channelId, encounter).catch(() => {});
     await saveEncounter(channelId, encounter);
     sendReactiveDefensePrompt(channelId, pendingId).catch(() => {});
 
@@ -1533,6 +1534,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
     // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
     advanceToNextTurnHolder(encounter);
+    announceCurrentTurn(channelId, encounter).catch(() => {});
     await saveEncounter(channelId, encounter);
     sendReactiveDefensePrompt(channelId, pendingId).catch(() => {});
 
@@ -1642,6 +1644,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
     // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
     advanceToNextTurnHolder(encounter);
+    announceCurrentTurn(channelId, encounter).catch(() => {});
     await saveEncounter(channelId, encounter);
     // Reactive Defense Prompt (xác nhận trực tiếp, mô hình Yugioh Master Duel
     // Chain): gửi NGAY prompt phòng thủ cho target — KHÔNG chờ GM "Confirm tất
@@ -4165,6 +4168,7 @@ client.on("messageCreate", async (message) => {
           const wrapped = advanceToNextTurnHolder(encounter);
           appendActionLog(encounter, `⏭️ ${label} bỏ qua lượt (pass).`);
           await saveEncounter(encChannelId, encounter);
+          if (!wrapped) announceCurrentTurn(encChannelId, encounter).catch(() => {});
           message.reply(`⏭️ ${label} đã bỏ qua lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : `\n> Tiếp theo: ${buildTurnOrderText(encounter)}`}`);
         });
       } catch (err) {
@@ -4183,6 +4187,7 @@ client.on("messageCreate", async (message) => {
           determineTurnOrder(encounter);
           appendActionLog(encounter, `🎲 Roll Speed — Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`);
           await saveEncounter(encChannelId, encounter);
+          announceCurrentTurn(encChannelId, encounter).catch(() => {});
           message.reply({ embeds: [{ title: "🎲 Thứ tự Turn", description: buildTurnOrderText(encounter), color: 0x3498db }] });
         });
       } catch (err) {
@@ -4741,10 +4746,20 @@ client.on("messageCreate", async (message) => {
           // turnNumber — đếm số turn ĐÃ QUA (bắt đầu 1, tăng mỗi lần endturn) — dùng
           // để gắn nhãn "Turn N" vào mỗi entry trong actionLog (-encounter log).
           encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
+          // Turn Order Enforcement (xác nhận trực tiếp): "lúc xong endturn thì
+          // encounter nên tự cập nhật lại để player bấm tiếp" — TỰ ĐỘNG roll lại
+          // Speed cho turn MỚI (không bắt GM nhớ gọi `-encounter rollspeed` riêng
+          // — quên gọi sẽ khiến currentTurnIndex kẹt ở cuối turnOrder cũ, chặn
+          // TOÀN BỘ mọi người hành động vĩnh viễn cho tới khi GM tự nhận ra).
+          if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length > 0) {
+            determineTurnOrder(encounter);
+          }
           await saveEncounter(encChannelId, encounter);
+          announceCurrentTurn(encChannelId, encounter).catch(() => {});
           await message.reply({
             content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
-              (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : ""),
+              (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : "") +
+              `\n> 🎲 Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`,
             embeds: [buildEncounterBoardEmbed(encounter)],
           });
         });
@@ -6206,6 +6221,45 @@ async function resolveOnePendingAction(encounter, p) {
  *  cách AN TOÀN, không cần giữ 1 Promise treo trong bộ nhớ process).
  *  targetUserId=null nghĩa là target là ENEMY (GM bấm thay) — vẫn gửi prompt
  *  nhưng filter cho phép GM/admin bấm thay vì đúng targetUserId. */
+/** announceCurrentTurn — Turn Order Enforcement UX (xác nhận trực tiếp): "lúc
+ *  xong endturn thì encounter nên tự cập nhật lại để player bấm tiếp" — TỰ ĐỘNG
+ *  gửi dropdown hành động cho ĐÚNG người/enemy đang tới lượt, thay vì bắt họ tự
+ *  gõ `-encounter status` lại để lấy dropdown mới mỗi lần. Player → gửi trong
+ *  kênh encounter (mention họ). Enemy → route tới gmChannelId nếu đã link (GM
+ *  điều khiển thay), cùng logic routing với sendReactiveDefensePrompt. Không
+ *  throw gì cả — lỗi gửi message không nên làm hỏng flow chính (fire-and-forget). */
+async function announceCurrentTurn(channelId, encounter) {
+  try {
+    const order = encounter.turnOrder ?? [];
+    const entry = order[encounter.currentTurnIndex ?? 0];
+    if (!entry) return; // hết vòng — GM cần rollspeed/endturn, không có ai để mời
+    if (entry.type === "player") {
+      const player = encounter.players[entry.id];
+      if (!player || player.currentHp <= 0) return;
+      const channel = await client.channels.fetch(channelId).catch(() => null);
+      if (!channel) return;
+      await channel.send({
+        content: `<@${entry.id}>`,
+        embeds: [{ title: "🎲 Tới lượt bạn!", description: `Speed **${entry.speed}** — chọn hành động:`, color: 0x3498db }],
+        components: buildEncounterActionPanel(channelId, player, entry.id),
+      }).catch(() => {});
+    } else {
+      const enemy = encounter.enemies[entry.id];
+      if (!enemy || enemy.currentHp <= 0) return;
+      const targetChannelId = encounter.gmChannelId || channelId;
+      const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+      if (!channel) return;
+      await channel.send({
+        content: `<@${encounter.gmId}>`,
+        embeds: [{ title: `🎲 Tới lượt ${enemy.name}!`, description: `Speed **${entry.speed}** — chọn hành động:`, color: 0xe74c3c }],
+        components: buildBossActionPanel(channelId, entry.id, encounter.gmId),
+      }).catch(() => {});
+    }
+  } catch (err) {
+    log("error", "announceCurrentTurn", "system", err.message);
+  }
+}
+
 async function sendReactiveDefensePrompt(channelId, pendingId) {
   try {
     const encounter = await getEncounter(channelId);
