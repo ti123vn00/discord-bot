@@ -70,17 +70,56 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       tiedWith: entries.filter((o, j) => j !== i && o.combatant.currentSpeed === e.combatant.currentSpeed).map(o => o.id),
     }));
     encounter.turnOrder = order;
+    // Turn Order Enforcement (xác nhận trực tiếp): "CHỈ đúng lượt mới được M1/
+    // skill — sai lượt thì bị chặn, chỉ phòng thủ phản ứng được thôi" — mỗi lần
+    // roll Speed MỚI (turn mới hoặc lần đầu), reset về người ĐẦU TIÊN trong thứ
+    // tự vừa roll.
+    encounter.currentTurnIndex = 0;
     return order;
   }
+
+  /** isCurrentTurnHolder — Turn Order Enforcement: kiểm tra id (playerId hoặc
+   *  enemyKey) có ĐÚNG là người/enemy đang tới lượt hay không. Trả về true LUÔN
+   *  nếu chưa từng roll Speed (turnOrder rỗng) — không ép buộc turn order nếu GM
+   *  chưa dùng tính năng này, giữ tương thích ngược hoàn toàn. */
+  function isCurrentTurnHolder(encounter, id) {
+    const order = encounter.turnOrder ?? [];
+    if (order.length === 0) return true;
+    const idx = encounter.currentTurnIndex ?? 0;
+    return order[idx]?.id === id;
+  }
+
+  /** advanceToNextTurnHolder — Turn Order Enforcement: chuyển sang người TIẾP
+   *  THEO trong turnOrder, TỰ ĐỘNG bỏ qua (không cần "pass" thủ công) người đã
+   *  chết (currentHp<=0) hoặc đang Stagger (không thể hành động) — họ vẫn được
+   *  liệt kê trong turnOrder cho hiển thị, chỉ không chiếm lượt thật. Trả về
+   *  true nếu đã đi hết 1 vòng (tất cả đã hành động/bị skip) — GM nên dùng
+   *  `-encounter endturn` khi thấy true. */
+  function advanceToNextTurnHolder(encounter) {
+    const order = encounter.turnOrder ?? [];
+    if (order.length === 0) return false;
+    let idx = (encounter.currentTurnIndex ?? 0) + 1;
+    while (idx < order.length) {
+      const entry = order[idx];
+      const c = entry.type === "enemy" ? encounter.enemies[entry.id] : encounter.players[entry.id];
+      if (c && c.currentHp > 0 && !c.staggered) break; // tìm người TIẾP THEO còn khả năng hành động
+      idx++; // bỏ qua người đã chết/đang Stagger, không chiếm lượt
+    }
+    encounter.currentTurnIndex = idx;
+    return idx >= order.length; // true = đã hết 1 vòng turnOrder
+  }
   
-  /** buildTurnOrderText — hiện danh sách thứ tự turn đã roll, kèm cảnh báo hoà cùng phe. */
+  /** buildTurnOrderText — hiện danh sách thứ tự turn đã roll, kèm cảnh báo hoà cùng phe.
+   *  Turn Order Enforcement: đánh dấu 👉 người/enemy ĐANG tới lượt (currentTurnIndex). */
   function buildTurnOrderText(encounter) {
     const order = encounter.turnOrder ?? [];
     if (order.length === 0) return "Chưa roll Speed — dùng `-encounter rollspeed`.";
+    const curIdx = encounter.currentTurnIndex ?? 0;
     return order.map((e, i) => {
       const label = e.type === "enemy" ? `**${encounter.enemies[e.id]?.name ?? e.id}**` : `<@${e.id}>`;
       const tieNote = e.tiedWith.length > 0 ? ` ⚖️ *(hoà Speed — tự thoả thuận thứ tự với ${e.tiedWith.length} người khác cùng phe)*` : "";
-      return `**#${i + 1}** ${label} — Speed **${e.speed}**${tieNote}`;
+      const turnMarker = i === curIdx ? " 👉 **(đang tới lượt)**" : "";
+      return `**#${i + 1}** ${label} — Speed **${e.speed}**${tieNote}${turnMarker}`;
     }).join("\n");
   }
   
@@ -323,6 +362,8 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
   return {
     rollSpeedValue,
     determineTurnOrder,
+    isCurrentTurnHolder,
+    advanceToNextTurnHolder,
     buildTurnOrderText,
     combatantResStr,
     trueDmgResStr,
