@@ -283,7 +283,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", "type", "ammotype", // -encounter
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", "type", "ammotype", "channel", // -encounter
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -1170,7 +1170,7 @@ function normalizeEnemyKey(k) {
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
 const { createCombatant } = require("./combatant-factory")({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }); // ĐÃ TÁCH sang file riêng (combatant-factory.js)
 
-const { rollSpeedValue, determineTurnOrder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX }); // ĐÃ TÁCH sang file riêng (combat-utils.js)
+const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX });
 
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
@@ -1195,6 +1195,17 @@ const { getParryClashPenalty, rollInjury } = require("./injury-system")({ SEVERE
 const { advanceCombatantTurn } = require("./turn-advance")({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }); // ĐÃ TÁCH sang file riêng (turn-advance.js)
 
 const { encounterKey, getEncounter, saveEncounter, deleteEncounter } = require("./encounter-persistence")({ redis, withTimeout }); // ĐÃ TÁCH sang file riêng (encounter-persistence.js)
+
+/** resolveGmLinkedChannel — GM Control Panel (xác nhận trực tiếp): cho phép GM
+ *  gõ TOÀN BỘ lệnh `-encounter ...` từ 1 kênh RIÊNG (không phải kênh encounter
+ *  chính, tránh trôi chat) sau khi đã `-encounter linkgm channel: <encounter
+ *  channel>` — Redis key `gmlink:${channelId GM}` → channelId encounter thật.
+ *  Trả về CHÍNH rawChannelId nếu chưa từng link (hành vi mặc định, không đổi gì
+ *  với setup thông thường không dùng GM panel). */
+async function resolveGmLinkedChannel(rawChannelId) {
+  const mapped = await redis.get(`gmlink:${rawChannelId}`);
+  return mapped || rawChannelId;
+}
 
 const { resolveCombatant, resolveTargets, formatCombatantBlock } = require("./encounter-display")({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVEL_TABLE }); // ĐÃ TÁCH sang file riêng (encounter-display.js)
 
@@ -1244,6 +1255,17 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const player = encounter.players[playerId];
     if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join` trước (không cần gõ tham số gì, tự động lấy hết).");
     if (player.staggered) throw new Error("Bạn đang bị Stagger — không thể hành động turn này.");
+    // Turn Order Enforcement (xác nhận trực tiếp): "CHỈ đúng lượt mới được M1/
+    // skill — sai lượt thì bị chặn, chỉ phòng thủ phản ứng được thôi" — CHỈ gate
+    // M1/skill (hành động CHỦ ĐỘNG), KHÔNG áp dụng cho Guard/Evade/Parry (luôn
+    // là phản ứng, có thể xảy ra bất cứ lúc nào theo đúng bản chất "phòng thủ").
+    if (!isCurrentTurnHolder(encounter, playerId)) {
+      const order = encounter.turnOrder ?? [];
+      const holderLabel = order[encounter.currentTurnIndex ?? 0]
+        ? (order[encounter.currentTurnIndex].type === "enemy" ? encounter.enemies[order[encounter.currentTurnIndex].id]?.name ?? "?" : `<@${order[encounter.currentTurnIndex].id}>`)
+        : "?";
+      throw new Error(`Chưa tới lượt bạn — đang là lượt của ${holderLabel}. Bạn vẫn có thể phòng thủ (Guard/Evade/Parry) nếu bị tấn công.`);
+    }
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
 
     const isEyeOfHorus = (player.weaponName ?? "").toLowerCase() === "eye of horus";
@@ -1383,7 +1405,11 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType,
     });
+    // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
+    // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
+    advanceToNextTurnHolder(encounter);
     await saveEncounter(channelId, encounter);
+    sendReactiveDefensePrompt(channelId, pendingId).catch(() => {});
 
     const targetLines = previews.map(p => {
       let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
@@ -1425,6 +1451,13 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
     const player = encounter.players[playerId];
     if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join` trước (không cần gõ tham số gì, tự động lấy hết).");
+    if (!isCurrentTurnHolder(encounter, playerId)) {
+      const order = encounter.turnOrder ?? [];
+      const holderLabel = order[encounter.currentTurnIndex ?? 0]
+        ? (order[encounter.currentTurnIndex].type === "enemy" ? encounter.enemies[order[encounter.currentTurnIndex].id]?.name ?? "?" : `<@${order[encounter.currentTurnIndex].id}>`)
+        : "?";
+      throw new Error(`Chưa tới lượt bạn — đang là lượt của ${holderLabel}. Bạn vẫn có thể phòng thủ (Guard/Evade/Parry) nếu bị tấn công.`);
+    }
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — chờ GM xử lý trước.`);
 
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần
@@ -1497,7 +1530,11 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
+    // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
+    // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
+    advanceToNextTurnHolder(encounter);
     await saveEncounter(channelId, encounter);
+    sendReactiveDefensePrompt(channelId, pendingId).catch(() => {});
 
     const targetLines = previews.map(p => {
       let line = `> → ${p.target.label}: dự kiến **${p.finalDmgAfterReduction.toFixed(3)}** dmg`;
@@ -1541,6 +1578,13 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     const ekey = normalizeEnemyKey(enemyKey);
     const enemy = encounter.enemies[ekey];
     if (!enemy) throw new Error(`Không tìm thấy enemy "${enemyKey}" — dùng \`-encounter status\` để xem danh sách.`);
+    if (!isCurrentTurnHolder(encounter, ekey)) {
+      const order = encounter.turnOrder ?? [];
+      const holderLabel = order[encounter.currentTurnIndex ?? 0]
+        ? (order[encounter.currentTurnIndex].type === "enemy" ? encounter.enemies[order[encounter.currentTurnIndex].id]?.name ?? "?" : `<@${order[encounter.currentTurnIndex].id}>`)
+        : "?";
+      throw new Error(`Chưa tới lượt của "${enemyKey}" — đang là lượt của ${holderLabel}. Enemy này vẫn có thể phòng thủ (Guard/Evade/Parry) nếu bị tấn công.`);
+    }
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — xử lý trước.`);
 
     const verify = await resolveSkillVerification(channelId, enemy, skillNameRaw, refRaw);
@@ -1595,6 +1639,9 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
+    // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
+    // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
+    advanceToNextTurnHolder(encounter);
     await saveEncounter(channelId, encounter);
     // Reactive Defense Prompt (xác nhận trực tiếp, mô hình Yugioh Master Duel
     // Chain): gửi NGAY prompt phòng thủ cho target — KHÔNG chờ GM "Confirm tất
@@ -3790,10 +3837,46 @@ client.on("messageCreate", async (message) => {
   // buildEncounterBoardEmbed phía trên về lý do tách biệt hoàn toàn khỏi Profile.
   if (message.content.startsWith("-encounter")) {
     const isAdmin = ADMIN_IDS.has(message.author.id);
+    // GM Control Panel (xác nhận trực tiếp): "1 bảng UI control enemy cho GM ở 1
+    // kênh khác, vì nếu nhập lệnh liên tục ở kênh đang encounter thì sẽ trôi
+    // chat" — resolveGmLinkedChannel cho phép GÕ LỆNH TỪ KÊNH GM RIÊNG (đã link
+    // qua `-encounter linkgm`) mà vẫn điều khiển ĐÚNG encounter đang chạy ở kênh
+    // khác — trả về CHÍNH encChannelId nếu không có mapping nào (hành vi
+    // cũ, encounter ở đúng kênh gõ lệnh, không đổi gì với setup thông thường).
+    const encChannelId = await resolveGmLinkedChannel(message.channel.id);
     const argStr = message.content.replace(/^-encounter/i, "").trim();
     const subMatch = argStr.match(/^(\S+)\s*/);
     const sub = (subMatch?.[1] ?? "").toLowerCase();
     const rest = subMatch ? argStr.slice(subMatch[0].length).trim() : "";
+
+    if (sub === "linkgm") {
+      // GM Control Panel (xác nhận trực tiếp): "1 bảng UI control enemy cho GM ở
+      // 1 kênh khác" — chạy lệnh này TRONG kênh muốn dùng làm GM channel, chỉ
+      // định encounter channel muốn điều khiển. Dùng message.channel.id THẬT
+      // (không phải encChannelId đã resolve) vì đây CHÍNH LÀ bước tạo mapping.
+      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được liên kết kênh điều khiển."); return; }
+      const kv = parseKeyValues(rest);
+      const targetChannelRaw = (kv["channel"] ?? "").trim();
+      const targetChannelId = targetChannelRaw.replace(/[<#>]/g, "");
+      if (!targetChannelId) {
+        message.reply("⚠️ Cú pháp: `-encounter linkgm channel: <#kênh-encounter>` (chạy lệnh này TRONG kênh bạn muốn dùng làm bảng điều khiển GM).");
+        return;
+      }
+      const targetEncounter = await getEncounter(targetChannelId);
+      if (!targetEncounter) {
+        message.reply(`⚠️ Không tìm thấy encounter nào đang chạy ở <#${targetChannelId}>.`);
+        return;
+      }
+      if (!isAdmin && message.author.id !== targetEncounter.gmId) {
+        message.reply("⚠️ Chỉ GM tạo encounter đó (hoặc admin) mới được liên kết.");
+        return;
+      }
+      await redis.set(`gmlink:${message.channel.id}`, targetChannelId);
+      targetEncounter.gmChannelId = message.channel.id;
+      await saveEncounter(targetChannelId, targetEncounter);
+      message.reply(`✅ Đã liên kết kênh này làm **bảng điều khiển GM** cho encounter **${targetEncounter.name}** (<#${targetChannelId}>).\n> Từ giờ mọi lệnh \`-encounter ...\` gõ TẠI ĐÂY sẽ tự động áp dụng cho encounter đó — dùng \`-encounter gmpanel\` để mở bảng điều khiển nhanh.`);
+      return;
+    }
 
     if (sub === "start") {
       if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được tạo encounter."); return; }
@@ -3805,8 +3888,8 @@ client.on("messageCreate", async (message) => {
       }
       const permadeath = /^(yes|true|1|có)$/i.test((kv["permadeath"] ?? "").trim());
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const existing = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const existing = await getEncounter(encChannelId);
           if (existing) throw new Error(`Channel này đang có encounter **${existing.name}** chạy — dùng \`-encounter end\` trước.`);
           const encounter = {
             name, enemies: {}, players: {},
@@ -3818,7 +3901,7 @@ client.on("messageCreate", async (message) => {
             // khi đã confirm/reject) — xem -encounter log để xem lại.
             turnNumber: 1, actionLog: [],
           };
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           await message.reply({
             content: `✅ Đã tạo encounter **${name}**${permadeath ? " ⚠️**PERMADEATH** (chết = permanent death, không phải Death Penalty thường)" : ""}. Dùng \`-encounter addenemy key: <key> name: <tên> hp: <số>\` để thêm enemy.`,
             embeds: [buildEncounterBoardEmbed(encounter)],
@@ -3855,8 +3938,8 @@ client.on("messageCreate", async (message) => {
       const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : 3;
       const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : 6;
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
           if (encounter.players[key]) throw new Error(`Key "${key}" đang trùng với 1 player đã join — đổi key khác.`);
           const wasExisting = !!encounter.enemies[key];
@@ -3866,7 +3949,7 @@ client.on("messageCreate", async (message) => {
             weaponWeight: weapon, resistance: res, speedRangeMin, speedRangeMax,
           });
           encounter.enemies[key].unlockedPerks = perksList;
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           await message.reply({
             content: `✅ ${wasExisting ? "Đã cập nhật lại" : "Đã thêm"} enemy **${name}** (key: \`${key}\`) với ${hp} HP.` +
               (perksList.length > 0 ? ` (Perk: ${perksList.join(", ")})` : ""),
@@ -3891,8 +3974,8 @@ client.on("messageCreate", async (message) => {
       const keyRaw = (kv["key"] ?? "").trim();
       if (!keyRaw) { message.reply("⚠️ Cú pháp: `-encounter removeenemy key: <key>` (gỡ khỏi board — dùng cho bỏ chạy/bắt sống, KHÔNG phải chết)."); return; }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const key = normalizeEnemyKey(keyRaw);
           const enemy = encounter.enemies[key];
@@ -3905,7 +3988,7 @@ client.on("messageCreate", async (message) => {
             p.attackerId !== key && !(p.targets ?? []).some(t => t.targetId === key)
           );
           appendActionLog(encounter, `🏃 Gỡ enemy **${name}** (key: \`${key}\`) khỏi board — bỏ chạy/bắt sống.`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           await message.reply({
             content: `🏃 Đã gỡ enemy **${name}** (key: \`${key}\`) khỏi board — KHÔNG tính là đã hạ (bỏ chạy/bắt sống).`,
             embeds: [buildEncounterBoardEmbed(encounter)],
@@ -3979,8 +4062,8 @@ client.on("messageCreate", async (message) => {
       }
       const finalHp = Number.isFinite(hp) && hp > 0 ? hp : effectiveHp.hp;
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
           const wasJoined = !!encounter.players[message.author.id];
           encounter.players[message.author.id] = createCombatant({
@@ -4035,7 +4118,7 @@ client.on("messageCreate", async (message) => {
             if (hasPerk(joined, "Adrenaline Rush")) { joined.poise = Math.min(POISE_MAX, 10); startNotes.push("+10 Poise (Adrenaline Rush)"); }
             if (hasPerk(joined, "No Mind To Cure")) { joined.currentSanity = -25; startNotes.push("-25 Sanity (No Mind To Cure)"); }
           }
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           const equipNotes = [];
           if (equippedWeaponObj && !kv["weapon"]) equipNotes.push(`Vũ khí: ${equippedWeaponObj.name} (${equippedWeaponObj.weight})`);
           if (equippedOutfitObj && !kv["res"]) equipNotes.push(`Outfit: ${equippedOutfitObj.name} (Res ${res.B}xB ${res.P}xP ${res.S}xS)`);
@@ -4052,7 +4135,7 @@ client.on("messageCreate", async (message) => {
               (equipNotes.length > 0 ? `\n> 🎒 Tự lấy từ trang bị: ${equipNotes.join(", ")}` : "") +
               (joined.unlockedPerks.length > 0 ? ` (Perk từ profile: ${joined.unlockedPerks.join(", ")})` : "") +
               (startNotes.length > 0 ? `\n> 🆙 ${startNotes.join(", ")}` : ""),
-            components: buildEncounterActionPanel(message.channel.id, joined, message.author.id),
+            components: buildEncounterActionPanel(encChannelId, joined, message.author.id),
           });
         });
       } catch (err) {
@@ -4063,16 +4146,43 @@ client.on("messageCreate", async (message) => {
 
     // ── rollspeed: roll Speed cho TẤT CẢ combatant, quyết định thứ tự turn (xem
     // determineTurnOrder — xử lý tie cùng phe/khác phe khác nhau theo update mới).
+    if (sub === "pass") {
+      // Turn Order Enforcement: bỏ qua lượt CHỦ ĐỘNG (không hành động gì cả) —
+      // cần thiết vì gate mới chặn M1/skill ngoài lượt, người/enemy có thể muốn
+      // "nhường lượt" (VD hết Stamina, hoặc chủ động không làm gì turn này).
+      try {
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const order = encounter.turnOrder ?? [];
+          if (order.length === 0) throw new Error("Chưa roll Speed — dùng `-encounter rollspeed` trước.");
+          const curEntry = order[encounter.currentTurnIndex ?? 0];
+          if (!curEntry) throw new Error("Đã hết lượt cho turn này — dùng `-encounter endturn`.");
+          const isAdmin2 = ADMIN_IDS.has(message.author.id);
+          if (curEntry.type === "player" && message.author.id !== curEntry.id) throw new Error("Chỉ đúng người đang tới lượt mới pass được.");
+          if (curEntry.type === "enemy" && !isAdmin2 && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới pass lượt enemy được.");
+          const label = curEntry.type === "enemy" ? `**${encounter.enemies[curEntry.id]?.name ?? curEntry.id}**` : `<@${curEntry.id}>`;
+          const wrapped = advanceToNextTurnHolder(encounter);
+          appendActionLog(encounter, `⏭️ ${label} bỏ qua lượt (pass).`);
+          await saveEncounter(encChannelId, encounter);
+          message.reply(`⏭️ ${label} đã bỏ qua lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : `\n> Tiếp theo: ${buildTurnOrderText(encounter)}`}`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
     if (sub === "rollspeed") {
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới roll thứ tự turn.");
           if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length < 1) throw new Error("Chưa có combatant nào để roll.");
           determineTurnOrder(encounter);
           appendActionLog(encounter, `🎲 Roll Speed — Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply({ embeds: [{ title: "🎲 Thứ tự Turn", description: buildTurnOrderText(encounter), color: 0x3498db }] });
         });
       } catch (err) {
@@ -4092,15 +4202,15 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
           const resolved = resolveCombatant(encounter, targetId);
           if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
           resolved.combatant[sub] = Math.max(0, (resolved.combatant[sub] ?? 0) + amount);
           appendActionLog(encounter, `${resolved.label}: ${sub === "haste" ? "Haste" : "Bind"} ${amount >= 0 ? "+" : ""}${amount} → còn ${resolved.combatant[sub]}.`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`✅ ${resolved.label}: ${sub === "haste" ? "Haste" : "Bind"} ${amount >= 0 ? "+" : ""}${amount} → còn ${resolved.combatant[sub]}.`);
         });
       } catch (err) {
@@ -4124,8 +4234,8 @@ client.on("messageCreate", async (message) => {
       const weaponNameRaw = rest.trim();
       if (!weaponNameRaw) { message.reply("⚠️ Cú pháp: `-encounter swapweapon <tên vũ khí>` (CHỈ dùng được nếu sở hữu accessory/vũ khí có khả năng đổi giữa trận, VD Dimension Pocket của Găng Tay Câm Lặng)."); return; }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const player = encounter.players[message.author.id];
           if (!player) throw new Error("Bạn chưa tham gia encounter này.");
@@ -4146,7 +4256,7 @@ client.on("messageCreate", async (message) => {
           player.weaponName = newWeapon.name ?? null;
           player.weaponCriticalKey = newWeapon.criticalSkillKey ?? newWeapon.name ?? null;
           appendActionLog(encounter, `🔄 <@${message.author.id}> đổi vũ khí qua ${abilityName} (-${lightCost} Light): ${newWeapon.name} (${oldWeaponWeight} → ${newWeapon.weight}).`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(
             `🔄 ${message.author} đổi vũ khí qua **${abilityName}** (-${lightCost} Light): **${newWeapon.name}** (${newWeapon.weight}/${newWeapon.type}, Base Dmg ${newWeapon.baseDamage}).\n` +
             `> Độ nặng vũ khí đổi từ \`${oldWeaponWeight}\` → \`${newWeapon.weight}\` (ảnh hưởng Stamina cost M1 + số hit Guard/Evade/Parry chặn được). GM tự xác nhận đây có đúng là vũ khí hợp lệ theo phạm vi ${abilityName} hay không (hệ thống không có danh sách phân loại để tự kiểm tra).`
@@ -4159,14 +4269,14 @@ client.on("messageCreate", async (message) => {
     }
 
     if (sub === "status") {
-      const encounter = await getEncounter(message.channel.id);
+      const encounter = await getEncounter(encChannelId);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào. Dùng `-encounter start` để tạo."); return; }
-      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(message.channel.id, encounter.players[message.author.id], message.author.id) });
+      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(encChannelId, encounter.players[message.author.id], message.author.id) });
       return;
     }
 
     if (sub === "pending") {
-      const encounter = await getEncounter(message.channel.id);
+      const encounter = await getEncounter(encChannelId);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
       const pending = encounter.pendingActions ?? [];
       message.reply({
@@ -4176,8 +4286,8 @@ client.on("messageCreate", async (message) => {
           color: 0xf39c12,
         }],
         components: pending.length > 0 ? [new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`encconfirmall:${message.channel.id}`).setLabel("✅ Confirm tất cả").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`encrejectall:${message.channel.id}`).setLabel("❌ Reject tất cả").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`encconfirmall:${encChannelId}`).setLabel("✅ Confirm tất cả").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`encrejectall:${encChannelId}`).setLabel("❌ Reject tất cả").setStyle(ButtonStyle.Danger),
         )] : [],
       });
       return;
@@ -4190,7 +4300,7 @@ client.on("messageCreate", async (message) => {
     // `turn: N` để xem ĐÚNG 1 turn cụ thể, `turn: all` để xem TOÀN BỘ (tự cắt
     // thành nhiều embed nếu vượt 4096 ký tự/embed của Discord).
     if (sub === "log") {
-      const encounter = await getEncounter(message.channel.id);
+      const encounter = await getEncounter(encChannelId);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
       const fullLog = encounter.actionLog ?? [];
       if (fullLog.length === 0) { message.reply("📜 Chưa có action nào được confirm/reject trong encounter này."); return; }
@@ -4257,8 +4367,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
           const resolved = resolveCombatant(encounter, targetId);
@@ -4267,7 +4377,7 @@ client.on("messageCreate", async (message) => {
           resolved.combatant[listKey] = resolved.combatant[listKey] ?? [];
           resolved.combatant[listKey].push({ text, addedAt: Date.now() });
           appendActionLog(encounter, `${sub === "buff" ? "🟢" : "🔴"} ${resolved.label}: ${sub === "buff" ? "+buff" : "+debuff"} "${text}"`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`✅ Đã thêm ${sub === "buff" ? "🟢 buff" : "🔴 debuff"} cho ${resolved.label}: "${text}"`);
         });
       } catch (err) {
@@ -4320,8 +4430,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
           const resolved = resolveCombatant(encounter, targetId);
@@ -4388,7 +4498,7 @@ client.on("messageCreate", async (message) => {
             changes.push(`${key}: ${before} → **${resolved.combatant[field]}**`);
           }
           appendActionLog(encounter, `📊 ${resolved.label}: setstatus ${changes.join(", ")}`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`✅ ${resolved.label}: ${changes.join(", ")}`);
         });
       } catch (err) {
@@ -4419,8 +4529,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
           const resolved = resolveCombatant(encounter, targetId);
@@ -4445,7 +4555,7 @@ client.on("messageCreate", async (message) => {
             changes.push(`${key}: **${raw}**`);
           }
           appendActionLog(encounter, `📊 ${resolved.label}: setflag ${changes.join(", ")}`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`✅ ${resolved.label}: ${changes.join(", ")}`);
         });
       } catch (err) {
@@ -4483,15 +4593,15 @@ client.on("messageCreate", async (message) => {
           await savePlayerData(message.author.id, profileData, slot);
         });
         // Bước 2: cộng vào stack Encounter (lock riêng của encounter).
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const player = encounter.players[message.author.id];
           if (!player) throw new Error("Bạn chưa tham gia encounter này.");
           const before = player[ammoType.field] ?? 0;
           player[ammoType.field] = Math.min(AMMO_MAX, before + actualAmount);
           appendActionLog(encounter, `🔫 <@${message.author.id}>: reload ${ammoType.item} +${actualAmount} (${before} → ${player[ammoType.field]})`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`🔫 Reload **${ammoType.item}**: +${actualAmount} (từ Inventory) → đang có **${player[ammoType.field]}** trong Encounter.`);
         });
       } catch (err) {
@@ -4509,8 +4619,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const targetId = targetRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, ""));
           const resolved = resolveCombatant(encounter, targetId);
@@ -4520,7 +4630,7 @@ client.on("messageCreate", async (message) => {
           if (index > list.length) throw new Error(`${resolved.label} chỉ có ${list.length} ${listKey === "buffs" ? "buff" : "debuff"} — không có #${index}.`);
           const removed = list.splice(index - 1, 1)[0];
           appendActionLog(encounter, `${listKey === "buffs" ? "🟢" : "🔴"} Đã xoá ${listKey === "buffs" ? "buff" : "debuff"} của ${resolved.label}: "${removed.text}"`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`✅ Đã xoá ${listKey === "buffs" ? "🟢 buff" : "🔴 debuff"} #${index} của ${resolved.label}: "${removed.text}"`);
         });
       } catch (err) {
@@ -4541,8 +4651,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const targetId = encounter.enemies[normalizeEnemyKey(targetRaw)] ? normalizeEnemyKey(targetRaw) : targetRaw.replace(/[<@!>]/g, "");
           const resolved = resolveCombatant(encounter, targetId);
@@ -4559,7 +4669,7 @@ client.on("messageCreate", async (message) => {
             } catch { /* không chặn lệnh chính nếu sync lỗi */ }
           }
           appendActionLog(encounter, `🩹 Đã chữa khỏi chấn thương của ${resolved.label}: "${removed}"`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`✅ Đã chữa khỏi chấn thương #${index} của ${resolved.label}: "${removed}"`);
         });
       } catch (err) {
@@ -4570,7 +4680,7 @@ client.on("messageCreate", async (message) => {
 
 
     if (sub === "end") {
-      const encounter = await getEncounter(message.channel.id);
+      const encounter = await getEncounter(encChannelId);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
       if (!isAdmin && message.author.id !== encounter.gmId) { message.reply("⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được kết thúc."); return; }
       // BUG ĐÃ SỬA: trước đây xoá actionLog VĨNH VIỄN ngay khi end, không có cách
@@ -4600,15 +4710,15 @@ client.on("messageCreate", async (message) => {
         }));
         await message.channel.send({ embeds: logEmbeds }).catch(() => {});
       }
-      await deleteEncounter(message.channel.id);
+      await deleteEncounter(encChannelId);
       message.reply(`✅ Đã kết thúc encounter **${encounter.name}**.${fullLog.length > 0 ? ` (Đã gửi lại toàn bộ ${fullLog.length} entry log ở trên trước khi xoá.)` : ""}`);
       return;
     }
 
     if (sub === "endturn") {
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới được kết thúc turn.");
           if ((encounter.pendingActions ?? []).length > 0) throw new Error(`Còn ${encounter.pendingActions.length} action chưa xử lý — dùng \`-encounter pending\` để confirm/reject hết trước khi qua turn.`);
@@ -4631,7 +4741,7 @@ client.on("messageCreate", async (message) => {
           // turnNumber — đếm số turn ĐÃ QUA (bắt đầu 1, tăng mỗi lần endturn) — dùng
           // để gắn nhãn "Turn N" vào mỗi entry trong actionLog (-encounter log).
           encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           await message.reply({
             content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
               (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : ""),
@@ -4677,7 +4787,7 @@ client.on("messageCreate", async (message) => {
       else { const p = parseFloat(critDivStr); if (!isNaN(p) && p > 1) critDiv = p; }
 
       try {
-        const { embed, skillRollEmbed } = await doPlayerHit(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {
+        const { embed, skillRollEmbed } = await doPlayerHit(encChannelId, message.author.id, message.author.toString(), dmgStr, targetStr, {
           resStr: kv["res"] ?? "", drStr: kv["dr"] ?? "", bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
           skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"],
         });
@@ -4707,7 +4817,7 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        const { embed, skillRollEmbed } = await doPlayerAttack(message.channel.id, message.author.id, message.author.toString(), dmgStr, targetStr, {
+        const { embed, skillRollEmbed } = await doPlayerAttack(encChannelId, message.author.id, message.author.toString(), dmgStr, targetStr, {
           skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], volleys: kv["volleys"], ammotype: kv["ammotype"],
         });
         await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
@@ -4733,7 +4843,7 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        const { embed, skillRollEmbed } = await doEnemyAttack(message.channel.id, message.author.id, enemyKey, dmgStr, targetStr, {
+        const { embed, skillRollEmbed } = await doEnemyAttack(encChannelId, message.author.id, enemyKey, dmgStr, targetStr, {
           skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"],
         });
         await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
@@ -4751,7 +4861,7 @@ client.on("messageCreate", async (message) => {
       const targetStr = kv["target"] ?? "";
       if (!targetStr.trim()) { message.reply("⚠️ Cú pháp: `-encounter followup target: <key/all>`"); return; }
       try {
-        const { followupEmbed, hitEmbed } = await performFollowUp(message.channel.id, message.author.id, message.author.toString(), targetStr);
+        const { followupEmbed, hitEmbed } = await performFollowUp(encChannelId, message.author.id, message.author.toString(), targetStr);
         await message.reply({ embeds: [followupEmbed] });
         await message.channel.send({ embeds: [hitEmbed] });
       } catch (err) {
@@ -4764,7 +4874,7 @@ client.on("messageCreate", async (message) => {
     // ≥10), mỗi 10 Charge tiêu = +1 Dice Up và +5% Dmg trong 3 turn.
     if (sub === "overcharge") {
       try {
-        const resultMsg = await performOvercharge(message.channel.id, message.author.id);
+        const resultMsg = await performOvercharge(encChannelId, message.author.id);
         message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -4789,7 +4899,7 @@ client.on("messageCreate", async (message) => {
       const attackerKeyRaw = (kv["attacker"] ?? "").trim();
       const hitsRaw = (kv["hits"] ?? "").trim();
       try {
-        const resultMsg = await performGuardEvade(message.channel.id, message.author.id, isAdmin, sub, enemyKeyRaw, attackerKeyRaw, hitsRaw);
+        const resultMsg = await performGuardEvade(encChannelId, message.author.id, isAdmin, sub, enemyKeyRaw, attackerKeyRaw, hitsRaw);
         message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -4806,7 +4916,7 @@ client.on("messageCreate", async (message) => {
       const kv = parseKeyValues(rest);
       const enemyKeyRaw = (kv["key"] ?? "").trim();
       try {
-        const resultMsg = await performParry(message.channel.id, message.author.id, isAdmin, enemyKeyRaw);
+        const resultMsg = await performParry(encChannelId, message.author.id, isAdmin, enemyKeyRaw);
         message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -4828,7 +4938,7 @@ client.on("messageCreate", async (message) => {
     // phải perk tốn point — GM tự thêm qua -unlockskilltree nếu player sở hữu Shin).
     if (sub === "shinmang" || sub === "shin") {
       try {
-        const resultMsg = await performShinMang(message.channel.id, message.author.id);
+        const resultMsg = await performShinMang(encChannelId, message.author.id);
         message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -4844,8 +4954,8 @@ client.on("messageCreate", async (message) => {
       const itemNameRaw = rest.trim();
       if (!itemNameRaw) { message.reply("⚠️ Cú pháp: `-encounter additem <tên item>` (tối đa 4 item/trận)."); return; }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const player = encounter.players[message.author.id];
           if (!player) throw new Error("Bạn chưa tham gia encounter này.");
@@ -4859,7 +4969,7 @@ client.on("messageCreate", async (message) => {
           if (alreadyBrought >= ownedCount) throw new Error(`Bạn chỉ có ${ownedCount}× **${itemName}** trong inventory — đã mang đủ số đó vào trận rồi.`);
           player.consumablesLoadout.push(itemName);
           appendActionLog(encounter, `🎒 <@${message.author.id}> mang **${itemName}** vào trận (${player.consumablesLoadout.length}/4).`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           message.reply(`🎒 Đã mang **${itemName}** vào trận (${player.consumablesLoadout.length}/4 slot item).`);
         });
       } catch (err) {
@@ -4872,8 +4982,8 @@ client.on("messageCreate", async (message) => {
       const itemNameRaw = rest.trim();
       if (!itemNameRaw) { message.reply("⚠️ Cú pháp: `-encounter useitem <tên item>` (chỉ item đã mang vào trận qua `-encounter additem`, tối đa 1 lần/turn)."); return; }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const player = encounter.players[message.author.id];
           if (!player) throw new Error("Bạn chưa tham gia encounter này.");
@@ -4977,7 +5087,7 @@ client.on("messageCreate", async (message) => {
             }
           }
           appendActionLog(encounter, `🧪 <@${message.author.id}> dùng **${actualName}**.${effectNote}`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           const isKnownItemWithEffect = isKCorpAmpule || isChuoi || isTao || isDuaHau || isMedkit;
           message.reply(`🧪 ${message.author} đã dùng **${actualName}**!${effectNote}${!isKnownItemWithEffect ? " (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)" : ""}`);
         });
@@ -4995,7 +5105,7 @@ client.on("messageCreate", async (message) => {
     // THẬT nằm ở performManifestEgo (dùng chung với dropdown).
     if (sub === "manifestego") {
       try {
-        const resultMsg = await performManifestEgo(message.channel.id, message.author.id);
+        const resultMsg = await performManifestEgo(encChannelId, message.author.id);
         message.reply(resultMsg);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -5006,6 +5116,41 @@ client.on("messageCreate", async (message) => {
     // -encounter bossmenu key: <enemy> — hiện dropdown điều khiển boss (theo yêu
     // cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI"). Chỉ GM/admin dùng
     // được (điều khiển enemy vốn đã giới hạn GM-only trong mọi lệnh liên quan).
+    if (sub === "gmpanel") {
+      // GM Control Panel (xác nhận trực tiếp): bảng điều khiển TỔNG QUÁT cho GM —
+      // chọn enemy từ dropdown, sau đó hiện panel Attack/Guard/Evade/Parry (tái
+      // dùng NGUYÊN buildBossActionPanel đã có sẵn cho bossmenu). Có thể gọi từ
+      // kênh GM riêng (sau khi đã `-encounter linkgm`) hoặc ngay tại kênh encounter.
+      try {
+        const encounter = await getEncounter(encChannelId);
+        if (!encounter) throw new Error("Channel này chưa có encounter nào — dùng `-encounter start` trước (hoặc `-encounter linkgm` nếu đang ở kênh điều khiển riêng).");
+        const isAdmin = ADMIN_IDS.has(message.author.id);
+        if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới mở được bảng điều khiển.");
+        const aliveEnemies = Object.entries(encounter.enemies).filter(([, e]) => e.currentHp > 0);
+        if (aliveEnemies.length === 0) throw new Error("Không có enemy nào còn sống — dùng `-encounter addenemy` trước.");
+        const options = aliveEnemies.map(([ekey, e]) =>
+          new StringSelectMenuOptionBuilder().setLabel(`👹 ${e.name} (${ekey}) — ${e.currentHp}/${e.maxHp} HP`).setValue(ekey)
+        );
+        message.reply({
+          embeds: [{
+            title: `🎛️ Bảng điều khiển GM — ${encounter.name}`,
+            description: `Turn **${encounter.turnNumber ?? 1}** | ${aliveEnemies.length} enemy còn sống.\nChọn enemy muốn điều khiển:`,
+            color: 0x9b59b6,
+          }],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new StringSelectMenuBuilder()
+                .setCustomId(`gmpanelselect:${encChannelId}:${message.author.id}`)
+                .setPlaceholder("Chọn enemy để điều khiển...")
+                .addOptions(...options.slice(0, 25)),
+            ),
+          ],
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
     if (sub === "bossmenu") {
       const kv = parseKeyValues(rest);
       const enemyKeyRaw = (kv["key"] ?? "").trim();
@@ -5014,7 +5159,7 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        const encounter = await getEncounter(message.channel.id);
+        const encounter = await getEncounter(encChannelId);
         if (!encounter) throw new Error("Channel này chưa có encounter nào.");
         const isAdmin = ADMIN_IDS.has(message.author.id);
         if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới điều khiển được enemy.");
@@ -5023,7 +5168,7 @@ client.on("messageCreate", async (message) => {
         if (!enemy) throw new Error(`Không tìm thấy enemy "${enemyKeyRaw}" — dùng \`-encounter status\` để xem danh sách.`);
         message.reply({
           embeds: [{ title: `👹 Điều khiển: ${enemy.name} (${ekey})`, description: "Chọn hành động từ dropdown bên dưới.", color: 0xe74c3c }],
-          components: buildBossActionPanel(message.channel.id, ekey, message.author.id),
+          components: buildBossActionPanel(encChannelId, ekey, message.author.id),
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -5045,8 +5190,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       try {
-        await withLock(encounterKey(message.channel.id), async () => {
-          const encounter = await getEncounter(message.channel.id);
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
 
           const forId = forRaw ? (forRaw.toLowerCase() === "me" ? message.author.id : (encounter.enemies[normalizeEnemyKey(forRaw)] ? normalizeEnemyKey(forRaw) : forRaw.replace(/[<@!>]/g, ""))) : message.author.id;
@@ -5152,7 +5297,7 @@ client.on("messageCreate", async (message) => {
             resultText = `⚖️ HUỀ Clash! (${myEffectiveDice} vs ${oppEffectiveDice}) — mỗi bên +1 Coin, Sanity không đổi.`;
           }
           appendActionLog(encounter, `⚔️ Clash: ${resultText}`);
-          await saveEncounter(message.channel.id, encounter);
+          await saveEncounter(encChannelId, encounter);
           await message.reply({ embeds: [myRoll.embed, oppRoll.embed, { title: "⚔️ Kết quả Clash", description: resultText, color: 0x9b59b6 }] });
         });
       } catch (err) {
@@ -6085,6 +6230,22 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
       const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
 
+      // Enemy target (player tấn công enemy): route reactive prompt TỚI kênh GM
+      // control panel nếu đã link (`-encounter linkgm`) — enemy không có tài
+      // khoản Discord riêng nên GM luôn là người bấm thay, hợp lý gửi thẳng vào
+      // "buồng lái" của GM thay vì kênh encounter chính (tránh trôi chat encounter
+      // NGƯỢC LẠI với lý do tách kênh ban đầu).
+      const isEnemyTarget = targetResolved.type === "enemy";
+      let sendChannel = channel;
+      let mentionText = `<@${t.targetId}>`;
+      if (isEnemyTarget) {
+        mentionText = `<@${encounter.gmId}>`;
+        if (encounter.gmChannelId) {
+          const gmChannel = await client.channels.fetch(encounter.gmChannelId).catch(() => null);
+          if (gmChannel) sendChannel = gmChannel;
+        }
+      }
+
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:guard`)
@@ -6108,13 +6269,13 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       );
 
       const dmgPreview = t.preview?.totalDmg?.toFixed(3) ?? "?";
-      await channel.send({
-        content: `<@${t.targetId}>`,
+      await sendChannel.send({
+        content: mentionText,
         embeds: [{
           title: "⚔️ Đang bị tấn công!",
-          description: `${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\` (${hitCount} hit, dự kiến **${dmgPreview}** dmg nếu không phòng thủ)\n> Bạn có **${target.currentStamina} Stamina**. Chọn phòng thủ:`,
+          description: `${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\` (${hitCount} hit, dự kiến **${dmgPreview}** dmg nếu không phòng thủ)\n> ${isEnemyTarget ? "Enemy" : "Bạn"} có **${target.currentStamina} Stamina**. Chọn phòng thủ:`,
           color: 0xe67e22,
-          footer: { text: opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}` : "GM cũng có thể bấm thay nếu bạn không phản hồi được." },
+          footer: { text: opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}` : (isEnemyTarget ? "" : "GM cũng có thể bấm thay nếu bạn không phản hồi được.") },
         }],
         components: [row],
       }).catch(() => {});
@@ -6650,6 +6811,27 @@ setInterval(() => {
 // ─── SELECT MENU INTERACTIONS (encounter) ────────────────────────────────────
 // Dropdown hành động ĐỘNG (xem buildEncounterActionPanel) — thay cho 2 nút
 // Attack/Hit cố định cũ. attack/hit:<page> mở Modal (cần target+dmg); followup mở
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("gmpanelselect:")) return;
+  const [, channelId, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+    return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const ekey = interaction.values[0];
+  try {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Encounter không còn tồn tại.");
+    const enemy = encounter.enemies[ekey];
+    if (!enemy) throw new Error("Không tìm thấy enemy này (có thể đã bị xoá).");
+    await interaction.update({
+      embeds: [{ title: `👹 Điều khiển: ${enemy.name} (${ekey})`, description: `HP: ${enemy.currentHp}/${enemy.maxHp} | Stamina: ${enemy.currentStamina}/${enemy.maxStamina}\nChọn hành động:`, color: 0xe74c3c }],
+      components: buildBossActionPanel(channelId, ekey, interaction.user.id),
+    }).catch(() => {});
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
 // Modal đơn giản hơn (chỉ target); còn lại (guard/evade/parry/shinmang/
 // manifestego/overcharge) thực thi NGAY qua các hàm perform* dùng CHUNG với lệnh
 // text -encounter (xem định nghĩa performGuardEvade/performParry/...).
