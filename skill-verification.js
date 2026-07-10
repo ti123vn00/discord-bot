@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr }) {
+module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -118,7 +118,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
   }
   
   async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false) {
-    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "";
+    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [];
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
   
@@ -174,8 +174,32 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // thường.
       const blackSilenceCritBonus = isCritical && attacker.blackSilence ? 4 : 0;
       const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0) - tremorChainPenalty + blackSilenceCritBonus;
-      const rollResult = buildSkillRollResult({ skill, rollCount: 1, forceMinDice: hasParalyze, diceModifier });
-      if (rollResult.error) throw new Error(rollResult.error);
+      // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận qua ảnh chụp thật của user): trước đây
+      // Critical LUÔN gọi buildSkillRollResult (y hệt Page thường), và autoDmgStr
+      // KHÔNG BAO GIỜ được gán ở bất kỳ đâu — nghĩa là verify.autoDmgStr LUÔN
+      // undefined, khiến MỌI Critical (không riêng gì "không có dmg trực tiếp")
+      // đều rơi vào nhánh fallback "không mở Modal". Sửa: nhánh isCritical dùng
+      // autoBuildDmgStrFromSkillRoll (roll ĐÚNG 1 LẦN DUY NHẤT, dmgStr khớp CHÍNH
+      // XÁC với dice hiển thị trong embed — gọi buildSkillRollResult THÊM lần nữa
+      // sẽ roll lại dice KHÁC, làm dmgStr lệch khỏi embed thật).
+      let rollResult;
+      if (isCritical) {
+        const autoResult = autoBuildDmgStrFromSkillRoll(skill, { forceMinDice: hasParalyze, diceModifier });
+        autoDmgStr = autoResult.dmgStr;
+        autoWarnings = autoResult.warnings;
+        const header = skill.weaponOf
+          ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
+          : skill.cost !== "—"
+            ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
+            : `[CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
+        rollResult = {
+          embed: { title: `🎲 ${skill.name}`, color: skill.embedColor ?? 0x5865f2, description: header + "\n\n" + annotateLinesWithEmotion(autoResult.lines, autoResult.tracked) },
+          totalEmotionDelta: autoResult.totalEmotionDelta ?? 0,
+        };
+      } else {
+        rollResult = buildSkillRollResult({ skill, rollCount: 1, forceMinDice: hasParalyze, diceModifier });
+        if (rollResult.error) throw new Error(rollResult.error);
+      }
       if (hasParalyze) attacker.paralyze -= 1;
       if (hasChains) attacker.chains = false;
       // Busy as Tribbie (xác nhận trực tiếp): "mỗi khi sử dụng Page hoặc Critical
@@ -211,7 +235,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       }
     }
   
-    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote };
+    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings };
   }
 
   return {
