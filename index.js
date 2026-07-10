@@ -6976,6 +6976,9 @@ client.on("interactionCreate", async (interaction) => {
       if (!combatant) {
         return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
+      if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
+        return interaction.reply({ content: "⚠️ Chưa tới lượt bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
       let verify;
       try {
         verify = await resolveSkillVerification(channelId, combatant, critSkillName, null, true);
@@ -6983,11 +6986,30 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       if (!verify.autoDmgStr) {
-        // VD Tactical Suppression — kích hoạt trạng thái, không có dice sát thương
-        // nào để tự tính — fallback: hiện embed roll qua reply thường + hướng dẫn
-        // GM tự narrate/dùng -encounter buff, KHÔNG mở Modal đòi dmgStr vô nghĩa.
+        // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua ảnh chụp thật của user — "Durandal"
+        // Critical không có dmg trực tiếp): TRƯỚC ĐÂY nhánh này chỉ hiện embed rồi
+        // DỪNG HẲN — resolveSkillVerification ĐÃ mutate combatant (paralyze/chains/
+        // busyAsTribbie) NHƯNG KHÔNG saveEncounter nào cả (mất trắng thay đổi), Light
+        // Cost/Cooldown KHÔNG được áp dụng (skill dùng "miễn phí"), VÀ turn KHÔNG bao
+        // giờ advance (kẹt game — mọi người bị Turn Order Enforcement chặn vĩnh viễn
+        // cho tới khi ai đó tự gõ `-encounter pass`). Sửa: build 1 pendingAction với
+        // targets RỖNG (không có dmg/target nào để tính) nhưng ĐẦY ĐỦ skillKey/
+        // cooldownTurns/emotionDelta/lightCost/sanityCost — route qua ĐÚNG
+        // resolveOnePendingAction (tái dùng nguyên logic áp dụng side-effect, y hệt
+        // mọi hành động khác), rồi advance turn + save như bình thường.
+        const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const p = {
+          id: pendingId, kind: "critical", attackerId: interaction.user.id,
+          targets: [], dmgStr: `Critical: ${critSkillName}`, defenseBypass: {},
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0,
+          lightCost: verify.lightCost, sanityCost: verify.sanityCost,
+        };
+        const lines = await resolveOnePendingAction(encounter, p);
+        advanceToNextTurnHolder(encounter);
+        await saveEncounter(channelId, encounter);
+        announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.reply({
-          embeds: [verify.skillRollEmbed, { description: `*(Critical này không có dice sát thương trực tiếp để tự tính dmg — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*`, color: 0x95a5a6 }],
+          embeds: [verify.skillRollEmbed, { description: `*(Critical này không có dice sát thương trực tiếp để tự tính dmg — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
         }).catch(() => {});
       }
       const pendingKey = `${channelId}:${interaction.user.id}`;
