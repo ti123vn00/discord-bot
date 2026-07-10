@@ -4713,9 +4713,13 @@ function findByKeyword(keyword) {
 //   là range gốc — warnings sẽ nhắc GM tự kiểm tra nếu skill có ghi chú dạng này.
 //
 // @returns { dmgStr: string|null, warnings: string[], skillRollEmbed }
-function autoBuildDmgStrFromSkillRoll(skill) {
+function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifier = 0 } = {}) {
   startEmotionTracking();
+  if (forceMinDice) startForceMinDice();
+  if (diceModifier !== 0) setDiceModifier(diceModifier);
   const lines = skill.roll();
+  if (forceMinDice) stopForceMinDice();
+  if (diceModifier !== 0) clearDiceModifier();
   const tracked = stopEmotionTracking();
   const totalEmotionDelta = tracked.reduce((sum, t) => sum + t.delta, 0);
 
