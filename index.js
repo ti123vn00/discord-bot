@@ -1165,8 +1165,16 @@ const WEAPON_DEFENSE_HITS = { light: 4, medium: 2, heavy: 1 };
  *  để hiển thị, giống hệt công thức cost đã có trong performGuardEvade nhưng
  *  KHÔNG cần "attacker:"/"hits:" tự gõ tay (đã biết sẵn từ pendingAction). */
 function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type, bypass) {
-  const hitsPerCharge = isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeaponWeight] ?? 1) : null;
-  const chargesNeeded = target.hasIronHorus ? 1 : (hitsPerCharge === null ? 1 : Math.ceil(hitCount / hitsPerCharge));
+  // BUG ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "Blade Flourish tận 3 hit
+  // nhưng tôi chỉ bấm 1 lần evade là né hết cả 3 với 20 stamina? Đáng lý phải
+  // cho bấm từng hit") — TRƯỚC ĐÂY skill (isM1Type=false) LUÔN chargesNeeded=1
+  // BẤT KỂ hitCount — nghĩa là 1 skill 3 hit chỉ tốn ĐÚNG 1 charge để né/chặn
+  // TOÀN BỘ, y hệt skill 1 hit. Sửa: skill giờ cần chargesNeeded = hitCount (1
+  // charge/hit, KHÔNG có ưu đãi "nhiều hit/charge" theo vũ khí như M1 được hưởng
+  // qua WEAPON_DEFENSE_HITS — hợp lý vì skill là đòn ĐẶC BIỆT, khó phòng thủ trọn
+  // vẹn hơn đòn M1 thông thường).
+  const hitsPerCharge = isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeaponWeight] ?? 1) : 1;
+  const chargesNeeded = target.hasIronHorus ? 1 : Math.ceil(hitCount / hitsPerCharge);
 
   const guardCostPerCharge = target.hasIronHorus ? 40 : 10;
   const guardCost = chargesNeeded * guardCostPerCharge;
@@ -1454,9 +1462,11 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType,
     });
-    // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
-    // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
-    advanceToNextTurnHolder(encounter);
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được miễn
+    // là đủ tài nguyên") — KHÔNG còn tự động advance turn sau MỖI hành động —
+    // announceCurrentTurn bên dưới sẽ tự resend đúng dropdown cho CHÍNH người
+    // này (vì currentTurnIndex không đổi) — turn chỉ thực sự chuyển khi họ chủ
+    // động chọn "Kết thúc lượt" (xem sub === "pass" / value === "endmyturn").
     announceCurrentTurn(channelId, encounter).catch(() => {});
     await saveEncounter(channelId, encounter);
     sendReactiveDefensePrompt(channelId, pendingId).catch(() => {});
@@ -1580,9 +1590,11 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
-    // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
-    // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
-    advanceToNextTurnHolder(encounter);
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được miễn
+    // là đủ tài nguyên") — KHÔNG còn tự động advance turn sau MỖI hành động —
+    // announceCurrentTurn bên dưới sẽ tự resend đúng dropdown cho CHÍNH người
+    // này (vì currentTurnIndex không đổi) — turn chỉ thực sự chuyển khi họ chủ
+    // động chọn "Kết thúc lượt" (xem sub === "pass" / value === "endmyturn").
     announceCurrentTurn(channelId, encounter).catch(() => {});
     await saveEncounter(channelId, encounter);
     sendReactiveDefensePrompt(channelId, pendingId).catch(() => {});
@@ -1690,9 +1702,11 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
-    // Turn Order Enforcement: hành động THÀNH CÔNG (đã push pendingAction) →
-    // tự động chuyển sang người TIẾP THEO trong turnOrder (bỏ qua chết/Stagger).
-    advanceToNextTurnHolder(encounter);
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được miễn
+    // là đủ tài nguyên") — KHÔNG còn tự động advance turn sau MỖI hành động —
+    // announceCurrentTurn bên dưới sẽ tự resend đúng dropdown cho CHÍNH người
+    // này (vì currentTurnIndex không đổi) — turn chỉ thực sự chuyển khi họ chủ
+    // động chọn "Kết thúc lượt" (xem sub === "pass" / value === "endmyturn").
     announceCurrentTurn(channelId, encounter).catch(() => {});
     await saveEncounter(channelId, encounter);
     // Reactive Defense Prompt (xác nhận trực tiếp, mô hình Yugioh Master Duel
@@ -3875,8 +3889,12 @@ client.on("messageCreate", async (message) => {
   // ─── REDEEM CODE ────────────────────────────────────────────────────────────
   // Danh sách code hợp lệ — dễ mở rộng thêm sau này (chỉ cần thêm entry mới).
   // GLORYTOPROJECTMOON (xác nhận trực tiếp): "cho 1k3 Lunacy lần đầu" — 1300.
+  // APOLOGIZE (xác nhận trực tiếp): "book từ gacha bị vô cate vật phẩm thành ra
+  // không dùng được, code này là để xin lỗi vì việc đó" — 10 Random Book + 5
+  // Sealed Book Cache.
   const REDEEM_CODES = {
     GLORYTOPROJECTMOON: { lunacy: 1300 },
+    APOLOGIZE: { books: { "Random Book": 10, "Sealed Book Cache": 5 } },
   };
   // ─── GACHA ──────────────────────────────────────────────────────────────────
 if (message.content.startsWith("-gacha")) {
@@ -3947,8 +3965,15 @@ if (message.content.startsWith("-gacha")) {
           profileData.lunacy = (profileData.lunacy ?? 0) + codeReward.lunacy;
           rewardNotes.push(`+${formatNumber(codeReward.lunacy)} <:Lunacy:1524989409529823342>Lunacy`);
         }
+        if (codeReward.books) {
+          profileData.books = profileData.books ?? {};
+          for (const [bookName, count] of Object.entries(codeReward.books)) {
+            profileData.books[bookName] = (profileData.books[bookName] ?? 0) + count;
+            rewardNotes.push(`+${count} **${bookName}**`);
+          }
+        }
         await savePlayerData(message.author.id, profileData, slot);
-        message.reply(`✅ Đã dùng code **${codeRaw}**: ${rewardNotes.join(", ")} (hiện có **${formatNumber(profileData.lunacy)} <:Lunacy:1524989409529823342>Lunacy**).`);
+        message.reply(`✅ Đã dùng code **${codeRaw}**: ${rewardNotes.join(", ")}.`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);
@@ -4540,15 +4565,27 @@ if (message.content.startsWith("-gacha")) {
       const encounter = await getEncounter(encChannelId);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
       const pending = encounter.pendingActions ?? [];
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "cái pending tôi nghĩ không cần thiết nữa
+      // vì mọi thứ giờ nên xử lý hoàn toàn tự động... vẫn giữ nguyên nhưng đổi
+      // tên/cách hiển thị rõ hơn là dự phòng khẩn cấp") — Reactive Defense đã tự
+      // động xử lý MỌI hành động ngay khi target chọn phòng thủ (hoặc dmg=0 tự
+      // skip) — pendingActions giờ CHỈ còn ý nghĩa "vùng chờ tạm" trong lúc chưa
+      // ai bấm nút, KHÔNG PHẢI luồng chính cần GM tự confirm/reject thủ công nữa.
+      // Đổi embed rõ ràng: đây là fallback khẩn cấp (VD prompt gửi lỗi, target
+      // rời server...), không phải bước bắt buộc mỗi turn.
       message.reply({
         embeds: [{
-          title: `⏳ Pending Actions (${pending.length})`,
-          description: buildPendingListText(encounter),
-          color: 0xf39c12,
+          title: `🆘 Dự phòng khẩn cấp — Action đang chờ (${pending.length})`,
+          description:
+            (pending.length === 0
+              ? "✅ Không có action nào bị kẹt — mọi thứ đang tự xử lý bình thường qua Reactive Defense."
+              : `${buildPendingListText(encounter)}\n\n⚠️ Đây là DỰ PHÒNG KHẨN CẤP — chỉ cần dùng nếu prompt phòng thủ (Guard/Evade/Parry) không gửi được hoặc target không thể bấm. Bình thường mọi thứ tự động xử lý, không cần GM can thiệp gì cả.`
+            ) + `\n\n📜 Xem lại lịch sử action đã xử lý: \`-encounter log\`.`,
+          color: pending.length === 0 ? 0x2ecc71 : 0xe74c3c,
         }],
         components: pending.length > 0 ? [new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`encconfirmall:${encChannelId}`).setLabel("✅ Confirm tất cả").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`encrejectall:${encChannelId}`).setLabel("❌ Reject tất cả").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`encconfirmall:${encChannelId}`).setLabel("🆘 Force-confirm tất cả (khẩn cấp)").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`encrejectall:${encChannelId}`).setLabel("🆘 Force-reject tất cả (khẩn cấp)").setStyle(ButtonStyle.Danger),
         )] : [],
       });
       return;
@@ -7141,41 +7178,10 @@ client.on("interactionCreate", async (interaction) => {
       const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr, { tags });
       if (note) embed.description += `\n> 📝 **Hiệu ứng:** ${note}`;
       await interaction.reply({ embeds: [embed] });
-    } else if (action === "hit") {
-      const dmgStr = interaction.fields.getTextInputValue("dmgStr");
-      // Chọn từ dropdown 1 Page cụ thể → tự điền skill: (bot tự roll thật kèm theo,
-      // giống gõ tay "skill: <tên>") — KHÔNG cần player tự gõ thêm gì ngoài target+dmg.
-      const skillFromDropdown = encodedPageName ? decodeURIComponent(encodedPageName) : undefined;
-      const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { skill: skillFromDropdown });
-      await interaction.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
-    } else if (action === "criticalhit") {
-      // LỖ HỔNG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp: "người dùng không minh bạch sẽ
-      // có thể sửa nó") — Modal Text Input của Discord LUÔN có thể sửa tự do bởi
-      // người dùng (không có cách nào làm "chỉ đọc") — trước đây lấy dmgStr TRỰC
-      // TIẾP từ field Modal (interaction.fields.getTextInputValue), nghĩa là dù
-      // bot đã roll đúng và pre-fill "4S + 5S + 6S", người chơi có thể XOÁ và gõ
-      // "999S" trước khi submit, và bot sẽ tin theo — gây dmg giả không hề được
-      // roll thật. Sửa: dmgStr giờ lấy TỪ pendingCriticalRolls (server-side, lưu
-      // NGAY lúc roll thật ở dropdown "critical:") — giá trị người dùng gõ trong
-      // Modal field bị BỎ QUA HOÀN TOÀN cho việc tính dmg, chỉ còn tác dụng hiển
-      // thị (không ảnh hưởng gì tới kết quả thật).
-      const pendingKey = `${channelId}:${interaction.user.id}`;
-      const pending = pendingCriticalRolls.get(pendingKey);
-      if (!pending) {
-        return interaction.reply({ content: "⚠️ Phiên roll Critical đã hết hạn (quá 5 phút) hoặc không tìm thấy — chọn lại \"Critical\" từ dropdown để roll mới.", flags: MessageFlags.Ephemeral }).catch(() => {});
-      }
-      pendingCriticalRolls.delete(pendingKey); // single-use — không tái sử dụng cho lần confirm khác
-      const dmgStr = pending.dmgStr; // TỪ SERVER — KHÔNG dùng interaction.fields.getTextInputValue("dmgStr") nữa
-      const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, {
-        prefilledVerify: {
-          skillRollEmbed: pending.skillRollEmbed, skillKey: pending.skillKey, cooldownTurns: pending.cooldownTurns,
-          emotionDelta: pending.emotionDelta, lightCost: pending.lightCost, sanityCost: pending.sanityCost,
-          refSnippet: null, refLink: null,
-        },
-      });
-      const warningNote = (pending.autoWarnings ?? []).length > 0 ? `\n\n⚠️ ${pending.autoWarnings.join("\n⚠️ ")}` : "";
-      if (warningNote) embed.description += warningNote;
-      await interaction.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
+      // hit/criticalhit (Modal) ĐÃ GỠ — thực thi trực tiếp từ dropdown enctarget
+      // (không còn Modal nào cho 2 nhánh này nữa — xem subAction === "criticalhit"
+      // || "hit" ở handler đó, LỖ HỔNG BẢO MẬT ĐÃ SỬA: dmgStr giờ roll thật +
+      // lưu server-side, không còn field Modal nào để "tưởng sửa được").
       // followup (Modal) ĐÃ GỠ — thực thi trực tiếp từ dropdown enctarget, xem
       // subAction === "followup" ở handler đó (không cần Modal vì không còn field
       // nào khác ngoài target).
@@ -7319,7 +7325,8 @@ client.on("interactionCreate", async (interaction) => {
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
-        advanceToNextTurnHolder(encounter);
+        // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
+        // — không còn advance turn tự động sau hành động này nữa.
         await saveEncounter(channelId, encounter);
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.reply({
@@ -7361,19 +7368,69 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     if (value.startsWith("hit:")) {
-      // Page/Skill — GIỮ NGUYÊN Modal dmgStr gõ tay (KHÔNG tự động tính được an
-      // toàn như M1, vì mỗi Page có dice/hiệu ứng khác nhau hoàn toàn — tự bịa số
-      // có nguy cơ sai lệch dmg thật). Chọn từ dropdown vẫn tự điền đúng skill: (áp
-      // dụng ở lúc submit modal, xem encmodal handler) — GAP ĐÃ SỬA: target giờ
-      // chọn qua dropdown (tên thật), không còn gõ tay key enemy nữa.
+      // LỖ HỔNG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "dù Blade
+      // Flourish đã roll sẵn ở dropdown rồi nhưng vẫn bắt tôi nhập dmg thành ra
+      // tôi có thể thử nhập 50x3B") — TRƯỚC ĐÂY roll skill CHỈ để hiển thị embed
+      // tham khảo, còn damage THẬT vẫn lấy từ Modal field gõ tay (không hề liên
+      // quan tới roll) — giờ ÁP DỤNG Y HỆT fix đã làm cho Critical: roll NGAY lúc
+      // chọn dropdown, lưu autoDmgStr server-side, Modal (nếu cần) không còn field
+      // dmgStr gõ tay nữa.
       const pageName = value.slice(4);
       const encounter = await getEncounter(channelId);
+      const combatant = encounter?.players?.[interaction.user.id];
+      if (!combatant) {
+        return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
+        return interaction.reply({ content: "⚠️ Chưa tới lượt bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      let verify;
+      try {
+        verify = await resolveSkillVerification(channelId, combatant, pageName, null, false);
+      } catch (err) {
+        return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      const pendingKey = `${channelId}:${interaction.user.id}`;
+      pendingCriticalRolls.set(pendingKey, {
+        dmgStr: verify.autoDmgStr,
+        skillRollEmbed: verify.skillRollEmbed,
+        skillKey: verify.skillKey,
+        cooldownTurns: verify.cooldownTurns,
+        emotionDelta: verify.emotionDelta,
+        lightCost: verify.lightCost,
+        sanityCost: verify.sanityCost,
+        autoWarnings: verify.autoWarnings,
+        expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
+      });
+      if (!verify.autoDmgStr) {
+        // Page không có dice sát thương trực tiếp (thuần hiệu ứng/buff) — cùng
+        // fallback đã dùng cho Critical không dmg: resolve NGAY qua pendingAction
+        // targets rỗng, không cần chọn target/Modal nào cả.
+        pendingCriticalRolls.delete(pendingKey);
+        const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const p = {
+          id: pendingId, kind: "hit", attackerId: interaction.user.id,
+          targets: [], dmgStr: `Page: ${pageName}`, defenseBypass: {},
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0,
+          lightCost: verify.lightCost, sanityCost: verify.sanityCost,
+        };
+        const lines = await resolveOnePendingAction(encounter, p);
+        // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
+        // — không còn advance turn tự động sau hành động này nữa.
+        await saveEncounter(channelId, encounter);
+        announceCurrentTurn(channelId, encounter).catch(() => {});
+        return interaction.update({
+          embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
+          components: [],
+        }).catch(() => {});
+      }
       const targetOptions = buildEnemyTargetOptions(encounter);
       if (targetOptions.length === 1) {
+        pendingCriticalRolls.delete(pendingKey);
         return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       await interaction.update({
-        embeds: [{ title: `📖 ${pageName} — chọn target`, description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        embeds: [verify.skillRollEmbed, { title: `📖 ${pageName} — chọn target`, description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`enctarget:${channelId}:hit:${encodeURIComponent(pageName)}`)
@@ -7406,6 +7463,27 @@ client.on("interactionCreate", async (interaction) => {
     }
     // guard/evade/parry (Modal "mấy lần?" trigger) ĐÃ GỠ cùng dropdown option —
     // xem buildEncounterActionPanel (encounter-panels.js).
+    if (value === "endmyturn") {
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được...
+      // chỉ khi họ bấm nút End Turn thì mới End Turn của họ") — TÁI DÙNG NGUYÊN
+      // logic của "-encounter pass" (advance + announce) — chỉ khác cách kích
+      // hoạt (dropdown thay vì gõ lệnh text).
+      let resultText = null;
+      await withLock(encounterKey(channelId), async () => {
+        const encounter = await getEncounter(channelId);
+        if (!encounter) throw new Error("Encounter không còn tồn tại.");
+        if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
+          throw new Error("Chưa/không còn tới lượt bạn nữa — không cần kết thúc lượt.");
+        }
+        const wrapped = advanceToNextTurnHolder(encounter);
+        appendActionLog(encounter, `🏁 <@${interaction.user.id}> đã kết thúc lượt.`);
+        await saveEncounter(channelId, encounter);
+        announceCurrentTurn(channelId, encounter).catch(() => {});
+        resultText = `🏁 Bạn đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
+      });
+      await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
+      return;
+    }
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     let resultMsg;
     if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
@@ -7460,28 +7538,29 @@ client.on("interactionCreate", async (interaction) => {
         modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
       }
       await interaction.showModal(modal).catch(() => {});
-    } else if (subAction === "criticalhit") {
-      const critSkillName = decodeURIComponent(extra);
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:criticalhit:${encodeURIComponent(critSkillName)}:${encodedTarget}`)
-        .setTitle(`Critical: ${critSkillName}`.slice(0, 45));
+    } else if (subAction === "criticalhit" || subAction === "hit") {
+      // LỖ HỔNG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật) — TRƯỚC ĐÂY
+      // vẫn mở Modal với field dmgStr "pre-fill nhưng sửa được", gây nhầm lẫn +
+      // rủi ro gian lận. Giờ KHÔNG còn Modal nào nữa cho cả 2 nhánh này — dmgStr
+      // đã roll thật + lưu server-side lúc chọn dropdown, thực thi NGAY sau khi
+      // chọn target (giống followup), không còn bước nào để "tưởng sửa được".
+      const skillName = decodeURIComponent(extra);
       const pendingKey = `${channelId}:${interaction.user.id}`;
       const pending = pendingCriticalRolls.get(pendingKey);
-      const dmgInput = new TextInputBuilder()
-        .setCustomId("dmgStr").setLabel("Dmg (đã tự roll)")
-        .setValue(pending?.dmgStr ?? "").setStyle(TextInputStyle.Short).setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
-      await interaction.showModal(modal).catch(() => {});
-    } else if (subAction === "hit") {
-      const pageName = decodeURIComponent(extra);
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:hit:${encodeURIComponent(pageName)}:${encodedTarget}`)
-        .setTitle(`Dùng Page: ${pageName}`.slice(0, 45));
-      const dmgInput = new TextInputBuilder()
-        .setCustomId("dmgStr").setLabel("Công thức dmg (giống /math)")
-        .setPlaceholder("VD: 50x2B+2Sinking").setStyle(TextInputStyle.Short).setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
-      await interaction.showModal(modal).catch(() => {});
+      if (!pending) {
+        return interaction.reply({ content: "⚠️ Phiên roll đã hết hạn (quá 5 phút) — chọn lại từ dropdown hành động để roll mới.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      pendingCriticalRolls.delete(pendingKey); // single-use
+      const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), pending.dmgStr, targetStr, {
+        prefilledVerify: {
+          skillRollEmbed: pending.skillRollEmbed, skillKey: pending.skillKey, cooldownTurns: pending.cooldownTurns,
+          emotionDelta: pending.emotionDelta, lightCost: pending.lightCost, sanityCost: pending.sanityCost,
+          refSnippet: null, refLink: null,
+        },
+      });
+      const warningNote = (pending.autoWarnings ?? []).length > 0 ? `\n\n⚠️ ${pending.autoWarnings.join("\n⚠️ ")}` : "";
+      if (warningNote) embed.description += warningNote;
+      await interaction.update({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed], components: [] }).catch(() => {});
     } else if (subAction === "followup") {
       // Follow-Up không cần Modal nữa (không có field nào khác ngoài target) —
       // thực thi NGAY sau khi chọn target, giống tinh thần "thuần menu UI".
@@ -7506,6 +7585,26 @@ client.on("interactionCreate", async (interaction) => {
   }
   const value = interaction.values[0];
   try {
+    if (value === "endmyturn") {
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: cùng lý do với player) — check turn
+      // holder theo enemyKey (không phải GM's user id, vì đây là lượt của
+      // ENEMY đang kết thúc, GM chỉ bấm HỘ).
+      let resultText = null;
+      await withLock(encounterKey(channelId), async () => {
+        const encounter = await getEncounter(channelId);
+        if (!encounter) throw new Error("Encounter không còn tồn tại.");
+        if (!isCurrentTurnHolder(encounter, enemyKey)) {
+          throw new Error(`Chưa/không còn tới lượt của "${enemyKey}" nữa — không cần kết thúc lượt.`);
+        }
+        const wrapped = advanceToNextTurnHolder(encounter);
+        appendActionLog(encounter, `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.`);
+        await saveEncounter(channelId, encounter);
+        announceCurrentTurn(channelId, encounter).catch(() => {});
+        resultText = `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
+      });
+      await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
+      return;
+    }
     if (value === "attack") {
       // BUG ĐÃ SỬA (xác nhận trực tiếp: "bấm dropdown của boss tôi lại không
       // target player được dù tag đúng tên họ") — Modal Text Input của Discord
