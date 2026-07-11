@@ -2117,6 +2117,78 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
  * @returns {Array<{ type: "page"|"weapon"|"outfit"|"group", name: string }>}
  */
 
+  /** performGachaPull — logic pull THẬT (trừ Lunacy, roll, cộng item vào inventory,
+ *  lưu) — TÁCH ra để dùng chung CẢ cho lệnh text (`-gacha <count>`) LẪN nút bấm
+ *  UI mới (xem buildGachaPanel/handler "gachapull:"). Throw Error nếu không đủ
+ *  Lunacy — CALLER tự bắt và hiển thị theo cách phù hợp. */
+async function performGachaPull(userId, count) {
+  let resultInfo;
+  await withLock(userId, async () => {
+    const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
+    const totalCost = GACHA_COST_PER_PULL * count;
+    const currentLunacy = profileData.lunacy ?? 0;
+    if (currentLunacy < totalCost) {
+      throw new Error(`Không đủ <:Lunacy:1524989409529823342>Lunacy — cần **${formatNumber(totalCost)}** (${count} lần × ${GACHA_COST_PER_PULL}), hiện có **${formatNumber(currentLunacy)}**.`);
+    }
+    profileData.lunacy = currentLunacy - totalCost;
+    profileData.items = profileData.items ?? {};
+    const results = [];
+    const rareHits = [];
+    for (let i = 0; i < count; i++) {
+      const item = rollGachaOnce();
+      profileData.items[item] = (profileData.items[item] ?? 0) + 1;
+      results.push(item);
+      if (GACHA_POOL_RARE.includes(item)) rareHits.push(item);
+    }
+    await savePlayerData(userId, profileData, slot);
+    const counted = {};
+    for (const item of results) counted[item] = (counted[item] ?? 0) + 1;
+    const resultLines = Object.entries(counted).map(([item, n]) => `${GACHA_POOL_RARE.includes(item) ? "🌟" : GACHA_POOL_MID.includes(item) ? "✨" : "▫️"} ${item}${n > 1 ? ` x${n}` : ""}`);
+    resultInfo = { totalCost, resultLines, rareHits, remainingLunacy: profileData.lunacy };
+  });
+  return resultInfo;
+}
+
+/** buildGachaPanelEmbed — bảng UI gacha đẹp (xác nhận trực tiếp: "nên làm ra một
+ *  cái UI gacha cùng với hiển thị rate, danh sách để cho nó đẹp") — hiện đủ 3
+ *  tier + % TỪNG item (tính từ GACHA_RATES/pool.length, không phải chỉ % tổng
+ *  tier) + Lunacy hiện có + nút Pull x1/x10. */
+function buildGachaPanelEmbed(lunacy) {
+  const rateHigh = (GACHA_RATES.high / GACHA_POOL_HIGH.length).toFixed(2);
+  const rateMid = (GACHA_RATES.mid / GACHA_POOL_MID.length).toFixed(2);
+  const rateRare = (GACHA_RATES.rare / GACHA_POOL_RARE.length).toFixed(2);
+  return {
+    title: "🎰 Gacha",
+    color: 0x9b59b6,
+    description: `Bạn có **${formatNumber(lunacy)}** <:Lunacy:1524989409529823342>Lunacy | Chi phí: **${GACHA_COST_PER_PULL}**/lần`,
+    fields: [
+      {
+        name: `▫️ Rate cao — ${GACHA_RATES.high}% tổng (mỗi item ${rateHigh}%)`,
+        value: GACHA_POOL_HIGH.map(i => `• ${i}`).join("\n"),
+        inline: false,
+      },
+      {
+        name: `✨ Rate trung bình — ${GACHA_RATES.mid}% tổng (mỗi item ${rateMid}%)`,
+        value: GACHA_POOL_MID.map(i => `• ${i}`).join("\n"),
+        inline: false,
+      },
+      {
+        name: `🌟 Rate rất thấp — ${GACHA_RATES.rare}% tổng (mỗi item ${rateRare}%)`,
+        value: GACHA_POOL_RARE.map(i => `• ${i}`).join("\n"),
+        inline: false,
+      },
+    ],
+    footer: { text: "Trúng item rất thấp (🌟) → liên hệ GM để thiết kế cụ thể." },
+  };
+}
+
+function buildGachaPanelButtons(userId) {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`gachapull:${userId}:1`).setLabel(`🎰 Pull x1 (${GACHA_COST_PER_PULL} Lunacy)`).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`gachapull:${userId}:10`).setLabel(`🎰 Pull x10 (${GACHA_COST_PER_PULL * 10} Lunacy)`).setStyle(ButtonStyle.Success),
+  )];
+}
+
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   try {
@@ -3775,46 +3847,40 @@ client.on("messageCreate", async (message) => {
     GLORYTOPROJECTMOON: { lunacy: 1300 },
   };
   // ─── GACHA ──────────────────────────────────────────────────────────────────
-  if (message.content.startsWith("-gacha")) {
+if (message.content.startsWith("-gacha")) {
     if (isOnCooldown(message.author.id, "gacha", 3000)) {
       message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
       return;
     }
     const countRaw = message.content.replace(/^-gacha/i, "").trim();
-    const count = countRaw ? parseInt(countRaw, 10) : 1;
+    // Không nhập số → hiện BẢNG UI (embed rate/danh sách + nút Pull x1/x10) thay
+    // vì pull ngay — xác nhận trực tiếp: "nên làm ra một cái UI gacha... cho nó
+    // đẹp". Có nhập số (VD `-gacha 5`) → GIỮ hành vi cũ (pull trực tiếp qua text,
+    // cho power user không cần bấm nút).
+    if (!countRaw) {
+      try {
+        const { data: profileData } = await getPlayerDataWithSlot(message.author.id);
+        message.reply({
+          embeds: [buildGachaPanelEmbed(profileData.lunacy ?? 0)],
+          components: buildGachaPanelButtons(message.author.id),
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+    const count = parseInt(countRaw, 10);
     if (!Number.isFinite(count) || count < 1 || count > 10) {
-      message.reply(`⚠️ Cú pháp: \`-gacha [số lần, 1-10]\` (mặc định 1 nếu bỏ trống).\n> Chi phí: **${GACHA_COST_PER_PULL} <:Lunacy:1524989409529823342>Lunacy/lần**.\n> Rate: ${GACHA_RATES.high}% thường / ${GACHA_RATES.mid}% trung bình / ${GACHA_RATES.rare}% cực hiếm.`);
+      message.reply(`⚠️ Cú pháp: \`-gacha [số lần, 1-10]\` (bỏ trống để mở bảng UI).\n> Chi phí: **${GACHA_COST_PER_PULL} <:Lunacy:1524989409529823342>Lunacy/lần**.\n> Rate: ${GACHA_RATES.high}% thường / ${GACHA_RATES.mid}% trung bình / ${GACHA_RATES.rare}% cực hiếm.`);
       return;
     }
     try {
-      await withLock(message.author.id, async () => {
-        const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
-        const totalCost = GACHA_COST_PER_PULL * count;
-        const currentLunacy = profileData.lunacy ?? 0;
-        if (currentLunacy < totalCost) {
-          throw new Error(`Không đủ <:Lunacy:1524989409529823342>Lunacy — cần **${formatNumber(totalCost)}** (${count} lần × ${GACHA_COST_PER_PULL}), hiện có **${formatNumber(currentLunacy)}**.`);
-        }
-        profileData.lunacy = currentLunacy - totalCost;
-        profileData.items = profileData.items ?? {};
-        const results = [];
-        const rareHits = [];
-        for (let i = 0; i < count; i++) {
-          const item = rollGachaOnce();
-          profileData.items[item] = (profileData.items[item] ?? 0) + 1;
-          results.push(item);
-          if (GACHA_POOL_RARE.includes(item)) rareHits.push(item);
-        }
-        await savePlayerData(message.author.id, profileData, slot);
-        // Gom nhóm hiển thị (VD "Book Thường x3") thay vì liệt kê trùng lặp dài dòng.
-        const counted = {};
-        for (const item of results) counted[item] = (counted[item] ?? 0) + 1;
-        const resultLines = Object.entries(counted).map(([item, n]) => `${GACHA_POOL_RARE.includes(item) ? "🌟" : GACHA_POOL_MID.includes(item) ? "✨" : "▫️"} ${item}${n > 1 ? ` x${n}` : ""}`);
-        message.reply(
-          `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(profileData.lunacy)}**):\n` +
-          resultLines.map(l => `> ${l}`).join("\n") +
-          (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : "")
-        );
-      });
+      const { totalCost, resultLines, rareHits, remainingLunacy } = await performGachaPull(message.author.id, count);
+      message.reply(
+        `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(remainingLunacy)}**):\n` +
+        resultLines.map(l => `> ${l}`).join("\n") +
+        (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : "")
+      );
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
@@ -6837,6 +6903,32 @@ client.on("interactionCreate", async (interaction) => {
       const encounter = await getEncounter(channelId);
       if (!encounter) throw new Error("Encounter không còn tồn tại.");
       await interaction.reply({ embeds: [buildEncounterBoardEmbed(encounter)], flags: MessageFlags.Ephemeral }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  if (interaction.customId.startsWith("gachapull:")) {
+    const [, ownerId, countStr] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({ content: "⚠️ Chỉ chủ nhân bảng gacha này mới bấm được — dùng `-gacha` để mở bảng riêng của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    const count = parseInt(countStr, 10);
+    try {
+      const { totalCost, resultLines, rareHits, remainingLunacy } = await performGachaPull(interaction.user.id, count);
+      // Cập nhật LẠI panel (Lunacy mới) NGAY trong cùng message — người chơi bấm
+      // tiếp được luôn, không cần gõ `-gacha` lại mỗi lần.
+      await interaction.update({
+        embeds: [buildGachaPanelEmbed(remainingLunacy)],
+        components: buildGachaPanelButtons(ownerId),
+      }).catch(() => {});
+      await interaction.followUp({
+        content:
+          `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(remainingLunacy)}**):\n` +
+          resultLines.map(l => `> ${l}`).join("\n") +
+          (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : ""),
+      }).catch(() => {});
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
