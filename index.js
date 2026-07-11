@@ -260,8 +260,8 @@ const VALID_ITEMS = [
 // cụ thể trong yêu cầu gốc — dùng mốc gacha tiêu chuẩn (cao/trung/rất thấp), DỄ
 // CHỈNH nếu không đúng ý (chỉ 3 số trong GACHA_RATES).
 const GACHA_POOL_HIGH = RANDOM_BOOK_POOL; // 17 item — "Rate cao, filler items"
-const GACHA_POOL_MID = [...SEALED_BOOK_POOL, ...CHIPBOARD_CACHE_POOL, "Chipboard MK4", "Chipboard MK5", "Uptie Module"]; // 18 item — "Rate trung bình"
-const GACHA_POOL_RARE = ["Custom Accessory", "Custom Weapon", "Custom Outfit", "Custom Page", "Custom E.G.O"]; // "Rate rất thấp"
+const GACHA_POOL_MID = [...SEALED_BOOK_POOL, ...CHIPBOARD_CACHE_POOL, "Uptie Module"]; // 16 item — "Rate trung bình" (MK4/MK5 đã chuyển sang tier 3, xác nhận trực tiếp)
+const GACHA_POOL_RARE = ["Custom Accessory", "Custom Weapon", "Custom Outfit", "Custom Page", "Custom E.G.O", "Chipboard MK4", "Chipboard MK5"]; // 7 item — "Rate rất thấp"
 const GACHA_RATES = { high: 75, mid: 23, rare: 2 }; // % — giả định, tổng = 100
 const GACHA_COST_PER_PULL = 130; // Lunacy/lần — xác nhận trực tiếp (1300 Lunacy code đầu = đúng 10 lần)
 
