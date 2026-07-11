@@ -57,6 +57,14 @@ module.exports = function ({ findSkill, hasPerk }) {
     if ((hasPerk(combatant, "Follow-Up") || hasPerk(combatant, "Pounce")) && combatant.staminaUsedThisTurn >= 20 && !combatant.followUpUsedThisTurn) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("⚡ Follow-Up/Pounce").setValue("followup"));
     }
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "game được thiết kế là 1 turn act bao nhiêu
+    // lần cũng được miễn là đủ tài nguyên... hãy làm 1 nút dropdown chỉ khi họ
+    // bấm nút End Turn thì mới End Turn của họ") — TRƯỚC ĐÂY mỗi hành động tự
+    // động kết thúc lượt luôn, SAI với thiết kế gốc. Giờ chỉ khi CHỌN option
+    // này, turn mới thực sự chuyển sang người tiếp theo (xem value ===
+    // "endmyturn" ở encmenu handler — dùng lại ĐÚNG logic advanceToNextTurnHolder
+    // của lệnh "-encounter pass" đã có).
+    options.push(new StringSelectMenuOptionBuilder().setLabel("🏁 Kết thúc lượt của tôi").setValue("endmyturn"));
     return [
       new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
@@ -81,6 +89,7 @@ module.exports = function ({ findSkill, hasPerk }) {
   function buildBossActionPanel(channelId, enemyKey, gmUserId) {
     const options = [
       new StringSelectMenuOptionBuilder().setLabel("⚔️ Tấn công (M1/skill)").setValue("attack"),
+      new StringSelectMenuOptionBuilder().setLabel("🏁 Kết thúc lượt").setValue("endmyturn"),
     ];
     return [
       new ActionRowBuilder().addComponents(
