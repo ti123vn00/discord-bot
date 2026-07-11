@@ -6398,6 +6398,15 @@ async function performEndTurn(channelId, userId, isAdmin) {
 
 async function announceCurrentTurn(channelId, encounter) {
   try {
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "xử lý xong 1 turn thì không hiện bảng
+    // encounter ra để xem lại tình hình") — LUÔN gửi board (HP/status mọi người)
+    // vào kênh encounter CHÍNH mỗi khi turn chuyển, bất kể lượt tiếp theo là
+    // player hay enemy — tách riêng khỏi routing của dropdown hành động (dropdown
+    // vẫn đi đúng kênh của người cần bấm, board thì luôn ở "sân khấu chính").
+    const mainChannel = await client.channels.fetch(channelId).catch(() => null);
+    if (mainChannel) {
+      await mainChannel.send({ embeds: [buildEncounterBoardEmbed(encounter)] }).catch(() => {});
+    }
     const order = encounter.turnOrder ?? [];
     const entry = order[encounter.currentTurnIndex ?? 0];
     if (!entry) {
@@ -6909,8 +6918,10 @@ client.on("interactionCreate", async (interaction) => {
     try {
       let resultText = null;
       let stillWaitingFor = null;
+      let encounterSnapshot = null;
       await withLock(encounterKey(channelId), async () => {
         const encounter = await getEncounter(channelId);
+        encounterSnapshot = encounter;
         if (!encounter) throw new Error("Encounter không còn tồn tại.");
         const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
         if (!p) throw new Error("Action này đã được xử lý rồi (có thể GM đã confirm/reject cả loạt trước đó).");
@@ -6984,7 +6995,9 @@ client.on("interactionCreate", async (interaction) => {
         await saveEncounter(channelId, encounter);
       });
       await interaction.update({
-        embeds: [{ title: stillWaitingFor ? "⏳ Đã ghi nhận — đang chờ người khác" : "⚔️ Đã xử lý", description: resultText, color: stillWaitingFor ? 0xf39c12 : 0x2ecc71 }],
+        embeds: stillWaitingFor
+          ? [{ title: "⏳ Đã ghi nhận — đang chờ người khác", description: resultText, color: 0xf39c12 }]
+          : [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }, buildEncounterBoardEmbed(encounterSnapshot)],
         components: [],
       }).catch(() => {});
     } catch (err) {
@@ -7036,7 +7049,10 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply({ content: lines.join("\n") + (stoppedEarly ? "" : ` ✅ (${count}/${count} lần)`) });
       return;
     }
-    const targetStr = interaction.fields.getTextInputValue("targetStr");
+    // bossattack KHÔNG còn field "targetStr" (đã chuyển sang chọn qua dropdown
+    // bossattacktarget) — đọc field không tồn tại sẽ throw lỗi, nên loại trừ
+    // riêng action này khỏi việc đọc chung.
+    const targetStr = action === "bossattack" ? null : interaction.fields.getTextInputValue("targetStr");
     if (action === "attack") {
       const isAutoCalc = parts[3] === "auto";
       const isFixedBurst = parts[3] === "fixedburst";
@@ -7071,10 +7087,15 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply({ embeds: [embed] });
     } else if (action === "bossattack") {
       // Boss UI (theo yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI")
-      // — enemyKey nằm ở parts[3] (thay vì encodedPageName như case "hit").
+      // — enemyKey nằm ở parts[3], targetId (đã chọn từ dropdown bossattacktarget,
+      // KHÔNG PHẢI gõ tay) nằm ở parts[4] — BUG ĐÃ SỬA: trước đây đọc targetStr
+      // chung từ Modal field "targetStr", nhưng field đó không còn tồn tại trong
+      // Modal mới (chỉ còn hỏi dmgStr) nên sẽ throw lỗi nếu vẫn đọc.
       const enemyKey = parts[3];
+      const bossTargetId = parts[4];
+      const bossTargetStr = bossTargetId === "all" ? "all" : `<@${bossTargetId}>`;
       const dmgStr = interaction.fields.getTextInputValue("dmgStr");
-      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, targetStr);
+      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr);
       await interaction.reply({ embeds: [embed] });
     } else if (action === "hit") {
       const dmgStr = interaction.fields.getTextInputValue("dmgStr");
@@ -7382,29 +7403,41 @@ client.on("interactionCreate", async (interaction) => {
   const value = interaction.values[0];
   try {
     if (value === "attack") {
-      // Boss KHÔNG có weaponBaseDamage/weaponType tự động (enemy dùng lệnh text
-      // tuỳ ý từ trước tới giờ, không gắn với hệ thống equip weapon) — luôn hỏi
-      // dmgStr gõ tay, giống -encounter enemyattack.
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:bossattack:${enemyKey}`)
-        .setTitle(`${enemyKey} tấn công`.slice(0, 45));
-      const targetInput = new TextInputBuilder()
-        .setCustomId("targetStr")
-        .setLabel("Target (mention player, hoặc all)")
-        .setPlaceholder("VD: @player  hoặc  all")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      const dmgInput = new TextInputBuilder()
-        .setCustomId("dmgStr")
-        .setLabel("Công thức dmg")
-        .setPlaceholder("VD: 50x2B+2Sinking")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(targetInput),
-        new ActionRowBuilder().addComponents(dmgInput),
-      );
-      await interaction.showModal(modal).catch(() => {});
+      // BUG ĐÃ SỬA (xác nhận trực tiếp: "bấm dropdown của boss tôi lại không
+      // target player được dù tag đúng tên họ") — Modal Text Input của Discord
+      // KHÔNG hỗ trợ autocomplete mention (khác với gõ tin nhắn thường) — gõ
+      // "@TênNgườiChơi" trong Modal chỉ tạo ra TEXT THÔ, không phải mention thật
+      // `<@userId>`, nên resolveTargets không bao giờ khớp được. Sửa: chọn
+      // target qua DROPDOWN (liệt kê đúng player đang có trong encounter) TRƯỚC,
+      // chỉ Modal hỏi dmgStr — không cần gõ tay target nữa.
+      const enc = await getEncounter(channelId);
+      const alivePlayerIds = Object.keys(enc?.players ?? {}).filter(pid => enc.players[pid].currentHp > 0);
+      if (alivePlayerIds.length === 0) {
+        return interaction.reply({ content: "⚠️ Chưa có player nào (còn sống) trong encounter để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      // BUG THỨ 2 ĐÃ SỬA (xác nhận trực tiếp: "target invalid... dropdown không
+      // cho reselect") — trước đây dùng members.fetch() (GỌI API THẬT cho TỪNG
+      // player) — đây là network call CHẬM, có thể vượt quá 3 giây Discord cho
+      // phép để phản hồi 1 interaction, khiến TOÀN BỘ bước này timeout/fail âm
+      // thầm (nuốt bởi .catch) — user thấy y hệt "không phản hồi, không chọn lại
+      // được". Sửa: dùng cache ĐỒNG BỘ (đã có sẵn từ gateway, không cần gọi API
+      // mới) — không bao giờ block vào network I/O, luôn phản hồi tức thời.
+      const targetOptions = alivePlayerIds.map(pid => {
+        const displayName = interaction.guild?.members?.cache?.get(pid)?.displayName
+          ?? interaction.client.users.cache.get(pid)?.username
+          ?? `Player ${pid.slice(-4)}`;
+        return new StringSelectMenuOptionBuilder().setLabel(displayName.slice(0, 100)).setValue(pid);
+      });
+      targetOptions.push(new StringSelectMenuOptionBuilder().setLabel("🎯 Tất cả (AOE)").setValue("all"));
+      await interaction.update({
+        embeds: [{ title: `⚔️ ${enemyKey} tấn công — chọn target`, description: "Chọn người chơi muốn nhắm:", color: 0xe74c3c }],
+        components: [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`bossattacktarget:${channelId}:${enemyKey}:${gmUserId}`)
+            .setPlaceholder("Chọn target...")
+            .addOptions(...targetOptions.slice(0, 25)),
+        )],
+      }).catch(() => {});
       return;
     }
     // guard/evade/parry ĐÃ GỠ cùng dropdown option — xem buildBossActionPanel
@@ -7415,6 +7448,28 @@ client.on("interactionCreate", async (interaction) => {
     log("error", "bossMenuSelect", interaction.user?.id ?? "unknown", err.message);
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("bossattacktarget:")) return;
+  const [, channelId, enemyKey, gmUserId] = interaction.customId.split(":");
+  const isAdmin = ADMIN_IDS.has(interaction.user.id);
+  if (interaction.user.id !== gmUserId && !isAdmin) {
+    return interaction.reply({ content: "⚠️ Chỉ GM/admin điều khiển được enemy này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const targetId = interaction.values[0]; // playerId thật hoặc "all" — KHÔNG cần parse mention nữa
+  const modal = new ModalBuilder()
+    .setCustomId(`encmodal:${channelId}:bossattack:${enemyKey}:${targetId}`)
+    .setTitle(`${enemyKey} tấn công`.slice(0, 45));
+  const dmgInput = new TextInputBuilder()
+    .setCustomId("dmgStr")
+    .setLabel("Công thức dmg")
+    .setPlaceholder("VD: 50x2B+2Sinking")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true);
+  modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
+  await interaction.showModal(modal).catch(() => {});
 });
 
 // ─── SELECT MENU INTERACTIONS (inventory) ────────────────────────────────────
