@@ -14,7 +14,7 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier }) {
+module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
@@ -58,11 +58,11 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
       thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
       fields: [
         { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
-        { name: "✨ Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
+        { name: "<:EXP:1525313466905399346> Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
         { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
         { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
-        { name: "🔩 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
-        { name: "🌳 Skill Tree", value: skillTreeValue, inline: false },
+        { name: "<:Equipment:1525313207021867159> Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
+        { name: "<:000:1525313179339460739> Skill Tree", value: skillTreeValue, inline: false },
       ],
       footer: { text: INVENTORY_HINT_TEXT },
     };
@@ -80,7 +80,7 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
       components.push(new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`balbranch:${targetUser.id}`)
-          .setPlaceholder("🌳 Phân bổ điểm vào 1 nhánh...")
+          .setPlaceholder("<:000:1525313179339460739> Phân bổ điểm vào 1 nhánh...")
           .addOptions(branchOptions)
       ));
       // Perk ĐỦ ĐIỀU KIỆN unlock ngay (branchPoints đủ) NHƯNG CHƯA unlock — giới hạn
@@ -114,7 +114,19 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
       // (đỡ tốn row — Discord giới hạn CỨNG 5 ActionRow/message, đã dùng 2 cho
       // branch/unlock, còn đúng 3 cho equip). Page thường và E.G.O Page tách riêng
       // vì logic slot khác nhau (E.G.O cần khớp đúng Tier).
-      const ownedWeapons = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findWeaponAnywhere(n));
+      // BUG ĐÃ SỬA (xác nhận trực tiếp: "chưa thấy brawler được free cho tất cả
+      // mọi người, vẫn chưa pick được") — dropdown TRƯỚC ĐÂY chỉ liệt kê vũ khí
+      // trong data.items (SỞ HỮU THẬT), hoàn toàn KHÔNG biết tới
+      // UNIVERSALLY_KNOWN_WEAPONS (Brawler — không cần sở hữu, xem equip gate ở
+      // -equipweapon) — dù lệnh text vẫn cho equip đúng, dropdown không bao giờ
+      // hiện Brawler làm lựa chọn. Gộp thêm universal weapons, tránh trùng lặp
+      // nếu lỡ VỪA sở hữu VỪA universal.
+      const ownedWeaponsSet = new Set(Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findWeaponAnywhere(n)));
+      for (const key of UNIVERSALLY_KNOWN_WEAPONS) {
+        const universalWeapon = findWeaponAnywhere(key);
+        if (universalWeapon) ownedWeaponsSet.add(universalWeapon.name);
+      }
+      const ownedWeapons = [...ownedWeaponsSet];
       const ownedOutfits = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findOutfit(n));
       const ownedAccessories = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findAccessory(n));
       const gearOptions = [
