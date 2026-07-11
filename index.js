@@ -4168,7 +4168,7 @@ client.on("messageCreate", async (message) => {
           const wrapped = advanceToNextTurnHolder(encounter);
           appendActionLog(encounter, `⏭️ ${label} bỏ qua lượt (pass).`);
           await saveEncounter(encChannelId, encounter);
-          if (!wrapped) announceCurrentTurn(encChannelId, encounter).catch(() => {});
+          announceCurrentTurn(encChannelId, encounter).catch(() => {});
           message.reply(`⏭️ ${label} đã bỏ qua lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : `\n> Tiếp theo: ${buildTurnOrderText(encounter)}`}`);
         });
       } catch (err) {
@@ -4722,46 +4722,12 @@ client.on("messageCreate", async (message) => {
 
     if (sub === "endturn") {
       try {
-        await withLock(encounterKey(encChannelId), async () => {
-          const encounter = await getEncounter(encChannelId);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới được kết thúc turn.");
-          if ((encounter.pendingActions ?? []).length > 0) throw new Error(`Còn ${encounter.pendingActions.length} action chưa xử lý — dùng \`-encounter pending\` để confirm/reject hết trước khi qua turn.`);
-          // Shrouded Power (Pride) — check TRƯỚC khi advanceCombatantTurn (vì Stagger
-          // có thể tự hết NGAY trong lượt advance này) — bất kỳ enemy nào ĐANG Stagger
-          // lúc turn kết thúc → player có perk này nhận +4 Poise.
-          const anyEnemyStaggered = Object.values(encounter.enemies).some(e => e.staggered);
-          const shroudedNotes = [];
-          if (anyEnemyStaggered) {
-            for (const pid of Object.keys(encounter.players)) {
-              const pl = encounter.players[pid];
-              if (hasPerk(pl, "Shrouded Power")) {
-                pl.poise = Math.min(POISE_MAX, pl.poise + 4);
-                shroudedNotes.push(`<@${pid}> +4 Poise (Shrouded Power)`);
-              }
-            }
-          }
-          for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
-          for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
-          // turnNumber — đếm số turn ĐÃ QUA (bắt đầu 1, tăng mỗi lần endturn) — dùng
-          // để gắn nhãn "Turn N" vào mỗi entry trong actionLog (-encounter log).
-          encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
-          // Turn Order Enforcement (xác nhận trực tiếp): "lúc xong endturn thì
-          // encounter nên tự cập nhật lại để player bấm tiếp" — TỰ ĐỘNG roll lại
-          // Speed cho turn MỚI (không bắt GM nhớ gọi `-encounter rollspeed` riêng
-          // — quên gọi sẽ khiến currentTurnIndex kẹt ở cuối turnOrder cũ, chặn
-          // TOÀN BỘ mọi người hành động vĩnh viễn cho tới khi GM tự nhận ra).
-          if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length > 0) {
-            determineTurnOrder(encounter);
-          }
-          await saveEncounter(encChannelId, encounter);
-          announceCurrentTurn(encChannelId, encounter).catch(() => {});
-          await message.reply({
-            content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
-              (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : "") +
-              `\n> 🎲 Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`,
-            embeds: [buildEncounterBoardEmbed(encounter)],
-          });
+        const { encounter, shroudedNotes } = await performEndTurn(encChannelId, message.author.id, isAdmin);
+        await message.reply({
+          content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
+            (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : "") +
+            `\n> 🎲 Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`,
+          embeds: [buildEncounterBoardEmbed(encounter)],
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -5158,6 +5124,13 @@ client.on("messageCreate", async (message) => {
                 .setCustomId(`gmpanelselect:${encChannelId}:${message.author.id}`)
                 .setPlaceholder("Chọn enemy để điều khiển...")
                 .addOptions(...options.slice(0, 25)),
+            ),
+            // Turn Order Enforcement UX (xác nhận trực tiếp): nút LUÔN sẵn có,
+            // không cần đợi hết vòng turnOrder mới thấy — GM có thể chủ động kết
+            // thúc sớm hoặc xem trạng thái bất cứ lúc nào từ bảng điều khiển.
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId(`encendturn:${encChannelId}:${encounter.gmId}`).setLabel("🔄 Kết thúc Turn").setStyle(ButtonStyle.Success),
+              new ButtonBuilder().setCustomId(`gmpanelstatus:${encChannelId}:${message.author.id}`).setLabel("📊 Xem trạng thái").setStyle(ButtonStyle.Secondary),
             ),
           ],
         });
@@ -6228,11 +6201,62 @@ async function resolveOnePendingAction(encounter, p) {
  *  kênh encounter (mention họ). Enemy → route tới gmChannelId nếu đã link (GM
  *  điều khiển thay), cùng logic routing với sendReactiveDefensePrompt. Không
  *  throw gì cả — lỗi gửi message không nên làm hỏng flow chính (fire-and-forget). */
+/** performEndTurn — TÁCH từ thân lệnh text `-encounter endturn` (giữ NGUYÊN 100%
+ *  logic không đổi 1 dòng nào) — dùng LẠI được cho CẢ lệnh text LẪN nút bấm UI
+ *  mới "🔄 Kết thúc Turn" (xem announceCurrentTurn/handler customId "encendturn:").
+ *  Throw Error nếu không hợp lệ (không có quyền, còn pending action...) — CALLER
+ *  tự bắt và hiển thị theo cách phù hợp (reply text hay update embed nút bấm). */
+async function performEndTurn(channelId, userId, isAdmin) {
+  let resultInfo;
+  await withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+    if (!isAdmin && userId !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới được kết thúc turn.");
+    if ((encounter.pendingActions ?? []).length > 0) throw new Error(`Còn ${encounter.pendingActions.length} action chưa xử lý — dùng \`-encounter pending\` để confirm/reject hết trước khi qua turn.`);
+    const anyEnemyStaggered = Object.values(encounter.enemies).some(e => e.staggered);
+    const shroudedNotes = [];
+    if (anyEnemyStaggered) {
+      for (const pid of Object.keys(encounter.players)) {
+        const pl = encounter.players[pid];
+        if (hasPerk(pl, "Shrouded Power")) {
+          pl.poise = Math.min(POISE_MAX, pl.poise + 4);
+          shroudedNotes.push(`<@${pid}> +4 Poise (Shrouded Power)`);
+        }
+      }
+    }
+    for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
+    for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
+    encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
+    if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length > 0) {
+      determineTurnOrder(encounter);
+    }
+    await saveEncounter(channelId, encounter);
+    announceCurrentTurn(channelId, encounter).catch(() => {});
+    resultInfo = { encounter, shroudedNotes };
+  });
+  return resultInfo;
+}
+
 async function announceCurrentTurn(channelId, encounter) {
   try {
     const order = encounter.turnOrder ?? [];
     const entry = order[encounter.currentTurnIndex ?? 0];
-    if (!entry) return; // hết vòng — GM cần rollspeed/endturn, không có ai để mời
+    if (!entry) {
+      // Turn Order Enforcement UX (xác nhận trực tiếp): "không có nút end turn
+      // các thứ như 1 game rpg thực thụ" — hết 1 vòng turnOrder, thay vì im lặng
+      // (bắt GM tự nhớ gõ lệnh text), gửi NGAY 1 nút bấm rõ ràng cho GM.
+      const targetChannelId = encounter.gmChannelId || channelId;
+      const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+      if (!channel) return;
+      await channel.send({
+        content: `<@${encounter.gmId}>`,
+        embeds: [{ title: "🔄 Hết 1 vòng Turn Order!", description: "Mọi người đã hành động xong — bấm để kết thúc turn (hồi Stamina, đếm ngược status, roll lại Speed):", color: 0x9b59b6 }],
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`encendturn:${channelId}:${encounter.gmId}`).setLabel("🔄 Kết thúc Turn").setStyle(ButtonStyle.Success),
+        )],
+      }).catch(() => {});
+      return;
+    }
     if (entry.type === "player") {
       const player = encounter.players[entry.id];
       if (!player || player.currentHp <= 0) return;
@@ -6650,6 +6674,46 @@ client.on("interactionCreate", async (interaction) => {
       });
     } catch (err) {
       log("error", "encounterConfirmAll", interaction.user?.id ?? "unknown", err.message);
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  if (interaction.customId.startsWith("gmpanelstatus:")) {
+    const [, channelId, ownerId] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+      return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới xem được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      await interaction.reply({ embeds: [buildEncounterBoardEmbed(encounter)], flags: MessageFlags.Ephemeral }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  if (interaction.customId.startsWith("encendturn:")) {
+    const [, channelId, gmIdFromButton] = interaction.customId.split(":");
+    try {
+      const isAdmin = ADMIN_IDS.has(interaction.user.id);
+      if (interaction.user.id !== gmIdFromButton && !isAdmin) {
+        return interaction.reply({ content: "⚠️ Chỉ GM/admin mới được kết thúc turn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      const { encounter, shroudedNotes } = await performEndTurn(channelId, interaction.user.id, isAdmin);
+      await interaction.update({
+        content: null,
+        embeds: [{
+          title: "🔄 Đã kết thúc Turn",
+          description: `Hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
+            (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : "") +
+            `\n> 🎲 Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`,
+          color: 0x2ecc71,
+        }],
+        components: [],
+      }).catch(() => {});
+    } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     return;
