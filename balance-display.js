@@ -60,6 +60,7 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
         { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
         { name: "<:EXP:1525313466905399346> Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
         { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
+        { name: "<:Lunacy:1524989409529823342> Lunacy", value: `**${formatNumber(data.lunacy ?? 0)}** Lunacy`, inline: true },
         { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
         { name: "<:Equipment:1525313207021867159> Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
         { name: "<:000:1525313179339460739> Skill Tree", value: skillTreeValue, inline: false },
