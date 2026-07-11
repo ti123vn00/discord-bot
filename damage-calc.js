@@ -283,13 +283,17 @@ function calcMathCore(opts) {
     if (isDice) instanceDmg *= diceMul;
 
     // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).
-    // Mỗi hit tiêu thụ 1 stack và trừ 1 sanity; cộng bonus dmg khi sanity địch ở SANITY_MIN.
+    // REWORK (xác nhận trực tiếp): "giảm sanity theo mỗi hit theo công thức số
+    // count / 15 (làm tròn xuống và tối thiểu 1)" — TRƯỚC ĐÂY cố định -1/hit,
+    // GIỜ scale theo Sinking HIỆN TẠI (trước khi tiêu 1 stack ở dòng dưới) — vẫn
+    // tiêu 1 stack/hit như cũ, chỉ đổi CÔNG THỨC lượng sanity mất.
     // sinkingBeforeProc được lưu trước khi drain, để The Departed dùng đúng giá trị hiện tại.
     const sinkingBeforeProc = enemySinking;
     let sinkingBonus = 0;
     if (enemySinking > 0) {
       const sanityBefore = sanity;
-      sanity = Math.max(sanity - 1, SANITY_MIN);
+      const sanityLoss = Math.max(1, Math.floor(enemySinking / 15));
+      sanity = Math.max(sanity - sanityLoss, SANITY_MIN);
       if (sanityBefore <= SANITY_MIN || sanity <= SANITY_MIN) {
         instanceDmg += enemySinking;
         sinkingBonus = enemySinking;
