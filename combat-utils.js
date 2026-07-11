@@ -78,6 +78,25 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     return order;
   }
 
+  /** insertIntoTurnOrderMidRound — GAP ĐÃ SỬA (phát hiện qua rà soát): "-encounter
+   *  join"/"addenemy" trước đây HOÀN TOÀN không đụng tới turnOrder — nghĩa là ai
+   *  tham gia hoặc được thêm vào GIỮA 1 round (sau khi đã rollspeed) sẽ KHÔNG BAO
+   *  GIỜ được thêm vào turnOrder hiện tại, bị Turn Order Enforcement chặn hành
+   *  động cho tới khi CẢ round kết thúc (có thể rất lâu). Sửa: roll Speed cho
+   *  combatant mới (cùng cách determineTurnOrder làm — gán vào currentSpeed),
+   *  chèn NGAY SAU currentTurnIndex (không so sánh Speed với các entry CÒN LẠI
+   *  để giữ đơn giản/an toàn — không làm xô lệch currentTurnIndex của những
+   *  người đã hành động TRƯỚC đó). Không làm gì nếu turnOrder rỗng (chưa từng
+   *  rollspeed — combatant sẽ tự nhiên có mặt ở lần rollspeed đầu tiên). */
+  function insertIntoTurnOrderMidRound(encounter, id, type, combatant) {
+    const order = encounter.turnOrder ?? [];
+    if (order.length === 0) return; // chưa rollspeed lần nào — không cần chèn
+    if (order.some(e => e.id === id)) return; // đã có sẵn (VD rejoin), tránh trùng
+    combatant.currentSpeed = rollSpeedValue(combatant);
+    const insertIdx = (encounter.currentTurnIndex ?? 0) + 1;
+    order.splice(insertIdx, 0, { id, type, speed: combatant.currentSpeed, tiedWith: [] });
+  }
+
   /** isCurrentTurnHolder — Turn Order Enforcement: kiểm tra id (playerId hoặc
    *  enemyKey) có ĐÚNG là người/enemy đang tới lượt hay không. Trả về true LUÔN
    *  nếu chưa từng roll Speed (turnOrder rỗng) — không ép buộc turn order nếu GM
@@ -363,6 +382,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     rollSpeedValue,
     determineTurnOrder,
     isCurrentTurnHolder,
+    insertIntoTurnOrderMidRound,
     advanceToNextTurnHolder,
     buildTurnOrderText,
     combatantResStr,
