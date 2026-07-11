@@ -3039,12 +3039,12 @@ client.on("messageCreate", async (message) => {
               const lunacyBefore = data.lunacy ?? 0;
               data.exp = clampExpWithLunacy(data, before + expValue);
               const lunacyGained = (data.lunacy ?? 0) - lunacyBefore;
-              changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]${lunacyGained > 0 ? ` (dư chuyển thành +${lunacyGained} 🌙Lunacy)` : ""}`);
+              changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]${lunacyGained > 0 ? ` (dư chuyển thành +${lunacyGained} <:Lunacy:1524989409529823342>Lunacy)` : ""}`);
             } else {
               const lunacyBefore = data.lunacy ?? 0;
               data.exp = clampExpWithLunacy(data, expValue);
               const lunacyGained = (data.lunacy ?? 0) - lunacyBefore;
-              changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]${lunacyGained > 0 ? ` (dư chuyển thành +${lunacyGained} 🌙Lunacy)` : ""}`);
+              changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]${lunacyGained > 0 ? ` (dư chuyển thành +${lunacyGained} <:Lunacy:1524989409529823342>Lunacy)` : ""}`);
             }
           }
           if (ahnValue !== null) {
@@ -3061,10 +3061,10 @@ client.on("messageCreate", async (message) => {
             if (lunacyIsAdd) {
               const before = data.lunacy ?? 0;
               data.lunacy = Math.max(0, before + lunacyValue);
-              changes.push(`Lunacy +${formatNumber(lunacyValue)} (${formatNumber(before)} → **${formatNumber(data.lunacy)}**)`);
+              changes.push(`<:Lunacy:1524989409529823342>Lunacy +${formatNumber(lunacyValue)} (${formatNumber(before)} → **${formatNumber(data.lunacy)}**)`);
             } else {
               data.lunacy = Math.max(0, lunacyValue);
-              changes.push(`Lunacy set → **${formatNumber(data.lunacy)}**`);
+              changes.push(`<:Lunacy:1524989409529823342>Lunacy set → **${formatNumber(data.lunacy)}**`);
             }
           }
           if (bookEntries.length > 0) {
@@ -3783,7 +3783,7 @@ client.on("messageCreate", async (message) => {
     const countRaw = message.content.replace(/^-gacha/i, "").trim();
     const count = countRaw ? parseInt(countRaw, 10) : 1;
     if (!Number.isFinite(count) || count < 1 || count > 10) {
-      message.reply(`⚠️ Cú pháp: \`-gacha [số lần, 1-10]\` (mặc định 1 nếu bỏ trống).\n> Chi phí: **${GACHA_COST_PER_PULL} Lunacy/lần**.\n> Rate: ${GACHA_RATES.high}% thường / ${GACHA_RATES.mid}% trung bình / ${GACHA_RATES.rare}% cực hiếm.`);
+      message.reply(`⚠️ Cú pháp: \`-gacha [số lần, 1-10]\` (mặc định 1 nếu bỏ trống).\n> Chi phí: **${GACHA_COST_PER_PULL} <:Lunacy:1524989409529823342>Lunacy/lần**.\n> Rate: ${GACHA_RATES.high}% thường / ${GACHA_RATES.mid}% trung bình / ${GACHA_RATES.rare}% cực hiếm.`);
       return;
     }
     try {
@@ -3792,7 +3792,7 @@ client.on("messageCreate", async (message) => {
         const totalCost = GACHA_COST_PER_PULL * count;
         const currentLunacy = profileData.lunacy ?? 0;
         if (currentLunacy < totalCost) {
-          throw new Error(`Không đủ Lunacy — cần **${formatNumber(totalCost)}** (${count} lần × ${GACHA_COST_PER_PULL}), hiện có **${formatNumber(currentLunacy)}**.`);
+          throw new Error(`Không đủ <:Lunacy:1524989409529823342>Lunacy — cần **${formatNumber(totalCost)}** (${count} lần × ${GACHA_COST_PER_PULL}), hiện có **${formatNumber(currentLunacy)}**.`);
         }
         profileData.lunacy = currentLunacy - totalCost;
         profileData.items = profileData.items ?? {};
@@ -3810,7 +3810,7 @@ client.on("messageCreate", async (message) => {
         for (const item of results) counted[item] = (counted[item] ?? 0) + 1;
         const resultLines = Object.entries(counted).map(([item, n]) => `${GACHA_POOL_RARE.includes(item) ? "🌟" : GACHA_POOL_MID.includes(item) ? "✨" : "▫️"} ${item}${n > 1 ? ` x${n}` : ""}`);
         message.reply(
-          `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} Lunacy, còn **${formatNumber(profileData.lunacy)}**):\n` +
+          `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(profileData.lunacy)}**):\n` +
           resultLines.map(l => `> ${l}`).join("\n") +
           (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : "")
         );
@@ -3847,10 +3847,10 @@ client.on("messageCreate", async (message) => {
         const rewardNotes = [];
         if (codeReward.lunacy) {
           profileData.lunacy = (profileData.lunacy ?? 0) + codeReward.lunacy;
-          rewardNotes.push(`+${formatNumber(codeReward.lunacy)} 🌙Lunacy`);
+          rewardNotes.push(`+${formatNumber(codeReward.lunacy)} <:Lunacy:1524989409529823342>Lunacy`);
         }
         await savePlayerData(message.author.id, profileData, slot);
-        message.reply(`✅ Đã dùng code **${codeRaw}**: ${rewardNotes.join(", ")} (hiện có **${formatNumber(profileData.lunacy)} Lunacy**).`);
+        message.reply(`✅ Đã dùng code **${codeRaw}**: ${rewardNotes.join(", ")} (hiện có **${formatNumber(profileData.lunacy)} <:Lunacy:1524989409529823342>Lunacy**).`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);
