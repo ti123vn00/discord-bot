@@ -59,11 +59,11 @@ module.exports = function ({ getPlayerData, INV_PAGE_SIZE }) {
       const isLast = i + INV_PAGE_SIZE >= itemEntries.length;
       const from = i + 1, to = Math.min(i + INV_PAGE_SIZE, itemEntries.length);
       const fields = [{
-        name: `🔩 Vật phẩm (${from}–${to} / ${itemEntries.length})`,
+        name: `<:Equipment:1525313207021867159> Vật phẩm (${from}–${to} / ${itemEntries.length})`,
         value: chunk.map(([name, count]) => `• **${name}** × ${count}`).join("\n"),
         inline: false,
       }];
-      if (isLast) fields.push({ name: "📊 Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true });
+      if (isLast) fields.push({ name: "<:Equipment:1525313207021867159> Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true });
       pages.push(fields);
     }
   
