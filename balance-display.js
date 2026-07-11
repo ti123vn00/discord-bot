@@ -81,7 +81,7 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
       components.push(new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`balbranch:${targetUser.id}`)
-          .setPlaceholder("<:000:1525313179339460739> Phân bổ điểm vào 1 nhánh...")
+          .setPlaceholder("🌳 Phân bổ điểm vào 1 nhánh...")
           .addOptions(branchOptions)
       ));
       // Perk ĐỦ ĐIỀU KIỆN unlock ngay (branchPoints đủ) NHƯNG CHƯA unlock — giới hạn
