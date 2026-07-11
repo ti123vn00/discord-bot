@@ -40,11 +40,11 @@ module.exports = function ({ findSkill, hasPerk }) {
     for (const pageName of combatant.unlockedEgoPagesSnapshot ?? []) {
       if (pageName) options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
     }
-    options.push(
-      new StringSelectMenuOptionBuilder().setLabel("🛡️ Guard (-10 Sta, giảm 90% dmg)").setValue("guard"),
-      new StringSelectMenuOptionBuilder().setLabel("💨 Evade (-20 Sta, né 100%)").setValue("evade"),
-      new StringSelectMenuOptionBuilder().setLabel("🗡️ Parry (0 Sta, roll d20)").setValue("parry"),
-    );
+    // guard/evade/parry ĐÃ GỠ KHỎI dropdown này (xác nhận trực tiếp: "nghĩ nên bỏ
+    // hẳn... thuần tương tác qua menu UI là cách tốt nhất... đã sử dụng hệ thống
+    // guard mới rồi nên cái đó không cần thiết lắm") — Reactive Defense (tự động
+    // hiện prompt riêng khi bị tấn công, xem sendReactiveDefensePrompt trong
+    // index.js) đã thay thế hoàn toàn nhu cầu chọn phòng thủ CHỦ ĐỘNG ở đây.
     if (hasPerk(combatant, "Shin")) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("🌑 Shin/Mang (-25 Sanity)").setValue("shinmang"));
     }
@@ -71,19 +71,16 @@ module.exports = function ({ findSkill, hasPerk }) {
    * buildBossActionPanel — dropdown GM dùng để điều khiển 1 ENEMY/BOSS cụ thể, theo
    * yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI" — trước đây GM phải
    * gõ tay TỪNG lệnh text (`-encounter enemyattack key: ... target: ... dmg: ...`)
-   * cho MỌI hành động của enemy, không có UI nào tương tự player action panel. Chỉ
-   * gồm Attack/Guard/Evade/Parry (4 hành động PHỔ BIẾN NHẤT) — Shin/Mang/Manifest
-   * E.G.O/Overcharge/Follow-Up là cơ chế RIÊNG của PLAYER (Skill Tree perk cá nhân),
-   * KHÔNG áp dụng cho enemy nên không đưa vào đây.
+   * cho MỌI hành động của enemy, không có UI nào tương tự player action panel.
+   * guard/evade/parry ĐÃ GỠ (cùng lý do với buildEncounterActionPanel — Reactive
+   * Defense tự động gửi prompt riêng tới kênh GM khi enemy bị tấn công, xem
+   * sendReactiveDefensePrompt trong index.js) — chỉ còn "Tấn công".
    * @param enemyKey — key ngắn của enemy (VD "mo") — gắn vào customId để handler
    *  biết đang điều khiển CON NÀO khi có NHIỀU enemy trong encounter.
    */
   function buildBossActionPanel(channelId, enemyKey, gmUserId) {
     const options = [
       new StringSelectMenuOptionBuilder().setLabel("⚔️ Tấn công (M1/skill)").setValue("attack"),
-      new StringSelectMenuOptionBuilder().setLabel("🛡️ Guard").setValue("guard"),
-      new StringSelectMenuOptionBuilder().setLabel("💨 Evade").setValue("evade"),
-      new StringSelectMenuOptionBuilder().setLabel("🗡️ Parry").setValue("parry"),
     ];
     return [
       new ActionRowBuilder().addComponents(
