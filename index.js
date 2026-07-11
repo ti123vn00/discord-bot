@@ -6964,15 +6964,24 @@ client.on("interactionCreate", async (interaction) => {
     const [, channelId, pendingId, targetId, choice] = interaction.customId.split(":");
     try {
       let resultText = null;
+      let stillWaitingFor = null;
       await withLock(encounterKey(channelId), async () => {
         const encounter = await getEncounter(channelId);
         if (!encounter) throw new Error("Encounter không còn tồn tại.");
         const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
         if (!p) throw new Error("Action này đã được xử lý rồi (có thể GM đã confirm/reject cả loạt trước đó).");
         const isAdmin = ADMIN_IDS.has(interaction.user.id);
-        // Chỉ ĐÚNG người bị nhắm (targetId) hoặc GM/admin mới được bấm thay.
         if (interaction.user.id !== targetId && !isAdmin && interaction.user.id !== encounter.gmId) {
           throw new Error("Chỉ người bị tấn công (hoặc GM) mới được chọn phòng thủ này.");
+        }
+        // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua rà soát): đòn AOE nhắm NHIỀU
+        // target cùng lúc — TRƯỚC ĐÂY chỉ cần 1 người bấm là resolveOnePendingAction
+        // chạy NGAY cho CẢ p (mọi target), rồi xoá p khỏi queue — những người CHƯA
+        // kịp bấm bị tính mặc định "không phòng thủ" (charges=0) dù chưa hề được
+        // hỏi. Sửa: CHỈ resolve khi TẤT CẢ target trong p.targets đã phản hồi —
+        // mỗi lần bấm chỉ áp dụng lựa chọn của ĐÚNG người đó rồi ghi nhớ lại.
+        if (p.reactedTargetIds?.includes(targetId)) {
+          throw new Error("Bạn đã chọn phòng thủ cho đòn này rồi.");
         }
         const targetResolved = resolveCombatant(encounter, targetId);
         if (!targetResolved) throw new Error("Không tìm thấy target.");
@@ -7013,13 +7022,25 @@ client.on("interactionCreate", async (interaction) => {
           choiceNote = "❌ Không phòng thủ";
         }
         checkStaggerPanic(target);
-        const lines = await resolveOnePendingAction(encounter, p);
-        encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
+        p.reactedTargetIds = p.reactedTargetIds ?? [];
+        p.reactedTargetIds.push(targetId);
+        const allTargetIds = p.targets.map(tg => tg.targetId);
+        const allReacted = allTargetIds.every(tid => p.reactedTargetIds.includes(tid));
+        if (allReacted) {
+          const lines = await resolveOnePendingAction(encounter, p);
+          encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
+          resultText = `${interaction.user.toString()} chọn **${choiceNote}**\n${lines.join("\n")}`;
+        } else {
+          // Vẫn còn người khác trong đòn AOE chưa bấm — CHỈ lưu lựa chọn của
+          // người này lại, KHÔNG resolve/xoá pendingAction, để họ vẫn có cơ hội
+          // chọn khi tới lượt (button của họ vẫn còn nguyên, không bị đụng tới).
+          resultText = `${interaction.user.toString()} chọn **${choiceNote}** — đang chờ ${allTargetIds.length - p.reactedTargetIds.length} người khác trong đòn AOE này.`;
+          stillWaitingFor = allTargetIds.length - p.reactedTargetIds.length;
+        }
         await saveEncounter(channelId, encounter);
-        resultText = `${interaction.user.toString()} chọn **${choiceNote}**\n${lines.join("\n")}`;
       });
       await interaction.update({
-        embeds: [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }],
+        embeds: [{ title: stillWaitingFor ? "⏳ Đã ghi nhận — đang chờ người khác" : "⚔️ Đã xử lý", description: resultText, color: stillWaitingFor ? 0xf39c12 : 0x2ecc71 }],
         components: [],
       }).catch(() => {});
     } catch (err) {
