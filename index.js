@@ -92,6 +92,22 @@ function clampExp(exp) {
   return Math.min(Math.max(0, exp), EXP_MAX);
 }
 
+/** clampExpWithLunacy — Lunacy (xác nhận trực tiếp): "lượng exp thừa sẽ được
+ *  chuyển qua Lunacy với tỷ lệ 1 exp thừa sẽ = 10 Lunacy" — khi EXP vượt quá
+ *  EXP_MAX (đã đạt Grade 1, grade cao nhất, không còn chỗ dùng thêm EXP), phần
+ *  VƯỢT chuyển thẳng thành Lunacy (mutate profileData.lunacy trực tiếp) thay vì
+ *  bị clamp/mất trắng như clampExp cũ. Trả về giá trị exp đã clamp để gán lại.
+ */
+function clampExpWithLunacy(profileData, rawExp) {
+  const clamped = Math.max(0, rawExp);
+  if (clamped > EXP_MAX) {
+    const excess = clamped - EXP_MAX;
+    profileData.lunacy = (profileData.lunacy ?? 0) + excess * 10;
+    return EXP_MAX;
+  }
+  return clamped;
+}
+
 function calcGrade(totalExp) {
   let grade = GRADE_MIN;
   let remaining = totalExp;
@@ -233,7 +249,33 @@ const VALID_ITEMS = [
   "Chipboard MK5",
   "Uptie Module",
   "Chipboard Cache",
+  // -gacha (xác nhận trực tiếp): 5 item "rate rất thấp" — voucher tuỳ chỉnh, GM
+  // tự xử lý thiết kế thật (không phải item auto-generate cụ thể).
+  "Custom Accessory", "Custom Weapon", "Custom Outfit", "Custom Page", "Custom E.G.O",
 ];
+
+// ─── GACHA (-gacha, xác nhận trực tiếp) ───────────────────────────────────────
+// 3 tier tái dùng NGUYÊN các pool đã có sẵn (RANDOM_BOOK_POOL/SEALED_BOOK_POOL/
+// CHIPBOARD_CACHE_POOL) — không khai báo trùng dữ liệu. Rate % KHÔNG được cho số
+// cụ thể trong yêu cầu gốc — dùng mốc gacha tiêu chuẩn (cao/trung/rất thấp), DỄ
+// CHỈNH nếu không đúng ý (chỉ 3 số trong GACHA_RATES).
+const GACHA_POOL_HIGH = RANDOM_BOOK_POOL; // 17 item — "Rate cao, filler items"
+const GACHA_POOL_MID = [...SEALED_BOOK_POOL, ...CHIPBOARD_CACHE_POOL, "Chipboard MK4", "Chipboard MK5", "Uptie Module"]; // 18 item — "Rate trung bình"
+const GACHA_POOL_RARE = ["Custom Accessory", "Custom Weapon", "Custom Outfit", "Custom Page", "Custom E.G.O"]; // "Rate rất thấp"
+const GACHA_RATES = { high: 75, mid: 23, rare: 2 }; // % — giả định, tổng = 100
+const GACHA_COST_PER_PULL = 130; // Lunacy/lần — xác nhận trực tiếp (1300 Lunacy code đầu = đúng 10 lần)
+
+/** rollGachaOnce — roll 1 lần theo 3 tier GACHA_RATES, trả về tên item. */
+function rollGachaOnce() {
+  const roll = Math.random() * 100;
+  if (roll < GACHA_RATES.high) {
+    return GACHA_POOL_HIGH[Math.floor(Math.random() * GACHA_POOL_HIGH.length)];
+  } else if (roll < GACHA_RATES.high + GACHA_RATES.mid) {
+    return GACHA_POOL_MID[Math.floor(Math.random() * GACHA_POOL_MID.length)];
+  } else {
+    return GACHA_POOL_RARE[Math.floor(Math.random() * GACHA_POOL_RARE.length)];
+  }
+}
 
 // ─── CRAFT RECIPES ────────────────────────────────────────────────────────────
 const CRAFT_RECIPES = {
@@ -265,7 +307,7 @@ function findItemAdmin(input) {
 
 // ─── parseKeyValues ───────────────────────────────────────────────────────────
 const KNOWN_KEYS = new Set([
-  "book", "count", "item", "itemcount", "ahn", "exp", "grade", "bonusskillpoints",
+  "book", "count", "item", "itemcount", "ahn", "exp", "grade", "bonusskillpoints", "lunacy", "code", // lunacy = -setprofile, code = -redeem
   "wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light", // 9 nhánh Skill Tree (branchPoints)
   "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", // 4 cờ điều kiện đặc biệt
   "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1
@@ -684,7 +726,7 @@ async function getPlayerData(userId) {
   for (let attempt = 0; attempt <= REDIS_MAX_RETRIES; attempt++) {
     try {
       const raw = await withTimeout(redis.get(key));
-      if (!raw) return { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
+      if (!raw) return { exp: 0, ahn: 0, lunacy: 0, redeemedCodes: [], books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       return migratePlayerData(data);
     } catch (err) {
@@ -709,7 +751,7 @@ async function getPlayerDataWithSlot(userId) {
       const raw = await withTimeout(redis.get(key));
       const data = raw
         ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
-        : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
+        : { exp: 0, ahn: 0, lunacy: 0, redeemedCodes: [], books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
       return { data, slot };
     } catch (err) {
       lastErr = err;
@@ -881,7 +923,7 @@ async function processDailyClaimForUser(userId) {
     const dailyData = dailyRaw ? (typeof dailyRaw === "string" ? JSON.parse(dailyRaw) : dailyRaw) : null;
     let playerData = playerRaw
       ? (typeof playerRaw === "string" ? JSON.parse(playerRaw) : playerRaw)
-      : { exp: 0, ahn: 0, books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
+      : { exp: 0, ahn: 0, lunacy: 0, redeemedCodes: [], books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
     playerData = migratePlayerData(playerData);
 
     const today = getVNDateString();
@@ -2908,10 +2950,13 @@ client.on("messageCreate", async (message) => {
     }
     const expAddRaw = kv["exp"] ?? null;
     const ahnAddRaw = kv["ahn"] ?? null;
+    const lunacyAddRaw = kv["lunacy"] ?? null;
     const expIsAdd = expAddRaw && expAddRaw.startsWith("+");
     const ahnIsAdd = ahnAddRaw && ahnAddRaw.startsWith("+");
+    const lunacyIsAdd = lunacyAddRaw && lunacyAddRaw.startsWith("+");
     const expValue = expAddRaw ? parseInt(expAddRaw.replace("+", ""), 10) || 0 : null;
     const ahnValue = ahnAddRaw ? parseInt(ahnAddRaw.replace("+", ""), 10) || 0 : null;
+    const lunacyValue = lunacyAddRaw ? parseInt(lunacyAddRaw.replace("+", ""), 10) || 0 : null;
     const gradeTarget = kv["grade"] ? parseInt(kv["grade"], 10) : null;
     if (gradeTarget !== null && (isNaN(gradeTarget) || gradeTarget < GRADE_MAX || gradeTarget > GRADE_MIN)) {
       message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
@@ -2972,8 +3017,8 @@ client.on("messageCreate", async (message) => {
       branchUpdates[bKey] = { isAdd, value };
       hasBranchUpdate = true;
     }
-    if (expValue === null && ahnValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null && Object.keys(unlockFlagUpdates).length === 0) {
-      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}), hoặc 4 cờ điều kiện (\`shinunlock\`/\`lightskilltreeunlock\`/\`50statunlock\`/\`manifestedegounlock\`: yes/no).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
+    if (expValue === null && ahnValue === null && lunacyValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null && Object.keys(unlockFlagUpdates).length === 0) {
+      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`lunacy\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}), hoặc 4 cờ điều kiện (\`shinunlock\`/\`lightskilltreeunlock\`/\`50statunlock\`/\`manifestedegounlock\`: yes/no).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
       return;
     }
 
@@ -2991,11 +3036,15 @@ client.on("messageCreate", async (message) => {
           } else if (expValue !== null) {
             if (expIsAdd) {
               const before = data.exp ?? 0;
-              data.exp = clampExp(before + expValue);
-              changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]`);
+              const lunacyBefore = data.lunacy ?? 0;
+              data.exp = clampExpWithLunacy(data, before + expValue);
+              const lunacyGained = (data.lunacy ?? 0) - lunacyBefore;
+              changes.push(`EXP +${expValue} (${before} → **${data.exp}**) [max: ${EXP_MAX}]${lunacyGained > 0 ? ` (dư chuyển thành +${lunacyGained} 🌙Lunacy)` : ""}`);
             } else {
-              data.exp = clampExp(expValue);
-              changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]`);
+              const lunacyBefore = data.lunacy ?? 0;
+              data.exp = clampExpWithLunacy(data, expValue);
+              const lunacyGained = (data.lunacy ?? 0) - lunacyBefore;
+              changes.push(`EXP set → **${data.exp}** [max: ${EXP_MAX}]${lunacyGained > 0 ? ` (dư chuyển thành +${lunacyGained} 🌙Lunacy)` : ""}`);
             }
           }
           if (ahnValue !== null) {
@@ -3006,6 +3055,16 @@ client.on("messageCreate", async (message) => {
             } else {
               data.ahn = Math.max(0, ahnValue);
               changes.push(`Ahn set → **${formatNumber(data.ahn)}**`);
+            }
+          }
+          if (lunacyValue !== null) {
+            if (lunacyIsAdd) {
+              const before = data.lunacy ?? 0;
+              data.lunacy = Math.max(0, before + lunacyValue);
+              changes.push(`Lunacy +${formatNumber(lunacyValue)} (${formatNumber(before)} → **${formatNumber(data.lunacy)}**)`);
+            } else {
+              data.lunacy = Math.max(0, lunacyValue);
+              changes.push(`Lunacy set → **${formatNumber(data.lunacy)}**`);
             }
           }
           if (bookEntries.length > 0) {
@@ -3709,6 +3768,96 @@ client.on("messageCreate", async (message) => {
   }
 
   // ── -profile ──
+  // ─── REDEEM CODE ────────────────────────────────────────────────────────────
+  // Danh sách code hợp lệ — dễ mở rộng thêm sau này (chỉ cần thêm entry mới).
+  // GLORYTOPROJECTMOON (xác nhận trực tiếp): "cho 1k3 Lunacy lần đầu" — 1300.
+  const REDEEM_CODES = {
+    GLORYTOPROJECTMOON: { lunacy: 1300 },
+  };
+  // ─── GACHA ──────────────────────────────────────────────────────────────────
+  if (message.content.startsWith("-gacha")) {
+    if (isOnCooldown(message.author.id, "gacha", 3000)) {
+      message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
+      return;
+    }
+    const countRaw = message.content.replace(/^-gacha/i, "").trim();
+    const count = countRaw ? parseInt(countRaw, 10) : 1;
+    if (!Number.isFinite(count) || count < 1 || count > 10) {
+      message.reply(`⚠️ Cú pháp: \`-gacha [số lần, 1-10]\` (mặc định 1 nếu bỏ trống).\n> Chi phí: **${GACHA_COST_PER_PULL} Lunacy/lần**.\n> Rate: ${GACHA_RATES.high}% thường / ${GACHA_RATES.mid}% trung bình / ${GACHA_RATES.rare}% cực hiếm.`);
+      return;
+    }
+    try {
+      await withLock(message.author.id, async () => {
+        const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
+        const totalCost = GACHA_COST_PER_PULL * count;
+        const currentLunacy = profileData.lunacy ?? 0;
+        if (currentLunacy < totalCost) {
+          throw new Error(`Không đủ Lunacy — cần **${formatNumber(totalCost)}** (${count} lần × ${GACHA_COST_PER_PULL}), hiện có **${formatNumber(currentLunacy)}**.`);
+        }
+        profileData.lunacy = currentLunacy - totalCost;
+        profileData.items = profileData.items ?? {};
+        const results = [];
+        const rareHits = [];
+        for (let i = 0; i < count; i++) {
+          const item = rollGachaOnce();
+          profileData.items[item] = (profileData.items[item] ?? 0) + 1;
+          results.push(item);
+          if (GACHA_POOL_RARE.includes(item)) rareHits.push(item);
+        }
+        await savePlayerData(message.author.id, profileData, slot);
+        // Gom nhóm hiển thị (VD "Book Thường x3") thay vì liệt kê trùng lặp dài dòng.
+        const counted = {};
+        for (const item of results) counted[item] = (counted[item] ?? 0) + 1;
+        const resultLines = Object.entries(counted).map(([item, n]) => `${GACHA_POOL_RARE.includes(item) ? "🌟" : GACHA_POOL_MID.includes(item) ? "✨" : "▫️"} ${item}${n > 1 ? ` x${n}` : ""}`);
+        message.reply(
+          `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} Lunacy, còn **${formatNumber(profileData.lunacy)}**):\n` +
+          resultLines.map(l => `> ${l}`).join("\n") +
+          (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : "")
+        );
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith("-redeem")) {
+    if (isOnCooldown(message.author.id, "redeem", 3000)) {
+      message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
+      return;
+    }
+    const codeRaw = message.content.replace(/^-redeem/i, "").trim().toUpperCase();
+    if (!codeRaw) {
+      message.reply("⚠️ Cú pháp: `-redeem <code>` (VD: `-redeem GLORYTOPROJECTMOON`).");
+      return;
+    }
+    const codeReward = REDEEM_CODES[codeRaw];
+    if (!codeReward) {
+      message.reply(`❌ Code "${codeRaw}" không hợp lệ hoặc đã hết hạn.`);
+      return;
+    }
+    try {
+      await withLock(message.author.id, async () => {
+        const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
+        profileData.redeemedCodes = profileData.redeemedCodes ?? [];
+        if (profileData.redeemedCodes.includes(codeRaw)) {
+          throw new Error(`Bạn đã dùng code "${codeRaw}" ở profile này rồi — mỗi code chỉ dùng được 1 lần.`);
+        }
+        profileData.redeemedCodes.push(codeRaw);
+        const rewardNotes = [];
+        if (codeReward.lunacy) {
+          profileData.lunacy = (profileData.lunacy ?? 0) + codeReward.lunacy;
+          rewardNotes.push(`+${formatNumber(codeReward.lunacy)} 🌙Lunacy`);
+        }
+        await savePlayerData(message.author.id, profileData, slot);
+        message.reply(`✅ Đã dùng code **${codeRaw}**: ${rewardNotes.join(", ")} (hiện có **${formatNumber(profileData.lunacy)} Lunacy**).`);
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
+    }
+    return;
+  }
+
   if (message.content.startsWith("-profile")) {
     if (isOnCooldown(message.author.id, "profile", 2000)) {
       message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
