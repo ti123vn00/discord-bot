@@ -2128,6 +2128,22 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
  *  lưu) — TÁCH ra để dùng chung CẢ cho lệnh text (`-gacha <count>`) LẪN nút bấm
  *  UI mới (xem buildGachaPanel/handler "gachapull:"). Throw Error nếu không đủ
  *  Lunacy — CALLER tự bắt và hiển thị theo cách phù hợp. */
+/** buildEnemyTargetOptions — GAP ĐÃ SỬA (xác nhận trực tiếp: "phần target ở toàn
+ *  bộ dropdown nên sửa lại thành cho bấm thay vì là key... giống 1 game hơn") —
+ *  dùng CHUNG cho attack/critical/hit/followup — liệt kê enemy CÒN SỐNG bằng TÊN
+ *  THẬT (không phải gõ key tay), + option "Tất cả (AOE)". multi-select (tối đa
+ *  25 — giới hạn Discord) cho phép chọn NHIỀU enemy cùng lúc mà không cần gõ
+ *  "mo,arnold" — chỉ tick chọn.
+ */
+function buildEnemyTargetOptions(encounter) {
+  const aliveEnemyKeys = Object.keys(encounter?.enemies ?? {}).filter(k => encounter.enemies[k].currentHp > 0);
+  const options = aliveEnemyKeys.map(k =>
+    new StringSelectMenuOptionBuilder().setLabel(`${encounter.enemies[k].name} (${k})`.slice(0, 100)).setValue(k)
+  );
+  options.push(new StringSelectMenuOptionBuilder().setLabel("🎯 Tất cả (AOE)").setValue("all"));
+  return options.slice(0, 25);
+}
+
 async function performGachaPull(userId, count) {
   let resultInfo;
   await withLock(userId, async () => {
@@ -6469,9 +6485,18 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
 
     // AOE nhiều target — MỖI target 1 prompt riêng (mỗi người tự quyết định
     // phòng thủ của mình, độc lập với người khác).
+    p.reactedTargetIds = p.reactedTargetIds ?? [];
     for (const t of p.targets) {
       const targetResolved = resolveCombatant(encounter, t.targetId);
       if (!targetResolved) continue;
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 số đòn của boss không dmg nhưng hiệu
+      // ứng... không tốn stamina") — nếu đòn KHÔNG gây dmg thật (0) cho target
+      // này, KHÔNG bắt họ tốn Stamina Guard/Evade một thứ chẳng gây gì — tự động
+      // coi như "đã phản hồi" (bỏ qua chọn phòng thủ), không gửi prompt.
+      if ((t.preview?.totalDmg ?? 0) <= 0) {
+        if (!p.reactedTargetIds.includes(t.targetId)) p.reactedTargetIds.push(t.targetId);
+        continue;
+      }
       const target = targetResolved.combatant;
       const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
       const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
@@ -6525,6 +6550,19 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         }],
         components: [row],
       }).catch(() => {});
+    }
+    // Nếu MỌI target trong đòn đều dmg=0 (toàn bộ bị auto-skip ở trên, không ai
+    // được gửi prompt nào) — không còn ai để chờ, resolve NGAY thay vì để pending
+    // treo vô thời hạn không ai bấm gì cả.
+    const allTargetIds = p.targets.map(tg => tg.targetId);
+    if (allTargetIds.length > 0 && allTargetIds.every(tid => p.reactedTargetIds.includes(tid))) {
+      const lines = await resolveOnePendingAction(encounter, p);
+      encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
+      await saveEncounter(channelId, encounter);
+      const resultChannel = await client.channels.fetch(channelId).catch(() => null);
+      if (resultChannel) {
+        await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không gây dmg)", description: lines.join("\n"), color: 0x95a5a6 }] }).catch(() => {});
+      }
     }
   } catch (err) {
     log("error", "sendReactiveDefensePrompt", "system", err.message);
@@ -7049,10 +7087,14 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply({ content: lines.join("\n") + (stoppedEarly ? "" : ` ✅ (${count}/${count} lần)`) });
       return;
     }
-    // bossattack KHÔNG còn field "targetStr" (đã chuyển sang chọn qua dropdown
-    // bossattacktarget) — đọc field không tồn tại sẽ throw lỗi, nên loại trừ
-    // riêng action này khỏi việc đọc chung.
-    const targetStr = action === "bossattack" ? null : interaction.fields.getTextInputValue("targetStr");
+    // bossattack/attack/criticalhit/hit KHÔNG còn field "targetStr" (đã chuyển
+    // sang chọn qua dropdown enctarget/bossattacktarget TRƯỚC khi mở Modal) — target
+    // giờ nằm trong customId (parts[4], đã encode lúc chọn dropdown), không phải
+    // đọc từ field Modal nữa — đọc field không tồn tại sẽ throw lỗi.
+    const targetFromCustomId = ["attack", "criticalhit", "hit"].includes(action);
+    const targetStr = action === "bossattack" ? null
+      : targetFromCustomId ? decodeURIComponent(parts[4] ?? "")
+      : interaction.fields.getTextInputValue("targetStr");
     if (action === "attack") {
       const isAutoCalc = parts[3] === "auto";
       const isFixedBurst = parts[3] === "fixedburst";
@@ -7086,16 +7128,18 @@ client.on("interactionCreate", async (interaction) => {
       const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { volleys: eyeOfHorusVolleysInput });
       await interaction.reply({ embeds: [embed] });
     } else if (action === "bossattack") {
-      // Boss UI (theo yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI")
-      // — enemyKey nằm ở parts[3], targetId (đã chọn từ dropdown bossattacktarget,
-      // KHÔNG PHẢI gõ tay) nằm ở parts[4] — BUG ĐÃ SỬA: trước đây đọc targetStr
-      // chung từ Modal field "targetStr", nhưng field đó không còn tồn tại trong
-      // Modal mới (chỉ còn hỏi dmgStr) nên sẽ throw lỗi nếu vẫn đọc.
+      // Boss UI (theo yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI",
+      // mở rộng thêm sau đó: "boss có thể được GM customize rất nhiều... 1 số đòn
+      // không dmg nhưng hiệu ứng") — enemyKey nằm ở parts[3], targetId (đã chọn từ
+      // dropdown bossattacktarget) nằm ở parts[4].
       const enemyKey = parts[3];
       const bossTargetId = parts[4];
       const bossTargetStr = bossTargetId === "all" ? "all" : `<@${bossTargetId}>`;
       const dmgStr = interaction.fields.getTextInputValue("dmgStr");
-      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr);
+      const tags = interaction.fields.getTextInputValue("tags")?.trim() || undefined;
+      const note = interaction.fields.getTextInputValue("note")?.trim() || undefined;
+      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr, { tags });
+      if (note) embed.description += `\n> 📝 **Hiệu ứng:** ${note}`;
       await interaction.reply({ embeds: [embed] });
     } else if (action === "hit") {
       const dmgStr = interaction.fields.getTextInputValue("dmgStr");
@@ -7105,16 +7149,23 @@ client.on("interactionCreate", async (interaction) => {
       const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { skill: skillFromDropdown });
       await interaction.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
     } else if (action === "criticalhit") {
-      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần modal
-      // Dmg ra dmg đầu cuối lên kẻ địch") — TÁI DÙNG kết quả roll ĐÃ LƯU lúc chọn
-      // dropdown (xem case "critical:" ở encmenu select handler), KHÔNG roll lại.
-      const dmgStr = interaction.fields.getTextInputValue("dmgStr");
+      // LỖ HỔNG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp: "người dùng không minh bạch sẽ
+      // có thể sửa nó") — Modal Text Input của Discord LUÔN có thể sửa tự do bởi
+      // người dùng (không có cách nào làm "chỉ đọc") — trước đây lấy dmgStr TRỰC
+      // TIẾP từ field Modal (interaction.fields.getTextInputValue), nghĩa là dù
+      // bot đã roll đúng và pre-fill "4S + 5S + 6S", người chơi có thể XOÁ và gõ
+      // "999S" trước khi submit, và bot sẽ tin theo — gây dmg giả không hề được
+      // roll thật. Sửa: dmgStr giờ lấy TỪ pendingCriticalRolls (server-side, lưu
+      // NGAY lúc roll thật ở dropdown "critical:") — giá trị người dùng gõ trong
+      // Modal field bị BỎ QUA HOÀN TOÀN cho việc tính dmg, chỉ còn tác dụng hiển
+      // thị (không ảnh hưởng gì tới kết quả thật).
       const pendingKey = `${channelId}:${interaction.user.id}`;
       const pending = pendingCriticalRolls.get(pendingKey);
       if (!pending) {
         return interaction.reply({ content: "⚠️ Phiên roll Critical đã hết hạn (quá 5 phút) hoặc không tìm thấy — chọn lại \"Critical\" từ dropdown để roll mới.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       pendingCriticalRolls.delete(pendingKey); // single-use — không tái sử dụng cho lần confirm khác
+      const dmgStr = pending.dmgStr; // TỪ SERVER — KHÔNG dùng interaction.fields.getTextInputValue("dmgStr") nữa
       const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, {
         prefilledVerify: {
           skillRollEmbed: pending.skillRollEmbed, skillKey: pending.skillKey, cooldownTurns: pending.cooldownTurns,
@@ -7125,10 +7176,9 @@ client.on("interactionCreate", async (interaction) => {
       const warningNote = (pending.autoWarnings ?? []).length > 0 ? `\n\n⚠️ ${pending.autoWarnings.join("\n⚠️ ")}` : "";
       if (warningNote) embed.description += warningNote;
       await interaction.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
-    } else if (action === "followup") {
-      const { followupEmbed, hitEmbed } = await performFollowUp(channelId, interaction.user.id, interaction.user.toString(), targetStr);
-      await interaction.reply({ embeds: [followupEmbed] });
-      await interaction.channel.send({ embeds: [hitEmbed] }).catch(() => {});
+      // followup (Modal) ĐÃ GỠ — thực thi trực tiếp từ dropdown enctarget, xem
+      // subAction === "followup" ở handler đó (không cần Modal vì không còn field
+      // nào khác ngoài target).
     }
   } catch (err) {
     log("error", "encModalSubmit", interaction.user?.id ?? "unknown", err.message);
@@ -7205,53 +7255,26 @@ client.on("interactionCreate", async (interaction) => {
       // "hỏi mấy lần" như vũ khí thường — sai hoàn toàn, cho phép player tự ý nhập
       // số hit tuỳ ý thay vì luôn đúng 9.
       const isFixedBurstWeapon = hasWeaponData && (combatant.weaponName ?? "").toLowerCase() === "eye of horus";
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:attack${isFixedBurstWeapon ? ":fixedburst" : hasWeaponData ? ":auto" : ""}`)
-        .setTitle("Đánh thường (M1)");
-      const targetInput = new TextInputBuilder()
-        .setCustomId("targetStr")
-        .setLabel("Target (key enemy, key1,key2, hoặc all)")
-        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      if (isFixedBurstWeapon) {
-        // MÔ HÌNH MỚI (xác nhận trực tiếp, 8 ví dụ N=1..8) — HỎI "N lần bắn" (số
-        // volley TỰ CHỌN cho hành động NÀY) — khác trước đây (chỉ hỏi target, vì
-        // dùng counter cộng dồn qua nhiều lần bấm riêng biệt, giờ không còn nữa).
-        const volleysInput = new TextInputBuilder()
-          .setCustomId("volleys")
-          .setLabel("Bắn mấy lần? (volley 9-hit/lần)")
-          .setPlaceholder("VD: 4")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(targetInput),
-          new ActionRowBuilder().addComponents(volleysInput),
-        );
-      } else if (hasWeaponData) {
-        const hitCountInput = new TextInputBuilder()
-          .setCustomId("hitCount")
-          .setLabel(`Đánh mấy lần? (${combatant.weaponBaseDamage} ${combatant.weaponType}/hit, vũ khí ${combatant.weaponWeight})`.slice(0, 45))
-          .setPlaceholder("VD: 4")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(targetInput),
-          new ActionRowBuilder().addComponents(hitCountInput),
-        );
-      } else {
-        const dmgInput = new TextInputBuilder()
-          .setCustomId("dmgStr")
-          .setLabel("Công thức dmg (chưa rõ vũ khí — gõ tay)")
-          .setPlaceholder("VD: 50x2B+2Sinking")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(targetInput),
-          new ActionRowBuilder().addComponents(dmgInput),
-        );
+      const mode = isFixedBurstWeapon ? "fixedburst" : hasWeaponData ? "auto" : "manual";
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "phần target... nên sửa lại thành cho bấm
+      // thay vì là key... giống 1 game hơn") — chọn target qua DROPDOWN (tên thật,
+      // multi-select cho AOE) TRƯỚC, Modal sau đó CHỈ hỏi phần dmg (không còn gõ
+      // tay key enemy nữa).
+      const targetOptions = buildEnemyTargetOptions(encounter);
+      if (targetOptions.length === 1) { // chỉ có "all" — nghĩa là không còn enemy nào sống
+        return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
-      await interaction.showModal(modal).catch(() => {});
+      await interaction.update({
+        embeds: [{ title: "⚔️ Đánh thường (M1) — chọn target", description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        components: [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`enctarget:${channelId}:attack:${mode}`)
+            .setPlaceholder("Chọn target...")
+            .setMinValues(1)
+            .setMaxValues(targetOptions.length)
+            .addOptions(...targetOptions),
+        )],
+      }).catch(() => {});
       return;
     }
     if (value.startsWith("critical:")) {
@@ -7305,6 +7328,7 @@ client.on("interactionCreate", async (interaction) => {
       }
       const pendingKey = `${channelId}:${interaction.user.id}`;
       pendingCriticalRolls.set(pendingKey, {
+        dmgStr: verify.autoDmgStr,
         skillRollEmbed: verify.skillRollEmbed,
         skillKey: verify.skillKey,
         cooldownTurns: verify.cooldownTurns,
@@ -7314,66 +7338,70 @@ client.on("interactionCreate", async (interaction) => {
         autoWarnings: verify.autoWarnings,
         expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
       });
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:criticalhit:${encodeURIComponent(critSkillName)}`)
-        .setTitle(`Critical: ${critSkillName}`.slice(0, 45));
-      const targetInput = new TextInputBuilder()
-        .setCustomId("targetStr")
-        .setLabel("Target (key enemy, key1,key2, hoặc all)")
-        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      const dmgInput = new TextInputBuilder()
-        .setCustomId("dmgStr")
-        .setLabel("Dmg (đã tự roll — sửa nếu cần)")
-        .setValue(verify.autoDmgStr)
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(targetInput),
-        new ActionRowBuilder().addComponents(dmgInput),
-      );
-      await interaction.showModal(modal).catch(() => {});
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: target dropdown thay vì gõ key) — chọn
+      // target TRƯỚC (dropdown tên thật), Modal sau đó CHỈ hỏi dmg (đã roll sẵn,
+      // pre-fill, vẫn được bảo vệ bởi fix bảo mật trước đó — sửa trong Modal
+      // không ảnh hưởng dmg thật).
+      const targetOptions = buildEnemyTargetOptions(encounter);
+      if (targetOptions.length === 1) {
+        pendingCriticalRolls.delete(pendingKey);
+        return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      await interaction.update({
+        embeds: [verify.skillRollEmbed, { title: `⚡ Critical: ${critSkillName} — chọn target`, description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        components: [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`enctarget:${channelId}:criticalhit:${encodeURIComponent(critSkillName)}`)
+            .setPlaceholder("Chọn target...")
+            .setMinValues(1)
+            .setMaxValues(targetOptions.length)
+            .addOptions(...targetOptions),
+        )],
+      }).catch(() => {});
       return;
     }
     if (value.startsWith("hit:")) {
-      // Page/Skill — GIỮ NGUYÊN Modal target+dmgStr (KHÔNG tự động tính được an
+      // Page/Skill — GIỮ NGUYÊN Modal dmgStr gõ tay (KHÔNG tự động tính được an
       // toàn như M1, vì mỗi Page có dice/hiệu ứng khác nhau hoàn toàn — tự bịa số
       // có nguy cơ sai lệch dmg thật). Chọn từ dropdown vẫn tự điền đúng skill: (áp
-      // dụng ở lúc submit modal, xem encmodal handler) — chỉ cần gõ target+dmg.
+      // dụng ở lúc submit modal, xem encmodal handler) — GAP ĐÃ SỬA: target giờ
+      // chọn qua dropdown (tên thật), không còn gõ tay key enemy nữa.
       const pageName = value.slice(4);
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:hit:${encodeURIComponent(pageName)}`)
-        .setTitle(`Dùng Page: ${pageName}`.slice(0, 45));
-      const targetInput = new TextInputBuilder()
-        .setCustomId("targetStr")
-        .setLabel("Target (key enemy, key1,key2, hoặc all)")
-        .setPlaceholder("VD: mo  hoặc  mo,arnold  hoặc  all")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      const dmgInput = new TextInputBuilder()
-        .setCustomId("dmgStr")
-        .setLabel("Công thức dmg (giống /math)")
-        .setPlaceholder("VD: 50x2B+2Sinking")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(targetInput),
-        new ActionRowBuilder().addComponents(dmgInput),
-      );
-      await interaction.showModal(modal).catch(() => {});
+      const encounter = await getEncounter(channelId);
+      const targetOptions = buildEnemyTargetOptions(encounter);
+      if (targetOptions.length === 1) {
+        return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      await interaction.update({
+        embeds: [{ title: `📖 ${pageName} — chọn target`, description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        components: [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`enctarget:${channelId}:hit:${encodeURIComponent(pageName)}`)
+            .setPlaceholder("Chọn target...")
+            .setMinValues(1)
+            .setMaxValues(targetOptions.length)
+            .addOptions(...targetOptions),
+        )],
+      }).catch(() => {});
       return;
     }
     if (value === "followup") {
-      const modal = new ModalBuilder().setCustomId(`encmodal:${channelId}:followup`).setTitle("Follow-Up / Pounce");
-      const targetInput = new TextInputBuilder()
-        .setCustomId("targetStr")
-        .setLabel("Target (key enemy, key1,key2, hoặc all)")
-        .setPlaceholder("VD: mo")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(targetInput));
-      await interaction.showModal(modal).catch(() => {});
+      const encounter = await getEncounter(channelId);
+      const targetOptions = buildEnemyTargetOptions(encounter);
+      if (targetOptions.length === 1) {
+        return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      await interaction.update({
+        embeds: [{ title: "⚡ Follow-Up/Pounce — chọn target", description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        components: [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`enctarget:${channelId}:followup`)
+            .setPlaceholder("Chọn target...")
+            .setMinValues(1)
+            .setMaxValues(targetOptions.length)
+            .addOptions(...targetOptions),
+        )],
+      }).catch(() => {});
       return;
     }
     // guard/evade/parry (Modal "mấy lần?" trigger) ĐÃ GỠ cùng dropdown option —
@@ -7387,6 +7415,82 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.reply({ content: resultMsg });
   } catch (err) {
     log("error", "encMenuSelect", interaction.user?.id ?? "unknown", err.message);
+    await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (enctarget — chọn target sau khi chọn hành động,
+// dùng CHUNG cho attack/criticalhit/hit/followup — GAP ĐÃ SỬA: "phần target ở
+// toàn bộ dropdown nên sửa lại thành cho bấm thay vì là key... giống 1 game
+// hơn") ─────────────────────────────────────────────────────────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("enctarget:")) return;
+  const parts = interaction.customId.split(":");
+  const channelId = parts[1];
+  const subAction = parts[2]; // "attack" | "criticalhit" | "hit" | "followup"
+  const extra = parts[3]; // mode (attack) | critSkillName encoded (criticalhit) | pageName encoded (hit) | undefined (followup)
+  try {
+    // "all" ưu tiên nếu có trong lựa chọn (multi-select có thể lẫn "all" với
+    // enemy cụ thể — coi như muốn AOE toàn bộ), ngược lại nối các key đã chọn.
+    const targetStr = interaction.values.includes("all") ? "all" : interaction.values.join(",");
+    const encodedTarget = encodeURIComponent(targetStr);
+    if (subAction === "attack") {
+      const mode = extra; // auto | fixedburst | manual
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:attack:${mode}:${encodedTarget}`)
+        .setTitle("Đánh thường (M1)");
+      if (mode === "fixedburst") {
+        const volleysInput = new TextInputBuilder()
+          .setCustomId("volleys").setLabel("Bắn mấy lần? (volley 9-hit/lần)")
+          .setPlaceholder("VD: 4").setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(volleysInput));
+      } else if (mode === "auto") {
+        const encounter = await getEncounter(channelId);
+        const combatant = encounter?.players?.[interaction.user.id];
+        const hitCountInput = new TextInputBuilder()
+          .setCustomId("hitCount")
+          .setLabel(`Đánh mấy lần? (${combatant?.weaponBaseDamage ?? "?"} ${combatant?.weaponType ?? ""}/hit)`.slice(0, 45))
+          .setPlaceholder("VD: 4").setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(hitCountInput));
+      } else {
+        const dmgInput = new TextInputBuilder()
+          .setCustomId("dmgStr").setLabel("Công thức dmg (chưa rõ vũ khí — gõ tay)")
+          .setPlaceholder("VD: 50x2B+2Sinking").setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
+      }
+      await interaction.showModal(modal).catch(() => {});
+    } else if (subAction === "criticalhit") {
+      const critSkillName = decodeURIComponent(extra);
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:criticalhit:${encodeURIComponent(critSkillName)}:${encodedTarget}`)
+        .setTitle(`Critical: ${critSkillName}`.slice(0, 45));
+      const pendingKey = `${channelId}:${interaction.user.id}`;
+      const pending = pendingCriticalRolls.get(pendingKey);
+      const dmgInput = new TextInputBuilder()
+        .setCustomId("dmgStr").setLabel("Dmg (đã tự roll)")
+        .setValue(pending?.dmgStr ?? "").setStyle(TextInputStyle.Short).setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
+      await interaction.showModal(modal).catch(() => {});
+    } else if (subAction === "hit") {
+      const pageName = decodeURIComponent(extra);
+      const modal = new ModalBuilder()
+        .setCustomId(`encmodal:${channelId}:hit:${encodeURIComponent(pageName)}:${encodedTarget}`)
+        .setTitle(`Dùng Page: ${pageName}`.slice(0, 45));
+      const dmgInput = new TextInputBuilder()
+        .setCustomId("dmgStr").setLabel("Công thức dmg (giống /math)")
+        .setPlaceholder("VD: 50x2B+2Sinking").setStyle(TextInputStyle.Short).setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
+      await interaction.showModal(modal).catch(() => {});
+    } else if (subAction === "followup") {
+      // Follow-Up không cần Modal nữa (không có field nào khác ngoài target) —
+      // thực thi NGAY sau khi chọn target, giống tinh thần "thuần menu UI".
+      const { followupEmbed, hitEmbed } = await performFollowUp(channelId, interaction.user.id, interaction.user.toString(), targetStr);
+      await interaction.update({ embeds: [followupEmbed], components: [] }).catch(() => {});
+      await interaction.followUp({ embeds: [hitEmbed] }).catch(() => {});
+    }
+  } catch (err) {
+    log("error", "enctargetSelect", interaction.user?.id ?? "unknown", err.message);
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
@@ -7462,13 +7566,36 @@ client.on("interactionCreate", async (interaction) => {
   const modal = new ModalBuilder()
     .setCustomId(`encmodal:${channelId}:bossattack:${enemyKey}:${targetId}`)
     .setTitle(`${enemyKey} tấn công`.slice(0, 45));
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "boss có thể được GM customize rất nhiều...
+  // 1 số đòn của boss không dmg nhưng hiệu ứng... không thể làm chỉ only m1 như
+  // hiện tại") — mở rộng thêm 2 field TUỲ CHỌN (không bắt buộc điền):
+  // - tags: bypass tag (Unblockable/Guard Break/Undodgeable/...) giống lệnh text
+  // - note: ghi chú hiệu ứng TỰ DO (không qua resolveSkillVerification, vì boss
+  //   không có object skill định sẵn như player) — hiển thị kèm kết quả, GM tự áp
+  //   status liên quan qua `-encounter setstatus` sau nếu cần.
   const dmgInput = new TextInputBuilder()
     .setCustomId("dmgStr")
-    .setLabel("Công thức dmg")
-    .setPlaceholder("VD: 50x2B+2Sinking")
+    .setLabel("Công thức dmg (0 nếu chỉ hiệu ứng, không dmg)")
+    .setPlaceholder("VD: 50x2B+2Sinking — hoặc 0B nếu không gây dmg")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
-  modal.addComponents(new ActionRowBuilder().addComponents(dmgInput));
+  const tagsInput = new TextInputBuilder()
+    .setCustomId("tags")
+    .setLabel("Tags (tuỳ chọn)")
+    .setPlaceholder("VD: unblockable,guardbreak")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+  const noteInput = new TextInputBuilder()
+    .setCustomId("note")
+    .setLabel("Ghi chú hiệu ứng (tuỳ chọn)")
+    .setPlaceholder("VD: Gây 2 Rupture, +1 Bleed — GM tự áp qua setstatus")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false);
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(dmgInput),
+    new ActionRowBuilder().addComponents(tagsInput),
+    new ActionRowBuilder().addComponents(noteInput),
+  );
   await interaction.showModal(modal).catch(() => {});
 });
 
