@@ -1212,7 +1212,7 @@ function normalizeEnemyKey(k) {
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
 const { createCombatant } = require("./combatant-factory")({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }); // ĐÃ TÁCH sang file riêng (combatant-factory.js)
 
-const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX });
+const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, insertIntoTurnOrderMidRound, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX });
 
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
@@ -4167,6 +4167,10 @@ if (message.content.startsWith("-gacha")) {
             weaponWeight: weapon, resistance: res, speedRangeMin, speedRangeMax,
           });
           encounter.enemies[key].unlockedPerks = perksList;
+          // GAP ĐÃ SỬA (phát hiện qua rà soát): thêm enemy GIỮA 1 round (đã
+          // rollspeed) trước đây khiến enemy này KHÔNG BAO GIỜ được hành động
+          // cho tới hết round — giờ tự động chèn vào turnOrder hiện tại.
+          if (!wasExisting) insertIntoTurnOrderMidRound(encounter, key, "enemy", encounter.enemies[key]);
           await saveEncounter(encChannelId, encounter);
           await message.reply({
             content: `✅ ${wasExisting ? "Đã cập nhật lại" : "Đã thêm"} enemy **${name}** (key: \`${key}\`) với ${hp} HP.` +
@@ -4303,6 +4307,11 @@ if (message.content.startsWith("-gacha")) {
           // đã fetch ở trên (tránh gọi Redis 2 lần + tránh race condition).
           const profileData = profileDataForDefaults;
           const joined = encounter.players[message.author.id];
+          // GAP ĐÃ SỬA (phát hiện qua rà soát): join GIỮA 1 round (đã rollspeed)
+          // trước đây khiến player này KHÔNG BAO GIỜ được hành động cho tới hết
+          // round — giờ tự động chèn vào turnOrder hiện tại (chỉ lần join ĐẦU,
+          // không phải update lại profile giữa chừng).
+          if (!wasJoined) insertIntoTurnOrderMidRound(encounter, message.author.id, "player", joined);
           joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
           // Injuries PERSIST qua encounter (xác nhận trực tiếp từ GM) — snapshot
           // TRỰC TIẾP từ profile (KHÔNG reset về rỗng như trước đây). maxHp đã tính
