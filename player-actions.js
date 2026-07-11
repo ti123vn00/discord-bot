@@ -261,7 +261,7 @@ module.exports = function createPlayerActions(deps) {
           const { grade } = calcGrade(d.exp ?? 0);
           lines.push(
             `${s === currentSlot ? "▶️" : PROFILE_EMOJIS[s]} **${label}**${s === currentSlot ? " *(đang dùng)*" : ""}\n` +
-            `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()} | 🌙 Lunacy: ${(d.lunacy ?? 0).toLocaleString()}\n` +
+            `> 🏅 Grade **${grade}** | EXP: ${d.exp ?? 0} | Ahn: ${(d.ahn ?? 0).toLocaleString()} | <:Lunacy:1524989409529823342> Lunacy: ${(d.lunacy ?? 0).toLocaleString()}\n` +
             `> 📅 Daily: ${claimedToday ? "✅ Đã nhận hôm nay" : "🔲 Chưa nhận"} | Streak: ${streak}/7`
           );
         } else {
