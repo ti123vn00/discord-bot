@@ -3894,7 +3894,7 @@ client.on("messageCreate", async (message) => {
   // Sealed Book Cache.
   const REDEEM_CODES = {
     GLORYTOPROJECTMOON: { lunacy: 1300 },
-    "AR-26710PhiLia093": { lunacy: 13000},
+    "AR-26710PHILIA093": { lunacy: 13000},
     APOLOGIZE: { books: { "Random Book": 10, "Sealed Book Cache": 5 } },
   };
   // ─── GACHA ──────────────────────────────────────────────────────────────────
