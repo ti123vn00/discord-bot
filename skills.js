@@ -2706,7 +2706,7 @@ roll(v = "no") {
       const lightText = isReuse ? "" : " và nhận 1 <:Light:1513786082502770719>Light";
       const reuseTag = isReuse ? " *(Reuse — tốn 1 <:Light:1513786082502770719>Light, không nhận Light)*" : "";
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit${lightText} và gây 4 <:Rupture:1513762812722155682>Rupture${reuseTag}`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit${lightText} và gây 2 <:Rupture:1513762812722155682>Rupture${reuseTag}`,
       ];
     },
   },
