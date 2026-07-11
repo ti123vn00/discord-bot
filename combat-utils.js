@@ -74,7 +74,15 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     // skill — sai lượt thì bị chặn, chỉ phòng thủ phản ứng được thôi" — mỗi lần
     // roll Speed MỚI (turn mới hoặc lần đầu), reset về người ĐẦU TIÊN trong thứ
     // tự vừa roll.
-    encounter.currentTurnIndex = 0;
+    // GAP ĐÃ SỬA (phát hiện qua rà soát): nếu người Ở VỊ TRÍ ĐẦU TIÊN đã đang
+    // Stagger/chết SẴN TỪ round trước (VD dính Stagger cuối round cũ, vẫn còn
+    // hiệu lực khi round mới bắt đầu) — set thẳng currentTurnIndex=0 sẽ trỏ vào
+    // họ mà KHÔNG skip (advanceToNextTurnHolder chỉ skip khi tìm người TIẾP
+    // THEO, không áp dụng cho vị trí khởi đầu này) — announceCurrentTurn sẽ mời
+    // 1 người sắp bị chặn ngay khi thử hành động. Sửa: set -1 rồi advance ngay
+    // (tái dùng ĐÚNG logic "tìm người hợp lệ" đã có, không viết lại).
+    encounter.currentTurnIndex = -1;
+    advanceToNextTurnHolder(encounter);
     return order;
   }
 
