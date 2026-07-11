@@ -5077,73 +5077,16 @@ if (message.content.startsWith("-gacha")) {
     // ── followup: Follow-Up (Wrath, [10~14] Blunt + Airborne) HOẶC Pounce (Sloth,
     // [8~30] Blunt) — 2 perk LOẠI TRỪ NHAU (không ai có cả 2), điều kiện kích hoạt
     // GIỐNG NHAU: turn này đã tiêu ≥20 Stamina qua đánh thường, CHỈ 1 LẦN/turn.
-    if (sub === "followup") {
-      const kv = parseKeyValues(rest);
-      const targetStr = kv["target"] ?? "";
-      if (!targetStr.trim()) { message.reply("⚠️ Cú pháp: `-encounter followup target: <key/all>`"); return; }
-      try {
-        const { followupEmbed, hitEmbed } = await performFollowUp(encChannelId, message.author.id, message.author.toString(), targetStr);
-        await message.reply({ embeds: [followupEmbed] });
-        await message.channel.send({ embeds: [hitEmbed] });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
+    // followup/overcharge (LỆNH TEXT) ĐÃ GỠ (xác nhận trực tiếp: dropdown option
+    // "followup"/"overcharge" trong encmenu đã gọi ĐÚNG performFollowUp/
+    // performOvercharge, không cần lệnh text riêng nữa).
 
-    // ── overcharge: Overcharged Vessel (Envy) — tiêu TOÀN BỘ Charge hiện tại (cần
-    // ≥10), mỗi 10 Charge tiêu = +1 Dice Up và +5% Dmg trong 3 turn.
-    if (sub === "overcharge") {
-      try {
-        const resultMsg = await performOvercharge(encChannelId, message.author.id);
-        message.reply(resultMsg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    // ── guard/evade: hành động phòng thủ CHUNG, dùng TỰ DO bao nhiêu lần cũng được
-    // (chỉ giới hạn bởi Stamina còn lại) — KHÔNG giống V1 cũ (không "chặn N hit theo
-    // vũ khí địch", không Parry roll d20). Mỗi lần dùng tốn Stamina NGAY (khác với
-    // attack/hit — Stamina ở đây không cần GM duyệt vì không có số liệu dmg nào để
-    // sai, chỉ là tự trừ tài nguyên bản thân), cộng 1 charge — charge bị TIÊU THỤ
-    // lúc CONFIRM 1 đòn tấn công nhằm vào mình (xem comment ở encconfirmall handler).
-    // Có key: thì GM dùng hộ cho 1 enemy (hiếm khi cần nhưng để đối xứng). Logic THẬT
-    // nằm ở performGuardEvade (dùng chung với dropdown hành động — xem encmenu handler).
-    if (sub === "guard" || sub === "evade") {
-      const kv = parseKeyValues(rest);
-      const enemyKeyRaw = (kv["key"] ?? "").trim();
-      // GAP ĐÃ SỬA (xác nhận trực tiếp): cho phép chọn CỤ THỂ hit muốn che thay vì
-      // chỉ tuần tự — VD `-encounter guard attacker: mo hits: 3,5`. Xem comment đầy
-      // đủ ở performGuardEvade (encounter-actions.js).
-      const attackerKeyRaw = (kv["attacker"] ?? "").trim();
-      const hitsRaw = (kv["hits"] ?? "").trim();
-      try {
-        const resultMsg = await performGuardEvade(encChannelId, message.author.id, isAdmin, sub, enemyKeyRaw, attackerKeyRaw, hitsRaw);
-        message.reply(resultMsg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    // ── parry: 0 Sta, roll d20 NGAY — lưu vào parryRolls, so với roll của bên tấn
-    // công lúc CONFIRM (không phải lúc declare, vì roll của bên tấn công chưa biết
-    // được). Ngang điểm = parry THẮNG (luật: "cao hơn HOẶC NGANG"). Thua: -40 Sta +
-    // ăn full dmg. Cũng áp WEAPON_DEFENSE_HITS như Guard/Evade cho M1. Logic THẬT
-    // nằm ở performParry (dùng chung với dropdown — xem encmenu handler).
-    if (sub === "parry") {
-      const kv = parseKeyValues(rest);
-      const enemyKeyRaw = (kv["key"] ?? "").trim();
-      try {
-        const resultMsg = await performParry(encChannelId, message.author.id, isAdmin, enemyKeyRaw);
-        message.reply(resultMsg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
+    // guard/evade/parry (LỆNH TEXT CHỦ ĐỘNG) ĐÃ BỊ GỠ BỎ (xác nhận trực tiếp:
+    // "nghĩ nên bỏ hẳn... vì đã sử dụng hệ thống guard mới rồi") — hệ thống
+    // Reactive Defense (tự động hiện prompt Guard/Evade/Parry ngay khi bị tấn
+    // công) đã thay thế hoàn toàn nhu cầu tự xây charge trước qua lệnh text.
+    // performGuardEvade/performParry vẫn giữ nguyên (dùng chung bởi reactive
+    // prompt handler "encreactivedef:") — chỉ gỡ 2 ĐIỂM VÀO qua lệnh text này.
 
     // ── clash: so dice ĐẦU TIÊN của 2 skill (luôn lấy Dice đầu, theo luật) — ai cao
     // hơn thắng. Thắng: +10 Sanity +2 Emotion Coin. Thua: -10 Sanity -1 Coin. Huề:
@@ -5152,20 +5095,8 @@ if (message.content.startsWith("-gacha")) {
     // khác") — check qua encounter.turnOrder nếu ĐÃ roll (xem -encounter rollspeed);
     // nếu chưa roll thì bỏ qua check này (không ép phải roll Speed trước mới clash
     // được — Speed là tính năng riêng, không phải điều kiện bắt buộc của Clash).
-    // ── shinmang: hi sinh 25 Sanity/turn (chặn nếu Sanity hiện tại ≤ -10) để nhận
-    // Shin (-0.2x Res bản thân) + Mang (+10%/+10% mỗi vòng Dmg M1+skill trong turn,
-    // True Dmg). CHỈ player có sở hữu Shin mới dùng được — kiểm qua unlockedPerks
-    // có "Shin" (đặt tên khác Skill Tree thường để rõ đây là quyền sở hữu, không
-    // phải perk tốn point — GM tự thêm qua -unlockskilltree nếu player sở hữu Shin).
-    if (sub === "shinmang" || sub === "shin") {
-      try {
-        const resultMsg = await performShinMang(encChannelId, message.author.id);
-        message.reply(resultMsg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
+    // shinmang (LỆNH TEXT) ĐÃ GỠ (xác nhận trực tiếp: dropdown option "shinmang"
+    // trong encmenu đã gọi ĐÚNG performShinMang, không cần lệnh text riêng nữa).
 
     // ── additem: mang 1 Consumable Item vào trận (tối đa 4 — luật "1 trận chỉ
     // được mang 4 item hồi phục") — CHỈ kiểm tra player ĐANG sở hữu đủ trong
@@ -5318,21 +5249,9 @@ if (message.content.startsWith("-gacha")) {
       return;
     }
 
-    // ── manifestego: kích hoạt Manifest E.G.O — cần Emotion Level ≥1 đang active
-    // (Duration = Level×3 turn — Lv1=3/Lv2=6 xác nhận trực tiếp, Lv3+ suy theo cùng
-    // quy luật). -30 Sanity lúc kích hoạt. CD 5 turn SAU KHI hết hiệu lực (không
-    // phải sau khi DÙNG — nếu vẫn đang active thì dùng lại = reset Duration, không
-    // vào CD). Comeback Time (perk): lần ĐẦU TIÊN trong trận → +25% Max HP. Logic
-    // THẬT nằm ở performManifestEgo (dùng chung với dropdown).
-    if (sub === "manifestego") {
-      try {
-        const resultMsg = await performManifestEgo(encChannelId, message.author.id);
-        message.reply(resultMsg);
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
+    // manifestego (LỆNH TEXT) ĐÃ GỠ (xác nhận trực tiếp: dropdown option
+    // "manifestego" trong encmenu đã gọi ĐÚNG performManifestEgo, không cần lệnh
+    // text riêng nữa). Logic performManifestEgo vẫn giữ nguyên, chỉ gỡ điểm vào.
 
     // -encounter bossmenu key: <enemy> — hiện dropdown điều khiển boss (theo yêu
     // cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI"). Chỉ GM/admin dùng
@@ -7436,25 +7355,8 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.showModal(modal).catch(() => {});
       return;
     }
-    if (value === "guard" || value === "evade" || value === "parry") {
-      // Guard/Evade/Parry — theo yêu cầu trực tiếp: hỏi "mấy lần" qua Modal thay vì
-      // bắt chọn lại dropdown nhiều lần cho mỗi charge muốn có. Modal NHẸ, chỉ 1
-      // field, để trống = mặc định 1 lần (không bắt buộc phải gõ số cho trường hợp
-      // đơn giản nhất).
-      const label = { guard: "🛡️ Guard", evade: "💨 Evade", parry: "🗡️ Parry" }[value];
-      const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:repeat:${value}`)
-        .setTitle(`${label} — mấy lần?`);
-      const countInput = new TextInputBuilder()
-        .setCustomId("count")
-        .setLabel("Số lần (để trống = 1)")
-        .setPlaceholder("VD: 3")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-      modal.addComponents(new ActionRowBuilder().addComponents(countInput));
-      await interaction.showModal(modal).catch(() => {});
-      return;
-    }
+    // guard/evade/parry (Modal "mấy lần?" trigger) ĐÃ GỠ cùng dropdown option —
+    // xem buildEncounterActionPanel (encounter-panels.js).
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
     let resultMsg;
     if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
@@ -7505,14 +7407,9 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.showModal(modal).catch(() => {});
       return;
     }
-    if (value === "guard" || value === "evade" || value === "parry") {
-      const label = { guard: "🛡️ Guard", evade: "💨 Evade", parry: "🗡️ Parry" }[value];
-      let resultMsg;
-      if (value === "parry") resultMsg = await performParry(channelId, interaction.user.id, isAdmin, enemyKey);
-      else resultMsg = await performGuardEvade(channelId, interaction.user.id, isAdmin, value, enemyKey);
-      await interaction.reply({ content: resultMsg });
-      return;
-    }
+    // guard/evade/parry ĐÃ GỠ cùng dropdown option — xem buildBossActionPanel
+    // (encounter-panels.js) — enemy giờ chỉ có "Tấn công", phòng thủ tự động qua
+    // Reactive Defense khi bị tấn công.
     await interaction.reply({ content: "⚠️ Hành động không hợp lệ.", flags: MessageFlags.Ephemeral }).catch(() => {});
   } catch (err) {
     log("error", "bossMenuSelect", interaction.user?.id ?? "unknown", err.message);
