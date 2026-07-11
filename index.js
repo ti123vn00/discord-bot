@@ -65,6 +65,7 @@ const DAILY_EXP_REWARD = 5;
 const DAILY_AHN_REWARD = 100_000;
 const DAILY_STREAK_EXP_BONUS = 25;
 const DAILY_STREAK_AHN_BONUS = 400_000;
+const DAILY_STREAK_LUNACY_BONUS = 750; // xác nhận trực tiếp: "cứ đủ streak 7 ngày thì sẽ cho 750 lunacy nữa"
 // TTL 2 ngày (thay vì 1 ngày) là có chủ ý:
 // - Nếu user điểm danh ngày 1, skip ngày 2, rồi điểm ngày 3: key vẫn còn nhưng
 //   lastClaim (ngày 1) ≠ yesterdayStr (ngày 2) → streak reset về 1 đúng logic.
@@ -951,8 +952,10 @@ async function processDailyClaimForUser(userId) {
 
     const expBefore = playerData.exp ?? 0;
     const expGain = DAILY_EXP_REWARD + (isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0);
-    playerData.exp = clampExp(expBefore + expGain);
+    const lunacyBeforeExpConvert = playerData.lunacy ?? 0;
+    playerData.exp = clampExpWithLunacy(playerData, expBefore + expGain);
     const actualExpGained = playerData.exp - expBefore;
+    const lunacyFromExpConvert = (playerData.lunacy ?? 0) - lunacyBeforeExpConvert;
 
     playerData.ahn = (playerData.ahn ?? 0) + DAILY_AHN_REWARD;
     playerData.books["Random Book"] = (playerData.books["Random Book"] ?? 0) + 1;
@@ -960,6 +963,9 @@ async function processDailyClaimForUser(userId) {
     if (isWeekComplete) {
       playerData.ahn += DAILY_STREAK_AHN_BONUS;
       playerData.books["Sealed Book Cache"] = (playerData.books["Sealed Book Cache"] ?? 0) + 1;
+      // Streak 7 ngày (xác nhận trực tiếp): "cứ đủ streak 7 ngày thì sẽ cho 750
+      // lunacy nữa" — cộng thêm vào phần thưởng hoàn thành streak sẵn có.
+      playerData.lunacy = (playerData.lunacy ?? 0) + DAILY_STREAK_LUNACY_BONUS;
     }
 
     const saveResults = await withTimeout(
@@ -992,11 +998,12 @@ async function processDailyClaimForUser(userId) {
     let replyMsg =
       `🎉 {USER} đã điểm danh thành công!\n` +
       `> ${expLine}\n` +
-      `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}`;
+      `> 🔥 Streak: **${displayStreak}/7** ngày  ${bar}` +
+      (lunacyFromExpConvert > 0 ? `\n> 🌙 EXP dư chuyển thành +${formatNumber(lunacyFromExpConvert)} <:Lunacy:1524989409529823342>Lunacy` : "");
 
     if (isWeekComplete) {
       replyMsg +=
-        `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **${isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0} Exp**, **400k Ahn** và **1 Sealed Book Cache**!\n` +
+        `\n\n🏆 **Hoàn thành streak 7 ngày!** Bạn nhận thêm **${isWeekComplete ? DAILY_STREAK_EXP_BONUS : 0} Exp**, **400k Ahn**, **${formatNumber(DAILY_STREAK_LUNACY_BONUS)} <:Lunacy:1524989409529823342>Lunacy** và **1 Sealed Book Cache**!\n` +
         `> Streak đã reset, bắt đầu lại từ ngày 1 nhé!`;
     }
 
@@ -2132,11 +2139,20 @@ async function performGachaPull(userId, count) {
     }
     profileData.lunacy = currentLunacy - totalCost;
     profileData.items = profileData.items ?? {};
+    profileData.books = profileData.books ?? {};
     const results = [];
     const rareHits = [];
     for (let i = 0; i < count; i++) {
       const item = rollGachaOnce();
-      profileData.items[item] = (profileData.items[item] ?? 0) + 1;
+      // BUG ĐÃ SỬA (xác nhận trực tiếp): trước đây MỌI thứ rớt ra (kể cả sách)
+      // đều bị cộng thẳng vào profileData.items — sách phải nằm ở profileData.books
+      // (đúng chỗ -inventory/-give hiện có đã phân biệt từ trước, VALID_BOOKS là
+      // danh sách sách hợp lệ CHUẨN — dùng lại để định tuyến đúng, không đoán).
+      if (VALID_BOOKS.includes(item)) {
+        profileData.books[item] = (profileData.books[item] ?? 0) + 1;
+      } else {
+        profileData.items[item] = (profileData.items[item] ?? 0) + 1;
+      }
       results.push(item);
       if (GACHA_POOL_RARE.includes(item)) rareHits.push(item);
     }
