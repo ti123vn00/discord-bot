@@ -102,6 +102,12 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
       `> Res: **${resLine}** | Vũ khí: **${combatant.weaponWeight}**`,
       `> Speed Range: **${combatant.speedRangeMin}~${combatant.speedRangeMax}**${combatant.currentSpeed !== null ? ` | Speed turn này: **${combatant.currentSpeed}**` : ""}${combatant.haste > 0 ? ` | <:Haste:1375181763994849333>${combatant.haste}` : ""}${combatant.bind > 0 ? ` | <:Fix_Bind:1513768025881317457>${combatant.bind}` : ""}`,
     ];
+    // eyeOfHorusAmmo — GAP ĐÃ SỬA (xác nhận trực tiếp): "tôi không thấy phần
+    // stack ammo ở phần encounter status" — pool NỘI TẠI riêng của Eye Of Horus
+    // (8, reset mỗi turn), chỉ hiển thị cho người ĐANG cầm vũ khí này.
+    if ((combatant.weaponName ?? "").toLowerCase() === "eye of horus") {
+      lines.push(`> 🏹 Eye Of Horus Ammo: **${combatant.eyeOfHorusAmmo ?? 8}/8** (reset khi hết turn)`);
+    }
     if ((combatant.guardCharges ?? 0) > 0 || (combatant.evadeCharges ?? 0) > 0) {
       const parts = [];
       if (combatant.guardCharges > 0) parts.push(`🛡️ Guard sẵn sàng x${combatant.guardCharges}`);
