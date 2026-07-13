@@ -58,6 +58,13 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // staminaUsedThisTurn: để tính Light gain ("đánh đủ 20 sta M1 trong turn → +1
       // Light turn sau") — reset về 0 mỗi lần endturn.
       staminaUsedThisTurn: 0,
+      // eyeOfHorusAmmo — GAP ĐÃ SỬA (xác nhận trực tiếp): "Ammo có sẵn của Eye
+      // of Horus là 8... về 0 thì không thể M1 trong turn đó nữa mà phải đợi
+      // hết turn thì reset về 8... nó không phải là ammo thông thường trong
+      // inventory" — pool NỘI TẠI riêng của vũ khí (KHÔNG liên quan gì tới
+      // ammo/frostAmmo/incendiaryAmmo reload từ inventory), mỗi volley (9 hit)
+      // tốn 1 điểm, reset về 8 mỗi khi hết turn (advanceCombatantTurn).
+      eyeOfHorusAmmo: 8,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã
