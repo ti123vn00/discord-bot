@@ -48,6 +48,18 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     combatant.hemorrhageAppliedThisTurn = false;
     // Busy as Tribbie: "Một turn chỉ kích một lần" — reset cho turn mới.
     combatant.busyAsTribbieTriggeredThisTurn = false;
+    // Time Moratorium (xác nhận trực tiếp): "sau 3 turn gây (dmg tích lại) x
+    // (Tremor/2)%" — đếm ngược, khi hết hạn thì "nổ" 1 lần rồi tắt hẳn status
+    // (accumulated reset về 0, không còn chặn dmg nữa cho tới khi được gắn lại).
+    if (combatant.timeMoratorium && combatant.timeMoratoriumTurnsLeft > 0) {
+      combatant.timeMoratoriumTurnsLeft -= 1;
+      if (combatant.timeMoratoriumTurnsLeft <= 0) {
+        const explosionDmg = combatant.timeMoratoriumAccumulated * ((combatant.tremor ?? 0) / 2) / 100;
+        combatant.currentHp = Math.max(0, combatant.currentHp - explosionDmg);
+        combatant.timeMoratorium = false;
+        combatant.timeMoratoriumAccumulated = 0;
+      }
+    }
     if (combatant.staggered) {
       combatant.staggerTurnsLeft -= 1;
       if (combatant.staggerTurnsLeft <= 0) {
@@ -107,6 +119,11 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       combatant.currentLight = Math.min(combatant.maxLight, combatant.currentLight + 2);
     }
     combatant.staminaUsedThisTurn = 0;
+    // eyeOfHorusAmmo — GAP ĐÃ SỬA (xác nhận trực tiếp): "khi về 0 thì không thể
+    // M1 trong turn đó nữa mà phải đợi hết turn thì số ammo sẽ reset về 8" —
+    // reset về full (8) mỗi khi hết turn CỦA CHÍNH combatant này (không liên
+    // quan gì tới ammo/frostAmmo/incendiaryAmmo reload từ inventory).
+    combatant.eyeOfHorusAmmo = 8;
     // Emotion Level — đếm ngược Duration (Infinity nếu có Light Body = không bao giờ
     // hết tới khi encounter kết thúc). Hết Duration → rớt về Level 0, maxLight về lại
     // baseMaxLight, vào CD EMOTION_LEVEL_COOLDOWN_TURNS turn (không lên lại được dù
