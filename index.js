@@ -1173,17 +1173,27 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
   // charge/hit, KHÔNG có ưu đãi "nhiều hit/charge" theo vũ khí như M1 được hưởng
   // qua WEAPON_DEFENSE_HITS — hợp lý vì skill là đòn ĐẶC BIỆT, khó phòng thủ trọn
   // vẹn hơn đòn M1 thông thường).
-  const hitsPerCharge = isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeaponWeight] ?? 1) : 1;
+  // BUG ĐÃ SỬA (phát hiện qua test trực tiếp sau khi sửa resolveOnePendingAction)
+  // — quên đồng bộ hitsPerCharge ở ĐÂY, vẫn còn dùng WEAPON_DEFENSE_HITS cũ cho
+  // M1, khiến nút ban đầu hiện SAI chi phí (VD "-40 Sta" thay vì đúng "-60 Sta"
+  // cho 3-hit medium weapon) dù logic chọn-hit-cụ-thể phía sau vẫn đúng.
+  const hitsPerCharge = 1;
   const chargesNeeded = target.hasIronHorus ? 1 : Math.ceil(hitCount / hitsPerCharge);
 
   const guardCostPerCharge = target.hasIronHorus ? 40 : 10;
   const guardCost = chargesNeeded * guardCostPerCharge;
   const guardAvailable = !bypass.blockGuard && target.currentStamina >= guardCost;
+  // maxAffordableGuardCharges — GAP ĐÃ SỬA (xác nhận trực tiếp: "hệ thống tùy
+  // chọn né theo từng hit... nhận hit 1 và 2 nhưng né/guard hit 3") — reactive
+  // prompt cần biết TỐI ĐA bao nhiêu hit có thể chọn (dropdown "Chọn hit") dựa
+  // trên Stamina hiện có, KHÔNG PHẢI chargesNeeded (số cần để che HẾT).
+  const maxAffordableGuardCharges = Math.min(hitCount, Math.floor(target.currentStamina / guardCostPerCharge));
 
   const evadeBlocked = (target.injuries ?? []).includes("Mất Chân");
   const evadeCostPerCharge = 20 * ((target.injuries ?? []).includes("Gãy chân") ? 2 : 1);
   const evadeCost = chargesNeeded * evadeCostPerCharge;
   const evadeAvailable = !bypass.blockEvade && !evadeBlocked && target.currentStamina >= evadeCost;
+  const maxAffordableEvadeCharges = evadeBlocked ? 0 : Math.min(hitCount, Math.floor(target.currentStamina / evadeCostPerCharge));
 
   // Parry: 0 Stamina lúc "kích hoạt" — nhưng CÓ THỂ tốn Sta SAU NẾU roll thua
   // (40/30 tùy perk, x2 nếu Gãy tay) — không chặn hiển thị option theo Sta hiện
@@ -1191,9 +1201,9 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
   const parryAvailable = !bypass.blockParry;
 
   return {
-    chargesNeeded, hitsPerCharge,
-    guard: { available: guardAvailable, cost: guardCost },
-    evade: { available: evadeAvailable, cost: evadeCost, blockedReason: evadeBlocked ? "Mất Chân" : null },
+    chargesNeeded, hitsPerCharge, maxAffordableGuardCharges, maxAffordableEvadeCharges,
+    guard: { available: guardAvailable, cost: guardCost, costPerCharge: guardCostPerCharge },
+    evade: { available: evadeAvailable, cost: evadeCost, blockedReason: evadeBlocked ? "Mất Chân" : null, costPerCharge: evadeCostPerCharge },
     parry: { available: parryAvailable },
   };
 }
@@ -1439,7 +1449,13 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // — tính TRỰC TIẾP từ N (eyeOfHorusVolleys), KHÔNG parse từ dmgStr/hitCount nữa
     // (mô hình mới N đã rõ ràng ngay từ đầu, không cần suy luận ngược).
     const totalVolleysForStamina = eyeOfHorusVolleys ? eyeOfHorusVolleys + (eyeOfHorusVolleys === 1 ? 1 : 0) : 0;
-    const staminaCost = isEyeOfHorus ? totalVolleysForStamina * 20 : WEAPON_STAMINA_COST[player.weaponWeight] * hitCount;
+    // BUG ĐÃ SỬA (xác nhận trực tiếp): "repeat ammo của Eye of Horus lại tốn 40
+    // sta trong khi đáng lẽ nó không tốn ammo lẫn stamina" — Repeat Ammo (lặp
+    // lại viên đạn TRƯỚC, không phải bắn volley mới) trước đây CHỈ miễn Ammo
+    // Stack, vẫn bị tính Stamina như bắn bình thường — giờ miễn PHÍ HOÀN TOÀN
+    // (cả Stamina) khi ammotype: repeat.
+    const isRepeatAmmo = ammoTypeNormalized === "repeat";
+    const staminaCost = isRepeatAmmo ? 0 : (isEyeOfHorus ? totalVolleysForStamina * 20 : WEAPON_STAMINA_COST[player.weaponWeight] * hitCount);
     if (player.currentStamina < staminaCost) {
       throw new Error(isEyeOfHorus
         ? `Không đủ Stamina — Eye Of Horus tốn 20 Sta/volley — ${eyeOfHorusVolleys} lần bắn ≈ ${totalVolleysForStamina} volley = ${staminaCost} Sta, còn ${player.currentStamina}.`
@@ -5713,9 +5729,15 @@ async function resolveOnePendingAction(encounter, p) {
               // là skill khi có verify.skillKey). Còn lại (Page/skill) coi 1 charge =
               // chặn cả action. Thứ tự ưu tiên: Evade (an toàn nhất) → Parry (free
               // nhưng rủi ro) → Guard (giảm 90%, không rủi ro).
+              // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "Chỉ tốn 20
+              // stamina để né được toàn bộ 3 hit" — TRƯỚC ĐÂY M1 hưởng ưu đãi
+              // WEAPON_DEFENSE_HITS (light=4/medium=2/heavy=1 hit mỗi charge),
+              // khiến 1 charge có thể che nhiều hit cùng lúc tuỳ vũ khí kẻ tấn
+              // công. Giờ LUÔN 1 charge = 1 hit, nhất quán cho CẢ M1 lẫn
+              // skill — không còn ưu đãi nào theo weaponWeight nữa.
               const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
               const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
-              const hitsPerCharge = isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : null; // null = chặn cả action, không chia theo hit
+              const hitsPerCharge = 1;
               const hitCount = Math.max(1, t.preview.dmgValues?.length ?? 1);
               if (isM1Type) totalHitsThisAction += hitCount; // chỉ M1 mới tính cho Battle Ignition (Page/skill không tính, đúng comment dưới)
               // bypass — đọc từ defenseBypass đã lưu lúc declare (tự phát hiện từ
@@ -5730,17 +5752,6 @@ async function resolveOnePendingAction(encounter, p) {
               // phải sát thương — nên xảy ra dù đòn có né/chặn hay không.
               if (bypass.airborneCondition && target.airborne) {
                 target.airborne = false;
-              }
-              // computeBlock — trả { chargesUsed, fraction } cho 1 lượt thử block.
-              // hitsPerCharge=null (Page/skill) → 1 charge LUÔN chặn 100% action.
-              function computeBlock(chargesAvailable) {
-                if (hitsPerCharge === null) {
-                  return chargesAvailable >= 1 ? { chargesUsed: 1, fraction: 1 } : { chargesUsed: 0, fraction: 0 };
-                }
-                const chargesNeeded = Math.ceil(hitCount / hitsPerCharge);
-                const chargesUsed = Math.min(chargesAvailable, chargesNeeded);
-                const fraction = chargesUsed > 0 ? Math.min(1, (chargesUsed * hitsPerCharge) / hitCount) : 0;
-                return { chargesUsed, fraction };
               }
               // Iron Horus (Abydos's Uniform - Lazy Style): Guard giảm 100% dmg
               // (TOÀN BỘ đòn) — ưu tiên CAO NHẤT, ghi đè cả Fortified Resolve (99%)
@@ -5777,7 +5788,14 @@ async function resolveOnePendingAction(encounter, p) {
               // có Iron Horus hay không, giống mọi combatant khác.
               const defenseUpDownPct = ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
               const guardReductionPct = Math.min(1, Math.max(0, baseGuardPct + defenseUpDownPct));
-              if (isM1Type) {
+              // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "hệ thống tùy
+              // chọn né theo từng hit... nhận hit 1 và 2 nhưng né/guard hit 3")
+              // — TRƯỚC ĐÂY chỉ M1 mới có logic per-hit (cho phép trộn nhiều loại
+              // phòng thủ + chọn hit cụ thể qua guardHitSelections), skill dùng
+              // nhánh "fraction" đơn giản hơn (không chọn được hit nào). Giờ CẢ
+              // 2 dùng CHUNG 1 logic per-hit — nhất quán, hỗ trợ chọn hit cụ thể
+              // cho MỌI loại đòn (M1 hay skill).
+              {
                 // M1 NHIỀU HIT — cho phép TRỘN nhiều LOẠI phòng thủ khác nhau để chặn
                 // các CỤM hit khác nhau trong CÙNG 1 đòn M1 (xác nhận trực tiếp từ GM:
                 // "có thể guard/parry/evade theo tùy thích vào số hit" — KHÔNG bắt
@@ -5797,11 +5815,25 @@ async function resolveOnePendingAction(encounter, p) {
                 if (!bypass.blockEvade && (target.evadeCharges ?? 0) > 0 && hitIdx < totalHits) {
                   const coverStart = hitIdx;
                   let used = 0;
-                  while (target.evadeCharges > 0 && hitIdx < totalHits) {
-                    target.evadeCharges -= 1; used += 1;
-                    for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 0;
+                  if ((target.evadeHitSelections ?? []).length > 0) {
+                    // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "hit tôi có
+                    // thể chọn nhận hit 1 và 2 nhưng né/guard hit 3") — đối xứng với
+                    // guardHitSelections đã có sẵn — Evade giờ cũng hỗ trợ chọn ĐÚNG
+                    // hit index cụ thể, không chỉ che tuần tự từ hitIdx hiện tại.
+                    const validSelected = target.evadeHitSelections.filter(h => h >= 1 && h <= totalHits);
+                    for (const h of validSelected) perHitMult[h - 1] = 0;
+                    used = Math.min(target.evadeCharges, Math.ceil(validSelected.length / hitsPerCharge));
+                    target.evadeCharges -= used;
+                    target.evadeHitSelections = target.evadeHitSelections.filter(h => !(h >= 1 && h <= totalHits));
+                    hitIdx = Math.max(hitIdx, ...validSelected, 0);
+                    noteParts.push(`💨**Evade** (${used} charge — né hit ${validSelected.join(", ")})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
+                  } else {
+                    while (target.evadeCharges > 0 && hitIdx < totalHits) {
+                      target.evadeCharges -= 1; used += 1;
+                      for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 0;
+                    }
+                    noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
                   }
-                  noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
                 }
                 while (!bypass.blockParry && (target.parryRolls ?? []).length > 0 && hitIdx < totalHits) {
                   const defRoll = target.parryRolls.shift();
@@ -5885,46 +5917,6 @@ async function resolveOnePendingAction(encounter, p) {
                 const bypassNote = [bypass.blockEvade && "Undodgeable", bypass.blockGuard && "Unblockable", bypass.blockParry && "Unparriable"].filter(Boolean);
                 defenseNote = noteParts.length > 0 ? " " + noteParts.join(" + ") : "";
                 if (bypassNote.length > 0 && hitIdx < totalHits) defenseNote += ` *(${bypassNote.join(", ")} — phần hit còn lại không thể chặn)*`;
-              } else if (!bypass.blockEvade && (target.evadeCharges ?? 0) > 0) {
-                const { chargesUsed, fraction } = computeBlock(target.evadeCharges);
-                target.evadeCharges -= chargesUsed;
-                finalDmg *= (1 - fraction);
-                if (fraction >= 1) evadedCompletely = true;
-                defenseNote = ` 💨**Evade** (chặn ${Math.round(fraction * 100)}% — dùng ${chargesUsed} charge)${applyEvadeSuccessPerks(target, attacker.combatant)}`;
-              } else if (!bypass.blockParry && (target.parryRolls ?? []).length > 0) {
-                const defRoll = target.parryRolls.shift();
-                const atkRoll = 1 + Math.floor(Math.random() * 20);
-                if (defRoll >= atkRoll) {
-                  const { fraction } = computeBlock(1);
-                  finalDmg *= (1 - fraction);
-                  if (fraction >= 1) evadedCompletely = true;
-                  defenseNote = ` 🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll}, chặn ${Math.round(fraction * 100)}%)`;
-                  defenseNote += applyParrySuccessPerks(target, attacker.combatant);
-                } else {
-                  // Mastered Breaths (Sloth, [15 Points]): base cost 30 thay vì 40 khi
-                  // hụt Parry. Gãy tay (chấn thương) vẫn NHÂN ĐÔI bất kể base là bao
-                  // nhiêu (áp dụng SAU khi đã chọn base, không phải OR riêng).
-                  const baseFailCost = hasPerk(target, "Mastered Breaths") ? 30 : 40;
-                  const failCost = (target.injuries ?? []).includes("Gãy tay") ? baseFailCost * 2 : baseFailCost;
-                  target.currentStamina = Math.max(0, target.currentStamina - failCost);
-                  defenseNote = ` 🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta, ăn full dmg)`;
-                }
-              } else if (!bypass.blockGuard && (target.guardCharges ?? 0) > 0) {
-                // Iron Horus — cùng nguyên tắc như nhánh M1 nhiều hit ở trên: che
-                // 100% đòn (fraction=1), KHÔNG trừ charge.
-                if (target.hasIronHorus) {
-                  finalDmg *= (1 - guardReductionPct);
-                  defenseNote = ` 🛡️**Guard (Iron Horus — chặn TOÀN BỘ, charge không tụt)** (giảm ${Math.round(guardReductionPct * 100)}%)`;
-                } else {
-                  const { chargesUsed, fraction } = computeBlock(target.guardCharges);
-                  target.guardCharges -= chargesUsed;
-                  finalDmg *= (1 - fraction * guardReductionPct);
-                  defenseNote = ` 🛡️**Guard** (giảm ${Math.round(guardReductionPct * 100)}% trên ${Math.round(fraction * 100)}% đòn — dùng ${chargesUsed} charge)`;
-                }
-                if (bypass.guardBreak) {
-                  forceStagger(target);
-                  defenseNote += ` 💥**Guard Break** — bị Stagger ngay (Res 2x từ giờ)`;
-                }
               }
               // Smoldering Resolve (perk passive, KHÔNG tiêu thụ) áp SAU Guard/Evade/
               // Parry — giảm thêm % trên phần dmg CÒN LẠI sau khi đã né/đỡ.
@@ -6396,6 +6388,32 @@ async function resolveOnePendingAction(encounter, p) {
             resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
 
   return resultLines;
+}
+
+/** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
+ *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
+ *  lên target — tiếp tục luồng CHUNG: đánh dấu đã phản hồi, resolve NGAY nếu mọi
+ *  target trong AOE đã xong, hoặc chờ tiếp nếu còn ai chưa bấm. TÁCH ra dùng
+ *  chung cho CẢ encreactivedef (Parry/Không phòng thủ, áp dụng ngay) LẪN
+ *  encreactivehits MỚI (Guard/Evade chọn hit cụ thể) — tránh trùng lặp logic. */
+async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, interactionUserMention) {
+  const targetResolved = resolveCombatant(encounter, targetId);
+  checkStaggerPanic(targetResolved.combatant);
+  p.reactedTargetIds = p.reactedTargetIds ?? [];
+  p.reactedTargetIds.push(targetId);
+  const allTargetIds = p.targets.map(tg => tg.targetId);
+  const allReacted = allTargetIds.every(tid => p.reactedTargetIds.includes(tid));
+  let resultText, stillWaitingFor = null;
+  if (allReacted) {
+    const lines = await resolveOnePendingAction(encounter, p);
+    encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== p.id);
+    resultText = `${interactionUserMention} chọn **${choiceNote}**\n${lines.join("\n")}`;
+  } else {
+    resultText = `${interactionUserMention} chọn **${choiceNote}** — đang chờ ${allTargetIds.length - p.reactedTargetIds.length} người khác trong đòn AOE này.`;
+    stillWaitingFor = allTargetIds.length - p.reactedTargetIds.length;
+  }
+  await saveEncounter(channelId, encounter);
+  return { resultText, stillWaitingFor };
 }
 
 /** sendReactiveDefensePrompt — Yu-Gi-Oh Chain-style: khi A tấn công B, gửi NGAY
@@ -6994,6 +7012,7 @@ client.on("interactionCreate", async (interaction) => {
       let resultText = null;
       let stillWaitingFor = null;
       let encounterSnapshot = null;
+      let showHitPicker = null; // { maxAffordable, hitCount, choice, costPerCharge } nếu cần chuyển sang dropdown chọn hit
       await withLock(encounterKey(channelId), async () => {
         const encounter = await getEncounter(channelId);
         encounterSnapshot = encounter;
@@ -7004,12 +7023,6 @@ client.on("interactionCreate", async (interaction) => {
         if (interaction.user.id !== targetId && !isAdmin && interaction.user.id !== encounter.gmId) {
           throw new Error("Chỉ người bị tấn công (hoặc GM) mới được chọn phòng thủ này.");
         }
-        // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua rà soát): đòn AOE nhắm NHIỀU
-        // target cùng lúc — TRƯỚC ĐÂY chỉ cần 1 người bấm là resolveOnePendingAction
-        // chạy NGAY cho CẢ p (mọi target), rồi xoá p khỏi queue — những người CHƯA
-        // kịp bấm bị tính mặc định "không phòng thủ" (charges=0) dù chưa hề được
-        // hỏi. Sửa: CHỈ resolve khi TẤT CẢ target trong p.targets đã phản hồi —
-        // mỗi lần bấm chỉ áp dụng lựa chọn của ĐÚNG người đó rồi ghi nhớ lại.
         if (p.reactedTargetIds?.includes(targetId)) {
           throw new Error("Bạn đã chọn phòng thủ cho đòn này rồi.");
         }
@@ -7026,12 +7039,26 @@ client.on("interactionCreate", async (interaction) => {
         // Tính LẠI option TẠI THỜI ĐIỂM BẤM (không dùng số đã tính lúc gửi prompt —
         // Stamina/injury có thể đã đổi giữa lúc gửi và lúc bấm).
         const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
+        // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "hệ thống tùy chọn né
+        // theo từng hit... nhận hit 1 và 2 nhưng né/guard hit 3") — nếu đòn có
+        // NHIỀU hit (>1) và chọn Guard/Evade, KHÔNG áp dụng ngay cho TOÀN BỘ nữa
+        // — chuyển sang dropdown "Chọn hit" để họ tự quyết định CHÍNH XÁC hit nào
+        // muốn phòng thủ, phần còn lại ăn dmg thật. Chỉ 1 hit thì không cần hỏi
+        // gì thêm (áp dụng ngay, y hệt cũ).
+        if ((choice === "guard" || choice === "evade") && hitCount > 1) {
+          const maxAffordable = choice === "guard" ? opts.maxAffordableGuardCharges : opts.maxAffordableEvadeCharges;
+          if (maxAffordable <= 0) {
+            throw new Error(choice === "guard"
+              ? `Không đủ Stamina để Guard dù chỉ 1 hit (cần ${opts.guard.costPerCharge}, hiện có ${target.currentStamina}).`
+              : (opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade dù chỉ 1 hit (cần ${opts.evade.costPerCharge}, hiện có ${target.currentStamina}).`));
+          }
+          showHitPicker = { maxAffordable, hitCount, choice, costPerCharge: choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge };
+          return; // KHÔNG áp dụng gì cả — chờ bước chọn hit tiếp theo
+        }
         let choiceNote = "";
         if (choice === "guard") {
           if (!opts.guard.available) throw new Error(`Không đủ Stamina để Guard (cần ${opts.guard.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.guard.cost;
-          // CỘNG THÊM (không ghi đè) — nếu target đã có sẵn charge dư từ trước
-          // (VD từ lệnh -encounter guard chủ động khác), giữ nguyên phần dư đó.
           target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
           choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
         } else if (choice === "evade") {
@@ -7051,24 +7078,32 @@ client.on("interactionCreate", async (interaction) => {
         } else {
           choiceNote = "❌ Không phòng thủ";
         }
-        checkStaggerPanic(target);
-        p.reactedTargetIds = p.reactedTargetIds ?? [];
-        p.reactedTargetIds.push(targetId);
-        const allTargetIds = p.targets.map(tg => tg.targetId);
-        const allReacted = allTargetIds.every(tid => p.reactedTargetIds.includes(tid));
-        if (allReacted) {
-          const lines = await resolveOnePendingAction(encounter, p);
-          encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
-          resultText = `${interaction.user.toString()} chọn **${choiceNote}**\n${lines.join("\n")}`;
-        } else {
-          // Vẫn còn người khác trong đòn AOE chưa bấm — CHỈ lưu lựa chọn của
-          // người này lại, KHÔNG resolve/xoá pendingAction, để họ vẫn có cơ hội
-          // chọn khi tới lượt (button của họ vẫn còn nguyên, không bị đụng tới).
-          resultText = `${interaction.user.toString()} chọn **${choiceNote}** — đang chờ ${allTargetIds.length - p.reactedTargetIds.length} người khác trong đòn AOE này.`;
-          stillWaitingFor = allTargetIds.length - p.reactedTargetIds.length;
-        }
-        await saveEncounter(channelId, encounter);
+        const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, interaction.user.toString());
+        resultText = finalized.resultText;
+        stillWaitingFor = finalized.stillWaitingFor;
       });
+      if (showHitPicker) {
+        const { maxAffordable, hitCount, choice: pickerChoice, costPerCharge } = showHitPicker;
+        const hitOptions = Array.from({ length: hitCount }, (_, i) =>
+          new StringSelectMenuOptionBuilder().setLabel(`Hit ${i + 1}`).setValue(String(i + 1))
+        );
+        await interaction.update({
+          embeds: [{
+            title: `${pickerChoice === "guard" ? "🛡️" : "💨"} Chọn hit muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}`,
+            description: `Đòn này có **${hitCount} hit** — chọn tối đa **${maxAffordable} hit** (${costPerCharge} Sta/hit) muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}, các hit còn lại sẽ ăn dmg thật.`,
+            color: 0x3498db,
+          }],
+          components: [new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`encreactivehits:${channelId}:${pendingId}:${targetId}:${pickerChoice}`)
+              .setPlaceholder("Chọn hit...")
+              .setMinValues(1)
+              .setMaxValues(maxAffordable)
+              .addOptions(...hitOptions),
+          )],
+        }).catch(() => {});
+        return;
+      }
       await interaction.update({
         embeds: stillWaitingFor
           ? [{ title: "⏳ Đã ghi nhận — đang chờ người khác", description: resultText, color: 0xf39c12 }]
@@ -7084,6 +7119,73 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     log("error", "buttonInteraction", interaction.user?.id ?? "unknown", err.message);
     interaction.reply({ content: "❌ Có lỗi không mong muốn xảy ra.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (encreactivehits — chọn hit cụ thể cho Guard/Evade,
+// xác nhận trực tiếp qua ảnh chụp thật: "hệ thống tùy chọn né theo từng hit...
+// nhận hit 1 và 2 nhưng né/guard hit 3") ──────────────────────────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("encreactivehits:")) return;
+  const [, channelId, pendingId, targetId, choice] = interaction.customId.split(":");
+  try {
+    let resultText = null;
+    let stillWaitingFor = null;
+    let encounterSnapshot = null;
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      encounterSnapshot = encounter;
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
+      if (!p) throw new Error("Action này đã được xử lý rồi.");
+      const isAdmin = ADMIN_IDS.has(interaction.user.id);
+      if (interaction.user.id !== targetId && !isAdmin && interaction.user.id !== encounter.gmId) {
+        throw new Error("Chỉ người bị tấn công (hoặc GM) mới được chọn phòng thủ này.");
+      }
+      if (p.reactedTargetIds?.includes(targetId)) {
+        throw new Error("Bạn đã chọn phòng thủ cho đòn này rồi.");
+      }
+      const targetResolved = resolveCombatant(encounter, targetId);
+      if (!targetResolved) throw new Error("Không tìm thấy target.");
+      const target = targetResolved.combatant;
+      const attacker = resolveCombatant(encounter, p.attackerId);
+      if (!attacker) throw new Error("Không tìm thấy attacker.");
+      const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+      const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
+      const bypass = p.defenseBypass ?? {};
+      const t = p.targets.find(tg => tg.targetId === targetId);
+      const hitCount = Math.max(1, t?.preview?.dmgValues?.length ?? 1);
+      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
+      const selectedHits = interaction.values.map(v => parseInt(v, 10)).sort((a, b) => a - b);
+      const costPerCharge = choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge;
+      const totalCost = selectedHits.length * costPerCharge;
+      if (target.currentStamina < totalCost) {
+        throw new Error(`Không đủ Stamina cho ${selectedHits.length} hit đã chọn (cần ${totalCost}, hiện có ${target.currentStamina}).`);
+      }
+      target.currentStamina -= totalCost;
+      let choiceNote;
+      if (choice === "guard") {
+        target.guardHitSelections = [...(target.guardHitSelections ?? []), ...selectedHits];
+        target.guardCharges = (target.guardCharges ?? 0) + selectedHits.length;
+        choiceNote = `🛡️ Guard (-${totalCost} Sta, hit ${selectedHits.join(", ")})`;
+      } else {
+        target.evadeHitSelections = [...(target.evadeHitSelections ?? []), ...selectedHits];
+        target.evadeCharges = (target.evadeCharges ?? 0) + selectedHits.length;
+        choiceNote = `💨 Evade (-${totalCost} Sta, hit ${selectedHits.join(", ")})`;
+      }
+      const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, interaction.user.toString());
+      resultText = finalized.resultText;
+      stillWaitingFor = finalized.stillWaitingFor;
+    });
+    await interaction.update({
+      embeds: stillWaitingFor
+        ? [{ title: "⏳ Đã ghi nhận — đang chờ người khác", description: resultText, color: 0xf39c12 }]
+        : [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }, buildEncounterBoardEmbed(encounterSnapshot)],
+      components: [],
+    }).catch(() => {});
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
 
