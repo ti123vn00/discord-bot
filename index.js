@@ -1164,21 +1164,21 @@ const WEAPON_DEFENSE_HITS = { light: 4, medium: 2, heavy: 1 };
  *  sta để làm hành động đó không"). KHÔNG áp dụng gì lên target — chỉ TÍNH TOÁN
  *  để hiển thị, giống hệt công thức cost đã có trong performGuardEvade nhưng
  *  KHÔNG cần "attacker:"/"hits:" tự gõ tay (đã biết sẵn từ pendingAction). */
-function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type, bypass) {
-  // BUG ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "Blade Flourish tận 3 hit
-  // nhưng tôi chỉ bấm 1 lần evade là né hết cả 3 với 20 stamina? Đáng lý phải
-  // cho bấm từng hit") — TRƯỚC ĐÂY skill (isM1Type=false) LUÔN chargesNeeded=1
-  // BẤT KỂ hitCount — nghĩa là 1 skill 3 hit chỉ tốn ĐÚNG 1 charge để né/chặn
-  // TOÀN BỘ, y hệt skill 1 hit. Sửa: skill giờ cần chargesNeeded = hitCount (1
-  // charge/hit, KHÔNG có ưu đãi "nhiều hit/charge" theo vũ khí như M1 được hưởng
-  // qua WEAPON_DEFENSE_HITS — hợp lý vì skill là đòn ĐẶC BIỆT, khó phòng thủ trọn
-  // vẹn hơn đòn M1 thông thường).
-  // BUG ĐÃ SỬA (phát hiện qua test trực tiếp sau khi sửa resolveOnePendingAction)
-  // — quên đồng bộ hitsPerCharge ở ĐÂY, vẫn còn dùng WEAPON_DEFENSE_HITS cũ cho
-  // M1, khiến nút ban đầu hiện SAI chi phí (VD "-40 Sta" thay vì đúng "-60 Sta"
-  // cho 3-hit medium weapon) dù logic chọn-hit-cụ-thể phía sau vẫn đúng.
-  const hitsPerCharge = 1;
+function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type, bypass, isEyeOfHorusFixedBurst = false) {
+  // ĐIỀU CHỈNH LẠI (xác nhận trực tiếp — sửa lại nhận định trước đó): "light
+  // weapon... chỉ cần guard 1 lần được 4 hit m1... Medium 2 hit/charge... Heavy
+  // 1 hit/charge" — WEAPON_DEFENSE_HITS (ưu đãi theo vũ khí cho M1) KHÔI PHỤC
+  // LẠI, ĐÚNG như thiết kế gốc — lần sửa trước đã HIỂU SAI và xoá nhầm hẳn ưu
+  // đãi này cho CẢ M1 (chỉ nên áp dụng cho skill: Blade Flourish 3-hit tốn 1
+  // charge chặn hết là sai, NHƯNG Rat 2-hit M1 light 1 charge chặn hết là ĐÚNG).
+  // NGOẠI LỆ Eye Of Horus (xác nhận trực tiếp): dù là vũ khí heavy (bình thường
+  // 1 hit/charge), nhưng M1 bắn theo "volley" 9-hit MỘT LẦN — 1 charge chặn
+  // ĐƯỢC HẾT 1 volley (9 hit), không phải chỉ 1/9 hit như heavy thường. Bắn
+  // nhiều volley (kể cả từ repeat ammo) vẫn cần TƯƠNG ỨNG số charge (1
+  // charge/volley, không phải 1 charge cho TẤT CẢ volley).
+  const hitsPerCharge = isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeaponWeight] ?? 1) : 1);
   const chargesNeeded = target.hasIronHorus ? 1 : Math.ceil(hitCount / hitsPerCharge);
+
 
   const guardCostPerCharge = target.hasIronHorus ? 40 : 10;
   const guardCost = chargesNeeded * guardCostPerCharge;
@@ -1461,6 +1461,15 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         ? `Không đủ Stamina — Eye Of Horus tốn 20 Sta/volley — ${eyeOfHorusVolleys} lần bắn ≈ ${totalVolleysForStamina} volley = ${staminaCost} Sta, còn ${player.currentStamina}.`
         : `Không đủ Stamina — cần ${staminaCost} (${hitCount} hit × ${WEAPON_STAMINA_COST[player.weaponWeight]}/hit vũ khí ${player.weaponWeight}), còn ${player.currentStamina}.`);
     }
+    // eyeOfHorusAmmo — GAP ĐÃ SỬA (xác nhận trực tiếp, ĐÍNH CHÍNH lại lần trước):
+    // "repeat ammo miễn ammo từ nội tại đó" — Repeat Ammo giờ MIỄN HOÀN TOÀN cả
+    // pool nội tại này (không chỉ Stamina/ammo-inventory như hiểu nhầm trước
+    // đó) — "vẫn cần 1 charge guard/evade/parry nữa" ở lần xác nhận trước chỉ
+    // nói về charge phòng thủ của TARGET (đã xử lý đúng qua hitsPerCharge=9/
+    // volley), không liên quan gì tới ammo của ATTACKER.
+    if (isEyeOfHorus && !isRepeatAmmo && (player.eyeOfHorusAmmo ?? 8) < totalVolleysForStamina) {
+      throw new Error(`Không đủ Ammo nội tại của Eye Of Horus — cần ${totalVolleysForStamina} (còn ${player.eyeOfHorusAmmo ?? 8}/8) — phải đợi hết turn để reset về 8.`);
+    }
 
     const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     encounter.pendingActions = encounter.pendingActions ?? [];
@@ -1469,6 +1478,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       attackerId: playerId, attackerType: "player",
       targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill, eyeOfHorusTremorChargeAmount: p.eyeOfHorusTremorChargeAmount })),
       dmgStr, staminaCost, isM1: true, defenseBypass,
+      isEyeOfHorusFixedBurst: isEyeOfHorus, eyeOfHorusVolleyCount: totalVolleysForStamina, isRepeatAmmo,
       // Lưu lại kết quả verify — encconfirmall áp dụng emotionDelta + set cooldown
       // THẬT lúc confirm (không phải lúc declare — khớp nguyên tắc "chưa gì là thật
       // cho tới khi GM xác nhận"). refLink/refSnippet/skillRollEmbed chỉ để HIỂN THỊ.
@@ -5659,6 +5669,14 @@ async function resolveOnePendingAction(encounter, p) {
             // Stamina cost (chỉ attack mới có) — trừ 1 LẦN cho action này, KHÔNG
             // nhân theo số target (1 đòn M1 chỉ tốn Stamina 1 lần dù AOE).
             let staminaNote = "";
+            // eyeOfHorusAmmo — GAP ĐÃ SỬA (xác nhận trực tiếp, ĐÍNH CHÍNH lần
+            // trước): "repeat ammo miễn ammo từ nội tại đó" — TÁCH RIÊNG khỏi
+            // điều kiện p.staminaCost bên dưới (vì Repeat có staminaCost=0, sẽ
+            // bỏ qua toàn bộ block Stamina), NHƯNG giờ repeat cũng MIỄN pool
+            // nội tại này luôn (không trừ gì cả khi isRepeatAmmo=true).
+            if (p.isEyeOfHorusFixedBurst && !p.isRepeatAmmo && attacker.type === "player") {
+              attacker.combatant.eyeOfHorusAmmo = Math.max(0, (attacker.combatant.eyeOfHorusAmmo ?? 8) - (p.eyeOfHorusVolleyCount ?? 0));
+            }
             if (p.staminaCost && attacker.type === "player") {
               attacker.combatant.currentStamina = Math.max(0, attacker.combatant.currentStamina - p.staminaCost);
               attacker.combatant.staminaUsedThisTurn += p.staminaCost;
@@ -5729,15 +5747,17 @@ async function resolveOnePendingAction(encounter, p) {
               // là skill khi có verify.skillKey). Còn lại (Page/skill) coi 1 charge =
               // chặn cả action. Thứ tự ưu tiên: Evade (an toàn nhất) → Parry (free
               // nhưng rủi ro) → Guard (giảm 90%, không rủi ro).
-              // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "Chỉ tốn 20
-              // stamina để né được toàn bộ 3 hit" — TRƯỚC ĐÂY M1 hưởng ưu đãi
-              // WEAPON_DEFENSE_HITS (light=4/medium=2/heavy=1 hit mỗi charge),
-              // khiến 1 charge có thể che nhiều hit cùng lúc tuỳ vũ khí kẻ tấn
-              // công. Giờ LUÔN 1 charge = 1 hit, nhất quán cho CẢ M1 lẫn
-              // skill — không còn ưu đãi nào theo weaponWeight nữa.
+              // ĐIỀU CHỈNH LẠI (xác nhận trực tiếp — sửa lại nhận định trước đó
+              // về "chỉ tốn 20 stamina né được toàn bộ 3 hit"): WEAPON_DEFENSE_HITS
+              // (light=4/medium=2/heavy=1 hit/charge cho M1) KHÔI PHỤC LẠI đúng
+              // như thiết kế gốc — chỉ SKILL mới cần strict 1 charge/hit (Blade
+              // Flourish 3-hit vẫn cần 3 charge), M1 thường (Rat 2-hit light) vẫn
+              // đúng 1 charge chặn hết theo vũ khí. NGOẠI LỆ Eye Of Horus: dù
+              // heavy (1 hit/charge thường), nhưng bắn theo "volley" 9-hit — 1
+              // charge chặn HẾT 1 volley (9 hit), không phải 1/9.
               const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
               const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
-              const hitsPerCharge = 1;
+              const hitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : 1);
               const hitCount = Math.max(1, t.preview.dmgValues?.length ?? 1);
               if (isM1Type) totalHitsThisAction += hitCount; // chỉ M1 mới tính cho Battle Ignition (Page/skill không tính, đúng comment dưới)
               // bypass — đọc từ defenseBypass đã lưu lúc declare (tự phát hiện từ
@@ -6554,7 +6574,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       }
       const target = targetResolved.combatant;
       const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
-      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
+      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
 
       // Enemy target (player tấn công enemy): route reactive prompt TỚI kênh GM
       // control panel nếu đã link (`-encounter linkgm`) — enemy không có tài
@@ -7038,7 +7058,7 @@ client.on("interactionCreate", async (interaction) => {
         const hitCount = Math.max(1, t?.preview?.dmgValues?.length ?? 1);
         // Tính LẠI option TẠI THỜI ĐIỂM BẤM (không dùng số đã tính lúc gửi prompt —
         // Stamina/injury có thể đã đổi giữa lúc gửi và lúc bấm).
-        const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
+        const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
         // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "hệ thống tùy chọn né
         // theo từng hit... nhận hit 1 và 2 nhưng né/guard hit 3") — nếu đòn có
         // NHIỀU hit (>1) và chọn Guard/Evade, KHÔNG áp dụng ngay cho TOÀN BỘ nữa
@@ -7156,7 +7176,7 @@ client.on("interactionCreate", async (interaction) => {
       const bypass = p.defenseBypass ?? {};
       const t = p.targets.find(tg => tg.targetId === targetId);
       const hitCount = Math.max(1, t?.preview?.dmgValues?.length ?? 1);
-      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass);
+      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
       const selectedHits = interaction.values.map(v => parseInt(v, 10)).sort((a, b) => a - b);
       const costPerCharge = choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge;
       const totalCost = selectedHits.length * costPerCharge;
