@@ -65,6 +65,14 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // ammo/frostAmmo/incendiaryAmmo reload từ inventory), mỗi volley (9 hit)
       // tốn 1 điểm, reset về 8 mỗi khi hết turn (advanceCombatantTurn).
       eyeOfHorusAmmo: 8,
+      // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm
+      // Guard 1 lần trong turn thì cứ mặc định là guard sẵn trong turn đó do
+      // charge Guard của nó không thể bị giảm được nên phải khóa lại nút guard"
+      // — Iron Horus (Abydos's Uniform) vốn đã "che 100%, charge không tụt",
+      // nhưng trước đây vẫn bắt bấm Guard + trả 40 Sta MỖI LẦN bị tấn công. Giờ
+      // chỉ cần bấm 1 lần (trả 40 Sta 1 lần) — các đòn tấn công SAU trong CÙNG
+      // turn tự động Guard miễn phí, không cần hỏi lại.
+      ironHorusGuardActiveThisTurn: false,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã
