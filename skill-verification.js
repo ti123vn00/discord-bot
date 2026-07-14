@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion }) {
+module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -121,6 +121,11 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [];
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
+    // isOwnCriticalBypassed — KHAI BÁO Ở NGOÀI (không phải const trong block if)
+    // vì cần dùng lại ở return cuối hàm (đã sửa lỗi scope thật: "isOwnCriticalBypassed
+    // is not defined" — const trước đây chỉ tồn tại TRONG block if, không thoát
+    // ra được tới return nằm NGOÀI block đó).
+    let isOwnCriticalBypassed = false;
   
     if (skillNameRaw && skillNameRaw.trim()) {
       const skill = findSkill(skillNameRaw.trim());
@@ -128,7 +133,13 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       if (skill.promptArg) throw new Error(`Skill "${skill.name}" cần input đặc biệt (VD: Light hiện tại) — chưa roll trực tiếp qua encounter được. Dùng \`-skill ${skillNameRaw}\` riêng rồi dán link message đó vào ref: thay vào đó.`);
       skillKey = skillNameRaw.trim().toLowerCase();
       const existingCd = attacker.skillCooldowns?.[skillKey] ?? 0;
-      if (existingCd > 0) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
+      // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp, dự án tự động hoá
+      // toàn bộ weapon/outfit): "Orlando Furioso" — swap vũ khí xong, Critical
+      // NGAY SAU đó miễn CD (dùng 1 lần) — chỉ áp dụng cho ĐÚNG Critical của vũ
+      // khí hiện tại (không phải bất kỳ skill nào), tránh miễn CD nhầm skill khác.
+      const currentWeapon = findWeaponAnywhere(attacker.weaponName);
+      isOwnCriticalBypassed = attacker.orlandoFuriosoBypass && currentWeapon?.criticalSkillKey === skillKey;
+      if (existingCd > 0 && !isOwnCriticalBypassed) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
       // Light/Sanity cost — đọc từ field cost của skill (xem parseSkillCost — CHỈ
       // match được pattern Light/Sanity rõ ràng, bỏ qua Heat Gauge/custom resource
       // khác). Tap Of The Light (Gloom, [10 Points]): giảm 1 NỬA Sanity Cost từ
@@ -174,32 +185,32 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // thường.
       const blackSilenceCritBonus = isCritical && attacker.blackSilence ? 4 : 0;
       const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0) - tremorChainPenalty + blackSilenceCritBonus;
-      // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận qua ảnh chụp thật của user): trước đây
-      // Critical LUÔN gọi buildSkillRollResult (y hệt Page thường), và autoDmgStr
-      // KHÔNG BAO GIỜ được gán ở bất kỳ đâu — nghĩa là verify.autoDmgStr LUÔN
-      // undefined, khiến MỌI Critical (không riêng gì "không có dmg trực tiếp")
-      // đều rơi vào nhánh fallback "không mở Modal". Sửa: nhánh isCritical dùng
-      // autoBuildDmgStrFromSkillRoll (roll ĐÚNG 1 LẦN DUY NHẤT, dmgStr khớp CHÍNH
-      // XÁC với dice hiển thị trong embed — gọi buildSkillRollResult THÊM lần nữa
-      // sẽ roll lại dice KHÁC, làm dmgStr lệch khỏi embed thật).
-      let rollResult;
-      if (isCritical) {
-        const autoResult = autoBuildDmgStrFromSkillRoll(skill, { forceMinDice: hasParalyze, diceModifier });
-        autoDmgStr = autoResult.dmgStr;
-        autoWarnings = autoResult.warnings;
-        const header = skill.weaponOf
-          ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
-          : skill.cost !== "—"
-            ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
-            : `[CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
-        rollResult = {
-          embed: { title: `🎲 ${skill.name}`, color: skill.embedColor ?? 0x5865f2, description: header + "\n\n" + annotateLinesWithEmotion(autoResult.lines, autoResult.tracked) },
-          totalEmotionDelta: autoResult.totalEmotionDelta ?? 0,
-        };
-      } else {
-        rollResult = buildSkillRollResult({ skill, rollCount: 1, forceMinDice: hasParalyze, diceModifier });
-        if (rollResult.error) throw new Error(rollResult.error);
-      }
+      // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận qua ảnh chụp thật của user, LẦN 2 — lần
+      // đầu chỉ sửa cho Critical, giờ áp dụng luôn cho Page thường): "dù Blade
+      // Flourish đã roll sẵn... nhưng vẫn bắt tôi nhập dmg... tôi có thể thử nhập
+      // 50x3B" — TRƯỚC ĐÂY chỉ Critical (isCritical=true) mới tính autoDmgStr,
+      // Page thường (isCritical=false) luôn gọi buildSkillRollResult (KHÔNG BAO
+      // GIỜ trả về dmgStr tự động) — nghĩa là dù roll thật đã hiện (Blade
+      // Flourish: 5,6,7 Slash), CON SỐ DAMAGE THẬT vẫn lấy từ Modal field người
+      // chơi tự gõ, HOÀN TOÀN không liên quan tới roll — gõ "50x3B" tuỳ ý vẫn
+      // được tin theo. Sửa: LUÔN dùng autoBuildDmgStrFromSkillRoll (roll ĐÚNG 1
+      // LẦN, dmgStr khớp CHÍNH XÁC dice hiển thị) — không phân biệt Critical hay
+      // Page thường nữa, autoDmgStr giờ luôn có giá trị đáng tin cậy để CALLER
+      // dùng thay cho input gõ tay. blackSilenceCritBonus vẫn CHỈ áp dụng khi
+      // isCritical=true (đây là cơ chế game thật — +4 Dice riêng cho vũ khí
+      // Critical — tách biệt khỏi việc "có tin được roll hay không").
+      const autoResult = autoBuildDmgStrFromSkillRoll(skill, { forceMinDice: hasParalyze, diceModifier });
+      autoDmgStr = autoResult.dmgStr;
+      autoWarnings = autoResult.warnings;
+      const header = skill.weaponOf
+        ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
+        : skill.cost !== "—"
+          ? `[${skill.cost}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
+          : `[CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`;
+      const rollResult = {
+        embed: { title: `🎲 ${skill.name}`, color: skill.embedColor ?? 0x5865f2, description: header + "\n\n" + annotateLinesWithEmotion(autoResult.lines, autoResult.tracked) },
+        totalEmotionDelta: autoResult.totalEmotionDelta ?? 0,
+      };
       if (hasParalyze) attacker.paralyze -= 1;
       if (hasChains) attacker.chains = false;
       // Busy as Tribbie (xác nhận trực tiếp): "mỗi khi sử dụng Page hoặc Critical
@@ -218,7 +229,15 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       }
       skillRollEmbed = rollResult.embed;
       emotionDelta = rollResult.totalEmotionDelta ?? 0;
-      cooldownTurns = parseSkillCooldownTurns(skill.cd);
+      // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp): nếu ĐÚNG Critical
+      // của vũ khí vừa swap qua, CD = 0 (miễn hoàn toàn) — flag trả về để CALLER
+      // biết cần tiêu thụ (set false) bypass sau khi commit, không lặp lại lần sau.
+      if (isOwnCriticalBypassed) {
+        cooldownTurns = 0;
+        busyAsTribbieNote += ` ⚡**Orlando Furioso** — Critical miễn CD (vừa swap vũ khí).`;
+      } else {
+        cooldownTurns = parseSkillCooldownTurns(skill.cd);
+      }
     }
   
     if (refRaw && refRaw.trim()) {
@@ -235,7 +254,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       }
     }
   
-    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings };
+    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed };
   }
 
   return {
