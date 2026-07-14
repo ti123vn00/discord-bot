@@ -124,6 +124,10 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // reset về full (8) mỗi khi hết turn CỦA CHÍNH combatant này (không liên
     // quan gì tới ammo/frostAmmo/incendiaryAmmo reload từ inventory).
     combatant.eyeOfHorusAmmo = 8;
+    // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp) — reset về
+    // false mỗi khi hết turn CỦA CHÍNH combatant này, giống các "ThisTurn" flag
+    // khác — turn kế tiếp cần bấm Guard lại 1 lần để kích hoạt lại.
+    combatant.ironHorusGuardActiveThisTurn = false;
     // Emotion Level — đếm ngược Duration (Infinity nếu có Light Body = không bao giờ
     // hết tới khi encounter kết thúc). Hết Duration → rớt về Level 0, maxLight về lại
     // baseMaxLight, vào CD EMOTION_LEVEL_COOLDOWN_TURNS turn (không lên lại được dù
