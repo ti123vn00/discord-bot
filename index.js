@@ -6171,6 +6171,26 @@ async function resolveOnePendingAction(encounter, p) {
                 finalDmg = 0;
               }
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 3) —
+              // "Payback" (Chains of Loyalty): đòn tấn công ĐẦU TIÊN mỗi turn của
+              // target (chỉ player, vì đây là target bị TẤN CÔNG bởi kẻ thù —
+              // logic không áp dụng nếu 2 phe cùng player/cùng enemy đối đầu nhau
+              // theo cách bất thường nào đó) → phản 1/2 finalDmg (Blunt, true dmg,
+              // không tính lại Res của attacker để tránh double-dip phức tạp) về
+              // attacker, gây 5 Fragile + 1 Vengeance Mark lên attacker.
+              let paybackNote = "";
+              if (finalDmg > 0 && !target.paybackUsedThisTurn) {
+                const targetWeaponInfo = findWeaponAnywhere(target.weaponName);
+                const hasPayback = (targetWeaponInfo?.passives ?? []).some(pa => pa.mechanicId === "payback_reflect");
+                if (hasPayback) {
+                  target.paybackUsedThisTurn = true;
+                  const reflectedDmg = finalDmg * 0.5;
+                  attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - reflectedDmg);
+                  attacker.combatant.fragile = Math.min(99, (attacker.combatant.fragile ?? 0) + 5);
+                  attacker.combatant.vengeanceMark = (attacker.combatant.vengeanceMark ?? 0) + 1;
+                  paybackNote = ` 🔗**Payback** — phản ${reflectedDmg.toFixed(3)} Dmg [Blunt] lên ${attacker.label}, gây 5 Fragile + 1 Vengeance Mark.`;
+                }
+              }
               // Regen (50-Status Nhóm 1) — "CHỈ khi mất máu mới tự động tiêu thụ để
               // hồi HP" (xác nhận trực tiếp từ GM) — KHÔNG tự hồi mỗi turn, CHỈ kích
               // hoạt NGAY SAU khi vừa nhận dmg thật (finalDmg > 0, không tính đòn bị
@@ -6417,7 +6437,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${regenHealNote}${timeMoratoriumNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
