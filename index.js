@@ -1237,7 +1237,7 @@ function normalizeEnemyKey(k) {
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
 const { createCombatant } = require("./combatant-factory")({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }); // ĐÃ TÁCH sang file riêng (combatant-factory.js)
 
-const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, insertIntoTurnOrderMidRound, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX });
+const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, hasEncounterStarted, insertIntoTurnOrderMidRound, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX });
 
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
@@ -1326,6 +1326,9 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // skill — sai lượt thì bị chặn, chỉ phòng thủ phản ứng được thôi" — CHỈ gate
     // M1/skill (hành động CHỦ ĐỘNG), KHÔNG áp dụng cho Guard/Evade/Parry (luôn
     // là phản ứng, có thể xảy ra bất cứ lúc nào theo đúng bản chất "phòng thủ").
+    if (!hasEncounterStarted(encounter)) {
+      throw new Error("⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước khi ai đó có thể hành động.");
+    }
     if (!isCurrentTurnHolder(encounter, playerId)) {
       const order = encounter.turnOrder ?? [];
       const holderLabel = order[encounter.currentTurnIndex ?? 0]
@@ -1537,6 +1540,9 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
     const player = encounter.players[playerId];
     if (!player) throw new Error("Bạn chưa tham gia encounter này — dùng `-encounter join` trước (không cần gõ tham số gì, tự động lấy hết).");
+    if (!hasEncounterStarted(encounter)) {
+      throw new Error("⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước khi ai đó có thể hành động.");
+    }
     if (!isCurrentTurnHolder(encounter, playerId)) {
       const order = encounter.turnOrder ?? [];
       const holderLabel = order[encounter.currentTurnIndex ?? 0]
@@ -1667,6 +1673,9 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     const ekey = normalizeEnemyKey(enemyKey);
     const enemy = encounter.enemies[ekey];
     if (!enemy) throw new Error(`Không tìm thấy enemy "${enemyKey}" — dùng \`-encounter status\` để xem danh sách.`);
+    if (!hasEncounterStarted(encounter)) {
+      throw new Error("⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước khi ai đó có thể hành động.");
+    }
     if (!isCurrentTurnHolder(encounter, ekey)) {
       const order = encounter.turnOrder ?? [];
       const holderLabel = order[encounter.currentTurnIndex ?? 0]
@@ -6572,6 +6581,17 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         if (!p.reactedTargetIds.includes(t.targetId)) p.reactedTargetIds.push(t.targetId);
         continue;
       }
+      // GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm Guard 1 lần trong turn thì cứ mặc
+      // định là guard sẵn trong turn đó do charge Guard của nó không thể bị
+      // giảm được nên phải khóa lại nút guard" — Iron Horus đã Guard 1 lần rồi
+      // (ironHorusGuardActiveThisTurn=true, guardCharges vẫn còn nguyên vì
+      // KHÔNG BAO GIỜ tụt) → tự động áp dụng Guard NGAY, không hỏi lại/không
+      // tốn thêm Sta — resolveOnePendingAction's nhánh Iron Horus (dòng dưới)
+      // đã tự che 100% khi thấy guardCharges > 0, không cần set gì thêm ở đây.
+      if (targetResolved.combatant.hasIronHorus && targetResolved.combatant.ironHorusGuardActiveThisTurn && (targetResolved.combatant.guardCharges ?? 0) > 0) {
+        if (!p.reactedTargetIds.includes(t.targetId)) p.reactedTargetIds.push(t.targetId);
+        continue;
+      }
       const target = targetResolved.combatant;
       const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
       const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
@@ -7065,21 +7085,36 @@ client.on("interactionCreate", async (interaction) => {
         // — chuyển sang dropdown "Chọn hit" để họ tự quyết định CHÍNH XÁC hit nào
         // muốn phòng thủ, phần còn lại ăn dmg thật. Chỉ 1 hit thì không cần hỏi
         // gì thêm (áp dụng ngay, y hệt cũ).
-        if ((choice === "guard" || choice === "evade") && hitCount > 1) {
+        // GAP ĐÃ SỬA (xác nhận trực tiếp: "light weapon 4 hit cho 1 charge thì
+        // tôi nghĩ nên gộp lại luôn ở phần respond guard đi, vì phải chọn từng
+        // hit 1 thì nó sẽ rất nhiều và mệt cũng như thừa thãi") — 1 charge LUÔN
+        // che TRỌN 1 nhóm hitsPerCharge hit cùng lúc (không thể tách lẻ trong
+        // nhóm), nên dropdown giờ hiện theo NHÓM (VD "Hit 1-4" cho light weapon)
+        // thay vì từng hit riêng — vừa gọn hơn nhiều, vừa giảm số option (đồng
+        // thời giúp luôn giới hạn 25-option của Discord cho vũ khí tỷ lệ cao).
+        const groupCount = Math.ceil(hitCount / opts.hitsPerCharge);
+        if ((choice === "guard" || choice === "evade") && groupCount > 1 && groupCount <= 25) {
           const maxAffordable = choice === "guard" ? opts.maxAffordableGuardCharges : opts.maxAffordableEvadeCharges;
           if (maxAffordable <= 0) {
             throw new Error(choice === "guard"
-              ? `Không đủ Stamina để Guard dù chỉ 1 hit (cần ${opts.guard.costPerCharge}, hiện có ${target.currentStamina}).`
-              : (opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade dù chỉ 1 hit (cần ${opts.evade.costPerCharge}, hiện có ${target.currentStamina}).`));
+              ? `Không đủ Stamina để Guard dù chỉ 1 nhóm hit (cần ${opts.guard.costPerCharge}, hiện có ${target.currentStamina}).`
+              : (opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade dù chỉ 1 nhóm hit (cần ${opts.evade.costPerCharge}, hiện có ${target.currentStamina}).`));
           }
-          showHitPicker = { maxAffordable, hitCount, choice, costPerCharge: choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge };
-          return; // KHÔNG áp dụng gì cả — chờ bước chọn hit tiếp theo
+          showHitPicker = {
+            maxAffordable, hitCount, groupCount, hitsPerCharge: opts.hitsPerCharge, choice,
+            costPerCharge: choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge,
+          };
+          return; // KHÔNG áp dụng gì cả — chờ bước chọn nhóm hit tiếp theo
         }
         let choiceNote = "";
         if (choice === "guard") {
           if (!opts.guard.available) throw new Error(`Không đủ Stamina để Guard (cần ${opts.guard.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.guard.cost;
           target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
+          // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp) — bấm
+          // Guard 1 lần (Iron Horus) → coi như "đang Guard sẵn" cho HẾT turn này,
+          // không cần bấm/trả Sta lại cho các đòn sau (xem sendReactiveDefensePrompt).
+          if (target.hasIronHorus) target.ironHorusGuardActiveThisTurn = true;
           choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
         } else if (choice === "evade") {
           if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
@@ -7103,20 +7138,26 @@ client.on("interactionCreate", async (interaction) => {
         stillWaitingFor = finalized.stillWaitingFor;
       });
       if (showHitPicker) {
-        const { maxAffordable, hitCount, choice: pickerChoice, costPerCharge } = showHitPicker;
-        const hitOptions = Array.from({ length: hitCount }, (_, i) =>
-          new StringSelectMenuOptionBuilder().setLabel(`Hit ${i + 1}`).setValue(String(i + 1))
-        );
+        const { maxAffordable, hitCount, groupCount, hitsPerCharge, choice: pickerChoice, costPerCharge } = showHitPicker;
+        // GAP ĐÃ SỬA (xác nhận trực tiếp) — mỗi option giờ là 1 NHÓM hit (VD "Hit
+        // 1-4" cho light weapon, hitsPerCharge=4) thay vì từng hit lẻ — value
+        // encode toàn bộ range "start-end" để handler tiếp theo tự expand đúng.
+        const hitOptions = Array.from({ length: groupCount }, (_, i) => {
+          const startHit = i * hitsPerCharge + 1;
+          const endHit = Math.min((i + 1) * hitsPerCharge, hitCount);
+          const label = startHit === endHit ? `Hit ${startHit}` : `Hit ${startHit}-${endHit}`;
+          return new StringSelectMenuOptionBuilder().setLabel(label).setValue(`${startHit}-${endHit}`);
+        });
         await interaction.update({
           embeds: [{
-            title: `${pickerChoice === "guard" ? "🛡️" : "💨"} Chọn hit muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}`,
-            description: `Đòn này có **${hitCount} hit** — chọn tối đa **${maxAffordable} hit** (${costPerCharge} Sta/hit) muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}, các hit còn lại sẽ ăn dmg thật.`,
+            title: `${pickerChoice === "guard" ? "🛡️" : "💨"} Chọn nhóm hit muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}`,
+            description: `Đòn này có **${hitCount} hit** (${hitsPerCharge} hit/charge) — chọn tối đa **${maxAffordable} nhóm** (${costPerCharge} Sta/nhóm) muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}, nhóm còn lại sẽ ăn dmg thật.`,
             color: 0x3498db,
           }],
           components: [new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(`encreactivehits:${channelId}:${pendingId}:${targetId}:${pickerChoice}`)
-              .setPlaceholder("Chọn hit...")
+              .setPlaceholder("Chọn nhóm hit...")
               .setMinValues(1)
               .setMaxValues(maxAffordable)
               .addOptions(...hitOptions),
@@ -7177,21 +7218,33 @@ client.on("interactionCreate", async (interaction) => {
       const t = p.targets.find(tg => tg.targetId === targetId);
       const hitCount = Math.max(1, t?.preview?.dmgValues?.length ?? 1);
       const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
-      const selectedHits = interaction.values.map(v => parseInt(v, 10)).sort((a, b) => a - b);
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: gộp theo nhóm hitsPerCharge) — value giờ
+      // là "start-end" (VD "1-4") thay vì 1 số hit đơn lẻ — expand ra đầy đủ
+      // từng hit trong nhóm. Chi phí tính theo SỐ NHÓM đã chọn (mỗi nhóm = 1
+      // charge, dù nhóm đó che 1 hay nhiều hit), không phải theo số hit thô.
+      const selectedGroups = interaction.values.map(v => {
+        const [start, end] = v.split("-").map(n => parseInt(n, 10));
+        return { start, end: end ?? start };
+      });
+      const selectedHits = selectedGroups.flatMap(g => {
+        const hits = [];
+        for (let h = g.start; h <= g.end; h++) hits.push(h);
+        return hits;
+      }).sort((a, b) => a - b);
       const costPerCharge = choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge;
-      const totalCost = selectedHits.length * costPerCharge;
+      const totalCost = selectedGroups.length * costPerCharge;
       if (target.currentStamina < totalCost) {
-        throw new Error(`Không đủ Stamina cho ${selectedHits.length} hit đã chọn (cần ${totalCost}, hiện có ${target.currentStamina}).`);
+        throw new Error(`Không đủ Stamina cho ${selectedGroups.length} nhóm đã chọn (cần ${totalCost}, hiện có ${target.currentStamina}).`);
       }
       target.currentStamina -= totalCost;
       let choiceNote;
       if (choice === "guard") {
         target.guardHitSelections = [...(target.guardHitSelections ?? []), ...selectedHits];
-        target.guardCharges = (target.guardCharges ?? 0) + selectedHits.length;
+        target.guardCharges = (target.guardCharges ?? 0) + selectedGroups.length;
         choiceNote = `🛡️ Guard (-${totalCost} Sta, hit ${selectedHits.join(", ")})`;
       } else {
         target.evadeHitSelections = [...(target.evadeHitSelections ?? []), ...selectedHits];
-        target.evadeCharges = (target.evadeCharges ?? 0) + selectedHits.length;
+        target.evadeCharges = (target.evadeCharges ?? 0) + selectedGroups.length;
         choiceNote = `💨 Evade (-${totalCost} Sta, hit ${selectedHits.join(", ")})`;
       }
       const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, interaction.user.toString());
@@ -7418,6 +7471,9 @@ client.on("interactionCreate", async (interaction) => {
       if (!combatant) {
         return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
+      if (!hasEncounterStarted(encounter)) {
+        return interaction.reply({ content: "⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
       if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
         return interaction.reply({ content: "⚠️ Chưa tới lượt bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
@@ -7502,6 +7558,9 @@ client.on("interactionCreate", async (interaction) => {
       const combatant = encounter?.players?.[interaction.user.id];
       if (!combatant) {
         return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      if (!hasEncounterStarted(encounter)) {
+        return interaction.reply({ content: "⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
         return interaction.reply({ content: "⚠️ Chưa tới lượt bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -7594,6 +7653,9 @@ client.on("interactionCreate", async (interaction) => {
       await withLock(encounterKey(channelId), async () => {
         const encounter = await getEncounter(channelId);
         if (!encounter) throw new Error("Encounter không còn tồn tại.");
+        if (!hasEncounterStarted(encounter)) {
+          throw new Error("⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước.");
+        }
         if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
           throw new Error("Chưa/không còn tới lượt bạn nữa — không cần kết thúc lượt.");
         }
@@ -7715,6 +7777,9 @@ client.on("interactionCreate", async (interaction) => {
       await withLock(encounterKey(channelId), async () => {
         const encounter = await getEncounter(channelId);
         if (!encounter) throw new Error("Encounter không còn tồn tại.");
+        if (!hasEncounterStarted(encounter)) {
+          throw new Error("⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước.");
+        }
         if (!isCurrentTurnHolder(encounter, enemyKey)) {
           throw new Error(`Chưa/không còn tới lượt của "${enemyKey}" nữa — không cần kết thúc lượt.`);
         }
