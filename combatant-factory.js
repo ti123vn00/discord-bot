@@ -79,6 +79,10 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // sau khi dùng). Trước đây chỉ là text mô tả, không hề tự động — giờ track
       // qua field này, set true lúc equipweapon, tiêu thụ lúc dùng Critical.
       orlandoFuriosoBypass: false,
+      // paybackUsedThisTurn — GAP ĐÃ SỬA (dự án tự động hoá, batch 3): "Payback"
+      // (Chains of Loyalty) — chỉ đòn tấn công ĐẦU TIÊN mỗi turn mới phản dmg,
+      // reset về false mỗi khi hết turn.
+      paybackUsedThisTurn: false,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã
