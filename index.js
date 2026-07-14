@@ -1522,7 +1522,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // cho tới khi GM xác nhận"). refLink/refSnippet/skillRollEmbed chỉ để HIỂN THỊ.
       // emotionDelta = TỔNG của delta tự roll skill (Max/Min dice) + manualCoin (GM/
       // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
-      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
+      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType,
     });
@@ -1653,7 +1653,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       attackerId: playerId, attackerType: "player",
       targets: previews.map(p => ({ targetId: p.target.id, targetType: p.target.type, calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
       dmgStr, defenseBypass,
-      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
+      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
@@ -1768,7 +1768,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       attackerId: ekey, attackerType: "enemy",
       targets: previews.map(p => ({ targetId: p.target.id, targetType: "player", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
       dmgStr, defenseBypass,
-      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin,
+      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
@@ -1970,7 +1970,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll, r, combatantResStr });
+const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll, r, combatantResStr, findWeaponAnywhere });
 // Tăng giới hạn listener — kiến trúc CÓ CHỦ Ý dùng NHIỀU client.on("interactionCreate",
 // ...) riêng biệt (mỗi cái tự check customId prefix, return sớm nếu không khớp) thay
 // vì 1 handler khổng lồ — KHÔNG PHẢI memory leak thật, chỉ là số lượng listener hợp lệ
@@ -4702,11 +4702,15 @@ if (message.content.startsWith("-gacha")) {
           player.weaponType = newWeapon.type ?? null;
           player.weaponName = newWeapon.name ?? null;
           player.weaponCriticalKey = newWeapon.criticalSkillKey ?? newWeapon.name ?? null;
-          appendActionLog(encounter, `🔄 <@${message.author.id}> đổi vũ khí qua ${abilityName} (-${lightCost} Light): ${newWeapon.name} (${oldWeaponWeight} → ${newWeapon.weight}).`);
+          // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp): swap qua vũ
+          // khí có passive "Orlando Furioso" → Critical NGAY SAU đó miễn CD.
+          const hasOrlandoFurioso = (newWeapon.passives ?? []).some(p => p.mechanicId === "orlando_furioso");
+          if (hasOrlandoFurioso) player.orlandoFuriosoBypass = true;
+          appendActionLog(encounter, `🔄 <@${message.author.id}> đổi vũ khí qua ${abilityName} (-${lightCost} Light): ${newWeapon.name} (${oldWeaponWeight} → ${newWeapon.weight}).${hasOrlandoFurioso ? " ⚡Orlando Furioso: Critical tiếp theo miễn CD." : ""}`);
           await saveEncounter(encChannelId, encounter);
           message.reply(
             `🔄 ${message.author} đổi vũ khí qua **${abilityName}** (-${lightCost} Light): **${newWeapon.name}** (${newWeapon.weight}/${newWeapon.type}, Base Dmg ${newWeapon.baseDamage}).\n` +
-            `> Độ nặng vũ khí đổi từ \`${oldWeaponWeight}\` → \`${newWeapon.weight}\` (ảnh hưởng Stamina cost M1 + số hit Guard/Evade/Parry chặn được). GM tự xác nhận đây có đúng là vũ khí hợp lệ theo phạm vi ${abilityName} hay không (hệ thống không có danh sách phân loại để tự kiểm tra).`
+            `> Độ nặng vũ khí đổi từ \`${oldWeaponWeight}\` → \`${newWeapon.weight}\` (ảnh hưởng Stamina cost M1 + số hit Guard/Evade/Parry chặn được). GM tự xác nhận đây có đúng là vũ khí hợp lệ theo phạm vi ${abilityName} hay không (hệ thống không có danh sách phân loại để tự kiểm tra).${hasOrlandoFurioso ? "\n> ⚡ **Orlando Furioso**: Critical tiếp theo của bạn sẽ MIỄN CD (dùng 1 lần)." : ""}`
           );
         });
       } catch (err) {
@@ -6524,6 +6528,18 @@ async function resolveOnePendingAction(encounter, p) {
               attacker.combatant.skillCooldowns[p.skillKey] = p.cooldownTurns + 1;
               verifyNote += ` [CD ${p.skillKey}: ${p.cooldownTurns}T]`;
             }
+            // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp) — TIÊU THỤ
+            // bypass sau khi commit (cooldownTurns đã = 0 từ lúc declare, ở đây chỉ
+            // cần clear flag để KHÔNG lặp lại miễn CD cho Critical LẦN SAU nữa).
+            if (p.orlandoFuriosoBypassConsumed) {
+              attacker.combatant.orlandoFuriosoBypass = false;
+              // Xoá SẠCH CD cũ (nếu có) — "miễn CD" nghĩa là hoàn toàn không bị
+              // ảnh hưởng, không chỉ bỏ qua check 1 lần rồi vẫn giữ CD cũ lại.
+              if (attacker.combatant.skillCooldowns && p.skillKey) {
+                attacker.combatant.skillCooldowns[p.skillKey] = 0;
+              }
+              verifyNote += ` ⚡[Orlando Furioso đã tiêu thụ]`;
+            }
             // Set Fire — Page tự buff (không dice, không nhắm target thật) — kích
             // hoạt NGAY khi skill confirm thành công, KHÔNG phụ thuộc evadedCompletely
             // (đây không phải đòn tấn công lên target, tương tự Light Dash/Tactical
@@ -7690,7 +7706,7 @@ client.on("interactionCreate", async (interaction) => {
         const p = {
           id: pendingId, kind: "critical", attackerId: interaction.user.id,
           targets: [], dmgStr: `Critical: ${critSkillName}`, defenseBypass: {},
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0,
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
@@ -7712,6 +7728,7 @@ client.on("interactionCreate", async (interaction) => {
         lightCost: verify.lightCost,
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
+        orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
         expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
       });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: target dropdown thay vì gõ key) — chọn
@@ -7772,6 +7789,7 @@ client.on("interactionCreate", async (interaction) => {
         lightCost: verify.lightCost,
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
+        orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
         expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
       });
       if (!verify.autoDmgStr) {
@@ -7783,7 +7801,7 @@ client.on("interactionCreate", async (interaction) => {
         const p = {
           id: pendingId, kind: "hit", attackerId: interaction.user.id,
           targets: [], dmgStr: `Page: ${pageName}`, defenseBypass: {},
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0,
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
@@ -7930,7 +7948,7 @@ client.on("interactionCreate", async (interaction) => {
         prefilledVerify: {
           skillRollEmbed: pending.skillRollEmbed, skillKey: pending.skillKey, cooldownTurns: pending.cooldownTurns,
           emotionDelta: pending.emotionDelta, lightCost: pending.lightCost, sanityCost: pending.sanityCost,
-          refSnippet: null, refLink: null,
+          refSnippet: null, refLink: null, orlandoFuriosoBypassConsumed: pending.orlandoFuriosoBypassConsumed ?? false,
         },
       });
       const warningNote = (pending.autoWarnings ?? []).length > 0 ? `\n\n⚠️ ${pending.autoWarnings.join("\n⚠️ ")}` : "";
