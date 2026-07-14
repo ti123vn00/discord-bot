@@ -177,27 +177,27 @@ const WEAPONS = {
   },
   "shi association katana": {
     name: "Shi Association Katana", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Shi", desc: "4 đòn đánh thường sẽ nhận 4 Poise. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Shi", mechanicId: "shi_poise", desc: "4 đòn đánh thường sẽ nhận 4 Poise. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "overbreath",
   },
   "liu martial arts": {
     name: "Liu Martial Arts", weight: "light", type: "Pierce", baseDamage: 5.5,
-    passives: [{ name: "Fire", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Fire", mechanicId: "fire_burn", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "violent flame",
   },
   "liu guan dao": {
     name: "Liu Guan Dao", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Fire", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Fire", mechanicId: "fire_burn", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "forming storm",
   },
   "dieci association kata": {
     name: "Dieci Association Kata", weight: "light", type: "Blunt", baseDamage: 5,
-    passives: [{ name: "Knowledge", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Knowledge", mechanicId: "knowledge_sanity", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "excruciating study",
   },
   "dieci association key": {
     name: "Dieci Association Key", weight: "medium", type: "Blunt", baseDamage: 11,
-    passives: [{ name: "Knowledge", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Knowledge", mechanicId: "knowledge_sanity", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "unveil",
   },
   "soldato rifle": {
