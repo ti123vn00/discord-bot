@@ -4017,9 +4017,16 @@ client.on("messageCreate", async (message) => {
   // APOLOGIZE (xác nhận trực tiếp): "book từ gacha bị vô cate vật phẩm thành ra
   // không dùng được, code này là để xin lỗi vì việc đó" — 10 Random Book + 5
   // Sealed Book Cache.
+  // DATTEBAYO (xác nhận trực tiếp): 1300 Lunacy — NHƯNG giới hạn theo USER (toàn
+  // bộ tài khoản Discord), KHÔNG PHẢI theo từng profile riêng như các code khác
+  // — "1 người có 5 profile thì chỉ 1 trong 5 profile được xài thôi". perUser:
+  // true đánh dấu điều này — check ở 1 Redis key RIÊNG (redeemUser:{userId}:...,
+  // không phụ thuộc slot), tách biệt hoàn toàn khỏi profileData.redeemedCodes
+  // (vốn lưu theo TỪNG slot/profile).
   const REDEEM_CODES = {
     GLORYTOPROJECTMOON: { lunacy: 1300 },
     APOLOGIZE: { books: { "Random Book": 10, "Sealed Book Cache": 5 } },
+    DATTEBAYO: { lunacy: 1300, perUser: true },
   };
   // ─── GACHA ──────────────────────────────────────────────────────────────────
 if (message.content.startsWith("-gacha")) {
@@ -4093,6 +4100,18 @@ if (message.content.startsWith("-gacha")) {
     }
     try {
       await withLock(message.author.id, async () => {
+        // perUser — GAP ĐÃ SỬA (xác nhận trực tiếp): "code này chỉ duy nhất 1
+        // profile của 1 user sử dụng được... 1 người có 5 profile thì chỉ 1
+        // trong 5 profile được xài thôi" — check RIÊNG 1 Redis key theo userId
+        // THUẦN (không kèm slot), tách biệt hoàn toàn khỏi profileData.redeemedCodes
+        // (vốn lưu THEO TỪNG profile/slot — không đủ để chặn liên-profile).
+        if (codeReward.perUser) {
+          const userLockKey = `redeemUser:${message.author.id}:${codeRaw}`;
+          const alreadyUsed = await redis.get(userLockKey);
+          if (alreadyUsed) {
+            throw new Error(`Code "${codeRaw}" đã được dùng bởi 1 trong các profile của bạn rồi — code này chỉ dùng được **1 lần trên toàn tài khoản**, không phải riêng từng profile.`);
+          }
+        }
         const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
         profileData.redeemedCodes = profileData.redeemedCodes ?? [];
         if (profileData.redeemedCodes.includes(codeRaw)) {
@@ -4112,7 +4131,10 @@ if (message.content.startsWith("-gacha")) {
           }
         }
         await savePlayerData(message.author.id, profileData, slot);
-        message.reply(`✅ Đã dùng code **${codeRaw}**: ${rewardNotes.join(", ")}.`);
+        if (codeReward.perUser) {
+          await redis.set(`redeemUser:${message.author.id}:${codeRaw}`, "1");
+        }
+        message.reply(`✅ Đã dùng code **${codeRaw}**: ${rewardNotes.join(", ")}.${codeReward.perUser ? "\n> ⚠️ Code này đã khoá trên toàn tài khoản — các profile khác của bạn không dùng được nữa." : ""}`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);
