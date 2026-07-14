@@ -256,25 +256,59 @@ const VALID_ITEMS = [
 ];
 
 // ─── GACHA (-gacha, xác nhận trực tiếp) ───────────────────────────────────────
-// 3 tier tái dùng NGUYÊN các pool đã có sẵn (RANDOM_BOOK_POOL/SEALED_BOOK_POOL/
-// CHIPBOARD_CACHE_POOL) — không khai báo trùng dữ liệu. Rate % KHÔNG được cho số
-// cụ thể trong yêu cầu gốc — dùng mốc gacha tiêu chuẩn (cao/trung/rất thấp), DỄ
-// CHỈNH nếu không đúng ý (chỉ 3 số trong GACHA_RATES).
-const GACHA_POOL_HIGH = RANDOM_BOOK_POOL; // 17 item — "Rate cao, filler items"
-const GACHA_POOL_MID = [...SEALED_BOOK_POOL, ...CHIPBOARD_CACHE_POOL, "Uptie Module"]; // 16 item — "Rate trung bình" (MK4/MK5 đã chuyển sang tier 3, xác nhận trực tiếp)
-const GACHA_POOL_RARE = ["Custom Accessory", "Custom Weapon", "Custom Outfit", "Custom Page", "Custom E.G.O", "Chipboard MK4", "Chipboard MK5"]; // 7 item — "Rate rất thấp"
-const GACHA_RATES = { high: 75, mid: 23, rare: 2 }; // % — giả định, tổng = 100
+// GAP ĐÃ SỬA (xác nhận trực tiếp): "Thêm pool banner giới hạn thời gian và pool
+// banner thường... Pool lúc trước là banner thường... làm một banner giới hạn"
+// — tái cấu trúc từ 3 hằng số phẳng (GACHA_POOL_HIGH/MID/RARE) thành object
+// GACHA_BANNERS (mỗi banner tự có pool + tên riêng) để hỗ trợ nhiều banner cùng
+// lúc. Tỷ lệ 80/19/1% và Pity áp dụng CHUNG cho cả 2 banner (xác nhận trực tiếp).
+const GACHA_RATES = { high: 80, mid: 19, rare: 1 }; // % — xác nhận trực tiếp, tổng = 100
 const GACHA_COST_PER_PULL = 130; // Lunacy/lần — xác nhận trực tiếp (1300 Lunacy code đầu = đúng 10 lần)
+const GACHA_PITY_MAX = 100; // xác nhận trực tiếp: "1 Pity = 1 roll khi đạt 100 có thể đổi bất kỳ 1 món từ Tier 3"
+// Naruto's Banner hết hạn 31/7/2026 23:59 giờ VN (UTC+7) = 2026-07-31T16:59:00Z
+// — hardcode timestamp (không parse string lúc runtime) để tránh rủi ro
+// timezone của máy chủ.
+const NARUTO_BANNER_EXPIRES_AT = 1785517140000;
 
-/** rollGachaOnce — roll 1 lần theo 3 tier GACHA_RATES, trả về tên item. */
-function rollGachaOnce() {
+const GACHA_BANNERS = {
+  standard: {
+    name: "Standard Banner",
+    poolHigh: RANDOM_BOOK_POOL, // 17 item — pool gốc, KHÔNG đổi
+    poolMid: [...SEALED_BOOK_POOL, ...CHIPBOARD_CACHE_POOL, "Uptie Module"], // 16 item — KHÔNG đổi
+    poolRare: ["Custom Accessory", "Custom Weapon", "Custom Outfit", "Custom Page", "Custom E.G.O", "Chipboard MK4", "Chipboard MK5"], // 7 item — KHÔNG đổi
+    expiresAt: null, // không giới hạn thời gian
+  },
+  naruto: {
+    name: "Naruto's Banner",
+    poolHigh: RANDOM_BOOK_POOL, // Tier 1 giữ nguyên (không nhắc tới thay đổi)
+    // Tier 2: giữ nguyên pool cũ + THÊM Sharingan, Secret Scroll (xác nhận trực tiếp)
+    poolMid: [...SEALED_BOOK_POOL, ...CHIPBOARD_CACHE_POOL, "Uptie Module", "Sharingan", "Secret Scroll"],
+    // Tier 3: THAY HOÀN TOÀN — xác nhận trực tiếp loại bỏ luôn Custom Page,
+    // chỉ còn 3 item mới (Rinnegan, Kurama, Hiraishin Kunai), không còn
+    // Chipboard MK4/MK5/Custom X nào trong banner này.
+    poolRare: ["Rinnegan", "Kurama", "Hiraishin Kunai"],
+    expiresAt: NARUTO_BANNER_EXPIRES_AT,
+  },
+};
+
+/** isBannerActive — banner không giới hạn (expiresAt=null) luôn active; banner
+ *  giới hạn thời gian hết hạn sau NARUTO_BANNER_EXPIRES_AT. */
+function isBannerActive(bannerKey) {
+  const banner = GACHA_BANNERS[bannerKey];
+  if (!banner) return false;
+  return banner.expiresAt === null || Date.now() < banner.expiresAt;
+}
+
+/** rollGachaOnce — roll 1 lần theo 3 tier GACHA_RATES, trả về { item, tier }
+ *  (tier cần để biết có phải Tier 3 hay không, phục vụ Pity). */
+function rollGachaOnce(bannerKey) {
+  const banner = GACHA_BANNERS[bannerKey];
   const roll = Math.random() * 100;
   if (roll < GACHA_RATES.high) {
-    return GACHA_POOL_HIGH[Math.floor(Math.random() * GACHA_POOL_HIGH.length)];
+    return { item: banner.poolHigh[Math.floor(Math.random() * banner.poolHigh.length)], tier: 1 };
   } else if (roll < GACHA_RATES.high + GACHA_RATES.mid) {
-    return GACHA_POOL_MID[Math.floor(Math.random() * GACHA_POOL_MID.length)];
+    return { item: banner.poolMid[Math.floor(Math.random() * banner.poolMid.length)], tier: 2 };
   } else {
-    return GACHA_POOL_RARE[Math.floor(Math.random() * GACHA_POOL_RARE.length)];
+    return { item: banner.poolRare[Math.floor(Math.random() * banner.poolRare.length)], tier: 3 };
   }
 }
 
@@ -327,6 +361,7 @@ const KNOWN_KEYS = new Set([
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
   "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", "type", "ammotype", "channel", // -encounter
+  "banner", // -gacha banner: naruto/standard
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -2193,9 +2228,14 @@ function buildEnemyTargetOptions(encounter) {
   return options.slice(0, 25);
 }
 
-async function performGachaPull(userId, count) {
+async function performGachaPull(userId, count, bannerKey) {
   let resultInfo;
   await withLock(userId, async () => {
+    const banner = GACHA_BANNERS[bannerKey];
+    if (!banner) throw new Error(`Banner "${bannerKey}" không tồn tại.`);
+    if (!isBannerActive(bannerKey)) {
+      throw new Error(`**${banner.name}** đã kết thúc — không thể pull nữa.`);
+    }
     const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
     const totalCost = GACHA_COST_PER_PULL * count;
     const currentLunacy = profileData.lunacy ?? 0;
@@ -2205,10 +2245,15 @@ async function performGachaPull(userId, count) {
     profileData.lunacy = currentLunacy - totalCost;
     profileData.items = profileData.items ?? {};
     profileData.books = profileData.books ?? {};
+    // pity — GAP ĐÃ SỬA (xác nhận trực tiếp): "khi chưa roll ra 1 món đồ nào của
+    // Tier 3 thì sẽ tích Pity, 1 Pity = 1 roll khi đạt 100 có thể đổi bất kỳ 1
+    // món từ Tier 3" — lưu riêng theo TỪNG banner (profileData.gachaPity[bannerKey]).
+    profileData.gachaPity = profileData.gachaPity ?? {};
+    profileData.gachaPity[bannerKey] = profileData.gachaPity[bannerKey] ?? 0;
     const results = [];
     const rareHits = [];
     for (let i = 0; i < count; i++) {
-      const item = rollGachaOnce();
+      const { item, tier } = rollGachaOnce(bannerKey);
       // BUG ĐÃ SỬA (xác nhận trực tiếp): trước đây MỌI thứ rớt ra (kể cả sách)
       // đều bị cộng thẳng vào profileData.items — sách phải nằm ở profileData.books
       // (đúng chỗ -inventory/-give hiện có đã phân biệt từ trước, VALID_BOOKS là
@@ -2219,13 +2264,46 @@ async function performGachaPull(userId, count) {
         profileData.items[item] = (profileData.items[item] ?? 0) + 1;
       }
       results.push(item);
-      if (GACHA_POOL_RARE.includes(item)) rareHits.push(item);
+      if (tier === 3) {
+        rareHits.push(item);
+        profileData.gachaPity[bannerKey] = 0; // roll ra Tier 3 thật — reset Pity
+      } else {
+        profileData.gachaPity[bannerKey] += 1;
+      }
     }
     await savePlayerData(userId, profileData, slot);
     const counted = {};
     for (const item of results) counted[item] = (counted[item] ?? 0) + 1;
-    const resultLines = Object.entries(counted).map(([item, n]) => `${GACHA_POOL_RARE.includes(item) ? "🌟" : GACHA_POOL_MID.includes(item) ? "✨" : "▫️"} ${item}${n > 1 ? ` x${n}` : ""}`);
-    resultInfo = { totalCost, resultLines, rareHits, remainingLunacy: profileData.lunacy };
+    const resultLines = Object.entries(counted).map(([item, n]) => `${banner.poolRare.includes(item) ? "🌟" : banner.poolMid.includes(item) ? "✨" : "▫️"} ${item}${n > 1 ? ` x${n}` : ""}`);
+    resultInfo = { totalCost, resultLines, rareHits, remainingLunacy: profileData.lunacy, pity: profileData.gachaPity[bannerKey] };
+  });
+  return resultInfo;
+}
+
+/** performPityExchange — GAP ĐÃ SỬA (xác nhận trực tiếp): "1 Pity = 1 roll khi
+ *  đạt 100 có thể đổi bất kỳ 1 món từ Tier 3" — trừ đúng 100 Pity, cộng thẳng
+ *  item Tier 3 đã chọn vào inventory (KHÔNG reset Pity về 0 hoàn toàn — chỉ trừ
+ *  đúng 100 đã dùng, phần dư nếu có vẫn giữ lại, dù hiếm khi vượt quá 100 vì
+ *  UI chỉ cho đổi khi vừa chạm mốc). */
+async function performPityExchange(userId, bannerKey, chosenItem) {
+  let resultInfo;
+  await withLock(userId, async () => {
+    const banner = GACHA_BANNERS[bannerKey];
+    if (!banner) throw new Error(`Banner "${bannerKey}" không tồn tại.`);
+    if (!banner.poolRare.includes(chosenItem)) {
+      throw new Error(`"${chosenItem}" không thuộc Tier 3 của **${banner.name}**.`);
+    }
+    const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
+    profileData.gachaPity = profileData.gachaPity ?? {};
+    const currentPity = profileData.gachaPity[bannerKey] ?? 0;
+    if (currentPity < GACHA_PITY_MAX) {
+      throw new Error(`Chưa đủ Pity — cần **${GACHA_PITY_MAX}**, hiện có **${currentPity}**.`);
+    }
+    profileData.gachaPity[bannerKey] = currentPity - GACHA_PITY_MAX;
+    profileData.items = profileData.items ?? {};
+    profileData.items[chosenItem] = (profileData.items[chosenItem] ?? 0) + 1;
+    await savePlayerData(userId, profileData, slot);
+    resultInfo = { chosenItem, remainingPity: profileData.gachaPity[bannerKey] };
   });
   return resultInfo;
 }
@@ -2233,29 +2311,33 @@ async function performGachaPull(userId, count) {
 /** buildGachaPanelEmbed — bảng UI gacha đẹp (xác nhận trực tiếp: "nên làm ra một
  *  cái UI gacha cùng với hiển thị rate, danh sách để cho nó đẹp") — hiện đủ 3
  *  tier + % TỪNG item (tính từ GACHA_RATES/pool.length, không phải chỉ % tổng
- *  tier) + Lunacy hiện có + nút Pull x1/x10. */
-function buildGachaPanelEmbed(lunacy) {
-  const rateHigh = (GACHA_RATES.high / GACHA_POOL_HIGH.length).toFixed(2);
-  const rateMid = (GACHA_RATES.mid / GACHA_POOL_MID.length).toFixed(2);
-  const rateRare = (GACHA_RATES.rare / GACHA_POOL_RARE.length).toFixed(2);
+ *  tier) + Lunacy hiện có + Pity hiện tại + nút Pull x1/x10. */
+function buildGachaPanelEmbed(lunacy, bannerKey, pity) {
+  const banner = GACHA_BANNERS[bannerKey];
+  const rateHigh = (GACHA_RATES.high / banner.poolHigh.length).toFixed(2);
+  const rateMid = (GACHA_RATES.mid / banner.poolMid.length).toFixed(2);
+  const rateRare = (GACHA_RATES.rare / banner.poolRare.length).toFixed(2);
+  const deadlineNote = banner.expiresAt
+    ? `\n⏳ Kết thúc: **${new Date(banner.expiresAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}** (giờ VN)`
+    : "";
   return {
-    title: "🎰 Gacha",
+    title: `🎰 Gacha — ${banner.name}`,
     color: 0x9b59b6,
-    description: `Bạn có **${formatNumber(lunacy)}** <:Lunacy:1524989409529823342>Lunacy | Chi phí: **${GACHA_COST_PER_PULL}**/lần`,
+    description: `Bạn có **${formatNumber(lunacy)}** <:Lunacy:1524989409529823342>Lunacy | Chi phí: **${GACHA_COST_PER_PULL}**/lần\n🎯 Pity: **${pity}/${GACHA_PITY_MAX}** (đủ 100 → đổi bất kỳ 1 item Tier 3)${deadlineNote}`,
     fields: [
       {
         name: `▫️ Rate cao — ${GACHA_RATES.high}% tổng (mỗi item ${rateHigh}%)`,
-        value: GACHA_POOL_HIGH.map(i => `• ${i}`).join("\n"),
+        value: banner.poolHigh.map(i => `• ${i}`).join("\n"),
         inline: false,
       },
       {
         name: `✨ Rate trung bình — ${GACHA_RATES.mid}% tổng (mỗi item ${rateMid}%)`,
-        value: GACHA_POOL_MID.map(i => `• ${i}`).join("\n"),
+        value: banner.poolMid.map(i => `• ${i}`).join("\n"),
         inline: false,
       },
       {
         name: `🌟 Rate rất thấp — ${GACHA_RATES.rare}% tổng (mỗi item ${rateRare}%)`,
-        value: GACHA_POOL_RARE.map(i => `• ${i}`).join("\n"),
+        value: banner.poolRare.map(i => `• ${i}`).join("\n"),
         inline: false,
       },
     ],
@@ -2263,11 +2345,19 @@ function buildGachaPanelEmbed(lunacy) {
   };
 }
 
-function buildGachaPanelButtons(userId) {
-  return [new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`gachapull:${userId}:1`).setLabel(`🎰 Pull x1 (${GACHA_COST_PER_PULL} Lunacy)`).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`gachapull:${userId}:10`).setLabel(`🎰 Pull x10 (${GACHA_COST_PER_PULL * 10} Lunacy)`).setStyle(ButtonStyle.Success),
+function buildGachaPanelButtons(userId, bannerKey, pity) {
+  const rows = [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`gachapull:${userId}:1:${bannerKey}`).setLabel(`🎰 Pull x1 (${GACHA_COST_PER_PULL} Lunacy)`).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`gachapull:${userId}:10:${bannerKey}`).setLabel(`🎰 Pull x10 (${GACHA_COST_PER_PULL * 10} Lunacy)`).setStyle(ButtonStyle.Success),
   )];
+  // Nút "Đổi Pity" — GAP ĐÃ SỬA (xác nhận trực tiếp): chỉ hiện khi đã đủ 100,
+  // bấm vào sẽ mở dropdown chọn 1 trong các item Tier 3 của banner này.
+  if (pity >= GACHA_PITY_MAX) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`gachapity:${userId}:${bannerKey}`).setLabel(`🎯 Đổi Pity (${pity}/${GACHA_PITY_MAX})`).setStyle(ButtonStyle.Danger),
+    ));
+  }
+  return rows;
 }
 
 client.on("messageCreate", async (message) => {
@@ -3937,34 +4027,48 @@ if (message.content.startsWith("-gacha")) {
       message.reply("⏳ Chờ 3 giây trước khi dùng lệnh này tiếp nhé.");
       return;
     }
-    const countRaw = message.content.replace(/^-gacha/i, "").trim();
-    // Không nhập số → hiện BẢNG UI (embed rate/danh sách + nút Pull x1/x10) thay
-    // vì pull ngay — xác nhận trực tiếp: "nên làm ra một cái UI gacha... cho nó
-    // đẹp". Có nhập số (VD `-gacha 5`) → GIỮ hành vi cũ (pull trực tiếp qua text,
-    // cho power user không cần bấm nút).
-    if (!countRaw) {
-      try {
-        const { data: profileData } = await getPlayerDataWithSlot(message.author.id);
-        message.reply({
-          embeds: [buildGachaPanelEmbed(profileData.lunacy ?? 0)],
-          components: buildGachaPanelButtons(message.author.id),
-        });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
+    const rawAfterCmd = message.content.replace(/^-gacha/i, "").trim();
+    const kvGacha = parseKeyValues(rawAfterCmd);
+    // Không nhập gì → hiện dropdown CHỌN BANNER trước (Standard/Naruto's), rồi
+    // mới vào bảng UI (embed rate/danh sách + nút Pull x1/x10 + Đổi Pity) — xác
+    // nhận trực tiếp: "Thêm pool banner giới hạn thời gian và pool banner thường".
+    if (!rawAfterCmd) {
+      const bannerOptions = Object.entries(GACHA_BANNERS)
+        .filter(([key]) => isBannerActive(key))
+        .map(([key, b]) => new StringSelectMenuOptionBuilder().setLabel(b.name).setValue(key)
+          .setDescription(b.expiresAt ? `Giới hạn thời gian — kết thúc ${new Date(b.expiresAt).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}` : "Banner thường"));
+      message.reply({
+        embeds: [{ title: "🎰 Chọn Banner", description: "Chọn banner muốn quay:", color: 0x9b59b6 }],
+        components: [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder().setCustomId(`gachabanner:${message.author.id}`).setPlaceholder("Chọn banner...").addOptions(...bannerOptions),
+        )],
+      });
+      return;
+    }
+    // Có nhập số (VD `-gacha 5` hoặc `-gacha 5 banner: naruto`) → pull trực tiếp
+    // qua text, cho power user không cần bấm nút — banner mặc định "standard"
+    // nếu không ghi rõ.
+    const countRaw = Object.keys(kvGacha).length > 0
+      ? rawAfterCmd.split(/\s+banner:/i)[0].trim()
+      : rawAfterCmd;
+    const bannerKeyRaw = (kvGacha["banner"] ?? "standard").toLowerCase().trim();
+    const bannerKey = Object.keys(GACHA_BANNERS).find(k => k === bannerKeyRaw || GACHA_BANNERS[k].name.toLowerCase() === bannerKeyRaw);
+    if (!bannerKey) {
+      message.reply(`❌ Banner "${bannerKeyRaw}" không hợp lệ — dùng \`standard\` hoặc \`naruto\`.`);
       return;
     }
     const count = parseInt(countRaw, 10);
     if (!Number.isFinite(count) || count < 1 || count > 10) {
-      message.reply(`⚠️ Cú pháp: \`-gacha [số lần, 1-10]\` (bỏ trống để mở bảng UI).\n> Chi phí: **${GACHA_COST_PER_PULL} <:Lunacy:1524989409529823342>Lunacy/lần**.\n> Rate: ${GACHA_RATES.high}% thường / ${GACHA_RATES.mid}% trung bình / ${GACHA_RATES.rare}% cực hiếm.`);
+      message.reply(`⚠️ Cú pháp: \`-gacha [số lần, 1-10] banner: [standard/naruto]\` (bỏ trống để mở bảng UI chọn banner).\n> Chi phí: **${GACHA_COST_PER_PULL} <:Lunacy:1524989409529823342>Lunacy/lần**.\n> Rate: ${GACHA_RATES.high}% thường / ${GACHA_RATES.mid}% trung bình / ${GACHA_RATES.rare}% cực hiếm.`);
       return;
     }
     try {
-      const { totalCost, resultLines, rareHits, remainingLunacy } = await performGachaPull(message.author.id, count);
+      const { totalCost, resultLines, rareHits, remainingLunacy, pity } = await performGachaPull(message.author.id, count, bannerKey);
       message.reply(
-        `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(remainingLunacy)}**):\n` +
+        `🎰 **${GACHA_BANNERS[bannerKey].name} x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(remainingLunacy)}**):\n` +
         resultLines.map(l => `> ${l}`).join("\n") +
-        (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : "")
+        (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : "") +
+        `\n🎯 Pity: **${pity}/${GACHA_PITY_MAX}**`
       );
     } catch (err) {
       message.reply(`❌ ${err.message}`);
@@ -6996,28 +7100,48 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId.startsWith("gachapull:")) {
-    const [, ownerId, countStr] = interaction.customId.split(":");
+    const [, ownerId, countStr, bannerKey] = interaction.customId.split(":");
     if (interaction.user.id !== ownerId) {
       return interaction.reply({ content: "⚠️ Chỉ chủ nhân bảng gacha này mới bấm được — dùng `-gacha` để mở bảng riêng của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     const count = parseInt(countStr, 10);
     try {
-      const { totalCost, resultLines, rareHits, remainingLunacy } = await performGachaPull(interaction.user.id, count);
-      // Cập nhật LẠI panel (Lunacy mới) NGAY trong cùng message — người chơi bấm
-      // tiếp được luôn, không cần gõ `-gacha` lại mỗi lần.
+      const { totalCost, resultLines, rareHits, remainingLunacy, pity } = await performGachaPull(interaction.user.id, count, bannerKey);
+      // Cập nhật LẠI panel (Lunacy mới, Pity mới) NGAY trong cùng message —
+      // người chơi bấm tiếp được luôn, không cần gõ `-gacha` lại mỗi lần.
       await interaction.update({
-        embeds: [buildGachaPanelEmbed(remainingLunacy)],
-        components: buildGachaPanelButtons(ownerId),
+        embeds: [buildGachaPanelEmbed(remainingLunacy, bannerKey, pity)],
+        components: buildGachaPanelButtons(ownerId, bannerKey, pity),
       }).catch(() => {});
       await interaction.followUp({
         content:
-          `🎰 **Gacha x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(remainingLunacy)}**):\n` +
+          `🎰 **${GACHA_BANNERS[bannerKey].name} x${count}** (-${formatNumber(totalCost)} <:Lunacy:1524989409529823342>Lunacy, còn **${formatNumber(remainingLunacy)}**):\n` +
           resultLines.map(l => `> ${l}`).join("\n") +
-          (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : ""),
+          (rareHits.length > 0 ? `\n\n🎉 **CỰC HIẾM!** Trúng: ${rareHits.join(", ")} — liên hệ GM để thiết kế cụ thể.` : "") +
+          `\n🎯 Pity: **${pity}/${GACHA_PITY_MAX}**`,
       }).catch(() => {});
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
+    return;
+  }
+
+  // "Đổi Pity" — GAP ĐÃ SỬA (xác nhận trực tiếp): mở dropdown chọn 1 trong các
+  // item Tier 3 của banner này để đổi (thay vì đổi ngẫu nhiên).
+  if (interaction.customId.startsWith("gachapity:")) {
+    const [, ownerId, bannerKey] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({ content: "⚠️ Chỉ chủ nhân bảng gacha này mới bấm được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    const banner = GACHA_BANNERS[bannerKey];
+    if (!banner) return interaction.reply({ content: "⚠️ Banner không hợp lệ.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    const rareOptions = banner.poolRare.map(item => new StringSelectMenuOptionBuilder().setLabel(item).setValue(item));
+    await interaction.update({
+      embeds: [{ title: `🎯 Đổi Pity — ${banner.name}`, description: "Chọn 1 item Tier 3 muốn đổi (trừ đúng 100 Pity):", color: 0xe74c3c }],
+      components: [new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder().setCustomId(`gachapityitem:${ownerId}:${bannerKey}`).setPlaceholder("Chọn item...").addOptions(...rareOptions),
+      )],
+    }).catch(() => {});
     return;
   }
 
@@ -7259,6 +7383,51 @@ client.on("interactionCreate", async (interaction) => {
     }).catch(() => {});
   } catch (err) {
     interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU INTERACTIONS (gacha — chọn banner / đổi Pity, xác nhận trực
+// tiếp: "Thêm pool banner giới hạn thời gian và pool banner thường") ─────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (interaction.customId.startsWith("gachabanner:")) {
+    const [, ownerId] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({ content: "⚠️ Chỉ chủ nhân bảng này mới chọn được — dùng `-gacha` để mở bảng riêng của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    const bannerKey = interaction.values[0];
+    if (!isBannerActive(bannerKey)) {
+      return interaction.reply({ content: `⚠️ **${GACHA_BANNERS[bannerKey]?.name ?? bannerKey}** đã kết thúc.`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      const { data: profileData } = await getPlayerDataWithSlot(interaction.user.id);
+      const pity = profileData.gachaPity?.[bannerKey] ?? 0;
+      await interaction.update({
+        embeds: [buildGachaPanelEmbed(profileData.lunacy ?? 0, bannerKey, pity)],
+        components: buildGachaPanelButtons(interaction.user.id, bannerKey, pity),
+      }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+  if (interaction.customId.startsWith("gachapityitem:")) {
+    const [, ownerId, bannerKey] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({ content: "⚠️ Chỉ chủ nhân bảng này mới đổi được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    const chosenItem = interaction.values[0];
+    try {
+      const { remainingPity } = await performPityExchange(interaction.user.id, bannerKey, chosenItem);
+      const { data: profileData } = await getPlayerDataWithSlot(interaction.user.id);
+      await interaction.update({
+        embeds: [{ title: "🎯 Đã đổi Pity thành công!", description: `Nhận được: **${chosenItem}**\nPity còn lại: **${remainingPity}/${GACHA_PITY_MAX}**`, color: 0x2ecc71 }],
+        components: [],
+      }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
   }
 });
 
