@@ -73,6 +73,12 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // chỉ cần bấm 1 lần (trả 40 Sta 1 lần) — các đòn tấn công SAU trong CÙNG
       // turn tự động Guard miễn phí, không cần hỏi lại.
       ironHorusGuardActiveThisTurn: false,
+      // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp, dự án tự động hoá
+      // toàn bộ weapon/outfit): "Orlando Furioso" (8 vũ khí Black Silence) — swap
+      // qua vũ khí này → Critical NGAY SAU đó miễn phí CD (dùng 1 lần, tiêu ngay
+      // sau khi dùng). Trước đây chỉ là text mô tả, không hề tự động — giờ track
+      // qua field này, set true lúc equipweapon, tiêu thụ lúc dùng Critical.
+      orlandoFuriosoBypass: false,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã
