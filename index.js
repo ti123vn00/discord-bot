@@ -6509,6 +6509,23 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.charge = Math.min(CHARGE_MAX, attacker.combatant.charge + poiseGain);
                 }
               }
+              // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 2) —
+              // "Shi" (Shi Association Katana): 4 đòn đánh thường → +4 Poise cho
+              // BẢN THÂN. "Fire" (Liu Martial Arts/Liu Guan Dao): 2 đòn đánh thường
+              // → +1 Burn lên TẤT CẢ target của đòn này (không phải bản thân).
+              const currentWeaponInfo = findWeaponAnywhere(attacker.combatant.weaponName);
+              const weaponMechanics = (currentWeaponInfo?.passives ?? []).map(pa => pa.mechanicId).filter(Boolean);
+              if (weaponMechanics.includes("shi_poise") && attacker.combatant.m1AttackCount % 4 === 0) {
+                attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 4);
+                resultLines.push(`⚔️ **Shi** — ${attacker.label} nhận 4 Poise (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
+              if (weaponMechanics.includes("fire_burn") && attacker.combatant.m1AttackCount % 2 === 0) {
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (tResolved) tResolved.combatant.burn = Math.min(99, (tResolved.combatant.burn ?? 0) + 1);
+                }
+                resultLines.push(`🔥 **Fire** — ${attacker.label} gắn 1 Burn lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
             }
             checkStaggerPanic(attacker.combatant);
 
@@ -6539,6 +6556,17 @@ async function resolveOnePendingAction(encounter, p) {
                 attacker.combatant.skillCooldowns[p.skillKey] = 0;
               }
               verifyNote += ` ⚡[Orlando Furioso đã tiêu thụ]`;
+            }
+            // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 2) —
+            // "Knowledge" (Dieci Association Kata/Key): mỗi lần dùng ĐÚNG Critical
+            // của vũ khí này → hồi 5 Sanity cho bản thân.
+            if (p.skillKey && attacker.type === "player") {
+              const knowledgeWeapon = findWeaponAnywhere(attacker.combatant.weaponName);
+              const hasKnowledge = (knowledgeWeapon?.passives ?? []).some(pa => pa.mechanicId === "knowledge_sanity");
+              if (hasKnowledge && knowledgeWeapon?.criticalSkillKey === p.skillKey) {
+                attacker.combatant.currentSanity = Math.min(attacker.combatant.maxSanity, (attacker.combatant.currentSanity ?? 0) + 5);
+                verifyNote += ` 📿[Knowledge +5 Sanity]`;
+              }
             }
             // Set Fire — Page tự buff (không dice, không nhắm target thật) — kích
             // hoạt NGAY khi skill confirm thành công, KHÔNG phụ thuộc evadedCompletely
