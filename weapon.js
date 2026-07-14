@@ -220,7 +220,7 @@ const WEAPONS = {
   },
   "chains of loyalty": {
     name: "Chains of Loyalty", weight: "light", type: "Blunt", baseDamage: 5,
-    passives: [{ name: "Payback", desc: "Mỗi 1 Turn, đòn tấn công đầu tiên bạn chịu từ kẻ thù sẽ phản 1/2 Dmg về cho chúng với Dmg Type là Blunt. Đồng thời gây cho chúng 5 Fragile và 1 Vengeance Mark. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Payback", mechanicId: "payback_reflect", desc: "Mỗi 1 Turn, đòn tấn công đầu tiên bạn chịu từ kẻ thù sẽ phản 1/2 Dmg về cho chúng với Dmg Type là Blunt. Đồng thời gây cho chúng 5 Fragile và 1 Vengeance Mark. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "promised suffering",
   },
   "seven association longsword": {
