@@ -111,9 +111,24 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
    *  chưa dùng tính năng này, giữ tương thích ngược hoàn toàn. */
   function isCurrentTurnHolder(encounter, id) {
     const order = encounter.turnOrder ?? [];
-    if (order.length === 0) return true;
+    // BUG ĐÃ SỬA (xác nhận trực tiếp): "khi nào -encounter rollspeed thì encounter
+    // mới thật sự bắt đầu, trước đó thì khóa mọi hành động của mọi mob lẫn player
+    // lại... cứ khi có player encounter join vào thì họ hành động được ngay luôn,
+    // trong khi vẫn chưa roll gì" — TRƯỚC ĐÂY order rỗng (chưa rollspeed) →
+    // return true CHO BẤT KỲ AI (nghĩa là "luôn đúng lượt", ai cũng hành động
+    // được ngay) — HOÀN TOÀN NGƯỢC LẠI ý muốn. Giờ order rỗng → false (KHÓA
+    // TẤT CẢ, không ai coi là "đúng lượt" cho tới khi GM chạy rollspeed).
+    if (order.length === 0) return false;
     const idx = encounter.currentTurnIndex ?? 0;
     return order[idx]?.id === id;
+  }
+
+  /** hasEncounterStarted — true khi đã có turnOrder (đã rollspeed ít nhất 1 lần)
+   *  — dùng để phân biệt thông báo lỗi "Encounter chưa bắt đầu" (rõ ràng hơn,
+   *  trỏ đúng hướng khắc phục) với "Chưa tới lượt bạn" (đã bắt đầu, chỉ là
+   *  đang là lượt người khác). */
+  function hasEncounterStarted(encounter) {
+    return (encounter.turnOrder ?? []).length > 0;
   }
 
   /** advanceToNextTurnHolder — Turn Order Enforcement: chuyển sang người TIẾP
@@ -390,6 +405,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     rollSpeedValue,
     determineTurnOrder,
     isCurrentTurnHolder,
+    hasEncounterStarted,
     insertIntoTurnOrderMidRound,
     advanceToNextTurnHolder,
     buildTurnOrderText,
