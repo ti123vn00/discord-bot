@@ -27,6 +27,16 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     let critDivOverride = null;
     let instantKill = null;
   
+    // GAP ĐÃ SỬA (xác nhận trực tiếp, sau khi user cung cấp mô tả đầy đủ 50+
+    // status): "Red Plum Blossom" — "khi có Red Plum Blossom trên người kẻ địch
+    // sẽ giúp bản thân tăng 10% Critical" — TRƯỚC ĐÂY dùng redPlumBlossomPoiseBonus
+    // (dead code — field này KHÔNG BAO GIỜ được định nghĩa ở đâu cả, luôn = 0,
+    // hoàn toàn không có tác dụng) để cộng vào Poise — SAI hoàn toàn so với mô
+    // tả gốc (không liên quan gì tới Poise). Sửa đúng: +0.1 vào critMul (nhất
+    // quán với critMul=1.3 mặc định đã có sẵn — "+10% Critical" = +10% hệ số
+    // nhân khi Crit, không phải tỉ lệ NÉM ra Crit).
+    if ((target.redPlumBlossom ?? 0) > 0) critMul += 0.1;
+  
     // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) — "The
     // Imitation" (Mimicry Blade): mỗi 1 Imitation đã TIÊU THỤ (qua Great Split)
     // → +5% Dmg Bonus kéo dài tới hết Encounter, cap 50% (= 10 Imitation tiêu).
@@ -181,4 +191,4 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
   
 
   return { computeAttackerPerkContext };
-}; 
+};
