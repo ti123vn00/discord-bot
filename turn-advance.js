@@ -123,7 +123,28 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // M1 trong turn đó nữa mà phải đợi hết turn thì số ammo sẽ reset về 8" —
     // reset về full (8) mỗi khi hết turn CỦA CHÍNH combatant này (không liên
     // quan gì tới ammo/frostAmmo/incendiaryAmmo reload từ inventory).
-    combatant.eyeOfHorusAmmo = 8;
+    // eyeOfHorusAmmo — BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp): "bạn hiểu
+    // sai về nội tại ammo rồi; nội tại ammo của nó là khi về 0 thì khi hết 1
+    // turn mới reset chứ không phải là cứ qua turn là reset về 8" — VD: Turn 1
+    // hết ammo còn 0 → Turn 2 VẪN 0 (tốn nguyên 1 turn để nạp đạn) → Turn 3 mới
+    // đầy lại. TRƯỚC ĐÂY reset về 8 VÔ ĐIỀU KIỆN mỗi turn-end (SAI hoàn toàn —
+    // biến ammo thành "luôn đầy mỗi turn", không có giá phải trả khi hết sạch).
+    // Giờ: nếu ammo ĐANG = 0 và CHƯA đánh dấu "đang nạp" (eyeOfHorusReloadPending
+    // false) → đây là lần hết turn ĐẦU TIÊN kể từ lúc về 0 → đánh dấu đang nạp,
+    // GIỮ NGUYÊN 0 (không reset). Nếu ĐÃ đang nạp (true, tức đã "chịu" 1 turn ở
+    // mức 0 rồi) → nạp xong, reset về 8, tắt cờ. Nếu ammo KHÔNG phải 0 → reset về
+    // 8 bình thường như thiết kế gốc (không có gì phải "trả giá").
+    if (combatant.eyeOfHorusAmmo === 0) {
+      if (combatant.eyeOfHorusReloadPending) {
+        combatant.eyeOfHorusAmmo = 8;
+        combatant.eyeOfHorusReloadPending = false;
+      } else {
+        combatant.eyeOfHorusReloadPending = true;
+      }
+    } else {
+      combatant.eyeOfHorusAmmo = 8;
+      combatant.eyeOfHorusReloadPending = false;
+    }
     // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp) — reset về
     // false mỗi khi hết turn CỦA CHÍNH combatant này, giống các "ThisTurn" flag
     // khác — turn kế tiếp cần bấm Guard lại 1 lần để kích hoạt lại.
