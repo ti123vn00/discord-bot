@@ -225,7 +225,7 @@ const WEAPONS = {
   },
   "seven association longsword": {
     name: "Seven Association Longsword", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Grasping Vulnerabilities", desc: "Mỗi 2 đòn đánh thường của bạn sẽ gây 1 Rupture lên người kẻ địch. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Grasping Vulnerabilities", mechanicId: "grasping_vulnerabilities", desc: "Mỗi 2 đòn đánh thường của bạn sẽ gây 1 Rupture lên người kẻ địch. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "moulinet",
   },
   "udjat khopesh": {
@@ -235,42 +235,42 @@ const WEAPONS = {
   },
   "warp corp. dagger": {
     name: "WARP Corp. Dagger", weight: "light", type: "Pierce", baseDamage: 6,
-    passives: [{ name: "Charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Charging", mechanicId: "warp_charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "dimensional rift dagger",
   },
   "warp corp. gauntlets": {
     name: "WARP Corp. Gauntlets", weight: "light", type: "Blunt", baseDamage: 6.5,
-    passives: [{ name: "Charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Charging", mechanicId: "warp_charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "dimensional rift gauntlets",
   },
   "l'heure du loup": {
     name: "L'Heure du Loup", weight: "light", type: "Blunt", baseDamage: 5,
-    passives: [{ name: "Blue Reverberation Ensemble", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Blue Reverberation Ensemble", mechanicId: "blue_reverberation", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "beatdown",
   },
   "yesterday's promise": {
     name: "Yesterday's Promise", weight: "light", type: "Pierce", baseDamage: 5,
-    passives: [{ name: "Blue Reverberation Ensemble", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Blue Reverberation Ensemble", mechanicId: "blue_reverberation", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "magic impact",
   },
   "reverberation scythe": {
     name: "Reverberation Scythe", weight: "medium", type: "Slash", baseDamage: 10,
-    passives: [{ name: "Blue Reverberation Ensemble Leader", desc: "Mỗi lần sử dụng Critical sẽ nhận 5 Sanity đồng thời 3 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Blue Reverberation Ensemble Leader", mechanicId: "blue_reverberation_leader", desc: "Mỗi lần sử dụng Critical sẽ nhận 5 Sanity đồng thời 3 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "resonate",
   },
   "the crying children": {
     name: "The Crying Children", weight: "medium", type: "Blunt", baseDamage: 14,
-    passives: [{ name: "Philip", desc: "Khi bản thân đạt được Emotional Level 1 sẽ nhận được 2 Dice Up, nếu Emotional Level 2 sẽ nhận được 4 Dice Up. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Philip", desc: "Khi bản thân đạt được Emotional Level 1 sẽ nhận được 2 Dice Up, nếu Emotional Level 2 sẽ nhận được 4 Dice Up. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "scorching desperation",
   },
   "viriscent pyrojade ring": {
     name: "Viriscent Pyrojade Ring", weight: "light", type: "Pierce", baseDamage: 5,
-    passives: [{ name: "Speed", desc: "4 đòn đánh thường sẽ nhận 1 Haste. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Speed", mechanicId: "warp_speed_haste", desc: "4 đòn đánh thường sẽ nhận 1 Haste. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "viriscent pyrojade violet",
   },
   "cinq rapier": {
     name: "Cinq Rapier", weight: "light", type: "Pierce", baseDamage: 5,
-    passives: [{ name: "Speed", desc: "4 đòn đánh thường sẽ nhận 1 Haste. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Speed", mechanicId: "warp_speed_haste", desc: "4 đòn đánh thường sẽ nhận 1 Haste. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "murche defensive",
   },
   "index cleaver": {
