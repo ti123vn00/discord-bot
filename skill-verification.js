@@ -140,6 +140,16 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       const currentWeapon = findWeaponAnywhere(attacker.weaponName);
       isOwnCriticalBypassed = attacker.orlandoFuriosoBypass && currentWeapon?.criticalSkillKey === skillKey;
       if (existingCd > 0 && !isOwnCriticalBypassed) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
+      // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) — "Great
+      // Split" (Mimicry Blade) yêu cầu ĐỦ 5 Imitation mới dùng được (đây là điều
+      // kiện BẮT BUỘC để roll, không chỉ là hiệu ứng phụ — chặn NGAY trước khi
+      // roll, giống cách CD chặn). BUG ĐÃ SỬA: skillKey giữ NGUYÊN dấu ":" (từ
+      // skillNameRaw "Great Split: Vertical" → "great split: vertical"), không
+      // strip như alias lookup — so sánh cần strip ":" trước để khớp đúng.
+      const skillKeyNoColon = skillKey.replace(/:/g, "").trim();
+      if ((skillKeyNoColon === "great split vertical" || skillKeyNoColon === "great split horizontal") && (attacker.imitation ?? 0) < 5) {
+        throw new Error(`Skill "${skill.name}" cần ít nhất 5 Imitation để dùng — hiện có ${attacker.imitation ?? 0}.`);
+      }
       // Light/Sanity cost — đọc từ field cost của skill (xem parseSkillCost — CHỈ
       // match được pattern Light/Sanity rõ ràng, bỏ qua Heat Gauge/custom resource
       // khác). Tap Of The Light (Gloom, [10 Points]): giảm 1 NỬA Sanity Cost từ
