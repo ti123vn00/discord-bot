@@ -221,7 +221,7 @@ const OUTFITS = {
     resistance: { B: 1.3, P: 1.1, S: 1.5 },
     speedRange: { min: 4, max: 7 },
     keypage: [
-      "Mỗi turn sẽ gieo dice từ 1 đến 7 để lấy sắc lệnh, và phải thực hiện nó trong vòng turn đó. Nếu thành công sẽ nhận được 1 Grace of Prescript. Nếu thất bại sắc lệnh sẽ nhận 5 Karmic Consequence; khiến bạn nhận thêm 1% Dmg cho mỗi stack. Max 100 Stack. (1: Tấn công | 2: Né | 3: Block | 4: Parry | 5: 1 phòng thủ + 1 tấn công | 6: Không làm gì | 7: Clash) — KHÔNG TỰ ĐỘNG HOÁ (roll dice + kiểm tra hành động cần GM/player tự làm bằng tay, dùng `-rolldice 1-7` để gieo).",
+      "Mỗi turn sẽ gieo dice từ 1 đến 7 để lấy sắc lệnh, và phải thực hiện nó trong vòng turn đó. Nếu thành công sẽ nhận được 1 Grace of Prescript. Nếu thất bại sắc lệnh sẽ nhận 5 Karmic Consequence; khiến bạn nhận thêm 1% Dmg cho mỗi stack. Max 100 Stack. (1: Tấn công | 2: Né | 3: Block | 4: Parry | 5: 1 phòng thủ + 1 tấn công | 6: Không làm gì | 7: Clash) — [ĐÃ TỰ ĐỘNG HOÁ HOÀN TOÀN — roll tự động đầu mỗi turn, track hành động thật (attack/evade/guard/parry/clash), tự cộng Grace/Karmic cuối turn.]",
     ],
   },
 };
