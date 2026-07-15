@@ -275,12 +275,12 @@ const WEAPONS = {
   },
   "index cleaver": {
     name: "Index Cleaver", weight: "heavy", type: "Slash", baseDamage: 20,
-    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "decapitation",
   },
   "index longsword": {
     name: "Index Longsword", weight: "medium", type: "Slash", baseDamage: 10,
-    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "eliminate",
   },
   // Pointillist Brush — cũng ĐÃ có Critical "Sanguine Pointilism" sẵn trong
