@@ -12,7 +12,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX }) {
+module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
 
   /** rollSpeedValue — roll trong Range Speed của combatant, cộng Haste trừ Bind
    *  ("1 Haste +1 Speed, 1 Bind -1 Speed" theo update mới). */
@@ -137,9 +137,74 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
    *  liệt kê trong turnOrder cho hiển thị, chỉ không chiếm lượt thật. Trả về
    *  true nếu đã đi hết 1 vòng (tất cả đã hành động/bị skip) — GM nên dùng
    *  `-encounter endturn` khi thấy true. */
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "tự động hóa mọi thứ đừng có nhìn note nữa...
+  // quy trình quá phức tạp, cần xử lý tự động để đỡ tốn thời gian... tôi muốn
+  // đây là một game thực thụ") — TOÀN BỘ hệ thống Index Proselyte (roll 1-7 mỗi
+  // turn, kiểm tra có làm ĐÚNG sắc lệnh hay không dựa trên hành động THẬT đã
+  // track — Tấn công/Né/Block/Parry/Clash đều có lệnh thật trong bot) + Will of
+  // Prescript (Index Longsword/Cleaver, đánh dấu random 1 địch mỗi turn). Trước
+  // đây bị đánh dấu "KHÔNG TỰ ĐỘNG HOÁ" — ĐÃ LỖI THỜI, giờ tự động hoàn toàn.
+  function validateAndRerollPrescript(encounter, leavingEntry, enteringEntry) {
+    const notes = [];
+    if (leavingEntry) {
+      const c = leavingEntry.type === "enemy" ? encounter.enemies[leavingEntry.id] : encounter.players[leavingEntry.id];
+      if (c && c.prescriptRoll !== null && c.prescriptRoll !== undefined) {
+        const didNothing = !c.prescriptAttacked && !c.prescriptEvaded && !c.prescriptBlocked && !c.prescriptParried && !c.prescriptClashed;
+        const successMap = {
+          1: c.prescriptAttacked,
+          2: c.prescriptEvaded,
+          3: c.prescriptBlocked,
+          4: c.prescriptParried,
+          5: c.prescriptAttacked && (c.prescriptEvaded || c.prescriptBlocked || c.prescriptParried),
+          6: didNothing,
+          7: c.prescriptClashed,
+        };
+        const succeeded = !!successMap[c.prescriptRoll];
+        const label = leavingEntry.type === "enemy" ? (encounter.enemies[leavingEntry.id]?.name ?? leavingEntry.id) : `<@${leavingEntry.id}>`;
+        if (succeeded) {
+          c.graceOfPrescript = (c.graceOfPrescript ?? 0) + 1;
+          notes.push(`📜 **Sắc lệnh #${c.prescriptRoll}** của ${label} THÀNH CÔNG — +1 Grace of Prescript (tổng ${c.graceOfPrescript}).`);
+        } else {
+          c.karmicConsequence = Math.min(100, (c.karmicConsequence ?? 0) + 5);
+          notes.push(`📜 **Sắc lệnh #${c.prescriptRoll}** của ${label} THẤT BẠI — +5 Karmic Consequence (tổng ${c.karmicConsequence}).`);
+        }
+        c.prescriptRoll = null;
+        c.prescriptAttacked = false;
+        c.prescriptEvaded = false;
+        c.prescriptBlocked = false;
+        c.prescriptParried = false;
+        c.prescriptClashed = false;
+      }
+    }
+    if (enteringEntry) {
+      const c = enteringEntry.type === "enemy" ? encounter.enemies[enteringEntry.id] : encounter.players[enteringEntry.id];
+      if (c) {
+        const weaponInfoForOutfit = (c.equippedOutfit ?? "").toLowerCase() === "index proselyte";
+        if (weaponInfoForOutfit) {
+          c.prescriptRoll = Math.floor(Math.random() * 7) + 1;
+          const rollLabels = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
+          const label = enteringEntry.type === "enemy" ? (encounter.enemies[enteringEntry.id]?.name ?? enteringEntry.id) : `<@${enteringEntry.id}>`;
+          notes.push(`📜 **Sắc lệnh mới** cho ${label}: **#${c.prescriptRoll}** — ${rollLabels[c.prescriptRoll]}.`);
+        }
+        const weaponInfo = findWeaponAnywhere(c.weaponName);
+        const hasWillOfPrescript = (weaponInfo?.passives ?? []).some(pa => pa.name === "Will of Prescript");
+        if (hasWillOfPrescript) {
+          const livingEnemyKeys = Object.keys(encounter.enemies ?? {}).filter(k => (encounter.enemies[k]?.currentHp ?? 0) > 0);
+          if (livingEnemyKeys.length > 0) {
+            const pick = livingEnemyKeys[Math.floor(Math.random() * livingEnemyKeys.length)];
+            c.prescriptTargetId = pick;
+            notes.push(`📜 **The Prescript Target's - The Index** đánh dấu lên **${encounter.enemies[pick]?.name ?? pick}**.`);
+          }
+        }
+      }
+    }
+    return notes;
+  }
+
   function advanceToNextTurnHolder(encounter) {
     const order = encounter.turnOrder ?? [];
-    if (order.length === 0) return false;
+    if (order.length === 0) return { wrapped: false, prescriptNotes: [] };
+    const leavingEntry = order[encounter.currentTurnIndex ?? 0] ?? null;
     let idx = (encounter.currentTurnIndex ?? 0) + 1;
     while (idx < order.length) {
       const entry = order[idx];
@@ -148,7 +213,10 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       idx++; // bỏ qua người đã chết/đang Stagger, không chiếm lượt
     }
     encounter.currentTurnIndex = idx;
-    return idx >= order.length; // true = đã hết 1 vòng turnOrder
+    const wrapped = idx >= order.length; // true = đã hết 1 vòng turnOrder
+    const enteringEntry = wrapped ? null : order[idx];
+    const prescriptNotes = validateAndRerollPrescript(encounter, leavingEntry, enteringEntry);
+    return { wrapped, prescriptNotes };
   }
   
   /** buildTurnOrderText — hiện danh sách thứ tự turn đã roll, kèm cảnh báo hoà cùng phe.
@@ -366,7 +434,15 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       // và lần 2 (stacks hiện=1) đều VẪN 1 turn, chỉ từ lần 3 (stacks hiện=2) mới 2
       // turn. Do đó CHECK trước bằng giá trị HIỆN CÓ, rồi MỚI tăng dazedStacks sau.
       const isThisStagger2Turn = (combatant.dazedStacks ?? 0) >= 2;
-      combatant.staggerTurnsLeft = isThisStagger2Turn ? 2 : 1;
+      // BUG ĐÃ SỬA (xác nhận trực tiếp): "nếu turn 1 stagger thì turn 2 cũng sẽ
+      // bị stagger" — TRƯỚC ĐÂY staggerTurnsLeft=1 khiến advanceCombatantTurn
+      // (gọi lúc turn HIỆN TẠI — turn vừa trigger Stagger — kết thúc) trừ NGAY
+      // về 0 và tắt Stagger TRƯỚC KHI turn kế tiếp bắt đầu — tức là Stagger chỉ
+      // "tồn tại" trong chính turn nó trigger, không hề kéo dài qua turn sau như
+      // luật. Giờ +1 cho cả 2 mức (1→2, 2→3) — vẫn giữ nguyên tỉ lệ ngắn/dài
+      // tương đối giữa 2 loại Stagger, chỉ sửa đúng số tuyệt đối để "1-turn
+      // Stagger" nghĩa là kéo dài qua ĐÚNG 1 turn kế tiếp (không phải 0 turn).
+      combatant.staggerTurnsLeft = isThisStagger2Turn ? 3 : 2;
       // lastStaggerWas2Turn — cờ RIÊNG lưu ĐÚNG loại của LẦN STAGGER NÀY (1 hay 2
       // turn), đọc lại lúc Stagger này KẾT THÚC ở advanceCombatantTurn để quyết định
       // cleanse — KHÔNG dùng dazedStacks lúc đó (giá trị đã bị +1 ngay dòng dưới đây,
@@ -405,6 +481,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     rollSpeedValue,
     determineTurnOrder,
     isCurrentTurnHolder,
+    validateAndRerollPrescript,
     hasEncounterStarted,
     insertIntoTurnOrderMidRound,
     advanceToNextTurnHolder,
