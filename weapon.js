@@ -162,7 +162,7 @@ const WEAPONS = {
   },
   "mimicry blade": {
     name: "Mimicry Blade", weight: "medium", type: "Slash", baseDamage: 14,
-    passives: [{ name: "The Imitation", desc: "Mỗi 1 Imitation đã tiêu thụ sẽ gia tăng cho bạn 5% Dmg Bonus [Max: 50%]. [KHÔNG TỰ ĐỘNG HOÁ — Imitation không nằm trong 7 status track được.]" }],
+    passives: [{ name: "The Imitation", mechanicId: "mimicry_imitation", desc: "Mỗi 1 Imitation đã tiêu thụ sẽ gia tăng cho bạn 5% Dmg Bonus [Max: 50%]. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "upstanding slash",
   },
   "augury spear": {
@@ -230,7 +230,7 @@ const WEAPONS = {
   },
   "udjat khopesh": {
     name: "Udjat Khopesh", weight: "medium", type: "Slash", baseDamage: 13,
-    passives: [{ name: "The Udjat", desc: "Mỗi 1 Protection bạn có trên người, gia tăng 1% Dmg Bonus. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "The Udjat", desc: "Mỗi 1 Protection bạn có trên người, gia tăng 1% Dmg Bonus. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "the udjat",
   },
   "warp corp. dagger": {
