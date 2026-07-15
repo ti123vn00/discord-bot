@@ -165,7 +165,7 @@ const OUTFITS = {
     name: "Udjat",
     resistance: { B: 0.9, P: 1.5, S: 1.4 },
     speedRange: { min: 4, max: 7 },
-    keypage: ["Khi start encounter bạn nhận được 10 Protection"],
+    keypage: ["Khi start encounter bạn nhận được 10 Protection [ĐÃ TỰ ĐỘNG HOÁ]"],
   },
   "warp corp. cleaner": {
     name: "WARP Corp. Cleaner",
