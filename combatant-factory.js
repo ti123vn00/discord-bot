@@ -69,6 +69,20 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // 1 turn ở mức 0 ammo chưa" — reset về 8 chỉ xảy ra ở turn-end THỨ 2 kể từ
       // lúc hết ammo, không phải turn-end đầu tiên (xem turn-advance.js).
       eyeOfHorusReloadPending: false,
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "tự động hóa mọi thứ đừng có nhìn note
+      // nữa... quy trình quá phức tạp, cần xử lý tự động để đỡ tốn thời gian")
+      // — TOÀN BỘ hệ thống Index Proselyte (roll 1-7 đầu turn, track có làm ĐÚNG
+      // sắc lệnh không) + Will of Prescript (Index Longsword/Cleaver). Track 5
+      // loại hành động RIÊNG BIỆT trong turn hiện tại, reset mỗi khi có roll mới.
+      prescriptRoll: null, // 1-7, sắc lệnh của turn HIỆN TẠI (null = chưa có/không có outfit)
+      prescriptAttacked: false,
+      prescriptEvaded: false,
+      prescriptBlocked: false,
+      prescriptParried: false,
+      prescriptClashed: false,
+      graceOfPrescript: 0, // PERSISTENT (không reset theo turn) — dùng cho Will of Prescript's %Dmg
+      karmicConsequence: 0, // PERSISTENT, max 100 — +1%Dmg/stack (Index Proselyte tự áp lên bản thân)
+      prescriptTargetId: null, // Will of Prescript — enemy đang bị đánh dấu "The Prescript Target's - The Index"
       // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm
       // Guard 1 lần trong turn thì cứ mặc định là guard sẵn trong turn đó do
       // charge Guard của nó không thể bị giảm được nên phải khóa lại nút guard"
