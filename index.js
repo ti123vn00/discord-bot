@@ -5859,6 +5859,15 @@ async function resolveOnePendingAction(encounter, p) {
             if (p.isEyeOfHorusFixedBurst && !p.isRepeatAmmo && attacker.type === "player") {
               attacker.combatant.eyeOfHorusAmmo = Math.max(0, (attacker.combatant.eyeOfHorusAmmo ?? 8) - (p.eyeOfHorusVolleyCount ?? 0));
             }
+            // GAP ĐÃ SỬA (xác nhận trực tiếp): "khi trigger repeat ammo thì không
+            // tốn stamina, và ammo; chỉ duy nhất là light được nhận" — repeat
+            // MIỄN Stamina + cả 2 loại Ammo (inventory lẫn nội tại), NHƯNG vẫn
+            // +1 Light mỗi lần trigger — đây là thứ DUY NHẤT repeat vẫn tạo ra.
+            let eyeOfHorusRepeatLightNote = "";
+            if (p.isEyeOfHorusFixedBurst && p.isRepeatAmmo && attacker.type === "player") {
+              attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight, (attacker.combatant.currentLight ?? 0) + 1);
+              eyeOfHorusRepeatLightNote = ` 🔄[Repeat Ammo +1 Light]`;
+            }
             if (p.staminaCost && attacker.type === "player") {
               attacker.combatant.currentStamina = Math.max(0, attacker.combatant.currentStamina - p.staminaCost);
               attacker.combatant.staminaUsedThisTurn += p.staminaCost;
@@ -6718,7 +6727,7 @@ async function resolveOnePendingAction(encounter, p) {
               if (levelNotes.length > 0) verifyNote += " " + levelNotes.join(" ");
             }
 
-            resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
+            resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${eyeOfHorusRepeatLightNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
 
   return resultLines;
 }
