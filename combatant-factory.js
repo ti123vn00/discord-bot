@@ -327,4 +327,4 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
   }
 
   return { createCombatant };
-}; 
+};
