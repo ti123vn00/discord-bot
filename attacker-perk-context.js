@@ -50,6 +50,16 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if ((attacker.weaponName ?? "").toLowerCase() === "udjat khopesh") {
       bonusPct += (attacker.protection ?? 0);
     }
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "tự động hóa mọi thứ đừng có nhìn note
+    // nữa") — Index Proselyte's Karmic Consequence: +1% Dmg TỰ áp lên bản thân
+    // mỗi stack (không cần target cụ thể, luôn cộng).
+    bonusPct += (attacker.karmicConsequence ?? 0);
+    // Will of Prescript (Index Longsword/Cleaver): +5% Dmg/Grace of Prescript,
+    // CHỈ khi target hiện tại ĐÚNG LÀ enemy đang bị đánh dấu "The Prescript
+    // Target's - The Index" (prescriptTargetId).
+    if (targetId && attacker.prescriptTargetId === targetId) {
+      bonusPct += 5 * (attacker.graceOfPrescript ?? 0);
+    }
 
     // Battle Ignition: turn trước đánh ≥10 lần → +15% Dmg turn này
     if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
