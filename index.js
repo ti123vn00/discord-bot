@@ -1356,7 +1356,7 @@ function normalizeEnemyKey(k) {
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
 const { createCombatant } = require("./combatant-factory")({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }); // ĐÃ TÁCH sang file riêng (combatant-factory.js)
 
-const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, hasEncounterStarted, insertIntoTurnOrderMidRound, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX });
+const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, hasEncounterStarted, validateAndRerollPrescript, insertIntoTurnOrderMidRound, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere });
 
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
@@ -4706,11 +4706,11 @@ if (message.content.startsWith("-gacha")) {
           if (curEntry.type === "player" && message.author.id !== curEntry.id) throw new Error("Chỉ đúng người đang tới lượt mới pass được.");
           if (curEntry.type === "enemy" && !isAdmin2 && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới pass lượt enemy được.");
           const label = curEntry.type === "enemy" ? `**${encounter.enemies[curEntry.id]?.name ?? curEntry.id}**` : `<@${curEntry.id}>`;
-          const wrapped = advanceToNextTurnHolder(encounter);
+          const { wrapped, prescriptNotes } = advanceToNextTurnHolder(encounter);
           appendActionLog(encounter, `⏭️ ${label} bỏ qua lượt (pass).`);
           await saveEncounter(encChannelId, encounter);
           announceCurrentTurn(encChannelId, encounter).catch(() => {});
-          message.reply(`⏭️ ${label} đã bỏ qua lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : `\n> Tiếp theo: ${buildTurnOrderText(encounter)}`}`);
+          message.reply(`⏭️ ${label} đã bỏ qua lượt.${prescriptNotes.length > 0 ? "\n" + prescriptNotes.map(n => `> ${n}`).join("\n") : ""}${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : `\n> Tiếp theo: ${buildTurnOrderText(encounter)}`}`);
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -4726,10 +4726,15 @@ if (message.content.startsWith("-gacha")) {
           if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới roll thứ tự turn.");
           if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length < 1) throw new Error("Chưa có combatant nào để roll.");
           determineTurnOrder(encounter);
+          // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — rollspeed
+          // (lần ĐẦU TIÊN bắt đầu trận) không đi qua advanceToNextTurnHolder,
+          // nên người ĐẦU TIÊN trong turnOrder sẽ không có prescriptRoll/
+          // prescriptTargetId nếu không gọi riêng ở đây.
+          const prescriptNotesInit = validateAndRerollPrescript(encounter, null, encounter.turnOrder[0] ?? null);
           appendActionLog(encounter, `🎲 Roll Speed — Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`);
           await saveEncounter(encChannelId, encounter);
           announceCurrentTurn(encChannelId, encounter).catch(() => {});
-          message.reply({ embeds: [{ title: "🎲 Thứ tự Turn", description: buildTurnOrderText(encounter), color: 0x3498db }] });
+          message.reply({ embeds: [{ title: "🎲 Thứ tự Turn", description: buildTurnOrderText(encounter) + (prescriptNotesInit.length > 0 ? "\n\n" + prescriptNotesInit.join("\n") : ""), color: 0x3498db }] });
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -5203,10 +5208,11 @@ if (message.content.startsWith("-gacha")) {
 
     if (sub === "endturn") {
       try {
-        const { encounter, shroudedNotes } = await performEndTurn(encChannelId, message.author.id, isAdmin);
+        const { encounter, shroudedNotes, prescriptNotes } = await performEndTurn(encChannelId, message.author.id, isAdmin);
         await message.reply({
           content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
             (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : "") +
+            (prescriptNotes.length > 0 ? `\n${prescriptNotes.map(n => `> ${n}`).join("\n")}` : "") +
             `\n> 🎲 Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`,
           embeds: [buildEncounterBoardEmbed(encounter)],
         });
@@ -5646,6 +5652,10 @@ if (message.content.startsWith("-gacha")) {
           // Clash Attack Boost (50-Status Nhóm 1): +1 điểm Clash FLAT/stack (max 8).
           const myEffectiveDice = myRoll.firstDiceValue - myPenalty + (forResolved.combatant.clashAttackBoost ?? 0);
           const oppEffectiveDice = oppRoll.firstDiceValue - oppPenalty + (targetResolved.combatant.clashAttackBoost ?? 0);
+          // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — Index
+          // Proselyte's Dice 7 ("Clash với 1 skill của kẻ địch") — chỉ người
+          // CHỦ ĐỘNG clash (forResolved) mới tính, không phụ thuộc thắng/thua.
+          if (forResolved.type === "player") forResolved.combatant.prescriptClashed = true;
 
           let resultText;
           if (myEffectiveDice > oppEffectiveDice) {
@@ -6227,6 +6237,18 @@ async function resolveOnePendingAction(encounter, p) {
                 finalDmg += increased;
                 fragileNote = ` 🔺[Fragile +${increasePct}%, tăng ${increased.toFixed(3)} dmg]`;
               }
+              // Karmic Consequence — BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp:
+              // "nhận thêm 1% Dmg cho mỗi 1 Stack tức nghĩa là 50 Karmic Consequence
+              // thì bản thân phải nhận thêm 50% Dmg... là dmg BẢN THÂN NHẬN VÀO chứ
+              // không phải gây ra") — TRƯỚC ĐÂY áp nhầm vào outgoing dmg (attacker
+              // gây ra), giờ đúng — tăng dmg TARGET nhận vào, y hệt pattern Fragile.
+              let karmicNote = "";
+              if ((target.karmicConsequence ?? 0) > 0 && finalDmg > 0) {
+                const karmicPct = target.karmicConsequence;
+                const karmicIncreased = finalDmg * (karmicPct / 100);
+                finalDmg += karmicIncreased;
+                karmicNote = ` 📜[Karmic Consequence +${karmicPct}%, tăng ${karmicIncreased.toFixed(3)} dmg]`;
+              }
               // GAP ĐÃ SỬA (xác nhận trực tiếp, sau khi user cung cấp mô tả đầy đủ
               // 50+ status) — "Smoke": +2.5%/stack Dmg CHỈ từ đòn đánh THƯỜNG (M1,
               // không phải skill/Page) nhận vào — decay (-1/turn) đã đúng sẵn ở
@@ -6542,7 +6564,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${smokeNote}${chargeShieldNote}${protectionNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -6785,6 +6807,11 @@ async function resolveOnePendingAction(encounter, p) {
               }
             }
 
+            // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — Index
+            // Proselyte's Dice 1 ("Tấn công 1 lần") — áp dụng cho MỌI loại tấn
+            // công (M1/Critical/Page), không chỉ riêng M1 — đây là điểm CHUNG
+            // cho tất cả (sau khi damage đã áp dụng thành công).
+            if (attacker.type === "player") attacker.combatant.prescriptAttacked = true;
             resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${eyeOfHorusRepeatLightNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
 
   return resultLines;
@@ -6857,12 +6884,18 @@ async function performEndTurn(channelId, userId, isAdmin) {
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
     encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
+    let prescriptNotes = [];
     if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length > 0) {
       determineTurnOrder(encounter);
+      // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "-encounter
+      // endturn" (round-level, roll Speed MỚI cho vòng mới) cũng cần khởi tạo
+      // prescriptRoll/prescriptTargetId cho người ĐẦU TIÊN của vòng mới, giống
+      // hệt rollspeed (không đi qua advanceToNextTurnHolder nên cần gọi riêng).
+      prescriptNotes = validateAndRerollPrescript(encounter, null, encounter.turnOrder[0] ?? null);
     }
     await saveEncounter(channelId, encounter);
     announceCurrentTurn(channelId, encounter).catch(() => {});
-    resultInfo = { encounter, shroudedNotes };
+    resultInfo = { encounter, shroudedNotes, prescriptNotes };
   });
   return resultInfo;
 }
@@ -7495,13 +7528,14 @@ client.on("interactionCreate", async (interaction) => {
       if (interaction.user.id !== gmIdFromButton && !isAdmin) {
         return interaction.reply({ content: "⚠️ Chỉ GM/admin mới được kết thúc turn.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
-      const { encounter, shroudedNotes } = await performEndTurn(channelId, interaction.user.id, isAdmin);
+      const { encounter, shroudedNotes, prescriptNotes } = await performEndTurn(channelId, interaction.user.id, isAdmin);
       await interaction.update({
         content: null,
         embeds: [{
           title: "🔄 Đã kết thúc Turn",
           description: `Hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
             (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : "") +
+            (prescriptNotes.length > 0 ? `\n${prescriptNotes.map(n => `> ${n}`).join("\n")}` : "") +
             `\n> 🎲 Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`,
           color: 0x2ecc71,
         }],
@@ -7582,11 +7616,13 @@ client.on("interactionCreate", async (interaction) => {
           // Guard 1 lần (Iron Horus) → coi như "đang Guard sẵn" cho HẾT turn này,
           // không cần bấm/trả Sta lại cho các đòn sau (xem sendReactiveDefensePrompt).
           if (target.hasIronHorus) target.ironHorusGuardActiveThisTurn = true;
+          if (targetResolved.type === "player") target.prescriptBlocked = true;
           choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
         } else if (choice === "evade") {
           if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.evade.cost;
           target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
+          if (targetResolved.type === "player") target.prescriptEvaded = true;
           choiceNote = `💨 Evade (-${opts.evade.cost} Sta)`;
         } else if (choice === "parry") {
           if (!opts.parry.available) throw new Error("Parry bị khoá cho đòn này (Unparriable).");
@@ -7596,6 +7632,7 @@ client.on("interactionCreate", async (interaction) => {
             const rawRoll = 1 + Math.floor(Math.random() * 20);
             target.parryRolls.push(rawRoll - penalty);
           }
+          if (targetResolved.type === "player") target.prescriptParried = true;
           choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)`;
         } else {
           choiceNote = "❌ Không phòng thủ";
@@ -7822,7 +7859,7 @@ client.on("interactionCreate", async (interaction) => {
     if (action === "attack") {
       const isAutoCalc = parts[3] === "auto";
       const isFixedBurst = parts[3] === "fixedburst";
-      let dmgStr, eyeOfHorusVolleysInput;
+      let dmgStr, eyeOfHorusVolleysInput, ammoTypeInput;
       if (isFixedBurst) {
         // MÔ HÌNH MỚI (xác nhận trực tiếp, 8 ví dụ N=1..8) — "N lần bắn" (volleys)
         // giờ đọc TRỰC TIẾP từ field Modal, TRUYỀN QUA verifyOpts.volleys để
@@ -7830,6 +7867,9 @@ client.on("interactionCreate", async (interaction) => {
         // còn tự xây dmgStr ở tầng Modal này nữa (khác bản trước).
         const volleysRaw = interaction.fields.getTextInputValue("volleys");
         eyeOfHorusVolleysInput = volleysRaw;
+        // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp) — đọc field ammotype MỚI
+        // và truyền qua verifyOpts, để "repeat" thực sự có tác dụng qua Modal.
+        ammoTypeInput = interaction.fields.getTextInputValue("ammotype")?.trim() || undefined;
         dmgStr = ""; // doPlayerAttack tự xây dựng từ volleys, không cần dmgStr ở đây
       } else if (isAutoCalc) {
         const hitCountRaw = interaction.fields.getTextInputValue("hitCount");
@@ -7849,7 +7889,7 @@ client.on("interactionCreate", async (interaction) => {
       } else {
         dmgStr = interaction.fields.getTextInputValue("dmgStr");
       }
-      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { volleys: eyeOfHorusVolleysInput });
+      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { volleys: eyeOfHorusVolleysInput, ammotype: ammoTypeInput });
       await interaction.reply({ embeds: [embed] });
     } else if (action === "bossattack") {
       // Boss UI (theo yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI",
@@ -8222,11 +8262,11 @@ client.on("interactionCreate", async (interaction) => {
         if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
           throw new Error("Chưa/không còn tới lượt bạn nữa — không cần kết thúc lượt.");
         }
-        const wrapped = advanceToNextTurnHolder(encounter);
+        const { wrapped, prescriptNotes } = advanceToNextTurnHolder(encounter);
         appendActionLog(encounter, `🏁 <@${interaction.user.id}> đã kết thúc lượt.`);
         await saveEncounter(channelId, encounter);
         announceCurrentTurn(channelId, encounter).catch(() => {});
-        resultText = `🏁 Bạn đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
+        resultText = `🏁 Bạn đã kết thúc lượt.${prescriptNotes.length > 0 ? "\n" + prescriptNotes.map(n => `> ${n}`).join("\n") : ""}${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
       });
       await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
       return;
@@ -8270,6 +8310,16 @@ client.on("interactionCreate", async (interaction) => {
           .setCustomId("volleys").setLabel("Bắn mấy lần? (volley 9-hit/lần)")
           .setPlaceholder("VD: 4").setStyle(TextInputStyle.Short).setRequired(true);
         modal.addComponents(new ActionRowBuilder().addComponents(volleysInput));
+        // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: "repeat ammo của eye of
+        // horus mãi vẫn sai?? tôi thấy nó vẫn trừ 40 stamina và 2 ammo") — Modal
+        // này TRƯỚC ĐÂY không hề có field nào để nhập "repeat" — người dùng qua
+        // dropdown/Modal (không phải lệnh text) KHÔNG THỂ trigger repeat ammo,
+        // luôn bị tính như bắn thường. Thêm field optional để khắc phục.
+        const ammoTypeInput = new TextInputBuilder()
+          .setCustomId("ammotype").setLabel("Loại đạn (frost/incendiary/repeat)")
+          .setPlaceholder("Để trống = bắn thường, không loại đạn đặc biệt")
+          .setStyle(TextInputStyle.Short).setRequired(false);
+        modal.addComponents(new ActionRowBuilder().addComponents(ammoTypeInput));
       } else if (mode === "auto") {
         const encounter = await getEncounter(channelId);
         const combatant = encounter?.players?.[interaction.user.id];
@@ -8346,11 +8396,11 @@ client.on("interactionCreate", async (interaction) => {
         if (!isCurrentTurnHolder(encounter, enemyKey)) {
           throw new Error(`Chưa/không còn tới lượt của "${enemyKey}" nữa — không cần kết thúc lượt.`);
         }
-        const wrapped = advanceToNextTurnHolder(encounter);
+        const { wrapped, prescriptNotes } = advanceToNextTurnHolder(encounter);
         appendActionLog(encounter, `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.`);
         await saveEncounter(channelId, encounter);
         announceCurrentTurn(channelId, encounter).catch(() => {});
-        resultText = `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
+        resultText = `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.${prescriptNotes.length > 0 ? "\n" + prescriptNotes.map(n => `> ${n}`).join("\n") : ""}${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
       });
       await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
       return;
