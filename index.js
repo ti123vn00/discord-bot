@@ -6205,6 +6205,38 @@ async function resolveOnePendingAction(encounter, p) {
               // cộng ĐÚP mỗi lần đánh, verify bằng test thật phát hiện Tremor=16 thay
               // vì 8 sau 4 lần đánh. Đã xoá hẳn, chỉ giữ 1 nguồn duy nhất.)
               let eyeOfHorusNote = "";
+              // GAP ĐÃ SỬA (xác nhận trực tiếp: "50+ status trước đó tôi kêu bạn
+              // có tự động hóa hết chưa" — audit lại phát hiện THÊM 2 bug cùng
+              // loại với Protection): "Fragile" (+1%/stack Dmg NHẬN VÀO, max 25)
+              // và "Charge Shield Stack" (-10%/stack Dmg NHẬN VÀO, max 20, MẤT
+              // NGAY sau khi dùng 1 lần — khác Protection/2-turn) — cả 2 field +
+              // decay đã có sẵn từ trước nhưng CHƯA BAO GIỜ thực sự ảnh hưởng dmg.
+              let fragileNote = "";
+              if ((target.fragile ?? 0) > 0 && finalDmg > 0) {
+                const increasePct = target.fragile; // +1%/stack — KHÔNG cap thêm ở đây, đã cap 25 lúc gán stack
+                const increased = finalDmg * (increasePct / 100);
+                finalDmg += increased;
+                fragileNote = ` 🔺[Fragile +${increasePct}%, tăng ${increased.toFixed(3)} dmg]`;
+              }
+              // GAP ĐÃ SỬA (xác nhận trực tiếp, sau khi user cung cấp mô tả đầy đủ
+              // 50+ status) — "Smoke": +2.5%/stack Dmg CHỈ từ đòn đánh THƯỜNG (M1,
+              // không phải skill/Page) nhận vào — decay (-1/turn) đã đúng sẵn ở
+              // turn-advance.js từ trước, chỉ thiếu phần THẬT SỰ tăng dmg này.
+              let smokeNote = "";
+              if ((target.smoke ?? 0) > 0 && finalDmg > 0 && isM1Type) {
+                const smokeIncreasePct = target.smoke * 2.5;
+                const smokeIncreased = finalDmg * (smokeIncreasePct / 100);
+                finalDmg += smokeIncreased;
+                smokeNote = ` 💨[Smoke +${smokeIncreasePct}%, tăng ${smokeIncreased.toFixed(3)} dmg]`;
+              }
+              let chargeShieldNote = "";
+              if ((target.chargeShieldStack ?? 0) > 0 && finalDmg > 0) {
+                const reductionPctCS = Math.min(100, target.chargeShieldStack * 10);
+                const reducedCS = finalDmg * (reductionPctCS / 100);
+                finalDmg -= reducedCS;
+                chargeShieldNote = ` 🔰[Charge Shield -${reductionPctCS}%, giảm ${reducedCS.toFixed(3)} dmg, hết sau đòn này]`;
+                target.chargeShieldStack = 0; // "mất SAU MỖI LẦN bị tấn công" — reset ngay, không đợi endturn
+              }
               // GAP ĐÃ SỬA (xác nhận trực tiếp): "1 Protection là 5% Dmg
               // Reduction đó... cái này có tính chưa" — CHƯA, đây là bug thật sự
               // (không chỉ riêng Udjat) — field protection/protectionTurnsLeft
@@ -6501,7 +6533,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${protectionNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${smokeNote}${chargeShieldNote}${protectionNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
