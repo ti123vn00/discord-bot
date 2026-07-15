@@ -386,6 +386,90 @@ function parseKeyValues(input) {
   return result;
 }
 
+// GAP ĐÃ SỬA (dự án GM Panel mở rộng, xác nhận trực tiếp: "gm có thể chỉnh sửa
+// bất cứ thứ gì... status") — TÁCH logic CỐT LÕI của -encounter setstatus ra
+// thành hàm dùng CHUNG, để gmpanel's Modal chỉnh sửa (gmeditmodal:) cũng gọi lại
+// được — COPY NGUYÊN VĂN từ bên trong lệnh text (không đổi 1 dòng logic nào),
+// chỉ đổi input từ "đọc kv trực tiếp" thành "nhận entries đã parse sẵn".
+const STATUS_CAPS_SHARED = {
+  fragile: 25, attackpowerup: 10, attackpowerdown: 10, defenseup: 20, defensedown: 20,
+  clashattackboost: 8, unopposedattackboost: 5, protection: 20, regen: 99, chargeshield: 20,
+  paralyze: 99,
+  diceup: 99, dicedown: 99, smoke: 15, vengeancemark: 10, nails: 99, redplumblossom: 99, freeble: 5,
+  borrowedtime: 2, fairy: 30,
+  tremoreverlasting: TREMOR_VARIANT_MAX, tremorfracture: TREMOR_VARIANT_MAX, tremorreverb: TREMOR_VARIANT_MAX, tremordecay: TREMOR_VARIANT_MAX, tremorchain: TREMOR_VARIANT_MAX,
+  spectrofrazzle: SPECTRO_FRAZZLE_MAX,
+  gazeawe: GAZE_AWE_MAX, contempt: CONTEMPT_MAX, gazeofcontempt: GAZE_AWE_MAX,
+  haouflame: HAOU_MAX, haoubleed: HAOU_MAX, haoutremor: HAOU_MAX, haourupture: HAOU_MAX, haousinking: HAOU_MAX,
+  hemorrhage: HEMORRHAGE_MAX,
+};
+const STATUS_FIELD_MAP_SHARED = {
+  fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
+  defenseup: "defenseUp", defensedown: "defenseDown", clashattackboost: "clashAttackBoost",
+  unopposedattackboost: "unopposedAttackBoost", protection: "protection", regen: "regen",
+  chargeshield: "chargeShieldStack",
+  paralyze: "paralyze",
+  diceup: "diceUp", dicedown: "diceDown", smoke: "smoke", vengeancemark: "vengeanceMark",
+  nails: "nails", redplumblossom: "redPlumBlossom", freeble: "freeble",
+  borrowedtime: "borrowedTime", fairy: "fairy",
+  tremoreverlasting: "tremorEverlasting", tremorfracture: "tremorFracture", tremorreverb: "tremorReverb",
+  tremordecay: "tremorDecay", tremorchain: "tremorChain",
+  spectrofrazzle: "spectroFrazzle",
+  gazeawe: "gazeAwe", contempt: "contempt", gazeofcontempt: "gazeOfContempt",
+  haouflame: "haouFlame", haoubleed: "haouBleed", haoutremor: "haouTremor", haourupture: "haouRupture", haousinking: "haouSinking",
+  hemorrhage: "hemorrhage",
+};
+function applyStatusEntries(resolved, entries, sourceId, checkStaggerPanicFn) {
+  const changes = [];
+  for (const { key, raw } of entries) {
+    const amount = parseInt(raw, 10);
+    if (!Number.isFinite(amount)) throw new Error(`\`${key}:\` phải là số.`);
+    if (key === "gazeofcontempt" && amount > 0 && resolved.combatant.contemptOfTheGaze) {
+      throw new Error(`${resolved.label} đang có Contempt of the Gaze — không thể nhận thêm Gaze of Contempt lúc này.`);
+    }
+    const field = STATUS_FIELD_MAP_SHARED[key];
+    const cap = STATUS_CAPS_SHARED[key];
+    if (!field) throw new Error(`Status "${key}" không hợp lệ — dùng: ${Object.keys(STATUS_CAPS_SHARED).join("/")}`);
+    const before = resolved.combatant[field] ?? 0;
+    resolved.combatant[field] = Math.max(0, Math.min(cap, before + amount));
+    if ((key === "gazeawe" || key === "contempt") && amount > 0) {
+      if (!sourceId) throw new Error(`Dùng "${key}:" cần kèm "source: <key enemy hoặc mention player>" để biết ai là "kẻ đã gắn".`);
+      resolved.combatant[key === "gazeawe" ? "gazeAweSourceId" : "contemptSourceId"] = sourceId;
+    }
+    if (key === "protection" && amount > 0) resolved.combatant.protectionTurnsLeft = 2;
+    if (key === "borrowedtime" && amount > 0) resolved.combatant.borrowedTimeTurnsLeft = 3;
+    if (key === "fairy" && amount > 0) resolved.combatant.fairyTurnsLeft = 2;
+    if (key === "hemorrhage" && amount > 0) resolved.combatant.hemorrhageAppliedThisTurn = true;
+    if (key === "spectrofrazzle" && amount > 0) {
+      resolved.combatant.bind = Math.min(20, (resolved.combatant.bind ?? 0) + amount);
+      const staLoss = amount * 10;
+      if (resolved.combatant.staggered || resolved.combatant.currentStamina <= 0) {
+        resolved.combatant.spectroFrazzlePendingLoss = (resolved.combatant.spectroFrazzlePendingLoss ?? 0) + staLoss * 2;
+      } else if (resolved.combatant.currentStamina < staLoss) {
+        const shortfall = staLoss - resolved.combatant.currentStamina;
+        resolved.combatant.currentStamina = 0;
+        resolved.combatant.spectroFrazzlePendingLoss = (resolved.combatant.spectroFrazzlePendingLoss ?? 0) + shortfall * 2;
+        checkStaggerPanicFn(resolved.combatant);
+      } else {
+        resolved.combatant.currentStamina -= staLoss;
+        checkStaggerPanicFn(resolved.combatant);
+      }
+    }
+    changes.push(`${key}: ${before} → **${resolved.combatant[field]}**`);
+  }
+  return changes;
+}
+// Parse cú pháp tự do "key: amount, key2: amount2" (dùng cho ô Paragraph trong
+// gmeditmodal — khác parseKeyValues vốn dùng cho toàn bộ message content).
+function parseStatusFreeText(text) {
+  const entries = [];
+  for (const part of (text ?? "").split(",")) {
+    const m = part.trim().match(/^([a-zA-Z]+)\s*:\s*(-?\d+)$/);
+    if (m) entries.push({ key: m[1].toLowerCase(), raw: m[2] });
+  }
+  return entries;
+}
+
 const { calcMathCore, calcMath, saturateBonusPct, saturateDR, validateMathInputs } = require("./damage-calc"); // ĐÃ TÁCH sang file riêng (damage-calc.js) — hàm thuần, không đụng Redis/Discord
 
 // ─── RATE LIMITING ────────────────────────────────────────────────────────────
@@ -4562,6 +4646,21 @@ if (message.content.startsWith("-gacha")) {
             if (hasPerk(joined, "Here We Go Again")) { joined.currentLight = Math.min(joined.maxLight, 3); startNotes.push("+3 Light (Here We Go Again)"); }
             if (hasPerk(joined, "Adrenaline Rush")) { joined.poise = Math.min(POISE_MAX, 10); startNotes.push("+10 Poise (Adrenaline Rush)"); }
             if (hasPerk(joined, "No Mind To Cure")) { joined.currentSanity = -25; startNotes.push("-25 Sanity (No Mind To Cure)"); }
+            // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 5) —
+            // "Udjat" (outfit): "Khi start encounter bạn nhận được 10 Protection"
+            // — áp dụng 1 LẦN lúc join thật đầu tiên, cùng nguyên tắc các perk
+            // "đầu encounter" khác ở trên (không phải hasPerk vì đây là OUTFIT,
+            // không phải Skill Tree).
+            if ((equippedOutfitObj?.name ?? "").toLowerCase() === "udjat") {
+              joined.protection = Math.min(20, (joined.protection ?? 0) + 10);
+              // BUG ĐÃ SỬA (xác nhận trực tiếp: "Protection sẽ biến mất sau 2 turn
+              // kể từ lúc nhận, cái này có tính chưa") — quên set protectionTurnsLeft
+              // = 2 (Duration riêng, xem turn-advance.js's decay logic + comment
+              // gốc ở combatant-factory.js) — nếu không, Protection sẽ đứng yên
+              // mãi mãi (không bao giờ hết hạn tự nhiên qua decay thông thường).
+              joined.protectionTurnsLeft = 2;
+              startNotes.push("+10 Protection (Udjat, hết sau 2 turn)");
+            }
           }
           await saveEncounter(encChannelId, encounter);
           const equipNotes = [];
@@ -4859,37 +4958,12 @@ if (message.content.startsWith("-gacha")) {
     if (sub === "setstatus") {
       const kv = parseKeyValues(rest);
       const targetRaw = (kv["target"] ?? "").trim();
-      const STATUS_CAPS = {
-        fragile: 25, attackpowerup: 10, attackpowerdown: 10, defenseup: 20, defensedown: 20,
-        clashattackboost: 8, unopposedattackboost: 5, protection: 20, regen: 99, chargeshield: 20,
-        paralyze: 99,
-        diceup: 99, dicedown: 99, smoke: 15, vengeancemark: 10, nails: 99, redplumblossom: 99, freeble: 5,
-        borrowedtime: 2, fairy: 30,
-        tremoreverlasting: TREMOR_VARIANT_MAX, tremorfracture: TREMOR_VARIANT_MAX, tremorreverb: TREMOR_VARIANT_MAX, tremordecay: TREMOR_VARIANT_MAX, tremorchain: TREMOR_VARIANT_MAX,
-        spectrofrazzle: SPECTRO_FRAZZLE_MAX,
-        gazeawe: GAZE_AWE_MAX, contempt: CONTEMPT_MAX, gazeofcontempt: GAZE_AWE_MAX,
-        haouflame: HAOU_MAX, haoubleed: HAOU_MAX, haoutremor: HAOU_MAX, haourupture: HAOU_MAX, haousinking: HAOU_MAX,
-        hemorrhage: HEMORRHAGE_MAX,
-      };
-      const STATUS_FIELD_MAP = {
-        fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
-        defenseup: "defenseUp", defensedown: "defenseDown", clashattackboost: "clashAttackBoost",
-        unopposedattackboost: "unopposedAttackBoost", protection: "protection", regen: "regen",
-        chargeshield: "chargeShieldStack",
-        paralyze: "paralyze",
-        diceup: "diceUp", dicedown: "diceDown", smoke: "smoke", vengeancemark: "vengeanceMark",
-        nails: "nails", redplumblossom: "redPlumBlossom", freeble: "freeble",
-        borrowedtime: "borrowedTime", fairy: "fairy",
-        tremoreverlasting: "tremorEverlasting", tremorfracture: "tremorFracture", tremorreverb: "tremorReverb",
-        tremordecay: "tremorDecay", tremorchain: "tremorChain",
-        spectrofrazzle: "spectroFrazzle",
-        gazeawe: "gazeAwe", contempt: "contempt", gazeofcontempt: "gazeOfContempt",
-        haouflame: "haouFlame", haoubleed: "haouBleed", haoutremor: "haouTremor", haourupture: "haouRupture", haousinking: "haouSinking",
-        hemorrhage: "hemorrhage",
-      };
-      const entries = Object.keys(STATUS_CAPS).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
+      // GAP ĐÃ SỬA (dự án GM Panel mở rộng) — logic CỐT LÕI đã tách ra
+      // applyStatusEntries (dùng chung với gmpanel's Modal chỉnh sửa), giữ
+      // NGUYÊN STATUS_CAPS_SHARED làm nguồn danh sách hợp lệ để hiện cú pháp.
+      const entries = Object.keys(STATUS_CAPS_SHARED).filter(k => kv[k] !== undefined).map(k => ({ key: k, raw: kv[k] }));
       if (!targetRaw || entries.length === 0) {
-        message.reply(`⚠️ Cú pháp: \`-encounter setstatus target: <key/userId/me> <status>: <số>\` (CỘNG THÊM vào giá trị hiện có)\n> Status hợp lệ: ${Object.keys(STATUS_CAPS).join("/")}\n> VD: \`-encounter setstatus target: mo fragile: 5\``);
+        message.reply(`⚠️ Cú pháp: \`-encounter setstatus target: <key/userId/me> <status>: <số>\` (CỘNG THÊM vào giá trị hiện có)\n> Status hợp lệ: ${Object.keys(STATUS_CAPS_SHARED).join("/")}\n> VD: \`-encounter setstatus target: mo fragile: 5\``);
         return;
       }
       try {
@@ -4901,65 +4975,14 @@ if (message.content.startsWith("-gacha")) {
           if (!resolved) throw new Error(`Không tìm thấy "${targetRaw}" trong encounter.`);
           // Gaze[Awe]/Contempt (xác nhận trực tiếp): cần biết "kẻ đã gắn nó" — dùng
           // param riêng `source:` (key enemy hoặc mention player), KHÔNG nằm trong
-          // STATUS_CAPS (không phải 1 giá trị số cộng dồn như status khác).
+          // STATUS_CAPS_SHARED (không phải 1 giá trị số cộng dồn như status khác).
           const sourceRaw = (kv["source"] ?? "").trim();
           let sourceId = null;
           if (sourceRaw) {
             const sourceEnemyKey = normalizeEnemyKey(sourceRaw);
             sourceId = encounter.enemies[sourceEnemyKey] ? sourceEnemyKey : sourceRaw.replace(/[<@!>]/g, "");
           }
-          const changes = [];
-          for (const { key, raw } of entries) {
-            const amount = parseInt(raw, 10);
-            if (!Number.isFinite(amount)) throw new Error(`\`${key}:\` phải là số.`);
-            // Gaze of Contempt (xác nhận trực tiếp): "Không thể nhận Gaze of
-            // Contempt khi đang có Contempt of the Gaze."
-            if (key === "gazeofcontempt" && amount > 0 && resolved.combatant.contemptOfTheGaze) {
-              throw new Error(`${resolved.label} đang có Contempt of the Gaze — không thể nhận thêm Gaze of Contempt lúc này.`);
-            }
-            const field = STATUS_FIELD_MAP[key];
-            const cap = STATUS_CAPS[key];
-            const before = resolved.combatant[field] ?? 0;
-            resolved.combatant[field] = Math.max(0, Math.min(cap, before + amount));
-            // Gaze[Awe]/Contempt: gán sourceId ("kẻ đã gắn") mỗi lần CỘNG THÊM stack
-            // mới — bắt buộc phải có `source:` nếu đang thêm mới (amount > 0).
-            if ((key === "gazeawe" || key === "contempt") && amount > 0) {
-              if (!sourceId) throw new Error(`Dùng "${key}:" cần kèm "source: <key enemy hoặc mention player>" để biết ai là "kẻ đã gắn".`);
-              resolved.combatant[key === "gazeawe" ? "gazeAweSourceId" : "contemptSourceId"] = sourceId;
-            }
-            // Protection có Duration 2-turn RIÊNG (protectionTurnsLeft) — set/refresh
-            // về 2 mỗi lần CỘNG THÊM stack mới (không cộng dồn duration, chỉ refresh).
-            if (key === "protection" && amount > 0) resolved.combatant.protectionTurnsLeft = 2;
-            // Borrowed Time: "tồn tại 3 turn" — set/refresh Duration mỗi lần cộng stack mới.
-            if (key === "borrowedtime" && amount > 0) resolved.combatant.borrowedTimeTurnsLeft = 3;
-            // Fairy: "biến mất khi hiệu lực đủ 2 Turn" — set/refresh Duration.
-            if (key === "fairy" && amount > 0) resolved.combatant.fairyTurnsLeft = 2;
-            // Hemorrhage: GM tự gán tay qua setstatus cũng tính là "đã áp trong
-            // turn này" — nhất quán với đường tự động (commit handler khi Bleed
-            // mới thực sự được áp), tránh bị reset ngay endturn kế tiếp.
-            if (key === "hemorrhage" && amount > 0) resolved.combatant.hemorrhageAppliedThisTurn = true;
-            // Spectro Frazzle (xác nhận trực tiếp): "Mỗi 1 stack giảm 10 Stamina và
-            // gây 1 Bind... Nếu địch đang Stagger hoặc 0 Stamina thì lưu phần thừa,
-            // nhân đôi, giảm khi hồi lại Stamina" — áp dụng NGAY lúc gán stack MỚI
-            // (không đợi Tremor Burst nào — "không cần Tremor Burst" theo đúng mô
-            // tả gốc), không phải lúc combat hit nào.
-            if (key === "spectrofrazzle" && amount > 0) {
-              resolved.combatant.bind = Math.min(20, (resolved.combatant.bind ?? 0) + amount);
-              const staLoss = amount * 10;
-              if (resolved.combatant.staggered || resolved.combatant.currentStamina <= 0) {
-                resolved.combatant.spectroFrazzlePendingLoss = (resolved.combatant.spectroFrazzlePendingLoss ?? 0) + staLoss * 2;
-              } else if (resolved.combatant.currentStamina < staLoss) {
-                const shortfall = staLoss - resolved.combatant.currentStamina;
-                resolved.combatant.currentStamina = 0;
-                resolved.combatant.spectroFrazzlePendingLoss = (resolved.combatant.spectroFrazzlePendingLoss ?? 0) + shortfall * 2;
-                checkStaggerPanic(resolved.combatant);
-              } else {
-                resolved.combatant.currentStamina -= staLoss;
-                checkStaggerPanic(resolved.combatant);
-              }
-            }
-            changes.push(`${key}: ${before} → **${resolved.combatant[field]}**`);
-          }
+          const changes = applyStatusEntries(resolved, entries, sourceId, checkStaggerPanic);
           appendActionLog(encounter, `📊 ${resolved.label}: setstatus ${changes.join(", ")}`);
           await saveEncounter(encChannelId, encounter);
           message.reply(`✅ ${resolved.label}: ${changes.join(", ")}`);
@@ -5479,37 +5502,57 @@ if (message.content.startsWith("-gacha")) {
       // chọn enemy từ dropdown, sau đó hiện panel Attack/Guard/Evade/Parry (tái
       // dùng NGUYÊN buildBossActionPanel đã có sẵn cho bossmenu). Có thể gọi từ
       // kênh GM riêng (sau khi đã `-encounter linkgm`) hoặc ngay tại kênh encounter.
+      // GAP ĐÃ SỬA (xác nhận trực tiếp): "gm có thể chỉnh sửa BẤT CỨ THỨ GÌ trong
+      // encounter... điều khiển, add, edit enemy, status hoặc làm điều tương tự
+      // với player" — mở rộng thêm: dropdown enemy giờ dẫn tới màn hình chọn
+      // "⚔️ Điều khiển" HAY "✏️ Chỉnh sửa" (thay vì luôn thẳng vào Attack panel);
+      // thêm dropdown player để chỉnh sửa TƯƠNG TỰ; thêm nút "➕ Add Enemy".
       try {
         const encounter = await getEncounter(encChannelId);
         if (!encounter) throw new Error("Channel này chưa có encounter nào — dùng `-encounter start` trước (hoặc `-encounter linkgm` nếu đang ở kênh điều khiển riêng).");
         const isAdmin = ADMIN_IDS.has(message.author.id);
         if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới mở được bảng điều khiển.");
         const aliveEnemies = Object.entries(encounter.enemies).filter(([, e]) => e.currentHp > 0);
-        if (aliveEnemies.length === 0) throw new Error("Không có enemy nào còn sống — dùng `-encounter addenemy` trước.");
-        const options = aliveEnemies.map(([ekey, e]) =>
-          new StringSelectMenuOptionBuilder().setLabel(`👹 ${e.name} (${ekey}) — ${e.currentHp}/${e.maxHp} HP`).setValue(ekey)
-        );
+        const alivePlayers = Object.entries(encounter.players).filter(([, p]) => p.currentHp > 0);
+        const components = [];
+        if (aliveEnemies.length > 0) {
+          const enemyOptions = aliveEnemies.map(([ekey, e]) =>
+            new StringSelectMenuOptionBuilder().setLabel(`👹 ${e.name} (${ekey}) — ${e.currentHp}/${e.maxHp} HP`).setValue(ekey)
+          );
+          components.push(new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`gmpanelselect:${encChannelId}:${message.author.id}`)
+              .setPlaceholder("Chọn enemy (điều khiển hoặc chỉnh sửa)...")
+              .addOptions(...enemyOptions.slice(0, 25)),
+          ));
+        }
+        if (alivePlayers.length > 0) {
+          const playerOptions = alivePlayers.map(([pid, p]) =>
+            new StringSelectMenuOptionBuilder().setLabel(`🧑 ${p.name} — ${p.currentHp}/${p.maxHp} HP`).setValue(pid)
+          );
+          components.push(new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`gmpanelplayerselect:${encChannelId}:${message.author.id}`)
+              .setPlaceholder("Chọn player để chỉnh sửa...")
+              .addOptions(...playerOptions.slice(0, 25)),
+          ));
+        }
+        // Turn Order Enforcement UX (xác nhận trực tiếp): nút LUÔN sẵn có,
+        // không cần đợi hết vòng turnOrder mới thấy — GM có thể chủ động kết
+        // thúc sớm hoặc xem trạng thái bất cứ lúc nào từ bảng điều khiển.
+        components.push(new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`encendturn:${encChannelId}:${encounter.gmId}`).setLabel("🔄 Kết thúc Turn").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`gmpanelstatus:${encChannelId}:${message.author.id}`).setLabel("📊 Xem trạng thái").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`gmpaneladdenemy:${encChannelId}:${message.author.id}`).setLabel("➕ Add Enemy").setStyle(ButtonStyle.Primary),
+        ));
         message.reply({
           embeds: [{
             title: `🎛️ Bảng điều khiển GM — ${encounter.name}`,
-            description: `Turn **${encounter.turnNumber ?? 1}** | ${aliveEnemies.length} enemy còn sống.\nChọn enemy muốn điều khiển:`,
+            description: `Turn **${encounter.turnNumber ?? 1}** | ${aliveEnemies.length} enemy còn sống | ${alivePlayers.length} player còn sống.` +
+              (aliveEnemies.length === 0 ? "\n*(Chưa có enemy nào — dùng nút ➕ Add Enemy bên dưới.)*" : ""),
             color: 0x9b59b6,
           }],
-          components: [
-            new ActionRowBuilder().addComponents(
-              new StringSelectMenuBuilder()
-                .setCustomId(`gmpanelselect:${encChannelId}:${message.author.id}`)
-                .setPlaceholder("Chọn enemy để điều khiển...")
-                .addOptions(...options.slice(0, 25)),
-            ),
-            // Turn Order Enforcement UX (xác nhận trực tiếp): nút LUÔN sẵn có,
-            // không cần đợi hết vòng turnOrder mới thấy — GM có thể chủ động kết
-            // thúc sớm hoặc xem trạng thái bất cứ lúc nào từ bảng điều khiển.
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder().setCustomId(`encendturn:${encChannelId}:${encounter.gmId}`).setLabel("🔄 Kết thúc Turn").setStyle(ButtonStyle.Success),
-              new ButtonBuilder().setCustomId(`gmpanelstatus:${encChannelId}:${message.author.id}`).setLabel("📊 Xem trạng thái").setStyle(ButtonStyle.Secondary),
-            ),
-          ],
+          components,
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -5858,6 +5901,12 @@ async function resolveOnePendingAction(encounter, p) {
 
             const targetDmgLines = [];
             let totalHitsThisAction = 0; // tích luỹ TỔNG hit thật qua mọi target (AOE) trong action này — dùng cho Battle Ignition sau vòng lặp (xem dưới)
+            // totalHitsThisActionAny — GAP ĐÃ SỬA (dự án tự động hoá, batch 4):
+            // "The Imitation" (Upstanding Slash — 1 Critical, KHÔNG PHẢI M1) cần
+            // đếm hit THẬT của CHÍNH Critical này — totalHitsThisAction ở trên chỉ
+            // cộng dồn cho M1 (thiết kế có chủ ý cho Battle Ignition), không dùng
+            // lại được — cần biến RIÊNG, cộng dồn KHÔNG điều kiện isM1Type.
+            let totalHitsThisActionAny = 0;
             // Eye Of Horus — tích luỹ riêng (KHÔNG gán trực tiếp attacker.combatant.
             // charge trong vòng lặp) — BUG ĐÃ SỬA: trước đây gán trực tiếp TRONG vòng
             // lặp targets, nhưng dòng "attacker.combatant.charge = firstPreview.
@@ -5899,6 +5948,7 @@ async function resolveOnePendingAction(encounter, p) {
               const hitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : 1);
               const hitCount = Math.max(1, t.preview.dmgValues?.length ?? 1);
               if (isM1Type) totalHitsThisAction += hitCount; // chỉ M1 mới tính cho Battle Ignition (Page/skill không tính, đúng comment dưới)
+              totalHitsThisActionAny += hitCount;
               // bypass — đọc từ defenseBypass đã lưu lúc declare (tự phát hiện từ
               // [Undodgeable]/[Unblockable]/[Guard Break]/[Unparriable] trong text
               // skill roll thật, gộp với tags: gõ tay nếu có) — loại đúng phòng thủ
@@ -6155,6 +6205,20 @@ async function resolveOnePendingAction(encounter, p) {
               // cộng ĐÚP mỗi lần đánh, verify bằng test thật phát hiện Tremor=16 thay
               // vì 8 sau 4 lần đánh. Đã xoá hẳn, chỉ giữ 1 nguồn duy nhất.)
               let eyeOfHorusNote = "";
+              // GAP ĐÃ SỬA (xác nhận trực tiếp): "1 Protection là 5% Dmg
+              // Reduction đó... cái này có tính chưa" — CHƯA, đây là bug thật sự
+              // (không chỉ riêng Udjat) — field protection/protectionTurnsLeft
+              // và decay logic (turn-advance.js) đã có sẵn từ trước, nhưng CHƯA
+              // BAO GIỜ thực sự giảm dmg nhận vào ở bất kỳ đâu trong toàn hệ
+              // thống. Áp dụng TRƯỚC Time Moratorium (Protection giảm %, Time
+              // Moratorium chặn hoàn toàn phần còn lại nếu có).
+              let protectionNote = "";
+              if ((target.protection ?? 0) > 0 && finalDmg > 0) {
+                const reductionPct = Math.min(100, target.protection * 5);
+                const reduced = finalDmg * (reductionPct / 100);
+                finalDmg -= reduced;
+                protectionNote = ` 🛡️[Protection -${reductionPct}%, giảm ${reduced.toFixed(3)} dmg]`;
+              }
               // Time Moratorium (xác nhận trực tiếp): "khi bị nhận sát thương mà có
               // hiệu ứng này... KHÔNG NHẬN sát thương trong turn đó mà tích lại...
               // khi mục tiêu có hiệu ứng này giảm 10% dmg nhận vào" — chặn TOÀN BỘ
@@ -6437,7 +6501,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${protectionNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -6587,6 +6651,24 @@ async function resolveOnePendingAction(encounter, p) {
                 attacker.combatant.currentSanity = Math.min(attacker.combatant.maxSanity, (attacker.combatant.currentSanity ?? 0) + 5);
                 verifyNote += ` 📿[Knowledge +5 Sanity]`;
               }
+            }
+            // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) —
+            // "The Imitation" (Mimicry Blade): "Upstanding Slash" nhận 1 Imitation
+            // MỖI HIT trúng (dùng totalHitsThisAction — 2 Dice trúng cả 2 = +2);
+            // "Great Split" tiêu ĐÚNG 5 Imitation (đã check đủ ở lúc roll), cộng
+            // vào imitationConsumedTotal (vĩnh viễn, không giảm — dùng tính %
+            // Dmg Bonus ở computeAttackerPerkContext).
+            if (p.skillKey === "upstanding slash" && attacker.type === "player") {
+              attacker.combatant.imitation = (attacker.combatant.imitation ?? 0) + totalHitsThisActionAny;
+              verifyNote += ` 🗡️[+${totalHitsThisActionAny} Imitation, tổng ${attacker.combatant.imitation}]`;
+            }
+            // BUG ĐÃ SỬA (cùng lỗi dấu ":" như ở skill-verification.js) —
+            // p.skillKey giữ nguyên dấu ":" từ tên hiển thị gốc.
+            const skillKeyNoColonCommit = (p.skillKey ?? "").replace(/:/g, "").trim();
+            if ((skillKeyNoColonCommit === "great split vertical" || skillKeyNoColonCommit === "great split horizontal") && attacker.type === "player") {
+              attacker.combatant.imitation = Math.max(0, (attacker.combatant.imitation ?? 0) - 5);
+              attacker.combatant.imitationConsumedTotal = (attacker.combatant.imitationConsumedTotal ?? 0) + 5;
+              verifyNote += ` 🗡️[Tiêu 5 Imitation — tổng đã tiêu ${attacker.combatant.imitationConsumedTotal}, +${Math.min(50, attacker.combatant.imitationConsumedTotal * 5)}% Dmg Bonus vĩnh viễn]`;
             }
             // Set Fire — Page tự buff (không dice, không nhắm target thật) — kích
             // hoạt NGAY khi skill confirm thành công, KHÔNG phụ thuộc evadedCompletely
@@ -7170,6 +7252,82 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "gm có thể chỉnh sửa bất cứ thứ gì...
+  // add, edit enemy, status") — "control" giữ NGUYÊN hành vi cũ (buildBossActionPanel);
+  // "edit" mở Modal mới cho phép sửa HP/Stamina/Sanity/Light + status tự do
+  // (tái dùng cú pháp -encounter setstatus qua 1 ô Paragraph).
+  if (interaction.customId.startsWith("gmenemymode:")) {
+    const [, channelId, ekey, ownerId, mode] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+      return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      const enemy = encounter.enemies[ekey];
+      if (!enemy) throw new Error("Không tìm thấy enemy này (có thể đã bị xoá).");
+      if (mode === "control") {
+        await interaction.update({
+          embeds: [{ title: `👹 Điều khiển: ${enemy.name} (${ekey})`, description: `HP: ${enemy.currentHp}/${enemy.maxHp} | Stamina: ${enemy.currentStamina}/${enemy.maxStamina}\nChọn hành động:`, color: 0xe74c3c }],
+          components: buildBossActionPanel(channelId, ekey, interaction.user.id),
+        }).catch(() => {});
+        return;
+      }
+      // mode === "edit"
+      const modal = new ModalBuilder()
+        .setCustomId(`gmeditmodal:${channelId}:enemy:${ekey}`)
+        .setTitle(`Chỉnh sửa: ${enemy.name}`.slice(0, 45));
+      const hpInput = new TextInputBuilder().setCustomId("hp").setLabel("HP").setStyle(TextInputStyle.Short).setValue(String(enemy.currentHp)).setRequired(true);
+      const staInput = new TextInputBuilder().setCustomId("stamina").setLabel("Stamina").setStyle(TextInputStyle.Short).setValue(String(enemy.currentStamina)).setRequired(true);
+      const sanInput = new TextInputBuilder().setCustomId("sanity").setLabel("Sanity").setStyle(TextInputStyle.Short).setValue(String(enemy.currentSanity ?? 0)).setRequired(true);
+      const lightInput = new TextInputBuilder().setCustomId("light").setLabel("Light").setStyle(TextInputStyle.Short).setValue(String(enemy.currentLight ?? 0)).setRequired(true);
+      const statusInput = new TextInputBuilder()
+        .setCustomId("status")
+        .setLabel("Status (cộng thêm — cú pháp setstatus)")
+        .setPlaceholder("VD: rupture: 5, bleed: -3, protection: 10")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false);
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(hpInput),
+        new ActionRowBuilder().addComponents(staInput),
+        new ActionRowBuilder().addComponents(sanInput),
+        new ActionRowBuilder().addComponents(lightInput),
+        new ActionRowBuilder().addComponents(statusInput),
+      );
+      await interaction.showModal(modal).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "add... enemy") — nút "➕ Add Enemy" trong
+  // gmpanel, mở Modal nhập key/name/hp/res/weapon (tái dùng field giống lệnh
+  // text -encounter addenemy).
+  if (interaction.customId.startsWith("gmpaneladdenemy:")) {
+    const [, channelId, ownerId] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+      return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới bấm được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    const modal = new ModalBuilder()
+      .setCustomId(`gmaddenemymodal:${channelId}`)
+      .setTitle("➕ Add Enemy");
+    const keyInput = new TextInputBuilder().setCustomId("key").setLabel("Key (định danh ngắn, không dấu)").setPlaceholder("VD: mo, goblin1").setStyle(TextInputStyle.Short).setRequired(true);
+    const nameInput = new TextInputBuilder().setCustomId("name").setLabel("Tên hiển thị").setPlaceholder("VD: Mo Xù").setStyle(TextInputStyle.Short).setRequired(true);
+    const hpInput = new TextInputBuilder().setCustomId("hp").setLabel("HP").setPlaceholder("VD: 500").setStyle(TextInputStyle.Short).setRequired(true);
+    const resInput = new TextInputBuilder().setCustomId("res").setLabel("Resistance (tuỳ chọn)").setPlaceholder("VD: 1.5xB 1xP 0.8xS — để trống = 1x cả 3").setStyle(TextInputStyle.Short).setRequired(false);
+    const weaponInput = new TextInputBuilder().setCustomId("weapon").setLabel("Weapon weight (tuỳ chọn)").setPlaceholder("light/medium/heavy — để trống = medium").setStyle(TextInputStyle.Short).setRequired(false);
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(keyInput),
+      new ActionRowBuilder().addComponents(nameInput),
+      new ActionRowBuilder().addComponents(hpInput),
+      new ActionRowBuilder().addComponents(resInput),
+      new ActionRowBuilder().addComponents(weaponInput),
+    );
+    await interaction.showModal(modal).catch(() => {});
+    return;
+  }
+
   if (interaction.customId.startsWith("gmpanelstatus:")) {
     const [, channelId, ownerId] = interaction.customId.split(":");
     if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
@@ -7655,10 +7813,59 @@ client.on("interactionCreate", async (interaction) => {
     if (!encounter) throw new Error("Encounter không còn tồn tại.");
     const enemy = encounter.enemies[ekey];
     if (!enemy) throw new Error("Không tìm thấy enemy này (có thể đã bị xoá).");
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "gm có thể chỉnh sửa bất cứ thứ gì...
+    // add, edit enemy, status") — thay vì thẳng vào Attack panel, hiện 2 lựa
+    // chọn: Điều khiển (M1/Guard/Evade/Parry như cũ) HAY Chỉnh sửa (HP/Stamina/
+    // Status qua Modal mới).
     await interaction.update({
-      embeds: [{ title: `👹 Điều khiển: ${enemy.name} (${ekey})`, description: `HP: ${enemy.currentHp}/${enemy.maxHp} | Stamina: ${enemy.currentStamina}/${enemy.maxStamina}\nChọn hành động:`, color: 0xe74c3c }],
-      components: buildBossActionPanel(channelId, ekey, interaction.user.id),
+      embeds: [{ title: `👹 ${enemy.name} (${ekey})`, description: `HP: ${enemy.currentHp}/${enemy.maxHp} | Stamina: ${enemy.currentStamina}/${enemy.maxStamina}\nBạn muốn làm gì?`, color: 0xe74c3c }],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`gmenemymode:${channelId}:${ekey}:${interaction.user.id}:control`).setLabel("⚔️ Điều khiển").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`gmenemymode:${channelId}:${ekey}:${interaction.user.id}:edit`).setLabel("✏️ Chỉnh sửa").setStyle(ButtonStyle.Secondary),
+      )],
     }).catch(() => {});
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// GAP ĐÃ SỬA (xác nhận trực tiếp: "làm điều tương tự với player") — dropdown
+// chọn player từ gmpanel, mở THẲNG Modal chỉnh sửa (không có bước "Điều khiển"
+// trung gian như enemy, vì GM không "điều khiển" combat thay player).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("gmpanelplayerselect:")) return;
+  const [, channelId, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+    return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const targetPlayerId = interaction.values[0];
+  try {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) throw new Error("Encounter không còn tồn tại.");
+    const player = encounter.players[targetPlayerId];
+    if (!player) throw new Error("Không tìm thấy player này (có thể đã rời encounter).");
+    const modal = new ModalBuilder()
+      .setCustomId(`gmeditmodal:${channelId}:player:${targetPlayerId}`)
+      .setTitle(`Chỉnh sửa: ${player.name}`.slice(0, 45));
+    const hpInput = new TextInputBuilder().setCustomId("hp").setLabel("HP").setStyle(TextInputStyle.Short).setValue(String(player.currentHp)).setRequired(true);
+    const staInput = new TextInputBuilder().setCustomId("stamina").setLabel("Stamina").setStyle(TextInputStyle.Short).setValue(String(player.currentStamina)).setRequired(true);
+    const sanInput = new TextInputBuilder().setCustomId("sanity").setLabel("Sanity").setStyle(TextInputStyle.Short).setValue(String(player.currentSanity ?? 0)).setRequired(true);
+    const lightInput = new TextInputBuilder().setCustomId("light").setLabel("Light").setStyle(TextInputStyle.Short).setValue(String(player.currentLight ?? 0)).setRequired(true);
+    const statusInput = new TextInputBuilder()
+      .setCustomId("status")
+      .setLabel("Status (cộng thêm — cú pháp setstatus)")
+      .setPlaceholder("VD: rupture: 5, bleed: -3, protection: 10")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false);
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(hpInput),
+      new ActionRowBuilder().addComponents(staInput),
+      new ActionRowBuilder().addComponents(sanInput),
+      new ActionRowBuilder().addComponents(lightInput),
+      new ActionRowBuilder().addComponents(statusInput),
+    );
+    await interaction.showModal(modal).catch(() => {});
   } catch (err) {
     interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
@@ -8142,8 +8349,94 @@ client.on("interactionCreate", async (interaction) => {
   await interaction.showModal(modal).catch(() => {});
 });
 
-// ─── SELECT MENU INTERACTIONS (inventory) ────────────────────────────────────
-// ─── SELECT MENU INTERACTIONS (đọc sách — chọn 1 Page/Weapon/Outfit) ─────────
+// GAP ĐÃ SỬA (dự án GM Panel mở rộng, xác nhận trực tiếp: "gm có thể chỉnh sửa
+// bất cứ thứ gì... edit enemy... làm điều tương tự với player") — submit Modal
+// chỉnh sửa: HP/Stamina/Sanity/Light SET TUYỆT ĐỐI (khác setstatus vốn CỘNG
+// DỒN — đây là "sửa lại đúng số", không phải "thêm vào"), status vẫn cộng dồn
+// qua applyStatusEntries (giữ nguyên cú pháp quen thuộc).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.customId.startsWith("gmeditmodal:")) return;
+  const [, channelId, targetType, targetId] = interaction.customId.split(":");
+  try {
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      const resolved = resolveCombatant(encounter, targetId);
+      if (!resolved) throw new Error(`Không tìm thấy ${targetType === "enemy" ? "enemy" : "player"} này (có thể đã bị xoá/rời encounter).`);
+      const hpRaw = interaction.fields.getTextInputValue("hp");
+      const staRaw = interaction.fields.getTextInputValue("stamina");
+      const sanRaw = interaction.fields.getTextInputValue("sanity");
+      const lightRaw = interaction.fields.getTextInputValue("light");
+      const statusRaw = interaction.fields.getTextInputValue("status");
+      const hp = parseInt(hpRaw, 10);
+      const sta = parseInt(staRaw, 10);
+      const san = parseInt(sanRaw, 10);
+      const light = parseInt(lightRaw, 10);
+      if (![hp, sta, san, light].every(Number.isFinite)) throw new Error("HP/Stamina/Sanity/Light phải là số hợp lệ.");
+      const changes = [];
+      if (hp !== resolved.combatant.currentHp) { changes.push(`HP: ${resolved.combatant.currentHp} → **${Math.max(0, Math.min(resolved.combatant.maxHp, hp))}**`); resolved.combatant.currentHp = Math.max(0, Math.min(resolved.combatant.maxHp, hp)); }
+      if (sta !== resolved.combatant.currentStamina) { changes.push(`Stamina: ${resolved.combatant.currentStamina} → **${Math.max(0, Math.min(resolved.combatant.maxStamina, sta))}**`); resolved.combatant.currentStamina = Math.max(0, Math.min(resolved.combatant.maxStamina, sta)); }
+      if (san !== (resolved.combatant.currentSanity ?? 0)) { changes.push(`Sanity: ${resolved.combatant.currentSanity ?? 0} → **${san}**`); resolved.combatant.currentSanity = san; }
+      if (light !== (resolved.combatant.currentLight ?? 0)) { changes.push(`Light: ${resolved.combatant.currentLight ?? 0} → **${Math.max(0, Math.min(resolved.combatant.maxLight, light))}**`); resolved.combatant.currentLight = Math.max(0, Math.min(resolved.combatant.maxLight, light)); }
+      if (statusRaw && statusRaw.trim()) {
+        const statusEntries = parseStatusFreeText(statusRaw);
+        if (statusEntries.length > 0) {
+          const statusChanges = applyStatusEntries(resolved, statusEntries, null, checkStaggerPanic);
+          changes.push(...statusChanges);
+        }
+      }
+      appendActionLog(encounter, `🎛️ GM chỉnh sửa ${resolved.label}: ${changes.length > 0 ? changes.join(", ") : "(không đổi gì)"}`);
+      await saveEncounter(channelId, encounter);
+      await interaction.reply({
+        embeds: [{ title: `✅ Đã chỉnh sửa: ${resolved.label}`, description: changes.length > 0 ? changes.join("\n") : "*(không có gì thay đổi)*", color: 0x2ecc71 }],
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    });
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// GAP ĐÃ SỬA (xác nhận trực tiếp: "add... enemy") — submit Modal Add Enemy, TÁI
+// DÙNG chính xác logic của lệnh text -encounter addenemy (createCombatant,
+// insertIntoTurnOrderMidRound...), chỉ đổi nguồn input từ kv text sang Modal fields.
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.customId.startsWith("gmaddenemymodal:")) return;
+  const [, channelId] = interaction.customId.split(":");
+  try {
+    const key = normalizeEnemyKey(interaction.fields.getTextInputValue("key"));
+    const name = interaction.fields.getTextInputValue("name").trim();
+    const hp = parseInt(interaction.fields.getTextInputValue("hp"), 10);
+    if (!key || key.length > ENCOUNTER_KEY_MAX_LENGTH || !/^[a-z0-9]+$/.test(key) || !name || !Number.isFinite(hp) || hp <= 0) {
+      throw new Error("Key phải là chữ/số thường không dấu, Name không được trống, HP phải là số dương.");
+    }
+    const resRaw = interaction.fields.getTextInputValue("res") ?? "";
+    const res = { B: 1, P: 1, S: 1 };
+    for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
+    const weapon = normalizeWeaponWeight((interaction.fields.getTextInputValue("weapon") ?? "").trim() || "medium");
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      if (encounter.players[key]) throw new Error(`Key "${key}" đang trùng với 1 player đã join — đổi key khác.`);
+      const wasExisting = !!encounter.enemies[key];
+      encounter.enemies[key] = createCombatant({
+        name, maxHp: hp,
+        maxStamina: ENCOUNTER_DEFAULT_MAX_STAMINA,
+        weaponWeight: weapon, resistance: res, speedRangeMin: 3, speedRangeMax: 6,
+      });
+      if (!wasExisting) insertIntoTurnOrderMidRound(encounter, key, "enemy", encounter.enemies[key]);
+      await saveEncounter(channelId, encounter);
+      await interaction.reply({
+        embeds: [buildEncounterBoardEmbed(encounter)],
+        content: `✅ ${wasExisting ? "Đã cập nhật lại" : "Đã thêm"} enemy **${name}** (key: \`${key}\`) với ${hp} HP.`,
+      }).catch(() => {});
+    });
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith("bookchoice:")) return;
