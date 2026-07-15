@@ -275,4 +275,4 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     forceStagger,
     resolveSkillVerification,
   };
-};
+}; 
