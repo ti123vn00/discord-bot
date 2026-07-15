@@ -1540,7 +1540,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         // — cả 2 đều sai, vì luật nói đây là cơ chế MẶC ĐỊNH không cần khai báo).
         sanityBonusPct: getEffectiveSanityForDiceBonus(player),
         critDiv: perkCtx.critDivOverride ?? undefined,
-        poiseInit: player.poise + (perkCtx.redPlumBlossomPoiseBonus ?? 0), chargeInit: player.charge,
+        poiseInit: player.poise, chargeInit: player.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
         // CÔNG (attacker), KHÔNG áp cho target.
         flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
@@ -1706,7 +1706,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // trực tiếp xem người dùng có gõ critmul: hay không).
         critMul: manualCritMul ?? perkCtx.critMul, diceMul,
         critDiv: perkCtx.critDivOverride ?? critDiv,
-        poiseInit: player.poise + (perkCtx.redPlumBlossomPoiseBonus ?? 0), chargeInit: player.charge,
+        poiseInit: player.poise, chargeInit: player.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
         // CÔNG (attacker), KHÔNG áp cho target.
         flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
@@ -1822,7 +1822,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
         dmgStr: perkCtx.dmgStrRewritten, resStr: haouRuptureCheck?.applied ? haouRuptureCheck.resStr : combatantResStr(t.combatant),
         bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
         sanityBonusPct: getEffectiveSanityForDiceBonus(enemy),
-        poiseInit: enemy.poise + (perkCtx.redPlumBlossomPoiseBonus ?? 0), chargeInit: enemy.charge,
+        poiseInit: enemy.poise, chargeInit: enemy.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — enemy ĐANG TẤN CÔNG.
         flatDmgPerHit: (enemy.attackPowerUp ?? 0) - (enemy.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
