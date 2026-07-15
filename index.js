@@ -6651,6 +6651,41 @@ async function resolveOnePendingAction(encounter, p) {
                 }
                 resultLines.push(`🔥 **Fire** — ${attacker.label} gắn 1 Burn lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
               }
+              // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 5) —
+              // "Grasping Vulnerabilities" (Seven Association Longsword): 2 đòn
+              // đánh thường → +1 Rupture lên TẤT CẢ target.
+              if (weaponMechanics.includes("grasping_vulnerabilities") && attacker.combatant.m1AttackCount % 2 === 0) {
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (tResolved) tResolved.combatant.rupture = Math.min(99, (tResolved.combatant.rupture ?? 0) + 1);
+                }
+                resultLines.push(`⚔️ **Grasping Vulnerabilities** — ${attacker.label} gắn 1 Rupture lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
+              // "Charging" (WARP Corp. Dagger/Gauntlets): 4 đòn đánh thường →
+              // +1 Charge cho BẢN THÂN.
+              if (weaponMechanics.includes("warp_charging") && attacker.combatant.m1AttackCount % 4 === 0) {
+                attacker.combatant.charge = Math.min(CHARGE_MAX, (attacker.combatant.charge ?? 0) + 1);
+                resultLines.push(`⚡ **Charging** — ${attacker.label} nhận 1 Charge (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
+              // "Blue Reverberation Ensemble" (L'Heure du Loup/Yesterday's
+              // Promise): 4 đòn đánh thường → +1 Tremor lên TẤT CẢ target.
+              if (weaponMechanics.includes("blue_reverberation") && attacker.combatant.m1AttackCount % 4 === 0) {
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (tResolved) tResolved.combatant.tremor = Math.min(99, (tResolved.combatant.tremor ?? 0) + 1);
+                }
+                resultLines.push(`💧 **Blue Reverberation Ensemble** — ${attacker.label} gắn 1 Tremor lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
+              // "Blue Reverberation Ensemble Leader" (Reverberation Scythe):
+              // phần "3 đòn đánh thường → +1 Tremor" — phần "Critical → +5
+              // Sanity" xử lý riêng ở block Knowledge-style bên dưới.
+              if (weaponMechanics.includes("blue_reverberation_leader") && attacker.combatant.m1AttackCount % 3 === 0) {
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (tResolved) tResolved.combatant.tremor = Math.min(99, (tResolved.combatant.tremor ?? 0) + 1);
+                }
+                resultLines.push(`💧 **Blue Reverberation Ensemble Leader** — ${attacker.label} gắn 1 Tremor lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
             }
             checkStaggerPanic(attacker.combatant);
 
@@ -6692,6 +6727,14 @@ async function resolveOnePendingAction(encounter, p) {
                 attacker.combatant.currentSanity = Math.min(attacker.combatant.maxSanity, (attacker.combatant.currentSanity ?? 0) + 5);
                 verifyNote += ` 📿[Knowledge +5 Sanity]`;
               }
+              // GAP ĐÃ SỬA (batch 5) — "Blue Reverberation Ensemble Leader"
+              // (Reverberation Scythe): dùng ĐÚNG Critical của vũ khí này (Resonate)
+              // → hồi 5 Sanity, cùng pattern với Knowledge ở trên.
+              const hasReverbLeader = (knowledgeWeapon?.passives ?? []).some(pa => pa.mechanicId === "blue_reverberation_leader");
+              if (hasReverbLeader && knowledgeWeapon?.criticalSkillKey === p.skillKey) {
+                attacker.combatant.currentSanity = Math.min(attacker.combatant.maxSanity, (attacker.combatant.currentSanity ?? 0) + 5);
+                verifyNote += ` 💧[Blue Reverberation Ensemble Leader +5 Sanity]`;
+              }
             }
             // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) —
             // "The Imitation" (Mimicry Blade): "Upstanding Slash" nhận 1 Imitation
@@ -6724,7 +6767,22 @@ async function resolveOnePendingAction(encounter, p) {
             if (p.emotionDelta) {
               const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta);
               verifyNote += ` [Coin ${p.emotionDelta >= 0 ? "+" : ""}${p.emotionDelta}]`;
-              if (levelNotes.length > 0) verifyNote += " " + levelNotes.join(" ");
+              if (levelNotes.length > 0) {
+                verifyNote += " " + levelNotes.join(" ");
+                // GAP ĐÃ SỬA (batch 5) — "Philip" (The Crying Children): LÊN
+                // level mới (không phải đang giữ nguyên level cũ) → +2 Dice Up
+                // nếu Level 1, +4 nếu Level 2 — dùng emotionLevel THẬT SAU khi
+                // applyEmotionDelta đã cập nhật (không parse text levelNotes).
+                const philipWeapon = findWeaponAnywhere(attacker.combatant.weaponName);
+                const hasPhilip = (philipWeapon?.passives ?? []).some(pa => pa.name === "Philip");
+                if (hasPhilip) {
+                  const philipDiceUp = attacker.combatant.emotionLevel === 1 ? 2 : (attacker.combatant.emotionLevel === 2 ? 4 : 0);
+                  if (philipDiceUp > 0) {
+                    attacker.combatant.diceUp = (attacker.combatant.diceUp ?? 0) + philipDiceUp;
+                    verifyNote += ` 🎭[Philip +${philipDiceUp} Dice Up]`;
+                  }
+                }
+              }
             }
 
             resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${eyeOfHorusRepeatLightNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
