@@ -4637,13 +4637,25 @@ Object.assign(SKILL_ALIASES, {
 
 // ─── findSkill (giữ nguyên logic, chuyển từ index.js sang đây) ───────────────
 function findSkill(raw) {
-  const key = raw.toLowerCase().trim();
+  // BUG THẬT ĐÃ SỬA (phát hiện qua crash thật khi test tự động hoá batch 4):
+  // trước đây raw.toLowerCase() KHÔNG an toàn với null/undefined — crash ngay
+  // khi findWeaponAnywhere() được gọi với weaponName của ENEMY (enemy không có
+  // field này, luôn undefined) — VD trong Payback automation mới. findWeapon()
+  // đã an toàn từ trước (raw ?? ""), findSkill() lại thiếu — giờ đồng bộ.
+  const key = (raw ?? "").toLowerCase().trim();
   // 1. Tra SKILLS trực tiếp với key gốc (giữ nguyên space/dash)
   if (SKILLS[key]) return SKILLS[key];
   // 2. Tra alias: strip toàn bộ space, dash, dấu phẩy để map về canonical key.
   //    replace(/[\s\-,]/g) đã xóa hết space rồi nên không cần replace(/\s+/g, " ") thêm
   //    (thao tác thứ hai đó không bao giờ có tác dụng và chỉ gây hiểu nhầm về intent).
-  const aliasLookup = key.replace(/[\s\-,]/g, "");
+  // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua test tự động hoá batch 4): TRƯỚC ĐÂY
+  // chỉ strip space/dash/comma — bất kỳ Critical nào có DẤU HAI CHẤM trong tên
+  // hiển thị (VD "Great Split: Vertical", "Atelier Logic: Shotgun") đều KHÔNG
+  // BAO GIỜ tìm ra được khi chọn từ dropdown (dropdown dùng skill.name TRỰC TIẾP,
+  // có dấu ":", làm value) — vì alias thật (VD "greatsplitvertical") không có
+  // dấu ":", nên aliasLookup (giữ nguyên dấu ":") không bao giờ khớp. Thêm ":"
+  // vào regex strip để khớp đúng.
+  const aliasLookup = key.replace(/[\s\-,:]/g, "");
   const aliasKey = SKILL_ALIASES[aliasLookup];
   if (aliasKey && SKILLS[aliasKey]) return SKILLS[aliasKey];
   // 3. Fallback: tìm partial match trong SKILLS keys
