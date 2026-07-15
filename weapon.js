@@ -306,4 +306,4 @@ function findWeapon(raw) {
   return null;
 }
 
-module.exports = { WEAPONS, findWeapon, WD1, WD2, WD3, WD4, WD5, WD6, WD7, WD8, WD9, SLASH, PIERCE, BLUNT, DICEUP, BLEED, POISE }; 
+module.exports = { WEAPONS, findWeapon, WD1, WD2, WD3, WD4, WD5, WD6, WD7, WD8, WD9, SLASH, PIERCE, BLUNT, DICEUP, BLEED, POISE };
