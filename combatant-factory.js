@@ -65,6 +65,10 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // ammo/frostAmmo/incendiaryAmmo reload từ inventory), mỗi volley (9 hit)
       // tốn 1 điểm, reset về 8 mỗi khi hết turn (advanceCombatantTurn).
       eyeOfHorusAmmo: 8,
+      // eyeOfHorusReloadPending — GAP ĐÃ SỬA (xác nhận trực tiếp): track "đã chịu
+      // 1 turn ở mức 0 ammo chưa" — reset về 8 chỉ xảy ra ở turn-end THỨ 2 kể từ
+      // lúc hết ammo, không phải turn-end đầu tiên (xem turn-advance.js).
+      eyeOfHorusReloadPending: false,
       // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm
       // Guard 1 lần trong turn thì cứ mặc định là guard sẵn trong turn đó do
       // charge Guard của nó không thể bị giảm được nên phải khóa lại nút guard"
