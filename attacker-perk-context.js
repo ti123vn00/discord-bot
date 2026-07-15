@@ -27,6 +27,20 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     let critDivOverride = null;
     let instantKill = null;
   
+    // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) — "The
+    // Imitation" (Mimicry Blade): mỗi 1 Imitation đã TIÊU THỤ (qua Great Split)
+    // → +5% Dmg Bonus kéo dài tới hết Encounter, cap 50% (= 10 Imitation tiêu).
+    // Không cần check weaponName ở đây — imitationConsumedTotal chỉ tăng khi
+    // dùng ĐÚNG Great Split với Mimicry Blade (xem index.js), không nơi nào khác.
+    bonusPct += Math.min(50, (attacker.imitationConsumedTotal ?? 0) * 5);
+    // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 5) — "The
+    // Udjat" (Udjat Khopesh): mỗi 1 Protection hiện có → +1% Dmg Bonus (không
+    // tiêu thụ, khác The Imitation — chỉ cần ĐANG CÓ, không cap theo document
+    // gốc nhưng thực tế Protection tự cap 20 từ combatant-factory.js).
+    if ((attacker.weaponName ?? "").toLowerCase() === "udjat khopesh") {
+      bonusPct += (attacker.protection ?? 0);
+    }
+
     // Battle Ignition: turn trước đánh ≥10 lần → +15% Dmg turn này
     if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
     // Manifested E.G.O đang active: +30% Dmg M1+skill bản thân gây ra — cơ chế GỐC
