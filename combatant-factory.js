@@ -83,6 +83,12 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // (Chains of Loyalty) — chỉ đòn tấn công ĐẦU TIÊN mỗi turn mới phản dmg,
       // reset về false mỗi khi hết turn.
       paybackUsedThisTurn: false,
+      // imitation/imitationConsumedTotal — GAP ĐÃ SỬA (dự án tự động hoá, batch
+      // 4): "The Imitation" (Mimicry Blade) — imitation là stack HIỆN CÓ (nhận
+      // từ Upstanding Slash, tiêu bởi Great Split); imitationConsumedTotal là
+      // TỔNG đã tiêu (không bao giờ giảm, dùng để tính % Dmg Bonus vĩnh viễn).
+      imitation: 0,
+      imitationConsumedTotal: 0,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã
