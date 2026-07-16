@@ -134,6 +134,12 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // GIỮ NGUYÊN 0 (không reset). Nếu ĐÃ đang nạp (true, tức đã "chịu" 1 turn ở
     // mức 0 rồi) → nạp xong, reset về 8, tắt cờ. Nếu ammo KHÔNG phải 0 → reset về
     // 8 bình thường như thiết kế gốc (không có gì phải "trả giá").
+    // eyeOfHorusAmmo — BUG NGHIÊM TRỌNG ĐÃ SỬA LẦN 2 (xác nhận trực tiếp): "qua
+    // turn cũng không nạp lại đạn nữa, chỉ khi hết đạn mới tốn 1 turn để nạp" —
+    // TRƯỚC ĐÂY vẫn còn nhánh "không phải 0 thì reset về 8 mỗi turn" — SAI, vì
+    // ammo phải TỒN TẠI XUYÊN SUỐT nhiều turn (không tự đầy lại nếu chưa dùng
+    // hết) — CHỈ reset về 8 khi ĐÃ về đúng 0 và đã "chịu" đủ 1 turn chờ nạp. Nếu
+    // ammo > 0, KHÔNG làm gì cả — giữ nguyên y hệt giá trị hiện tại sang turn sau.
     if (combatant.eyeOfHorusAmmo === 0) {
       if (combatant.eyeOfHorusReloadPending) {
         combatant.eyeOfHorusAmmo = 8;
@@ -141,9 +147,6 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       } else {
         combatant.eyeOfHorusReloadPending = true;
       }
-    } else {
-      combatant.eyeOfHorusAmmo = 8;
-      combatant.eyeOfHorusReloadPending = false;
     }
     // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp) — reset về
     // false mỗi khi hết turn CỦA CHÍNH combatant này, giống các "ThisTurn" flag
@@ -152,6 +155,10 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // paybackUsedThisTurn — GAP ĐÃ SỬA (dự án tự động hoá, batch 3) — reset mỗi
     // khi hết turn CỦA CHÍNH combatant này (không phải hết vòng turnOrder).
     combatant.paybackUsedThisTurn = false;
+    // eyeOfHorusTargetHitCounts — GAP ĐÃ SỬA HOÀN TOÀN LẦN THỨ 3 — reset mỗi
+    // khi hết turn CỦA CHÍNH combatant này, "Foreclosure Task Force President"
+    // đếm lại từ đầu mỗi turn mới.
+    combatant.eyeOfHorusTargetHitCounts = {};
     // Emotion Level — đếm ngược Duration (Infinity nếu có Light Body = không bao giờ
     // hết tới khi encounter kết thúc). Hết Duration → rớt về Level 0, maxLight về lại
     // baseMaxLight, vào CD EMOTION_LEVEL_COOLDOWN_TURNS turn (không lên lại được dù
