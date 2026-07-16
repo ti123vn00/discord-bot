@@ -362,6 +362,7 @@ const KNOWN_KEYS = new Set([
   "books", "items",
   "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", "type", "ammotype", "channel", // -encounter
   "banner", // -gacha banner: naruto/standard
+  "usebullet", // -encounter attack usebullet: yes (Soldato Rifle's Firing passive)
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -1432,7 +1433,7 @@ const { resolveCombatant, resolveTargets, formatCombatantBlock } = require("./en
  * @throws Error nếu input/điều kiện không hợp lệ
  */
 async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, targetStr, verifyOpts = {}) {
-  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, ammotype: ammoTypeRaw } = verifyOpts;
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, ammotype: ammoTypeRaw, usebullet: useBulletRaw } = verifyOpts;
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
@@ -1487,6 +1488,20 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       effectiveAmmoType = player.lastAmmoTypeUsed; // KHÔNG trừ stack — đúng bản chất Repeat Ammo
     }
 
+    // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Firing" (Soldato
+    // Rifle): "Có thể tiêu stack đạn có trong người để đòn đánh thường chuyển
+    // qua dmg Pierce và +4 Base Dmg" — usebullet: yes để kích hoạt, tiêu 1
+    // stack (không phải toàn bộ). +4 Base Dmg áp qua flatDmgPerHit (cơ chế có
+    // sẵn cho Attack Power Up); ĐỔI SANG Pierce cần người chơi tự đổi ký tự
+    // loại dmg trong công thức (VD 10x2B → 10x2P) — hệ thống KHÔNG tự parse/
+    // sửa dmgStr người dùng nhập (rủi ro cao nếu tự động sửa sai công thức).
+    const useBulletNormalized = (useBulletRaw ?? "").trim().toLowerCase();
+    const willUseBullet = useBulletNormalized === "yes" || useBulletNormalized === "true" || useBulletNormalized === "1";
+    if (willUseBullet) {
+      if ((player.bulletStack ?? 0) < 1) throw new Error(`Không đủ đạn (Soldato Rifle) — hiện có ${player.bulletStack ?? 0}/8.`);
+      player.bulletStack -= 1;
+    }
+
     // skill:/ref: — xem comment đầy đủ ở resolveSkillVerification. Gọi TRƯỚC khi
     // build preview vì có thể throw (skill không tồn tại/đang cooldown) — fail sớm,
     // tránh tính toán dư.
@@ -1523,7 +1538,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[player.weaponType] ?? "P";
         targetDmgStr = Array(totalVolleys).fill(`${base}x9${typeLetter}`).join(" + ");
       }
-      const perkCtx = computeAttackerPerkContext(player, t.combatant, targetDmgStr, { isM1: true, targetId: t.id, eyeOfHorusNewCount, attackerId: playerId });
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, targetDmgStr, { isM1: true, targetId: t.id, eyeOfHorusNewCount, attackerId: playerId, willUseBullet });
       const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: true, attackerId: playerId });
       // Mang (Shin/Mang, đang active): True Dmg — Res target dưới 1x bị ép về 1x;
       // +10%/vòng Dmg M1+skill turn này.
@@ -1551,9 +1566,10 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         sanityBonusPct: getEffectiveSanityForDiceBonus(player),
         critDiv: perkCtx.critDivOverride ?? undefined,
         poiseInit: player.poise, chargeInit: player.charge,
-        // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
-        // CÔNG (attacker), KHÔNG áp cho target.
-        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
+        // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG
+        // TẤN CÔNG (attacker), KHÔNG áp cho target. +4 nếu "Firing" (Soldato
+        // Rifle) đang tiêu đạn (willUseBullet) — chỉ M1, không áp skill/Critical.
+        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0) + (willUseBullet ? 4 : 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         // 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/Chain) — TRÊN
         // TARGET đang bị Tremor Burst kích hoạt lên (xem comment đầy đủ ở
@@ -4667,6 +4683,22 @@ if (message.content.startsWith("-gacha")) {
           // nhưng giảm sát thương TOÀN BỘ đòn (100%, thay vì 90%/99% mặc định) — xem
           // performGuardEvade.
           joined.hasIronHorus = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "") === "abydos's uniform - lazy style";
+          // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — theo ĐÚNG
+          // pattern hasIronHorus ở trên: mỗi outfit-specific mechanic tự set 1
+          // boolean flag riêng lúc join (combatant không có field chung "outfit
+          // name" nào). "Reverberation Ensemble": 40% Dmg Reduction cố định.
+          const equippedOutfitNameNormalized = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "");
+          joined.hasReverberationEnsemble = equippedOutfitNameNormalized === "reverberation ensemble";
+          // "Ambitious Fixer": "Khi vào Encounter bạn nhận được 3 Haste" — áp
+          // dụng NGAY lúc join (chỉ lần join ĐẦU, không phải update lại giữa
+          // chừng — khớp nguyên tắc "trang bị chốt lúc join" đã áp dụng chung).
+          if (!wasJoined && equippedOutfitNameNormalized === "ambitious fixer") {
+            joined.haste = (joined.haste ?? 0) + 3;
+          }
+          joined.hasAmbitiousFixer = equippedOutfitNameNormalized === "ambitious fixer";
+          // "Thumb Soldato": "Các vũ khí/skill/page sử dụng đạn sẽ được tăng
+          // thêm 15% Dmg gây ra" + "Mỗi đòn đánh thường thứ 4 nhận 1 đạn".
+          joined.hasThumbSoldato = equippedOutfitNameNormalized === "thumb soldato";
           // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
           // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
           // refill Light/Poise/Sanity mỗi lần gõ lại join).
@@ -5316,7 +5348,7 @@ if (message.content.startsWith("-gacha")) {
       }
       try {
         const { embed, skillRollEmbed } = await doPlayerAttack(encChannelId, message.author.id, message.author.toString(), dmgStr, targetStr, {
-          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], ammotype: kv["ammotype"],
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], ammotype: kv["ammotype"], usebullet: kv["usebullet"],
         });
         await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
       } catch (err) {
@@ -6744,6 +6776,12 @@ async function resolveOnePendingAction(encounter, p) {
                   if (tResolved) tResolved.combatant.tremor = Math.min(99, (tResolved.combatant.tremor ?? 0) + 1);
                 }
                 resultLines.push(`💧 **Blue Reverberation Ensemble Leader** — ${attacker.label} gắn 1 Tremor lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
+              // "Thumb Soldato" (outfit, không phải weapon mechanic) — "Mỗi đòn
+              // đánh thường thứ 4 bạn sẽ nhận được 1 đạn" — max 8.
+              if (attacker.combatant.hasThumbSoldato && attacker.combatant.m1AttackCount % 4 === 0) {
+                attacker.combatant.bulletStack = Math.min(8, (attacker.combatant.bulletStack ?? 0) + 1);
+                resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận 1 đạn (tổng ${attacker.combatant.bulletStack}/8).`);
               }
             }
             checkStaggerPanic(attacker.combatant);
