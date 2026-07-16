@@ -87,6 +87,15 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // "Firing" (Soldato Rifle) + "Thumb Soldato" (outfit, mỗi đòn đánh thường
       // thứ 4 → +1 đạn). Max 8, tiêu để +4 Base Dmg/hit (usebullet: yes khi M1).
       bulletStack: 0,
+      // "Cinq Association": accumulator riêng cho "2 Haste/20 Stamina qua M1".
+      cinqAssociationAccumulator: 0,
+      // "Dieci Association": Shield HP (resource riêng, KHÔNG phải HP thường) +
+      // accumulator cho "2 Sinking + 4 Shield HP mỗi 20 Stamina qua M1".
+      shieldHp: 0,
+      dieciAssociationAccumulator: 0,
+      // "Zwei Association" — flag chờ áp Tremor thật (xem comment đầy đủ ở
+      // resolveOnePendingAction, tránh bị ghi đè bởi t.preview.finalTremor).
+      zweiAssociationPendingTremor: false,
       // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm
       // Guard 1 lần trong turn thì cứ mặc định là guard sẵn trong turn đó do
       // charge Guard của nó không thể bị giảm được nên phải khóa lại nút guard"
