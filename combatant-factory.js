@@ -96,6 +96,9 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // "Zwei Association" — flag chờ áp Tremor thật (xem comment đầy đủ ở
       // resolveOnePendingAction, tránh bị ghi đè bởi t.preview.finalTremor).
       zweiAssociationPendingTremor: false,
+      // "Hana Association": track HP mất TRONG turn hiện tại (reset mỗi turn,
+      // cùng cơ chế với diceUp) để tính "+1 Dice Up mỗi 10 HP mất".
+      hpLostThisTurn: 0,
       // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm
       // Guard 1 lần trong turn thì cứ mặc định là guard sẵn trong turn đó do
       // charge Guard của nó không thể bị giảm được nên phải khóa lại nút guard"
