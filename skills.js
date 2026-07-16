@@ -1279,6 +1279,7 @@ const SKILLS = {
         `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — nhận 3 <:DiceUp:1513767795681398894>Dice Up đến hết turn này`,
       ];
     },
+    diceEffects: [null, null, { diceUp: 3 }],
   },
 
   // ── EGO Pages (TETH) ──
@@ -2692,6 +2693,12 @@ roll(v = "no") {
         `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] — Trảm xuống một đường, nhận 3 <:DiceUp:1513767795681398894>Dice Up đến hết turn`,
       ];
     },
+    // diceEffects — GAP ĐÃ SỬA (xác nhận trực tiếp: "dice up của blade flourish
+    // với durandal không áp dụng") — cấu trúc hoá hiệu ứng phụ TỪNG dice (thay
+    // vì chỉ nằm trong TEXT mô tả, không tự động hoá được). Index khớp 1-1 với
+    // vị trí trong mảng roll() TRẢ VỀ (0-based) — CHỈ áp dụng nếu dice đó THẬT
+    // SỰ trúng (không bị né/chặn hoàn toàn, xem perHitMult trong index.js).
+    diceEffects: [null, null, { diceUp: 3 }],
   },
   "mook workshop": {
     name: "Mook Workshop", weaponOf: "Mook Workshop", tags: "Weapon",
