@@ -1730,8 +1730,8 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     const previews = targets.map(t => {
-      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false, attackerId: playerId, targetId: t.id });
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false, attackerId: playerId, targetId: t.id, isMiddleSkill });
       const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill, attackerId: playerId });
       const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
       const haouRuptureCheck = !resStr && (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
@@ -1859,8 +1859,8 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     // QUAN TRỌNG: chiều này ENEMY là người tấn công → Poise/Charge lấy từ ENEMY.
     // TARGET (player) là người bị tấn công → 5 status kia lấy từ TỪNG TARGET riêng.
     const previews = targets.map(t => {
-      const perkCtx = computeAttackerPerkContext(enemy, t.combatant, dmgStr, { isM1: false, attackerId: enemyKey, targetId: t.id });
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
+      const perkCtx = computeAttackerPerkContext(enemy, t.combatant, dmgStr, { isM1: false, attackerId: enemyKey, targetId: t.id, isMiddleSkill });
       const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill, attackerId: enemyKey });
       const haouRuptureCheck = (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
       const calcOpts = {
@@ -6294,63 +6294,25 @@ async function resolveOnePendingAction(encounter, p) {
               // cộng ĐÚP mỗi lần đánh, verify bằng test thật phát hiện Tremor=16 thay
               // vì 8 sau 4 lần đánh. Đã xoá hẳn, chỉ giữ 1 nguồn duy nhất.)
               let eyeOfHorusNote = "";
-              // GAP ĐÃ SỬA (xác nhận trực tiếp: "50+ status trước đó tôi kêu bạn
-              // có tự động hóa hết chưa" — audit lại phát hiện THÊM 2 bug cùng
-              // loại với Protection): "Fragile" (+1%/stack Dmg NHẬN VÀO, max 25)
-              // và "Charge Shield Stack" (-10%/stack Dmg NHẬN VÀO, max 20, MẤT
-              // NGAY sau khi dùng 1 lần — khác Protection/2-turn) — cả 2 field +
-              // decay đã có sẵn từ trước nhưng CHƯA BAO GIỜ thực sự ảnh hưởng dmg.
-              let fragileNote = "";
-              if ((target.fragile ?? 0) > 0 && finalDmg > 0) {
-                const increasePct = target.fragile; // +1%/stack — KHÔNG cap thêm ở đây, đã cap 25 lúc gán stack
-                const increased = finalDmg * (increasePct / 100);
-                finalDmg += increased;
-                fragileNote = ` 🔺[Fragile +${increasePct}%, tăng ${increased.toFixed(3)} dmg]`;
-              }
-              // Karmic Consequence — BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp:
-              // "nhận thêm 1% Dmg cho mỗi 1 Stack tức nghĩa là 50 Karmic Consequence
-              // thì bản thân phải nhận thêm 50% Dmg... là dmg BẢN THÂN NHẬN VÀO chứ
-              // không phải gây ra") — TRƯỚC ĐÂY áp nhầm vào outgoing dmg (attacker
-              // gây ra), giờ đúng — tăng dmg TARGET nhận vào, y hệt pattern Fragile.
-              let karmicNote = "";
-              if ((target.karmicConsequence ?? 0) > 0 && finalDmg > 0) {
-                const karmicPct = target.karmicConsequence;
-                const karmicIncreased = finalDmg * (karmicPct / 100);
-                finalDmg += karmicIncreased;
-                karmicNote = ` 📜[Karmic Consequence +${karmicPct}%, tăng ${karmicIncreased.toFixed(3)} dmg]`;
-              }
-              // GAP ĐÃ SỬA (xác nhận trực tiếp, sau khi user cung cấp mô tả đầy đủ
-              // 50+ status) — "Smoke": +2.5%/stack Dmg CHỈ từ đòn đánh THƯỜNG (M1,
-              // không phải skill/Page) nhận vào — decay (-1/turn) đã đúng sẵn ở
-              // turn-advance.js từ trước, chỉ thiếu phần THẬT SỰ tăng dmg này.
-              let smokeNote = "";
-              if ((target.smoke ?? 0) > 0 && finalDmg > 0 && isM1Type) {
-                const smokeIncreasePct = target.smoke * 2.5;
-                const smokeIncreased = finalDmg * (smokeIncreasePct / 100);
-                finalDmg += smokeIncreased;
-                smokeNote = ` 💨[Smoke +${smokeIncreasePct}%, tăng ${smokeIncreased.toFixed(3)} dmg]`;
-              }
-              let chargeShieldNote = "";
+              // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: phát hiện qua điều
+              // tra bão hòa "Fragile/Hemorrhage/Gaze... vẫn bão hòa thôi") —
+              // TOÀN BỘ 5 khối tính Fragile/Karmic Consequence/Smoke/Charge
+              // Shield/Protection từng nằm ở đây đã bị XOÁ — đây là 1 "audit"
+              // RIÊNG BIỆT (không biết computeDefenderDmgReduction/
+              // computeAttackerPerkContext đã xử lý đúng 5 hiệu ứng này từ
+              // trước, có bão hòa đúng công thức) tự ý áp dụng LẠI cả 5 một
+              // cách ĐỘC LẬP trực tiếp vào finalDmg — gây DOUBLE-COUNT nghiêm
+              // trọng cho TẤT CẢ 5 hiệu ứng (mỗi cái tính 2 lần qua 2 đường
+              // hoàn toàn khác nhau, 1 bên có bão hòa 1 bên không). Giờ CHỈ còn
+              // đúng 1 nguồn duy nhất cho mỗi hiệu ứng — xem defReductionPct
+              // (Protection/Charge Shield/Contempt) và perkCtx.bonusPct
+              // (Fragile/Karmic Consequence/Smoke/Vengeance Mark/Tremor Decay/
+              // Gaze[Awe]/Hemorrhage) đã áp dụng ĐÚNG 1 LẦN từ đầu hàm này rồi.
+              let fragileNote = "", karmicNote = "", smokeNote = "", chargeShieldNote = "", protectionNote = "";
+              // Charge Shield vẫn cần RESET về 0 sau mỗi lần bị tấn công (khác
+              // Protection/2-turn) — chỉ giữ lại phần reset, không tính dmg lại.
               if ((target.chargeShieldStack ?? 0) > 0 && finalDmg > 0) {
-                const reductionPctCS = Math.min(100, target.chargeShieldStack * 10);
-                const reducedCS = finalDmg * (reductionPctCS / 100);
-                finalDmg -= reducedCS;
-                chargeShieldNote = ` 🔰[Charge Shield -${reductionPctCS}%, giảm ${reducedCS.toFixed(3)} dmg, hết sau đòn này]`;
-                target.chargeShieldStack = 0; // "mất SAU MỖI LẦN bị tấn công" — reset ngay, không đợi endturn
-              }
-              // GAP ĐÃ SỬA (xác nhận trực tiếp): "1 Protection là 5% Dmg
-              // Reduction đó... cái này có tính chưa" — CHƯA, đây là bug thật sự
-              // (không chỉ riêng Udjat) — field protection/protectionTurnsLeft
-              // và decay logic (turn-advance.js) đã có sẵn từ trước, nhưng CHƯA
-              // BAO GIỜ thực sự giảm dmg nhận vào ở bất kỳ đâu trong toàn hệ
-              // thống. Áp dụng TRƯỚC Time Moratorium (Protection giảm %, Time
-              // Moratorium chặn hoàn toàn phần còn lại nếu có).
-              let protectionNote = "";
-              if ((target.protection ?? 0) > 0 && finalDmg > 0) {
-                const reductionPct = Math.min(100, target.protection * 5);
-                const reduced = finalDmg * (reductionPct / 100);
-                finalDmg -= reduced;
-                protectionNote = ` 🛡️[Protection -${reductionPct}%, giảm ${reduced.toFixed(3)} dmg]`;
+                target.chargeShieldStack = 0;
               }
               // Time Moratorium (xác nhận trực tiếp): "khi bị nhận sát thương mà có
               // hiệu ứng này... KHÔNG NHẬN sát thương trong turn đó mà tích lại...
