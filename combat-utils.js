@@ -179,7 +179,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     if (enteringEntry) {
       const c = enteringEntry.type === "enemy" ? encounter.enemies[enteringEntry.id] : encounter.players[enteringEntry.id];
       if (c) {
-        const weaponInfoForOutfit = (c.equippedOutfit ?? "").toLowerCase() === "index proselyte";
+        const weaponInfoForOutfit = c.hasIndexProselyte;
         if (weaponInfoForOutfit) {
           c.prescriptRoll = Math.floor(Math.random() * 7) + 1;
           const rollLabels = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
