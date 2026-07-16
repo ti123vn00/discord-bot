@@ -83,6 +83,10 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       graceOfPrescript: 0, // PERSISTENT (không reset theo turn) — dùng cho Will of Prescript's %Dmg
       karmicConsequence: 0, // PERSISTENT, max 100 — +1%Dmg/stack (Index Proselyte tự áp lên bản thân)
       prescriptTargetId: null, // Will of Prescript — enemy đang bị đánh dấu "The Prescript Target's - The Index"
+      // bulletStack — GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) —
+      // "Firing" (Soldato Rifle) + "Thumb Soldato" (outfit, mỗi đòn đánh thường
+      // thứ 4 → +1 đạn). Max 8, tiêu để +4 Base Dmg/hit (usebullet: yes khi M1).
+      bulletStack: 0,
       // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm
       // Guard 1 lần trong turn thì cứ mặc định là guard sẵn trong turn đó do
       // charge Guard của nó không thể bị giảm được nên phải khóa lại nút guard"
