@@ -11,7 +11,7 @@
 
 module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
-  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null } = {}) {
+  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false } = {}) {
     let bonusPct = 0;
     // dmgStrRewritten khai báo NGAY ĐẦU (thay vì giữa hàm như trước) — vì Eye Of
     // Horus (BUG ĐÃ SỬA, xem chi tiết bên dưới) giờ CẦN sửa THẬT dmgStr (không chỉ
@@ -50,15 +50,27 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if ((attacker.weaponName ?? "").toLowerCase() === "udjat khopesh") {
       bonusPct += (attacker.protection ?? 0);
     }
-    // GAP ĐÃ SỬA (xác nhận trực tiếp: "tự động hóa mọi thứ đừng có nhìn note
-    // nữa") — Index Proselyte's Karmic Consequence: +1% Dmg TỰ áp lên bản thân
-    // mỗi stack (không cần target cụ thể, luôn cộng).
-    bonusPct += (attacker.karmicConsequence ?? 0);
+    // Karmic Consequence — BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: "nhận
+    // thêm 1% Dmg cho mỗi 1 Stack... là dmg BẢN THÂN NHẬN VÀO chứ không phải
+    // gây ra") — ĐÃ XOÁ khỏi đây (outgoing dmg bonus) — chuyển đúng qua incoming
+    // dmg taken, cùng chỗ với Fragile (xem index.js's resolveOnePendingAction).
     // Will of Prescript (Index Longsword/Cleaver): +5% Dmg/Grace of Prescript,
     // CHỈ khi target hiện tại ĐÚNG LÀ enemy đang bị đánh dấu "The Prescript
     // Target's - The Index" (prescriptTargetId).
     if (targetId && attacker.prescriptTargetId === targetId) {
       bonusPct += 5 * (attacker.graceOfPrescript ?? 0);
+    }
+    // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Ambitious Fixer"
+    // (outfit): "Gia tăng 10% Dmg Slash" — dùng weaponType làm proxy hợp lý
+    // (thông tin sẵn có duy nhất về loại dmg đang dùng, vì không có tham số
+    // "dmgType" riêng truyền vào hàm này).
+    if (attacker.hasAmbitiousFixer && (attacker.weaponType ?? "").toLowerCase() === "slash") {
+      bonusPct += 10;
+    }
+    // "Thumb Soldato" (outfit): "Các vũ khí/skill/page sử dụng đạn sẽ được tăng
+    // thêm 15% Dmg gây ra" — CHỈ khi đòn này THỰC SỰ đang tiêu đạn (willUseBullet).
+    if (attacker.hasThumbSoldato && willUseBullet) {
+      bonusPct += 15;
     }
 
     // Battle Ignition: turn trước đánh ≥10 lần → +15% Dmg turn này
