@@ -160,7 +160,9 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if (isM1 && eyeOfHorusVolleys && (attacker.weaponName ?? "").toLowerCase() === "eye of horus") {
       const N = eyeOfHorusVolleys;
       const totalVolleys = N + (N === 1 ? 1 : 0);
-      if (N <= 3) bonusPct += 50;
+      // GAP ĐÃ SỬA (xác nhận trực tiếp — passive text cập nhật): "Dưới hoặc bằng
+      // 2 lần: +50% sát thương" — TRƯỚC ĐÂY sai ngưỡng (N<=3), giờ đúng N<=2.
+      if (N <= 2) bonusPct += 50;
       eyeOfHorusTremorChargeAmount = 2 * totalVolleys;
     }
   
