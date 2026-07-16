@@ -77,8 +77,8 @@ const OUTFITS = {
     resistance: { B: 1.5, P: 1, S: 1.1 },
     speedRange: { min: 3, max: 4 },
     keypage: [
-      "Mỗi lần đỡ thành công bạn sẽ bị nhận 1 Tremor. Critical của vũ khí bạn sẽ áp Tremor lên kẻ địch tương đương với 1/2 Tremor trên người bạn hiện tại",
-      "Nếu bạn có trên hoặc bằng 10 Defense Up và khi đỡ đòn Guard Break, bạn sẽ tiêu thụ hết chúng và sẽ không bị Guard Break; có thể đỡ đòn Undodgeable bằng cách tương tự",
+      "Mỗi lần đỡ thành công bạn sẽ bị nhận 1 Tremor. Critical của vũ khí bạn sẽ áp Tremor lên kẻ địch tương đương với 1/2 Tremor trên người bạn hiện tại [ĐÃ TỰ ĐỘNG HOÁ]",
+      "Nếu bạn có trên hoặc bằng 10 Defense Up và khi đỡ đòn Guard Break, bạn sẽ tiêu thụ hết chúng và sẽ không bị Guard Break [ĐÃ TỰ ĐỘNG HOÁ]; có thể đỡ đòn Undodgeable bằng cách tương tự [KHÔNG TỰ ĐỘNG HOÁ — cơ chế bypass evade phức tạp hơn nhiều, cần GM tự áp dụng]",
     ],
   },
   "hana association": {
@@ -111,8 +111,8 @@ const OUTFITS = {
     resistance: { B: 0.9, P: 1.7, S: 1.3 },
     speedRange: { min: 4, max: 7 },
     keypage: [
-      "Nhận được thêm 2 Dice Up khi bạn ở trong Emotion Level",
-      "Mỗi khi gây Burn cho kẻ địch, bạn giảm 5 Stamina của chúng",
+      "Nhận được thêm 2 Dice Up khi bạn ở trong Emotion Level [ĐÃ TỰ ĐỘNG HOÁ]",
+      "Mỗi khi gây Burn cho kẻ địch, bạn giảm 5 Stamina của chúng [ĐÃ TỰ ĐỘNG HOÁ]",
     ],
   },
   "dieci association": {
@@ -120,8 +120,8 @@ const OUTFITS = {
     resistance: { B: 1.1, P: 1.6, S: 1.2 },
     speedRange: { min: 4, max: 7 },
     keypage: [
-      "Khi bị tấn công và bạn có Shield HP, kẻ địch sẽ nhận 2 Sinking",
-      "Mỗi 20 Stamina tiêu thụ qua đòn đánh thường sẽ áp 2 Sinking lên người kẻ địch và cho bạn 4 Shield HP. Khi có trên hoặc bằng 20 Shield HP bạn nhận được 15% Dmg Up",
+      "Khi bị tấn công và bạn có Shield HP, kẻ địch sẽ nhận 2 Sinking [ĐÃ TỰ ĐỘNG HOÁ]",
+      "Mỗi 20 Stamina tiêu thụ qua đòn đánh thường sẽ áp 2 Sinking lên người kẻ địch và cho bạn 4 Shield HP. Khi có trên hoặc bằng 20 Shield HP bạn nhận được 15% Dmg Up [ĐÃ TỰ ĐỘNG HOÁ]",
     ],
   },
   "thumb soldato": {
@@ -158,7 +158,7 @@ const OUTFITS = {
     speedRange: { min: 4, max: 7 },
     keypage: [
       "Cho phép bạn kiểm tra toàn bộ thông tin của kẻ địch",
-      "Gia tăng 1.5x hiệu quả áp Rupture của bạn",
+      "Gia tăng 1.5x hiệu quả áp Rupture của bạn [ĐÃ TỰ ĐỘNG HOÁ]",
     ],
   },
   "udjat": {
@@ -171,7 +171,7 @@ const OUTFITS = {
     name: "WARP Corp. Cleaner",
     resistance: { B: 1.3, P: 1, S: 1.3 },
     speedRange: { min: 3, max: 6 },
-    keypage: ["Gia tăng 1.5x hiệu quả nhận Charge của bản thân"],
+    keypage: ["Gia tăng 1.5x hiệu quả nhận Charge của bản thân [ĐÃ TỰ ĐỘNG HOÁ]"],
   },
   "reverberation ensemble": {
     name: "Reverberation Ensemble",
@@ -184,8 +184,8 @@ const OUTFITS = {
     resistance: { B: 1.5, P: 1, S: 1.6 },
     speedRange: { min: 5, max: 8 },
     keypage: [
-      "Nhận được 7% Crit Rate với mỗi 2 Haste mà bạn có (Tối đa 25%)",
-      "Nhận được 2 Haste vào mỗi 20 Stamina tiêu thụ thông qua đánh thường của bạn",
+      "Nhận được 7% Crit Rate với mỗi 2 Haste mà bạn có (Tối đa 25%) [ĐÃ TỰ ĐỘNG HOÁ]",
+      "Nhận được 2 Haste vào mỗi 20 Stamina tiêu thụ thông qua đánh thường của bạn [ĐÃ TỰ ĐỘNG HOÁ]",
     ],
   },
   "blade lineage": {
