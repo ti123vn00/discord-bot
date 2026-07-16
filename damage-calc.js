@@ -492,6 +492,13 @@ function calcMathCore(opts) {
     // Burn/Bleed (end-turn tick) — KHÔNG cộng vào totalDmg, vì đây là dmg ở 1 THỜI
     // ĐIỂM KHÁC (end turn), không phải dmg của hit đang tính.
     burnDmgThisTurn, finalBurn: burnAfter,
+    // GAP NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua test thực tế: tag "+NBurn" gõ tay
+    // hoàn toàn không hoạt động) — "finalBurn" (burnAfter) đã qua END-TURN TICK
+    // (floor(enemyBurn/2)) — KHÔNG PHẢI giá trị "ngay sau khi gắn tag" như
+    // finalTremor/finalSinking/finalRupture. Đây mới là giá trị ĐÚNG để lưu vào
+    // target.burn ngay lúc commit hit (enemyBurn CHƯA qua tick, chỉ áp dụng
+    // +N/-NBurn từ dmgStr).
+    burnStackAfterHit: enemyBurn,
     bleedDmgThisTurn, finalBleed: bleedAfter,
     // Tremor Burst (per-hit, đã tích lũy trong loop ở trên)
     totalTremorStaminaLoss, finalTremor: enemyTremor,
