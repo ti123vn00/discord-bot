@@ -86,6 +86,11 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if (attacker.hasThumbSoldato && willUseBullet) {
       bonusPct += 15;
     }
+    // "Dieci Association": "Khi có trên hoặc bằng 20 Shield HP bạn nhận được
+    // 15% Dmg Up".
+    if (attacker.hasDieciAssociation && (attacker.shieldHp ?? 0) >= 20) {
+      bonusPct += 15;
+    }
 
     // Battle Ignition: turn trước đánh ≥10 lần → +15% Dmg turn này
     if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
@@ -221,6 +226,15 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // quan gì tới target đang đánh (khác 2 cái trên).
     if ((attacker.gazeOfContempt ?? 0) > 0) bonusPct += attacker.gazeOfContempt * 7;
     if (attacker.contemptOfTheGaze) bonusPct -= 70;
+    // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Cinq Association":
+    // "Nhận được 7% Crit Rate với mỗi 2 Haste (Tối đa 25%)" — ghép thêm tag
+    // "+NCrit" vào dmgStrRewritten (calcMathCore parse effectsStr qua regex
+    // /\+Crit(\d+)/i cho bonusCritRate — dùng đúng cơ chế có sẵn, không cần sửa
+    // signature calcMathCore).
+    if (attacker.hasCinqAssociation) {
+      const cinqCritPct = Math.min(25, Math.floor((attacker.haste ?? 0) / 2) * 7);
+      if (cinqCritPct > 0) dmgStrRewritten += ` +${cinqCritPct}Crit`;
+    }
 
     return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount };
   }
