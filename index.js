@@ -1534,7 +1534,9 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       if (isEyeOfHorus) {
         eyeOfHorusNewCount = (player.eyeOfHorusTargetHitCounts?.[t.id] ?? 0) + 1;
         const totalVolleys = eyeOfHorusNewCount === 1 ? 2 : 1; // lần ĐẦU TIÊN lên target này → auto +1 Repeat Ammo volley
-        const base = eyeOfHorusNewCount <= 6 ? 4 : 3;
+        // GAP ĐÃ SỬA (xác nhận trực tiếp — passive text cập nhật): "Dưới hoặc
+        // bằng 3 lần: Base dmg... 4x9" — TRƯỚC ĐÂY sai ngưỡng (<=6), giờ đúng <=3.
+        const base = eyeOfHorusNewCount <= 3 ? 4 : 3;
         const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[player.weaponType] ?? "P";
         targetDmgStr = Array(totalVolleys).fill(`${base}x9${typeLetter}`).join(" + ");
       }
@@ -6182,6 +6184,15 @@ async function resolveOnePendingAction(encounter, p) {
                 const instanceResults = t.preview.instanceResults ?? [];
                 const totalHits = instanceResults.length || hitCount;
                 const perHitMult = new Array(totalHits).fill(1);
+                // GAP ĐÃ SỬA (xác nhận trực tiếp: "khi né hoặc parry thành công
+                // thì sẽ không dính đòn nên sẽ không dính hiệu ứng, còn nếu
+                // guard thì vẫn dính hiệu ứng") — perHitMult=0 KHÔNG đủ để biết
+                // "có dính hiệu ứng hay không", vì Guard cũng CÓ THỂ đạt đúng 0
+                // (guardReductionPct = Math.min(1,...) có thể = 1 nếu Defense Up
+                // rất cao) — trong trường hợp đó Guard vẫn phải tính là "dính",
+                // chỉ Evade/Parry mới thực sự "không dính". Array riêng này CHỈ
+                // được set true bởi Evade/Parry thành công, không bao giờ bởi Guard.
+                const hitEvadedOrParried = new Array(totalHits).fill(false);
                 let hitIdx = 0;
                 const noteParts = [];
 
@@ -6194,7 +6205,7 @@ async function resolveOnePendingAction(encounter, p) {
                     // guardHitSelections đã có sẵn — Evade giờ cũng hỗ trợ chọn ĐÚNG
                     // hit index cụ thể, không chỉ che tuần tự từ hitIdx hiện tại.
                     const validSelected = target.evadeHitSelections.filter(h => h >= 1 && h <= totalHits);
-                    for (const h of validSelected) perHitMult[h - 1] = 0;
+                    for (const h of validSelected) { perHitMult[h - 1] = 0; hitEvadedOrParried[h - 1] = true; }
                     used = Math.min(target.evadeCharges, Math.ceil(validSelected.length / hitsPerCharge));
                     target.evadeCharges -= used;
                     target.evadeHitSelections = target.evadeHitSelections.filter(h => !(h >= 1 && h <= totalHits));
@@ -6203,7 +6214,7 @@ async function resolveOnePendingAction(encounter, p) {
                   } else {
                     while (target.evadeCharges > 0 && hitIdx < totalHits) {
                       target.evadeCharges -= 1; used += 1;
-                      for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 0;
+                      for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) { perHitMult[hitIdx] = 0; hitEvadedOrParried[hitIdx] = true; }
                     }
                     noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
                   }
@@ -6214,7 +6225,7 @@ async function resolveOnePendingAction(encounter, p) {
                   const won = defRoll >= atkRoll;
                   const coverStart = hitIdx;
                   for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) {
-                    if (won) perHitMult[hitIdx] = 0;
+                    if (won) { perHitMult[hitIdx] = 0; hitEvadedOrParried[hitIdx] = true; }
                   }
                   if (won) {
                     noteParts.push(`🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll} — né hit ${coverStart + 1}-${hitIdx})${applyParrySuccessPerks(target, attacker.combatant)}`);
@@ -6301,6 +6312,32 @@ async function resolveOnePendingAction(encounter, p) {
                 const bypassNote = [bypass.blockEvade && "Undodgeable", bypass.blockGuard && "Unblockable", bypass.blockParry && "Unparriable"].filter(Boolean);
                 defenseNote = noteParts.length > 0 ? " " + noteParts.join(" + ") : "";
                 if (bypassNote.length > 0 && hitIdx < totalHits) defenseNote += ` *(${bypassNote.join(", ")} — phần hit còn lại không thể chặn)*`;
+                // GAP ĐÃ SỬA (xác nhận trực tiếp: "dice up của blade flourish
+                // với durandal không áp dụng") — "diceEffects" (skills.js):
+                // hiệu ứng phụ cấu trúc hoá TỪNG dice, CHỈ áp dụng nếu dice đó
+                // thật sự trúng (perHitMult[i] > 0, không bị né/chặn hoàn
+                // toàn). BUG SCOPE ĐÃ SỬA: phải nằm TRONG block này (trước khi
+                // đóng) vì totalHits/perHitMult chỉ tồn tại ở đây — đặt sau
+                // dấu đóng gây lỗi "totalHits is not defined" khi runtime.
+                // Giới hạn: chỉ xử lý đúng khi skill là dạng "1 dice = 1 hit"
+                // (totalHits khớp diceEffects.length) — skill nhiều hit/dice
+                // (Eye of Horus-style) KHÔNG áp dụng ở đây, cần thiết kế riêng.
+                if (p.skillKey && attacker.type === "player") {
+                  const diceEffectSkill = findSkill(p.skillKey);
+                  if (diceEffectSkill?.diceEffects && diceEffectSkill.diceEffects.length === totalHits) {
+                    diceEffectSkill.diceEffects.forEach((effect, i) => {
+                      if (!effect) return;
+                      if (hitEvadedOrParried[i]) return; // GAP ĐÃ SỬA: chỉ Evade/Parry THÀNH CÔNG mới không dính hiệu ứng — Guard (kể cả 100% reduction) vẫn tính là "dính"
+                      if (effect.diceUp) {
+                        attacker.combatant.diceUp = (attacker.combatant.diceUp ?? 0) + effect.diceUp;
+                        // BUG ĐÃ SỬA: verifyNote CHƯA tồn tại ở scope này (khai
+                        // báo sau, gây TDZ error "Cannot access before
+                        // initialization") — dùng defenseNote (đã tồn tại sẵn).
+                        defenseNote += ` 🎲[Dice ${i + 1} +${effect.diceUp} Dice Up]`;
+                      }
+                    });
+                  }
+                }
               }
               // Smoldering Resolve (perk passive, KHÔNG tiêu thụ) áp SAU Guard/Evade/
               // Parry — giảm thêm % trên phần dmg CÒN LẠI sau khi đã né/đỡ.
