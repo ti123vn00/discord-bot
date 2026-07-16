@@ -85,7 +85,7 @@ const OUTFITS = {
     name: "Hana Association",
     resistance: { B: 1.3, P: 1.2, S: 1.3 },
     speedRange: { min: 4, max: 7 },
-    keypage: ["Bạn nhận được 1 Dice Up cho đến hết turn với mỗi 10 HP bạn mất trong turn"],
+    keypage: ["Bạn nhận được 1 Dice Up cho đến hết turn với mỗi 10 HP bạn mất trong turn [ĐÃ TỰ ĐỘNG HOÁ]"],
   },
   "kurokumo wakashu": {
     name: "Kurokumo Wakashu",
