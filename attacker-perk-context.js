@@ -11,8 +11,22 @@
 
 module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
-  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false } = {}) {
+  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false, isMiddleSkill = false } = {}) {
     let bonusPct = 0;
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận đơn giản là
+    // gộp làm một với dmg bonus nên là vẫn bão hòa thôi. Tuy nhưng khác biệt của
+    // nó với Dmg Bonus là người khác cũng có thể hưởng lợi do là debuff lên
+    // người kẻ địch") — CHUYỂN 6 status "tăng dmg nhận" (debuff áp lên TARGET,
+    // BẤT KỲ ai tấn công target đó đều hưởng lợi) từ computeDefenderDmgReduction
+    // (saturateDR — SAI, đó là công thức riêng cho REDUCTION của defender) sang
+    // ĐÂY (bonusPct — ĐÚNG, cùng pool với dmg bonus của attacker, cùng đi qua
+    // saturateBonusPct trong calcMathCore).
+    bonusPct += (target.fragile ?? 0) * 1;
+    if (isM1) bonusPct += (target.smoke ?? 0) * 2.5;
+    if (isMiddleSkill) bonusPct += (target.vengeanceMark ?? 0) * 5;
+    if ((target.tremorDecay ?? 0) > 0) bonusPct += Math.floor((target.tremor ?? 0) / 4) * 1;
+    if (target.gazeAwe > 0 && target.gazeAweSourceId === attackerId) bonusPct += target.gazeAwe * 10;
+    if ((target.hemorrhage ?? 0) > 0) bonusPct += target.hemorrhage * 10;
     // dmgStrRewritten khai báo NGAY ĐẦU (thay vì giữa hàm như trước) — vì Eye Of
     // Horus (BUG ĐÃ SỬA, xem chi tiết bên dưới) giờ CẦN sửa THẬT dmgStr (không chỉ
     // %bonus), và block đó nằm TRƯỚC vị trí khai báo cũ.
