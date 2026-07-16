@@ -16,34 +16,30 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     let reductionPct = 0;
     if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
     if (hasPerk(defender, "No Will To Break") && defender.manifestedEGO) reductionPct += 20;
-    // 50-Status Nhóm 1 — Fragile TĂNG dmg nhận (dấu ÂM, ngược Protection/Charge
-    // Shield vốn GIẢM dmg nhận). Charge Shield reset về 0 SAU MỖI LẦN áp dụng (xem
-    // nơi gọi hàm này lúc confirm — decrement ngay sau khi tính finalDmg).
-    reductionPct -= (defender.fragile ?? 0) * 1;
+    // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Reverberation
+    // Ensemble" (outfit): "Cho bạn 40% Dmg Reduction" — cố định, không điều
+    // kiện. BUG ĐÃ SỬA: combatant không có field chung "outfitName" nào cả —
+    // mỗi outfit-specific mechanic tự tạo 1 boolean flag riêng lúc join (giống
+    // pattern hasIronHorus đã có), không phải defender.equippedOutfit (field
+    // đó chỉ tồn tại trên profileData, không tồn tại trên combatant).
+    if (defender.hasReverberationEnsemble) reductionPct += 40;
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận... khác
+    // biệt với Dmg Bonus là người khác cũng có thể hưởng lợi do là debuff lên
+    // người kẻ địch") — Fragile/Smoke/Vengeance Mark/Tremor Decay/Gaze[Awe]/
+    // Hemorrhage (TẤT CẢ TĂNG dmg nhận) đã CHUYỂN sang computeAttackerPerkContext
+    // (bonusPct, đi qua saturateBonusPct đúng công thức của nó — KHÔNG PHẢI
+    // saturateDR ở đây, vốn chỉ dành riêng cho REDUCTION thật của defender).
     reductionPct += (defender.protection ?? 0) * 5;
     reductionPct += (defender.chargeShieldStack ?? 0) * 10;
-    // Smoke (50-Status Nhóm 2, xác nhận trực tiếp): "+2,5%/stack sát thương từ
-    // ĐÁNH THƯỜNG vào bản thân (Max 15)" — CHỈ áp dụng khi đòn này LÀ M1.
-    if (isM1) reductionPct -= (defender.smoke ?? 0) * 2.5;
-    // Vengeance Mark (xác nhận trực tiếp): "+5%/stack dmg từ skill của The Middle
-    // [Max 10]" — CHỈ áp dụng khi skill đang dùng thuộc "The Middle".
-    if (isMiddleSkill) reductionPct -= (defender.vengeanceMark ?? 0) * 5;
-    // Tremor Decay (xác nhận trực tiếp): "nhận 1 Fragile mỗi 4 Tremor có trên bản
-    // thân" — LIÊN TỤC (không chỉ lúc Tremor Burst), dựa trên Tremor HIỆN TẠI —
-    // chỉ áp nếu defender CÓ tremorDecay (status này chỉ ảnh hưởng người MANG NÓ).
-    if ((defender.tremorDecay ?? 0) > 0) {
-      reductionPct -= Math.floor((defender.tremor ?? 0) / 4) * 1;
-    }
-    // Gaze[Awe]/Contempt (xác nhận trực tiếp): defender NHẬN thêm X% dmg CHỈ khi
-    // đòn này đến từ ĐÚNG "kẻ đã gắn" (so khớp sourceId), không áp dụng chung.
-    if (defender.gazeAwe > 0 && defender.gazeAweSourceId === attackerId) reductionPct -= defender.gazeAwe * 10;
+    // Contempt (xác nhận trực tiếp, ĐÍNH CHÍNH comment cũ SAI — code += 50 vẫn
+    // ĐÚNG từ trước): "Contempt là debuff khiến cho kẻ dính phải sẽ bị giảm 50%
+    // sát thương gây ra (xem computeAttackerPerkContext) VÀ giảm 50% sát thương
+    // PHẢI NHẬN VÀO từ kẻ đã gắn nó" — tức GIẢM dmg nhận (không phải tăng như
+    // comment cũ ghi nhầm), CHỈ khi đòn đến từ ĐÚNG "kẻ đã gắn" (so khớp sourceId).
     if (defender.contempt > 0 && defender.contemptSourceId === attackerId) reductionPct += 50;
     // Contempt of the Gaze — SELF-debuff giảm dmg NHẬN (bù lại việc giảm dmg gây
     // ra ở computeAttackerPerkContext).
     if (defender.contemptOfTheGaze) reductionPct += 70;
-    // Hemorrhage (xác nhận trực tiếp): "+10%/20%/30%/40%/50% sát thương phải chịu"
-    // theo tier (= số stack) — dùng dấu ÂM (giống Fragile) vì TĂNG dmg nhận.
-    if ((defender.hemorrhage ?? 0) > 0) reductionPct -= defender.hemorrhage * 10;
     return reductionPct;
   }
 
