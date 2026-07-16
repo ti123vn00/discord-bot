@@ -4751,10 +4751,21 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
     // (ghi chú điều kiện, mô tả hiệu ứng phụ...) không tính.
     if (!/^<:Dice\d+:/.test(line)) continue;
     const typeMatch = line.match(/\[<:(?:Slash|Blunt|Pierce):\d+>(Slash|Blunt|Pierce)\]/);
-    if (typeMatch && tracked[trackedIdx]) {
-      diceTypeByLine.push({ result: tracked[trackedIdx].result, type: TYPE_MAP[typeMatch[1]] });
+    // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua báo cáo thực tế: "Waltz In Black
+    // chưa tự động hóa dmg") — TRƯỚC ĐÂY trackedIdx++ chạy cho MỌI dòng bắt đầu
+    // bằng "<:DiceN:", kể cả dòng ĐIỀU KIỆN/MÔ TẢ không gọi r() nào (VD "Nếu
+    // turn trước địch dính Waltz In White..." — dùng CÙNG nhãn ${D1} như dòng
+    // damage thật ngay sau, nhưng bản thân nó không tiêu thụ 1 phần tử tracked[]
+    // nào). Hệ quả: MỌI dòng damage thật SAU dòng điều kiện đó bị lệch index,
+    // đọc NHẦM sang tracked[trackedIdx] sai (hoặc undefined nếu vượt quá length)
+    // → dmgStr rỗng hoàn toàn. Giờ CHỈ tăng trackedIdx khi dòng THẬT SỰ tương
+    // ứng 1 lần gọi r() (có typeMatch — tức có tag [Slash/Blunt/Pierce]).
+    if (typeMatch) {
+      if (tracked[trackedIdx]) {
+        diceTypeByLine.push({ result: tracked[trackedIdx].result, type: TYPE_MAP[typeMatch[1]] });
+      }
+      trackedIdx++;
     }
-    trackedIdx++;
   }
 
   // Tag phòng thủ/hiệu ứng phụ — CHỈ liệt kê để GM tự thêm tay, KHÔNG tự áp (xem
