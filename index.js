@@ -4699,6 +4699,21 @@ if (message.content.startsWith("-gacha")) {
           // "Thumb Soldato": "Các vũ khí/skill/page sử dụng đạn sẽ được tăng
           // thêm 15% Dmg gây ra" + "Mỗi đòn đánh thường thứ 4 nhận 1 đạn".
           joined.hasThumbSoldato = equippedOutfitNameNormalized === "thumb soldato";
+          // "WARP Corp. Cleaner": "Gia tăng 1.5x hiệu quả nhận Charge của bản thân".
+          joined.hasWarpCorpCleaner = equippedOutfitNameNormalized === "warp corp. cleaner";
+          // "Seven Association": "Gia tăng 1.5x hiệu quả áp Rupture của bạn".
+          joined.hasSevenAssociation = equippedOutfitNameNormalized === "seven association";
+          // "Liu Association": "Nhận được thêm 2 Dice Up khi bạn ở trong Emotion
+          // Level" + "Mỗi khi gây Burn cho kẻ địch, bạn giảm 5 Stamina của chúng".
+          joined.hasLiuAssociation = equippedOutfitNameNormalized === "liu association";
+          // "Cinq Association": "7% Crit Rate mỗi 2 Haste (max 25%)" + "2 Haste
+          // mỗi 20 Stamina tiêu qua M1".
+          joined.hasCinqAssociation = equippedOutfitNameNormalized === "cinq association";
+          // "Dieci Association": Shield HP system + Sinking application.
+          joined.hasDieciAssociation = equippedOutfitNameNormalized === "dieci association";
+          // "Zwei Association": Tremor khi đỡ thành công + Critical áp Tremor
+          // theo 1/2 bản thân + tiêu Defense Up để chống Guard Break.
+          joined.hasZweiAssociation = equippedOutfitNameNormalized === "zwei association";
           // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
           // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
           // refill Light/Poise/Sanity mỗi lần gõ lại join).
@@ -5742,10 +5757,18 @@ if (message.content.startsWith("-gacha")) {
               forResolved.combatant.poise = Math.min(99, (forResolved.combatant.poise ?? 0) + 5);
               resultText += ` 💪+5 Poise (Pressure Point) cho ${forResolved.label}.`;
             }
-            // Thorns (Gluttony, [30 Points]): THUA Clash → áp 7 Rupture lên người thắng.
-            if (hasPerk(targetResolved.combatant, "Thorns")) {
-              forResolved.combatant.rupture = Math.min(99, (forResolved.combatant.rupture ?? 0) + 7);
-              resultText += ` 🌵+7 Rupture (Thorns) lên ${forResolved.label}.`;
+            // Thorns (Gluttony, [30 Points]) — BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận
+            // trực tiếp: "khi người dùng thắng clash thì sẽ gắn rupture tức là
+            // kẻ thua clash sẽ ăn rupture đó, không phải kẻ thua là kẻ gắn") —
+            // TRƯỚC ĐÂY SAI HOÀN TOÀN HƯỚNG: check NGƯỜI THUA có Thorns rồi cho
+            // NGƯỜI THẮNG nhận Rupture. Đúng phải là: NGƯỜI THẮNG (forResolved)
+            // có Thorns → áp Rupture LÊN người THUA (targetResolved).
+            if (hasPerk(forResolved.combatant, "Thorns")) {
+              // "Seven Association": 1.5x hiệu quả áp Rupture — người GẮN thật
+              // sự là forResolved (người thắng, chủ sở hữu Thorns).
+              const thornsRupture = forResolved.combatant.hasSevenAssociation ? Math.round(7 * 1.5) : 7;
+              targetResolved.combatant.rupture = Math.min(99, (targetResolved.combatant.rupture ?? 0) + thornsRupture);
+              resultText += ` 🌵+${thornsRupture} Rupture (Thorns) lên ${targetResolved.label}.`;
             }
           } else if (myEffectiveDice < oppEffectiveDice) {
             const oppBefore2 = targetResolved.combatant.currentSanity;
@@ -5767,9 +5790,13 @@ if (message.content.startsWith("-gacha")) {
               targetResolved.combatant.poise = Math.min(99, (targetResolved.combatant.poise ?? 0) + 5);
               resultText += ` 💪+5 Poise (Pressure Point) cho ${targetResolved.label}.`;
             }
-            if (hasPerk(forResolved.combatant, "Thorns")) {
-              targetResolved.combatant.rupture = Math.min(99, (targetResolved.combatant.rupture ?? 0) + 7);
-              resultText += ` 🌵+7 Rupture (Thorns) lên ${targetResolved.label}.`;
+            // Thorns — cùng fix hướng như nhánh trên: NGƯỜI THẮNG (targetResolved
+            // ở nhánh này) có Thorns → áp Rupture lên người THUA (forResolved).
+            if (hasPerk(targetResolved.combatant, "Thorns")) {
+              // "Seven Association": người GẮN thật sự là targetResolved (thắng).
+              const thornsRupture2 = targetResolved.combatant.hasSevenAssociation ? Math.round(7 * 1.5) : 7;
+              forResolved.combatant.rupture = Math.min(99, (forResolved.combatant.rupture ?? 0) + thornsRupture2);
+              resultText += ` 🌵+${thornsRupture2} Rupture (Thorns) lên ${forResolved.label}.`;
             }
           } else {
             applyEmotionDelta(forResolved.combatant, 1);
@@ -5936,6 +5963,7 @@ async function resolveOnePendingAction(encounter, p) {
             // MIỄN Stamina + cả 2 loại Ammo (inventory lẫn nội tại), NHƯNG vẫn
             // +1 Light mỗi lần trigger — đây là thứ DUY NHẤT repeat vẫn tạo ra.
             let eyeOfHorusRepeatLightNote = "";
+            let dieciSinkingGain = 0; // "Dieci Association" — lưu số Sinking cần áp THẬT ở cuối hàm (xem comment đầy đủ ở khối shieldHp).
             if (p.isEyeOfHorusFixedBurst && p.isRepeatAmmo && attacker.type === "player") {
               attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight, (attacker.combatant.currentLight ?? 0) + 1);
               eyeOfHorusRepeatLightNote = ` 🔄[Repeat Ammo +1 Light]`;
@@ -5959,6 +5987,35 @@ async function resolveOnePendingAction(encounter, p) {
                   applySanityGain(attacker.combatant, sanityGainCount * 10);
                   const actualSanityDelta = attacker.combatant.currentSanity - sanityBeforeRegain;
                   staminaNote += ` 🧠${actualSanityDelta >= 0 ? "+" : ""}${actualSanityDelta} Sanity (Regain Mind)`;
+                }
+              }
+              // "Cinq Association": "Nhận được 2 Haste vào mỗi 20 Stamina tiêu
+              // thụ thông qua đánh thường" — CHỈ áp dụng cho M1 (isM1), dùng
+              // cùng pattern accumulator với Regain Mind (tích luỹ xuyên turn).
+              if (p.isM1 && attacker.combatant.hasCinqAssociation) {
+                attacker.combatant.cinqAssociationAccumulator = (attacker.combatant.cinqAssociationAccumulator ?? 0) + p.staminaCost;
+                const hasteGainCount = Math.floor(attacker.combatant.cinqAssociationAccumulator / 20);
+                if (hasteGainCount > 0) {
+                  attacker.combatant.cinqAssociationAccumulator -= hasteGainCount * 20;
+                  attacker.combatant.haste = (attacker.combatant.haste ?? 0) + hasteGainCount * 2;
+                  staminaNote += ` 🐎+${hasteGainCount * 2} Haste (Cinq Association)`;
+                }
+              }
+              // "Dieci Association": "Mỗi 20 Stamina tiêu thụ qua đòn đánh thường
+              // sẽ áp 2 Sinking lên người kẻ địch và cho bạn 4 Shield HP" — cùng
+              // pattern accumulator. BUG ĐÃ SỬA (thứ tự thực thi, cùng loại lỗi
+              // với Liu Association): Sinking KHÔNG áp ở đây được vì dòng
+              // "target.sinking = t.preview.finalSinking" (GHI ĐÈ, không cộng
+              // dồn) chạy SAU trong vòng lặp chính — lưu dieciSinkingGain ra
+              // biến ngoài scope, áp THẬT ở cuối hàm (sau vòng lặp target chính).
+              if (p.isM1 && attacker.combatant.hasDieciAssociation) {
+                attacker.combatant.dieciAssociationAccumulator = (attacker.combatant.dieciAssociationAccumulator ?? 0) + p.staminaCost;
+                const dieciGainCount = Math.floor(attacker.combatant.dieciAssociationAccumulator / 20);
+                if (dieciGainCount > 0) {
+                  attacker.combatant.dieciAssociationAccumulator -= dieciGainCount * 20;
+                  attacker.combatant.shieldHp = (attacker.combatant.shieldHp ?? 0) + dieciGainCount * 4;
+                  dieciSinkingGain = dieciGainCount * 2;
+                  staminaNote += ` 🛡️+${dieciGainCount * 4} Shield HP (Dieci Association)`;
                 }
               }
             }
@@ -5998,12 +6055,17 @@ async function resolveOnePendingAction(encounter, p) {
             // logic bên trong đúng. Giờ tích luỹ riêng, CỘNG THÊM (không ghi đè) SAU
             // dòng gán finalCharge — xem chỗ dùng biến này bên dưới.
             let eyeOfHorusChargeGainedThisAction = 0;
+            const burnBeforeMap = {}; // GAP ĐÃ SỬA — Liu Association cần biết burn
+            // TRƯỚC toàn bộ hit, nhưng phải so sánh SAU cả M1-count block (fire_burn
+            // chạy SAU khi vòng for (const t of p.targets) đã đóng) — dùng map ngoài
+            // scope thay vì biến local burnBeforeHit (đã ra khỏi scope tại đó).
             for (const t of p.targets) {
               const targetResolved = resolveCombatant(encounter, t.targetId);
               if (!targetResolved) { targetDmgLines.push(`⚠️ target ${t.targetId} không còn tồn tại`); continue; }
               const target = targetResolved.combatant;
               const hadRuptureBeforeHit = target.rupture > 0; // Defenseless cần biết TRƯỚC khi finalRupture ghi đè
               const bleedBeforeHit = target.bleed; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
+              burnBeforeMap[t.targetId] = target.burn ?? 0;
               let finalDmg = t.preview.totalDmg;
               let defenseNote = "";
               let evadedCompletely = false;
@@ -6186,8 +6248,19 @@ async function resolveOnePendingAction(encounter, p) {
                   // Guard bị Stagger NGAY (không đợi Stamina về 0) — xác nhận trực
                   // tiếp từ GM, KHÁC hẳn Unblockable (vốn làm Guard không cản được).
                   if (bypass.guardBreak) {
-                    forceStagger(target);
-                    noteParts.push(`💥**Guard Break** — bị Stagger ngay (Res 2x từ giờ)`);
+                    // "Zwei Association": "Nếu bạn có trên hoặc bằng 10 Defense
+                    // Up và khi đỡ đòn Guard Break, bạn sẽ tiêu thụ hết chúng và
+                    // sẽ không bị Guard Break". Phần "Undodgeable tương tự" KHÔNG
+                    // tự động hoá — cần thiết kế lại cơ chế bypass evade phức tạp
+                    // hơn nhiều (đã dùng perHitMult tính sẵn từ trước), rủi ro cao
+                    // nếu làm sai — để GM tự áp dụng phần đó bằng tay.
+                    if (target.hasZweiAssociation && (target.defenseUp ?? 0) >= 10) {
+                      target.defenseUp = 0;
+                      noteParts.push(`🛡️**Zwei Association** — tiêu hết Defense Up, KHÔNG bị Guard Break`);
+                    } else {
+                      forceStagger(target);
+                      noteParts.push(`💥**Guard Break** — bị Stagger ngay (Res 2x từ giờ)`);
+                    }
                   }
                 }
 
@@ -6330,6 +6403,19 @@ async function resolveOnePendingAction(encounter, p) {
                 finalDmg = 0;
               }
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              // "Dieci Association": "Khi bị tấn công và bạn có Shield HP, kẻ
+              // địch sẽ nhận 2 Sinking" — target (bị tấn công) có outfit này VÀ
+              // shieldHp > 0 → attacker (kẻ đang tấn công target) nhận 2 Sinking.
+              let dieciSinkingNote = "";
+              if (target.hasDieciAssociation && (target.shieldHp ?? 0) > 0 && attacker.combatant) {
+                attacker.combatant.sinking = Math.min(99, (attacker.combatant.sinking ?? 0) + 2);
+                dieciSinkingNote = ` 🌀[Dieci Association +2 Sinking lên ${attacker.label}]`;
+              }
+              // liuAssociationNote — GAP ĐÃ SỬA (thứ tự thực thi): logic Liu
+              // Association THẬT SỰ nằm SAU toàn bộ M1-count block (fire_burn
+              // chạy ở đó, sau khi vòng for này đã đóng) — biến này giữ nguyên
+              // rỗng ở đây, chỉ để không phá cấu trúc targetDmgLines.push bên dưới.
+              let liuAssociationNote = "";
               // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 3) —
               // "Payback" (Chains of Loyalty): đòn tấn công ĐẦU TIÊN mỗi turn của
               // target (chỉ player, vì đây là target bị TẤN CÔNG bởi kẻ thù —
@@ -6451,6 +6537,14 @@ async function resolveOnePendingAction(encounter, p) {
                   target.hemorrhageAppliedThisTurn = true;
                 }
                 target.tremor = t.preview.finalTremor;
+                // "Zwei Association": áp Tremor THẬT ở đây (SAU khi ghi đè từ
+                // preview đã chạy xong ở dòng trên) — finalizeReactiveChoice chỉ
+                // đánh dấu pending vì áp trực tiếp ở đó sẽ bị ghi đè mất bởi dòng
+                // này (chạy SAU, khi resolveOnePendingAction commit thật).
+                if (target.zweiAssociationPendingTremor) {
+                  target.tremor = Math.min(TREMOR_MAX, (target.tremor ?? 0) + 1);
+                  target.zweiAssociationPendingTremor = false;
+                }
                 // Haou Sinking (xác nhận trực tiếp): "khi có stack... sẽ bị -1
                 // sanity và gây bonus dmg bằng số count MỖI ĐÒN chúng bị tấn công
                 // TRONG TURN LÚC -45 sanity HOẶC KHÔNG có sanity" — kiểm tra ĐIỀU
@@ -6491,7 +6585,12 @@ async function resolveOnePendingAction(encounter, p) {
                 }
                 // Convert Physical Trauma (perk của TARGET/defender): bị tấn công trúng → +1 Charge.
                 if (hasPerk(target, "Convert Physical Trauma")) {
-                  target.charge = Math.min(CHARGE_MAX, target.charge + 1);
+                  // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "WARP
+                  // Corp. Cleaner": "Gia tăng 1.5x hiệu quả nhận Charge của bản
+                  // thân" — áp dụng cho MỌI nguồn Charge người đó tự nhận (không
+                  // phải nhận HỘ ai khác).
+                  const cptGain = target.hasWarpCorpCleaner ? Math.round(1 * 1.5) : 1;
+                  target.charge = Math.min(CHARGE_MAX, target.charge + cptGain);
                 }
                 // Charge Shield (50-Status Nhóm 1) — "biến mất sau mỗi khi bị tấn
                 // công" — reset về 0 NGAY SAU KHI đã phát huy tác dụng (đã cộng vào
@@ -6603,7 +6702,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -6631,7 +6730,9 @@ async function resolveOnePendingAction(encounter, p) {
               // Eye Of Horus — cộng THÊM (không ghi đè) SAU dòng gán finalCharge ở
               // trên — xem comment đầy đủ tại chỗ khai báo eyeOfHorusChargeGainedThisAction.
               if (eyeOfHorusChargeGainedThisAction > 0) {
-                attacker.combatant.charge = Math.min(CHARGE_MAX, attacker.combatant.charge + eyeOfHorusChargeGainedThisAction);
+                // "WARP Corp. Cleaner": 1.5x hiệu quả nhận Charge của bản thân.
+                const eohChargeFinal = attacker.combatant.hasWarpCorpCleaner ? Math.round(eyeOfHorusChargeGainedThisAction * 1.5) : eyeOfHorusChargeGainedThisAction;
+                attacker.combatant.charge = Math.min(CHARGE_MAX, attacker.combatant.charge + eohChargeFinal);
               }
             }
             // Bleed — "1 bleed count trên người địch sẽ gây dmg bằng 1/4 count mỗi
@@ -6692,7 +6793,9 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.poise = Math.min(POISE_MAX, attacker.combatant.poise + poiseGain);
                 }
                 if (hasPerk(attacker.combatant, "Blessed by the Sparks")) {
-                  attacker.combatant.charge = Math.min(CHARGE_MAX, attacker.combatant.charge + poiseGain);
+                  // "WARP Corp. Cleaner": 1.5x hiệu quả nhận Charge của bản thân.
+                  const bsChargeFinal = attacker.combatant.hasWarpCorpCleaner ? Math.round(poiseGain * 1.5) : poiseGain;
+                  attacker.combatant.charge = Math.min(CHARGE_MAX, attacker.combatant.charge + bsChargeFinal);
                 }
               }
               // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 2) —
@@ -6716,17 +6819,21 @@ async function resolveOnePendingAction(encounter, p) {
               // "Grasping Vulnerabilities" (Seven Association Longsword): 2 đòn
               // đánh thường → +1 Rupture lên TẤT CẢ target.
               if (weaponMechanics.includes("grasping_vulnerabilities") && attacker.combatant.m1AttackCount % 2 === 0) {
+                // "Seven Association": 1.5x hiệu quả áp Rupture — attacker là người GẮN.
+                const gvRupture = attacker.combatant.hasSevenAssociation ? Math.round(1 * 1.5) : 1;
                 for (const t of p.targets) {
                   const tResolved = resolveCombatant(encounter, t.targetId);
-                  if (tResolved) tResolved.combatant.rupture = Math.min(99, (tResolved.combatant.rupture ?? 0) + 1);
+                  if (tResolved) tResolved.combatant.rupture = Math.min(99, (tResolved.combatant.rupture ?? 0) + gvRupture);
                 }
-                resultLines.push(`⚔️ **Grasping Vulnerabilities** — ${attacker.label} gắn 1 Rupture lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+                resultLines.push(`⚔️ **Grasping Vulnerabilities** — ${attacker.label} gắn ${gvRupture} Rupture lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
               }
               // "Charging" (WARP Corp. Dagger/Gauntlets): 4 đòn đánh thường →
               // +1 Charge cho BẢN THÂN.
               if (weaponMechanics.includes("warp_charging") && attacker.combatant.m1AttackCount % 4 === 0) {
-                attacker.combatant.charge = Math.min(CHARGE_MAX, (attacker.combatant.charge ?? 0) + 1);
-                resultLines.push(`⚡ **Charging** — ${attacker.label} nhận 1 Charge (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+                // "WARP Corp. Cleaner": 1.5x hiệu quả nhận Charge của bản thân.
+                const chargingGain = attacker.combatant.hasWarpCorpCleaner ? Math.round(1 * 1.5) : 1;
+                attacker.combatant.charge = Math.min(CHARGE_MAX, (attacker.combatant.charge ?? 0) + chargingGain);
+                resultLines.push(`⚡ **Charging** — ${attacker.label} nhận ${chargingGain} Charge (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
               }
               // "Blue Reverberation Ensemble" (L'Heure du Loup/Yesterday's
               // Promise): 4 đòn đánh thường → +1 Tremor lên TẤT CẢ target.
@@ -6752,6 +6859,29 @@ async function resolveOnePendingAction(encounter, p) {
               if (attacker.combatant.hasThumbSoldato && attacker.combatant.m1AttackCount % 4 === 0) {
                 attacker.combatant.bulletStack = Math.min(8, (attacker.combatant.bulletStack ?? 0) + 1);
                 resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận 1 đạn (tổng ${attacker.combatant.bulletStack}/8).`);
+              }
+              // "Liu Association": "Mỗi khi gây Burn cho kẻ địch, bạn giảm 5
+              // Stamina của chúng" — CHẠY SAU fire_burn (đã áp Burn xong ở trên),
+              // so sánh với burnBeforeMap (chụp TRƯỚC toàn bộ hit, ở đầu vòng lặp
+              // target chính) để biết burn có THỰC SỰ tăng qua action này không.
+              if (attacker.combatant.hasLiuAssociation) {
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (tResolved && (tResolved.combatant.burn ?? 0) > (burnBeforeMap[t.targetId] ?? 0)) {
+                    tResolved.combatant.currentStamina = Math.max(0, tResolved.combatant.currentStamina - 5);
+                    resultLines.push(`🏮 **Liu Association** — ${attacker.label} khiến ${tResolved.label} mất 5 Stamina (do bị gây Burn).`);
+                  }
+                }
+              }
+              // "Dieci Association": áp Sinking THẬT ở đây (sau khi target.sinking
+              // = t.preview.finalSinking đã ghi đè xong ở vòng lặp target chính) —
+              // dieciSinkingGain đã tính sẵn ở đầu hàm (xem block shieldHp).
+              if (dieciSinkingGain > 0) {
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (tResolved) tResolved.combatant.sinking = Math.min(99, (tResolved.combatant.sinking ?? 0) + dieciSinkingGain);
+                }
+                resultLines.push(`🌀 **Dieci Association** — ${attacker.label} gắn ${dieciSinkingGain} Sinking lên mục tiêu.`);
               }
             }
             checkStaggerPanic(attacker.combatant);
@@ -6802,6 +6932,20 @@ async function resolveOnePendingAction(encounter, p) {
                 attacker.combatant.currentSanity = Math.min(attacker.combatant.maxSanity, (attacker.combatant.currentSanity ?? 0) + 5);
                 verifyNote += ` 💧[Blue Reverberation Ensemble Leader +5 Sanity]`;
               }
+              // "Zwei Association": "Critical của vũ khí bạn sẽ áp Tremor lên kẻ
+              // địch tương đương với 1/2 Tremor trên người bạn hiện tại" — áp
+              // dụng cho BẤT KỲ weapon nào (không cần mechanicId cụ thể, vì đây
+              // là outfit-based, không phải weapon-specific).
+              if (attacker.combatant.hasZweiAssociation && knowledgeWeapon?.criticalSkillKey === p.skillKey) {
+                const zweiTremorAmount = Math.floor((attacker.combatant.tremor ?? 0) / 2);
+                if (zweiTremorAmount > 0 && p.targets) {
+                  for (const t of p.targets) {
+                    const tResolved = resolveCombatant(encounter, t.targetId);
+                    if (tResolved) tResolved.combatant.tremor = Math.min(99, (tResolved.combatant.tremor ?? 0) + zweiTremorAmount);
+                  }
+                  verifyNote += ` 🌊[Zwei Association +${zweiTremorAmount} Tremor lên mục tiêu]`;
+                }
+              }
             }
             // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) —
             // "The Imitation" (Mimicry Blade): "Upstanding Slash" nhận 1 Imitation
@@ -6848,6 +6992,12 @@ async function resolveOnePendingAction(encounter, p) {
                     attacker.combatant.diceUp = (attacker.combatant.diceUp ?? 0) + philipDiceUp;
                     verifyNote += ` 🎭[Philip +${philipDiceUp} Dice Up]`;
                   }
+                }
+                // "Liu Association": "Nhận được thêm 2 Dice Up khi bạn ở trong
+                // Emotion Level" — LÊN level mới (emotionLevel >= 1) → +2 Dice Up.
+                if (attacker.combatant.hasLiuAssociation && attacker.combatant.emotionLevel >= 1) {
+                  attacker.combatant.diceUp = (attacker.combatant.diceUp ?? 0) + 2;
+                  verifyNote += ` 🏮[Liu Association +2 Dice Up]`;
                 }
               }
             }
@@ -7662,12 +7812,15 @@ client.on("interactionCreate", async (interaction) => {
           // không cần bấm/trả Sta lại cho các đòn sau (xem sendReactiveDefensePrompt).
           if (target.hasIronHorus) target.ironHorusGuardActiveThisTurn = true;
           if (targetResolved.type === "player") target.prescriptBlocked = true;
+          // "Zwei Association": "Mỗi lần đỡ thành công bạn sẽ bị nhận 1 Tremor".
+          if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true; // áp THẬT ở resolveOnePendingAction (xem comment ở đó) — tremor bị ghi đè bởi t.preview.finalTremor nếu áp trực tiếp ở đây
           choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
         } else if (choice === "evade") {
           if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.evade.cost;
           target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
           if (targetResolved.type === "player") target.prescriptEvaded = true;
+          if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true; // áp THẬT ở resolveOnePendingAction (xem comment ở đó) — tremor bị ghi đè bởi t.preview.finalTremor nếu áp trực tiếp ở đây
           choiceNote = `💨 Evade (-${opts.evade.cost} Sta)`;
         } else if (choice === "parry") {
           if (!opts.parry.available) throw new Error("Parry bị khoá cho đòn này (Unparriable).");
@@ -7678,6 +7831,7 @@ client.on("interactionCreate", async (interaction) => {
             target.parryRolls.push(rawRoll - penalty);
           }
           if (targetResolved.type === "player") target.prescriptParried = true;
+          if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true; // áp THẬT ở resolveOnePendingAction (xem comment ở đó) — tremor bị ghi đè bởi t.preview.finalTremor nếu áp trực tiếp ở đây
           choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)`;
         } else {
           choiceNote = "❌ Không phòng thủ";
