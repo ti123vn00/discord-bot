@@ -1589,7 +1589,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // Defender reduction (Smoldering Resolve) áp NGAY ở preview để hiển thị đúng
       // số dự kiến — KHÔNG sửa preview.totalDmg gốc (giữ nguyên cho breakdown), chỉ
       // tính finalDmgAfterReduction riêng để show + dùng lại lúc confirm.
-      const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
+      const finalDmgAfterReduction = preview.totalDmg * saturateDR(1 - defReductionPct / 100);
       const totalVolleysForThisTarget = isEyeOfHorus ? (eyeOfHorusNewCount === 1 ? 2 : 1) : 0;
       return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, eyeOfHorusTremorChargeAmount: perkCtx.eyeOfHorusTremorChargeAmount, haouRuptureApplied: haouRuptureCheck?.applied ?? false, eyeOfHorusNewCount, targetDmgStr, totalVolleysForThisTarget };
     });
@@ -1771,7 +1771,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         sanityInit: t.combatant.currentSanity,
       };
       const preview = calcMathCore(calcOpts);
-      const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
+      const finalDmgAfterReduction = preview.totalDmg * saturateDR(1 - defReductionPct / 100);
       return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, haouRuptureApplied: haouRuptureCheck?.applied ?? false };
     });
 
@@ -1886,7 +1886,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
         sanityInit: t.combatant.currentSanity,
       };
       const preview = calcMathCore(calcOpts);
-      const finalDmgAfterReduction = preview.totalDmg * (1 - defReductionPct / 100);
+      const finalDmgAfterReduction = preview.totalDmg * saturateDR(1 - defReductionPct / 100);
       return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, haouRuptureApplied: haouRuptureCheck?.applied ?? false };
     });
 
@@ -6210,7 +6210,15 @@ async function resolveOnePendingAction(encounter, p) {
               }
               // Smoldering Resolve (perk passive, KHÔNG tiêu thụ) áp SAU Guard/Evade/
               // Parry — giảm thêm % trên phần dmg CÒN LẠI sau khi đã né/đỡ.
-              finalDmg *= (1 - (t.defReductionPct ?? 0) / 100);
+              // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: "40% Dmg Reduction
+              // của Reverberation Ensemble outfit vẫn bị bão hòa của hệ thống
+              // mà") — ĐÂY LÀ ĐIỂM ÁP DỤNG DMG THẬT (không phải chỉ preview) —
+              // trước đây HOÀN TOÀN bỏ qua saturateDR (dù hàm đã tồn tại sẵn,
+              // export đúng mục đích này) — ảnh hưởng TOÀN BỘ hệ thống Damage
+              // Reduction (Smoldering Resolve/Protection/Charge Shield/Fragile/
+              // Smoke/Vengeance Mark/Tremor Decay/Gaze/Contempt/Hemorrhage...),
+              // không chỉ riêng Reverberation Ensemble vừa thêm.
+              finalDmg *= saturateDR(1 - (t.defReductionPct ?? 0) / 100);
               let killNote = "";
               // Evade né được = né LUÔN finisher (Claim Their Heart) — đã tránh đòn
               // hoàn toàn thì không có lý do vẫn bị "kết liễu" bởi chính đòn đó.
