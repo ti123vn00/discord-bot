@@ -4658,7 +4658,9 @@ if (message.content.startsWith("-gacha")) {
           // trước đây khiến player này KHÔNG BAO GIỜ được hành động cho tới hết
           // round — giờ tự động chèn vào turnOrder hiện tại (chỉ lần join ĐẦU,
           // không phải update lại profile giữa chừng).
-          if (!wasJoined) insertIntoTurnOrderMidRound(encounter, message.author.id, "player", joined);
+          if (!wasJoined) {
+            insertIntoTurnOrderMidRound(encounter, message.author.id, "player", joined);
+          }
           joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
           // Injuries PERSIST qua encounter (xác nhận trực tiếp từ GM) — snapshot
           // TRỰC TIẾP từ profile (KHÔNG reset về rỗng như trước đây). maxHp đã tính
@@ -4714,6 +4716,25 @@ if (message.content.startsWith("-gacha")) {
           // "Zwei Association": Tremor khi đỡ thành công + Critical áp Tremor
           // theo 1/2 bản thân + tiêu Defense Up để chống Guard Break.
           joined.hasZweiAssociation = equippedOutfitNameNormalized === "zwei association";
+          // "Hana Association": "+1 Dice Up mỗi 10 HP mất trong turn".
+          joined.hasHanaAssociation = equippedOutfitNameNormalized === "hana association";
+          // BUG NGHIÊM TRỌNG ĐÃ SỬA — validateAndRerollPrescript (combat-utils.js)
+          // check "c.equippedOutfit" (combatant-level) nhưng field này KHÔNG
+          // BAO GIỜ tồn tại trên combatant thật (chỉ có trên profileData) —
+          // nghĩa là Index Proselyte's roll dice CHƯA BAO GIỜ hoạt động đúng
+          // trong thực tế từ trước tới giờ, dù test sandbox trước đó "pass" (vì
+          // tự set field lên combatant trực tiếp, bypass flow join thật). Thêm
+          // flag đúng pattern (giống hasZweiAssociation...) để sửa tận gốc.
+          joined.hasIndexProselyte = equippedOutfitNameNormalized === "index proselyte";
+          // GAP ĐÃ SỬA (xác nhận trực tiếp: "Index Proselyte outfit cũng chưa
+          // tự động hóa phần roll dice 1-7 để lấy prescript") — player join
+          // GIỮA encounter (sau khi rollspeed đã chạy) trước đây KHÔNG BAO GIỜ
+          // được khởi tạo prescriptRoll. Đặt Ở ĐÂY (không phải ngay sau
+          // insertIntoTurnOrderMidRound) vì cần hasIndexProselyte đã set XONG
+          // trước đó — thứ tự sai lúc đầu khiến flag chưa tồn tại lúc gọi hàm.
+          if (!wasJoined && hasEncounterStarted(encounter)) {
+            validateAndRerollPrescript(encounter, null, { id: message.author.id, type: "player" });
+          }
           // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
           // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
           // refill Light/Poise/Sanity mỗi lần gõ lại join).
@@ -6403,6 +6424,17 @@ async function resolveOnePendingAction(encounter, p) {
                 finalDmg = 0;
               }
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              // "Hana Association": "+1 Dice Up mỗi 10 HP mất trong turn" — tích
+              // luỹ hpLostThisTurn, so sánh ngưỡng 10 TRƯỚC/SAU để chỉ cộng phần
+              // CHÊNH LỆCH (không ghi đè diceUp có thể đã tăng từ nguồn khác).
+              if (target.hasHanaAssociation && finalDmg > 0) {
+                const thresholdBefore = Math.floor((target.hpLostThisTurn ?? 0) / 10);
+                target.hpLostThisTurn = (target.hpLostThisTurn ?? 0) + finalDmg;
+                const thresholdAfter = Math.floor(target.hpLostThisTurn / 10);
+                if (thresholdAfter > thresholdBefore) {
+                  target.diceUp = (target.diceUp ?? 0) + (thresholdAfter - thresholdBefore);
+                }
+              }
               // "Dieci Association": "Khi bị tấn công và bạn có Shield HP, kẻ
               // địch sẽ nhận 2 Sinking" — target (bị tấn công) có outfit này VÀ
               // shieldHp > 0 → attacker (kẻ đang tấn công target) nhận 2 Sinking.
@@ -6537,6 +6569,13 @@ async function resolveOnePendingAction(encounter, p) {
                   target.hemorrhageAppliedThisTurn = true;
                 }
                 target.tremor = t.preview.finalTremor;
+                // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua test thực tế của user
+                // — Burn tag "+NBurn" gõ tay hoàn toàn KHÔNG hoạt động) —
+                // calcMathCore đã tính đúng finalBurn (bao gồm cả +NBurn tag)
+                // từ trước, nhưng index.js CHƯA BAO GIỜ áp dụng nó vào
+                // target.burn thật — khác với finalTremor/finalSinking/
+                // finalRupture đều đã có sẵn dòng gán tương tự.
+                target.burn = t.preview.burnStackAfterHit;
                 // "Zwei Association": áp Tremor THẬT ở đây (SAU khi ghi đè từ
                 // preview đã chạy xong ở dòng trên) — finalizeReactiveChoice chỉ
                 // đánh dấu pending vì áp trực tiếp ở đó sẽ bị ghi đè mất bởi dòng
@@ -6860,19 +6899,9 @@ async function resolveOnePendingAction(encounter, p) {
                 attacker.combatant.bulletStack = Math.min(8, (attacker.combatant.bulletStack ?? 0) + 1);
                 resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận 1 đạn (tổng ${attacker.combatant.bulletStack}/8).`);
               }
-              // "Liu Association": "Mỗi khi gây Burn cho kẻ địch, bạn giảm 5
-              // Stamina của chúng" — CHẠY SAU fire_burn (đã áp Burn xong ở trên),
-              // so sánh với burnBeforeMap (chụp TRƯỚC toàn bộ hit, ở đầu vòng lặp
-              // target chính) để biết burn có THỰC SỰ tăng qua action này không.
-              if (attacker.combatant.hasLiuAssociation) {
-                for (const t of p.targets) {
-                  const tResolved = resolveCombatant(encounter, t.targetId);
-                  if (tResolved && (tResolved.combatant.burn ?? 0) > (burnBeforeMap[t.targetId] ?? 0)) {
-                    tResolved.combatant.currentStamina = Math.max(0, tResolved.combatant.currentStamina - 5);
-                    resultLines.push(`🏮 **Liu Association** — ${attacker.label} khiến ${tResolved.label} mất 5 Stamina (do bị gây Burn).`);
-                  }
-                }
-              }
+              // "Liu Association" ĐÃ DI CHUYỂN ra khỏi block if (p.isM1) này —
+              // xem ngay bên dưới (sau block M1-count kết thúc) — passive gốc
+              // KHÔNG giới hạn "chỉ M1", nên phải kiểm tra cho MỌI loại hành động.
               // "Dieci Association": áp Sinking THẬT ở đây (sau khi target.sinking
               // = t.preview.finalSinking đã ghi đè xong ở vòng lặp target chính) —
               // dieciSinkingGain đã tính sẵn ở đầu hàm (xem block shieldHp).
@@ -6882,6 +6911,22 @@ async function resolveOnePendingAction(encounter, p) {
                   if (tResolved) tResolved.combatant.sinking = Math.min(99, (tResolved.combatant.sinking ?? 0) + dieciSinkingGain);
                 }
                 resultLines.push(`🌀 **Dieci Association** — ${attacker.label} gắn ${dieciSinkingGain} Sinking lên mục tiêu.`);
+              }
+            }
+            // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: "outfit của Liu
+            // association chưa áp dụng được việc khi áp burn sẽ trừ stamina kẻ
+            // địch") — TRƯỚC ĐÂY nằm TRONG block if (p.isM1...) ở trên, nên CHỈ
+            // trigger cho M1 — nhưng "Mỗi khi gây Burn cho kẻ địch" (văn bản
+            // gốc) KHÔNG giới hạn loại hành động — bất kỳ skill/Critical/Page
+            // nào gây Burn cũng phải trigger. Đặt NGOÀI block if (p.isM1) để áp
+            // dụng cho MỌI trường hợp (M1 lẫn skill).
+            if (attacker.combatant.hasLiuAssociation) {
+              for (const t of p.targets) {
+                const tResolved = resolveCombatant(encounter, t.targetId);
+                if (tResolved && (tResolved.combatant.burn ?? 0) > (burnBeforeMap[t.targetId] ?? 0)) {
+                  tResolved.combatant.currentStamina = Math.max(0, tResolved.combatant.currentStamina - 5);
+                  resultLines.push(`🏮 **Liu Association** — ${attacker.label} khiến ${tResolved.label} mất 5 Stamina (do bị gây Burn).`);
+                }
               }
             }
             checkStaggerPanic(attacker.combatant);
