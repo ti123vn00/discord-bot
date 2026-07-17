@@ -1311,8 +1311,14 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
 
   const evadeBlocked = (target.injuries ?? []).includes("Mất Chân");
   const evadeCostPerCharge = 20 * ((target.injuries ?? []).includes("Gãy chân") ? 2 : 1);
-  const evadeCost = chargesNeeded * evadeCostPerCharge;
-  const evadeAvailable = !bypass.blockEvade && !evadeBlocked && target.currentStamina >= evadeCost;
+  // "Light Dash" (Page, KHÁC HOÀN TOÀN "Light Dash" PERK skill tree — trùng
+  // tên, không liên quan): "né một đòn tấn công của kẻ địch (không thể né
+  // Undodgeable)" — 1 lượt né MIỄN PHÍ (0 Sta), KHÔNG dùng evadeCharges thường
+  // (field riêng lightDashFreeEvadeCharges, tiêu thụ ƯU TIÊN trước charge mua
+  // bằng Stamina bình thường).
+  const hasLightDashFreeEvade = !bypass.blockEvade && (target.lightDashFreeEvadeCharges ?? 0) > 0;
+  const evadeCost = hasLightDashFreeEvade ? 0 : chargesNeeded * evadeCostPerCharge;
+  const evadeAvailable = !bypass.blockEvade && !evadeBlocked && (hasLightDashFreeEvade || target.currentStamina >= evadeCost);
   const maxAffordableEvadeCharges = evadeBlocked ? 0 : Math.min(hitCount, Math.floor(target.currentStamina / evadeCostPerCharge));
 
   // Parry: 0 Stamina lúc "kích hoạt" — nhưng CÓ THỂ tốn Sta SAU NẾU roll thua
@@ -7057,6 +7063,21 @@ async function resolveOnePendingAction(encounter, p) {
               attacker.combatant.setFireTurnsLeft = 3;
               verifyNote += ` 🔥 Vũ khí bốc cháy trong 3 turn!`;
             }
+            // "Light Dash" (Page, KHÁC HOÀN TOÀN "Light Dash" PERK skill tree —
+            // trùng tên, không liên quan): "Lướt tới vị trí kẻ thù đồng thời hồi
+            // cho bản thân 2 Light và né một đòn tấn công của kẻ địch (không
+            // thể né Undodgeable)" — +2 Light NGAY, cộng 1 lượt né MIỄN PHÍ
+            // (lightDashFreeEvadeCharges, xử lý riêng ở
+            // computeReactiveDefenseOptions/finalizeReactiveChoice). BUG SCOPE
+            // ĐÃ SỬA: TRƯỚC ĐÂY đặt nhầm TRONG block if (p.emotionDelta) (chỉ
+            // chạy khi có thay đổi Emotion Coin) — Light Dash không liên quan
+            // Emotion Coin nên KHÔNG BAO GIỜ chạy — giờ đặt độc lập, giống Set
+            // Fire ở trên (cùng loại "Page tự buff bản thân").
+            if (p.skillKey === "light dash") {
+              attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight, (attacker.combatant.currentLight ?? 0) + 2);
+              attacker.combatant.lightDashFreeEvadeCharges = (attacker.combatant.lightDashFreeEvadeCharges ?? 0) + 1;
+              verifyNote += ` 💨[Light Dash +2 Light, +1 lượt né miễn phí]`;
+            }
             if (p.emotionDelta) {
               const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta);
               verifyNote += ` [Coin ${p.emotionDelta >= 0 ? "+" : ""}${p.emotionDelta}]`;
@@ -7900,10 +7921,21 @@ client.on("interactionCreate", async (interaction) => {
         } else if (choice === "evade") {
           if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.evade.cost;
+          // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua test thực tế — Evade "miễn
+          // phí" từ Light Dash KHÔNG thật sự che được dmg gì cả) — TRƯỚC ĐÂY
+          // dùng if/else, chỉ tiêu lightDashFreeEvadeCharges mà KHÔNG cộng vào
+          // evadeCharges thật — nhưng resolveOnePendingAction (nơi thật sự set
+          // perHitMult=0 để né dmg) CHỈ nhìn evadeCharges, không biết gì về
+          // lightDashFreeEvadeCharges. Giờ LUÔN cộng vào evadeCharges thật (để
+          // cơ chế né hoạt động đúng), tiêu lightDashFreeEvadeCharges SONG SONG
+          // chỉ để ghi nhận "lượt này miễn phí" cho hiển thị.
           target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
+          if (opts.evade.cost === 0 && (target.lightDashFreeEvadeCharges ?? 0) > 0) {
+            target.lightDashFreeEvadeCharges -= 1;
+          }
           if (targetResolved.type === "player") target.prescriptEvaded = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true; // áp THẬT ở resolveOnePendingAction (xem comment ở đó) — tremor bị ghi đè bởi t.preview.finalTremor nếu áp trực tiếp ở đây
-          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)`;
+          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}`;
         } else if (choice === "parry") {
           if (!opts.parry.available) throw new Error("Parry bị khoá cho đòn này (Unparriable).");
           target.parryRolls = target.parryRolls ?? [];
