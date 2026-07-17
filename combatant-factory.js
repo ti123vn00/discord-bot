@@ -102,6 +102,10 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // "Light Dash" (Page): lượt né MIỄN PHÍ (0 Sta), tách biệt hoàn toàn với
       // evadeCharges thường (mua bằng Stamina) — xem comment đầy đủ ở nơi dùng.
       lightDashFreeEvadeCharges: 0,
+      // "Waltz In White"/"Waltz In Black": track round-based (không phải turn
+      // riêng của ai) trên TARGET — xem comment đầy đủ ở attacker-perk-context.js.
+      waltzInWhiteHitThisRound: false,
+      waltzInWhiteHitLastRound: false,
       // ironHorusGuardActiveThisTurn — GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm
       // Guard 1 lần trong turn thì cứ mặc định là guard sẵn trong turn đó do
       // charge Guard của nó không thể bị giảm được nên phải khóa lại nút guard"
