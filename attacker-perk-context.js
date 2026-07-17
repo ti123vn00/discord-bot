@@ -11,7 +11,7 @@
 
 module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
-  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false, isMiddleSkill = false } = {}) {
+  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
     let bonusPct = 0;
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận đơn giản là
     // gộp làm một với dmg bonus nên là vẫn bão hòa thôi. Tuy nhưng khác biệt của
@@ -238,7 +238,16 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
       if (cinqCritPct > 0) dmgStrRewritten += ` +${cinqCritPct}Crit`;
     }
 
-    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount };
+    // "Waltz In Black" (Page): "Nếu turn trước địch dính Waltz In White: skill
+    // này thành 3x Dice Multiplier và Unevadeable" — xác nhận trực tiếp: track
+    // trên TARGET (không phải người dùng), round-based (không phải turn riêng
+    // của ai) — bất kỳ ai dùng Waltz In Black cũng được hưởng nếu target ĐÃ bị
+    // Waltz In White đánh trúng ở round TRƯỚC (waltzInWhiteHitLastRound, reset
+    // mỗi round mới ở advanceCombatantTurn). Phần "Unevadeable" áp dụng riêng ở
+    // nơi gọi hàm này (doPlayerHit) vì cần sửa defenseBypass, không chỉ bonusPct.
+    const waltzInBlackMultiplier = (skillKey === "waltz in black" && target?.waltzInWhiteHitLastRound) ? 3 : 1;
+
+    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier };
   }
   
 
