@@ -7092,6 +7092,16 @@ async function resolveOnePendingAction(encounter, p) {
               attacker.combatant.lightDashFreeEvadeCharges = (attacker.combatant.lightDashFreeEvadeCharges ?? 0) + 1;
               verifyNote += ` 💨[Light Dash +2 Light, +1 lượt né miễn phí]`;
             }
+            // "Fleet Footsteps" (Page): "dịch chuyển lại gần kẻ địch, né 1 đòn
+            // tấn công (không thể né Undodgeable), sau đó nhận 2 Haste" — GIỐNG
+            // Light Dash (free evade charge), KHÁC là skill này CÓ tự gây dmg
+            // riêng (dmgStr đã tính bình thường qua flow chính, không cần xử lý
+            // gì thêm ở đây) — chỉ cần thêm phần free evade + Haste.
+            if (p.skillKey === "fleet footsteps") {
+              attacker.combatant.haste = (attacker.combatant.haste ?? 0) + 2;
+              attacker.combatant.lightDashFreeEvadeCharges = (attacker.combatant.lightDashFreeEvadeCharges ?? 0) + 1;
+              verifyNote += ` 🏃[Fleet Footsteps +2 Haste, +1 lượt né miễn phí]`;
+            }
             // "Waltz In White" (Page): điều kiện cho "Waltz In Black" (xem
             // comment đầy đủ ở computeAttackerPerkContext) — đánh dấu target
             // này ĐÃ bị Waltz In White trúng round này (waltzInWhiteHitThisRound,
