@@ -1737,15 +1737,29 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
+    // "Waltz In Black": tính 1 lần (dùng target đầu tiên — skill này không AOE)
+    // rồi áp cho CẢ dmgStr lẫn Unevadeable — xem comment đầy đủ ở
+    // computeAttackerPerkContext (attacker-perk-context.js). BUG ĐÃ SỬA: "diceMul"
+    // (tham số của calcMathCore) CHỈ có tác dụng khi dmgStr có tag "Dice" đặc biệt
+    // (VD "1Dice11S") — với dmgStr thông thường ("11S") nó HOÀN TOÀN không nhân
+    // gì cả (đã verify trực tiếp — diceMul=1 và diceMul=3 cho CÙNG totalDmg).
+    // Chuyển sang nhân TRỰC TIẾP giá trị base trong dmgStr string bằng regex.
+    const waltzInBlackApplies = verify.skillKey === "waltz in black" && targets[0]?.combatant?.waltzInWhiteHitLastRound;
+    if (waltzInBlackApplies) defenseBypass.blockEvade = true;
     const previews = targets.map(t => {
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
-      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false, attackerId: playerId, targetId: t.id, isMiddleSkill });
+      const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false, attackerId: playerId, targetId: t.id, isMiddleSkill, skillKey: verify.skillKey });
+      // Nhân base value x3 TRỰC TIẾP trong dmgStr (SAU dmgStrRewritten, để giữ
+      // nguyên các tag khác perkCtx có thể đã thêm, VD Cinq Association's Crit).
+      const effectiveDmgStr = waltzInBlackApplies
+        ? perkCtx.dmgStrRewritten.replace(/([\d.]+)(?=(?:x[\d.]+)?(?:\+[\d.]+%?)?\s*(?:Dice)?[BPSbps])/gi, (m) => (parseFloat(m) * 3).toString())
+        : perkCtx.dmgStrRewritten;
       const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill, attackerId: playerId });
       const mangBonusPct = player.shinMangActive ? player.shinMangRounds * 10 : 0;
       const haouRuptureCheck = !resStr && (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
       const finalResStr = resStr || (haouRuptureCheck?.applied ? haouRuptureCheck.resStr : (player.shinMangActive ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant)));
       const calcOpts = {
-        dmgStr: perkCtx.dmgStrRewritten,
+        dmgStr: effectiveDmgStr,
         resStr: finalResStr, drStr,
         bonusPct: bonusPct + perkCtx.bonusPct + mangBonusPct,
         // Tự động cộng Sanity HIỆN TẠI của người dùng Page vào dice bonus (xem
@@ -7077,6 +7091,19 @@ async function resolveOnePendingAction(encounter, p) {
               attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight, (attacker.combatant.currentLight ?? 0) + 2);
               attacker.combatant.lightDashFreeEvadeCharges = (attacker.combatant.lightDashFreeEvadeCharges ?? 0) + 1;
               verifyNote += ` 💨[Light Dash +2 Light, +1 lượt né miễn phí]`;
+            }
+            // "Waltz In White" (Page): điều kiện cho "Waltz In Black" (xem
+            // comment đầy đủ ở computeAttackerPerkContext) — đánh dấu target
+            // này ĐÃ bị Waltz In White trúng round này (waltzInWhiteHitThisRound,
+            // sẽ trở thành waltzInWhiteHitLastRound ở round advance kế tiếp).
+            // Không cần check hit-thật-sự-trúng riêng vì skill này tự có sẵn
+            // [Unevadeable][Unblockable] — luôn trúng theo đúng thiết kế gốc.
+            if (p.skillKey === "waltz in white" && p.targets && p.targets[0]) {
+              const waltzTarget = resolveCombatant(encounter, p.targets[0].targetId);
+              if (waltzTarget) {
+                waltzTarget.combatant.waltzInWhiteHitThisRound = true;
+                verifyNote += ` ⚔️[Waltz In White đánh dấu — Waltz In Black round sau sẽ x3 Dice + Unevadeable]`;
+              }
             }
             if (p.emotionDelta) {
               const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta);
