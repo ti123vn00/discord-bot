@@ -12,6 +12,15 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
 
   function advanceCombatantTurn(combatant) {
     combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
+    // "Waltz In Black" (Page): "Nếu turn trước địch dính Waltz In White: skill
+    // này thành 3x Dice Multiplier và Unevadeable" — xác nhận trực tiếp: "turn
+    // trước" = 1 VÒNG turnOrder trước (round-based, không phải lượt riêng của
+    // ai), và điều kiện track trên TARGET (kẻ ĐÃ BỊ đánh) — bất kỳ ai dùng Waltz
+    // In Black sau đó đều được hưởng, không chỉ người đã dùng Waltz In White.
+    // advanceCombatantTurn chạy cho MỌI combatant mỗi khi round mới bắt đầu
+    // (performEndTurn) — đúng thời điểm để "gạt" cờ round trước/round này.
+    combatant.waltzInWhiteHitLastRound = combatant.waltzInWhiteHitThisRound ?? false;
+    combatant.waltzInWhiteHitThisRound = false;
     // Burn — gây dmg = count×2 lúc CUỐI turn, SAU ĐÓ mới giảm nửa (đúng thứ tự luật:
     // "gây dmg... sau đó giảm nó đi 1 nửa"). Bleed dmg = count/4 mỗi khi CHÍNH kẻ
     // mang Bleed hành động tấn công — xử lý ở CONFIRM HANDLER (mỗi lần attacker thực
@@ -253,6 +262,8 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // — 50-STATUS NHÓM 2 (batch 1, xác nhận trực tiếp từng cái từ tài liệu gốc) —
     // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
     combatant.diceUp = 0;
+    // "Hana Association" — reset HP mất trong turn cùng lúc với diceUp.
+    combatant.hpLostThisTurn = 0;
     combatant.diceDown = 0;
     // Smoke: "sau mỗi 1 turn sẽ mất 1 stack" — decay -1 (KHÔNG reset thẳng về 0
     // như Nhóm 1 — đây là "mất DẦN", floor tại 0).
