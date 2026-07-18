@@ -34,11 +34,25 @@ module.exports = function ({ findSkill, hasPerk }) {
       // xem xử lý đầy đủ ở customId "critical:" trong encmenu select handler.
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`critical:${criticalSkill.name}`));
     }
+    // GAP ĐÃ SỬA (lỗi thật từ Discord: "Invalid Form Body...
+    // COMPONENT_OPTION_VALUE_DUPLICATED") — nếu CÙNG 1 tên Page được equip vào
+    // NHIỀU slot khác nhau (có thể xảy ra nếu sở hữu nhiều bản — VD qua
+    // -balance multi-select hoặc "-equippage <slot>" tay), cả 2 slot đều tạo
+    // value "hit:<tên>" GIỐNG HỆT nhau → Discord từ chối toàn bộ dropdown.
+    // Dùng Set để chỉ thêm MỖI TÊN 1 lần — dropdown không cần phân biệt slot
+    // (hành động "hit" chỉ cần biết TÊN skill, không quan tâm nó ở slot nào).
+    const addedPageNames = new Set();
     for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
-      if (pageName) options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${pageName}`).setValue(`hit:${pageName}`));
+      if (pageName && !addedPageNames.has(pageName)) {
+        addedPageNames.add(pageName);
+        options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${pageName}`).setValue(`hit:${pageName}`));
+      }
     }
     for (const pageName of combatant.unlockedEgoPagesSnapshot ?? []) {
-      if (pageName) options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
+      if (pageName && !addedPageNames.has(pageName)) {
+        addedPageNames.add(pageName);
+        options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
+      }
     }
     // guard/evade/parry ĐÃ GỠ KHỎI dropdown này (xác nhận trực tiếp: "nghĩ nên bỏ
     // hẳn... thuần tương tác qua menu UI là cách tốt nhất... đã sử dụng hệ thống
