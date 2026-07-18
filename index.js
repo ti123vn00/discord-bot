@@ -403,6 +403,15 @@ const STATUS_CAPS_SHARED = {
   gazeawe: GAZE_AWE_MAX, contempt: CONTEMPT_MAX, gazeofcontempt: GAZE_AWE_MAX,
   haouflame: HAOU_MAX, haoubleed: HAOU_MAX, haoutremor: HAOU_MAX, haourupture: HAOU_MAX, haousinking: HAOU_MAX,
   hemorrhage: HEMORRHAGE_MAX,
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "dropdown set status... thấy còn thiếu
+  // khá nhiều status") — TRƯỚC ĐÂY thiếu HOÀN TOÀN "7 status effect" cơ bản
+  // (comment gốc ở combatant-factory.js: Sinking/Rupture/Poise/Charge/Burn/
+  // Bleed/Tremor) — chỉ có mặt ở tham số -math, chưa BAO GIỜ set được qua GM
+  // Panel dropdown. Thêm cả Haste/Bind (2 status Speed riêng, có lệnh text
+  // "-encounter haste/bind" nhưng cũng thiếu trong dropdown này).
+  sinking: SINKING_MAX, rupture: RUPTURE_MAX, poise: POISE_MAX, charge: CHARGE_MAX,
+  burn: BURN_MAX, bleed: BLEED_MAX, tremor: TREMOR_MAX,
+  haste: 99, bind: 20, // Bind cap=20 xác nhận từ logic Spectro Frazzle đã có sẵn (dòng "resolved.combatant.bind = Math.min(20, ...)")
 };
 const STATUS_FIELD_MAP_SHARED = {
   fragile: "fragile", attackpowerup: "attackPowerUp", attackpowerdown: "attackPowerDown",
@@ -419,6 +428,11 @@ const STATUS_FIELD_MAP_SHARED = {
   gazeawe: "gazeAwe", contempt: "contempt", gazeofcontempt: "gazeOfContempt",
   haouflame: "haouFlame", haoubleed: "haouBleed", haoutremor: "haouTremor", haourupture: "haouRupture", haousinking: "haouSinking",
   hemorrhage: "hemorrhage",
+  // 7 status cơ bản (map trực tiếp, không cần camelCase — field trên
+  // combatant đã sẵn lowercase) + Haste/Bind.
+  sinking: "sinking", rupture: "rupture", poise: "poise", charge: "charge",
+  burn: "burn", bleed: "bleed", tremor: "tremor",
+  haste: "haste", bind: "bind",
 };
 function applyStatusEntries(resolved, entries, sourceId, checkStaggerPanicFn) {
   const changes = [];
@@ -1603,6 +1617,19 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
+    // "Rotate Trigram" — "Ri": áp dụng vào M1 ĐẦU TIÊN sau khi rơi vào "Ri"
+    // (rotateTrigramRiPending từ turn-advance.js) — "phá hủy 2 Light" nếu đủ,
+    // ngược lại giảm 10% Stamina của target ĐẦU TIÊN (không phải AOE toàn bộ —
+    // gốc chỉ nói "kẻ địch", số ít).
+    if (player.rotateTrigramRiPending) {
+      player.rotateTrigramRiPending = false;
+      if ((player.currentLight ?? 0) >= 2) {
+        player.currentLight -= 2;
+      } else if (targets[0]) {
+        const riTarget = targets[0].combatant;
+        riTarget.currentStamina = Math.max(0, riTarget.currentStamina - Math.round(riTarget.maxStamina * 0.1));
+      }
+    }
     // QUAN TRỌNG: Poise/Charge là "trên bản thân" → lấy từ PLAYER (người tấn công),
     // dùng CHUNG cho mọi target trong AOE (vẫn là 1 người tấn công, 1 lượng Poise).
     // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch HOẶC player khác (PvP)"
@@ -5000,6 +5027,16 @@ if (message.content.startsWith("-gacha")) {
             if (hasPerk(c, "Light Dash")) {
               c.currentLight = Math.min(c.maxLight, c.currentLight + 2);
             }
+            // "Rotate Trigram" (Augury Spear) — CÙNG NGUYÊN NHÂN với Light Dash
+            // ở trên: rollspeed (round đầu) không đi qua advanceCombatantTurn.
+            if (c.weaponName === "Augury Spear") {
+              const idx = c.rotateTrigramIndex ?? 0;
+              if (idx === 0) c.diceUp = (c.diceUp ?? 0) + 3;
+              else if (idx === 1) c.protection = Math.min(20, (c.protection ?? 0) + 7);
+              else if (idx === 2) c.currentLight = Math.min(c.maxLight, (c.currentLight ?? 0) + 2);
+              else if (idx === 3) c.rotateTrigramRiPending = true;
+              c.rotateTrigramIndex = (idx + 1) % 4;
+            }
           }
           // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — rollspeed
           // (lần ĐẦU TIÊN bắt đầu trận) không đi qua advanceToNextTurnHolder,
@@ -6164,6 +6201,7 @@ async function resolveOnePendingAction(encounter, p) {
             // +1 Light mỗi lần trigger — đây là thứ DUY NHẤT repeat vẫn tạo ra.
             let eyeOfHorusRepeatLightNote = "";
             let dieciSinkingGain = 0; // "Dieci Association" — lưu số Sinking cần áp THẬT ở cuối hàm (xem comment đầy đủ ở khối shieldHp).
+            let darkCloudExplodeGain = 0; // "Dark Cloud" (outfit, 6+ stack) — số lần "nổ" Bleed cần áp THẬT ở cuối hàm, cùng lý do với dieciSinkingGain.
             if (p.isEyeOfHorusFixedBurst && p.isRepeatAmmo && attacker.type === "player") {
               attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight, (attacker.combatant.currentLight ?? 0) + 1);
               eyeOfHorusRepeatLightNote = ` 🔄[Repeat Ammo +1 Light]`;
@@ -6216,6 +6254,20 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.shieldHp = (attacker.combatant.shieldHp ?? 0) + dieciGainCount * 4;
                   dieciSinkingGain = dieciGainCount * 2;
                   staminaNote += ` 🛡️+${dieciGainCount * 4} Shield HP (Dieci Association)`;
+                }
+              }
+              // "Dark Cloud" (Kurokumo Wakashu outfit, 6+ stack) — xác nhận
+              // trực tiếp: "Mỗi 20 stamina tiêu thụ thông qua đánh thường sẽ
+              // nổ dmg Bleed trên người kẻ địch" — "nổ" = kích hoạt Bleed gây
+              // dmg NGAY (giống cơ chế Bleed thường khi tấn công), KHÔNG tiêu
+              // count Bleed của target — cùng pattern accumulator với Dieci
+              // Association ở trên (áp THẬT lên target ở cuối hàm).
+              if (p.isM1 && attacker.combatant.equippedOutfit === "Kurokumo Wakashu" && (attacker.combatant.darkCloudOutfitStacks ?? 0) >= 6) {
+                attacker.combatant.darkCloudOutfitStaminaAccumulator = (attacker.combatant.darkCloudOutfitStaminaAccumulator ?? 0) + p.staminaCost;
+                const explodeCount = Math.floor(attacker.combatant.darkCloudOutfitStaminaAccumulator / 20);
+                if (explodeCount > 0) {
+                  attacker.combatant.darkCloudOutfitStaminaAccumulator -= explodeCount * 20;
+                  darkCloudExplodeGain = explodeCount;
                 }
               }
             }
@@ -6796,7 +6848,15 @@ async function resolveOnePendingAction(encounter, p) {
                 const lastHitForStatus = t.preview.instanceResults[t.preview.instanceResults.length - 1];
                 target.burn = lastHitForStatus?.burnStacksAfter ?? target.burn;
                 const bleedBeforeThisHit = target.bleed ?? 0;
-                target.bleed = bleedOverride ?? (lastHitForStatus?.bleedStacksAfter ?? target.bleed);
+                let rawNewBleed = bleedOverride ?? (lastHitForStatus?.bleedStacksAfter ?? target.bleed);
+                // "Dark Cloud" (outfit, 3+ stack) — xác nhận trực tiếp: "Gây
+                // thêm 1.25x Bleed" — CHỈ nhân phần MỚI GÂY THÊM (chênh lệch
+                // trước/sau đòn này), không nhân lại toàn bộ stack cũ đã có.
+                if (attacker.combatant.equippedOutfit === "Kurokumo Wakashu" && (attacker.combatant.darkCloudOutfitStacks ?? 0) >= 3 && rawNewBleed > bleedBeforeThisHit) {
+                  const bleedGainedThisHit = rawNewBleed - bleedBeforeThisHit;
+                  rawNewBleed = bleedBeforeThisHit + Math.floor(bleedGainedThisHit * 1.25);
+                }
+                target.bleed = rawNewBleed;
                 // Hemorrhage (xác nhận trực tiếp): "+1 stack MỖI LẦN áp Bleed" —
                 // phát hiện bằng cách so sánh Bleed TRƯỚC/SAU đòn này (tăng = có áp
                 // Bleed mới). Reset check ("không áp Bleed trong 1 turn") xử lý ở
@@ -7017,29 +7077,46 @@ async function resolveOnePendingAction(encounter, p) {
             // liên quan gì tới target. Áp dụng cho MỌI loại tấn công (attack/hit/
             // enemyattack), KHÔNG riêng M1, vì luật chỉ nói "hành động tấn công" nói
             // chung. Count KHÔNG đổi ở đây (chỉ giảm nửa lúc end turn thật).
+            // Bleed — GAP ĐÃ SỬA HOÀN TOÀN (xác nhận trực tiếp qua ví dụ số học:
+            // "kẻ địch có 12 bleed... Critical tổng 3 hit và 7 hit m1 thì tổng
+            // chúng sẽ mất 30 HP [đã sửa từ 40 — tính nhầm]... mỗi hit riêng
+            // biệt, trigger bleed dmg = stack bleed / 4 mỗi lần kẻ địch tung ra
+            // 1 hit tấn công") — TRƯỚC ĐÂY chỉ trigger 1 LẦN DUY NHẤT mỗi hành
+            // động (bất kể hành động đó có bao nhiêu hit) — SAI, đúng luật là
+            // MỖI HIT RIÊNG kích hoạt formula riêng (nhân trực tiếp với
+            // totalHitsThisActionAny — đã tính đúng "tổng số hit ĐÃ TUNG RA"
+            // của hành động, không phụ thuộc né/guard/parry của target, và tự
+            // nhiên = 0 cho hành động thuần buff không target thật như Light
+            // Dash Page — khớp đúng "page/critical chỉ thuần hiệu ứng không có
+            // tấn công... không phải nhận dmg từ bleed"). Guard/Evade/Parry
+            // của CHÍNH bleed-holder (khi họ đang phòng thủ, không tấn công)
+            // tự động không qua nhánh này vì đó là 1 luồng xử lý hoàn toàn
+            // khác (finalizeReactiveChoice/encreactivedef, không phải
+            // resolveOnePendingAction với attacker=bleed-holder).
             let bleedSelfNote = "";
-            if ((attacker.combatant.bleed ?? 0) > 0) {
+            if ((attacker.combatant.bleed ?? 0) > 0 && totalHitsThisActionAny > 0) {
               // Sizzling Wound: "+50% Dmg từ Burn và Bleed" — nhân vào đây tương tự Burn.
               // Hemorrhage (xác nhận trực tiếp): "Bleed khi gây dmg sẽ /3|/2|x1|
               // x1.5|x2" theo tier 1-5 — nhân thêm vào công thức Bleed tự gây dmg.
               const HEMORRHAGE_BLEED_MULT = { 0: 1, 1: 1 / 3, 2: 1 / 2, 3: 1, 4: 1.5, 5: 2 };
               const hemorrhageMult = HEMORRHAGE_BLEED_MULT[attacker.combatant.hemorrhage ?? 0] ?? 1;
-              const bleedSelfDmg = Math.floor((attacker.combatant.bleed / 4) * (attacker.combatant.sizzlingWound ? 1.5 : 1) * hemorrhageMult);
+              const bleedSelfDmgPerHit = Math.floor((attacker.combatant.bleed / 4) * (attacker.combatant.sizzlingWound ? 1.5 : 1) * hemorrhageMult);
+              const bleedSelfDmg = bleedSelfDmgPerHit * totalHitsThisActionAny;
               if (bleedSelfDmg > 0) {
                 attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - bleedSelfDmg);
                 checkStaggerPanic(attacker.combatant);
-                bleedSelfNote = ` [🩸Bleed tự gây ${bleedSelfDmg} dmg lên ${attacker.label}]`;
+                bleedSelfNote = ` [🩸Bleed tự gây ${bleedSelfDmgPerHit} dmg × ${totalHitsThisActionAny} hit = ${bleedSelfDmg} dmg lên ${attacker.label}]`;
               }
             }
             // Haou Bleed (xác nhận trực tiếp): "Gây Dmg cho kẻ địch dựa vào số
             // count mỗi khi CHÚNG hành động" — tự gây dmg = FULL count (KHÔNG /4
-            // như Bleed thường, mô tả gốc không nhắc chia) mỗi khi CHÍNH kẻ mang
-            // Haou Bleed hành động — cùng vị trí commit với Bleed thường.
-            if ((attacker.combatant.haouBleed ?? 0) > 0) {
-              const haouBleedSelfDmg = attacker.combatant.haouBleed;
+            // như Bleed thường, mô tả gốc không nhắc chia) — CÙNG SỬA per-hit
+            // như Bleed thường ở trên (nhân totalHitsThisActionAny).
+            if ((attacker.combatant.haouBleed ?? 0) > 0 && totalHitsThisActionAny > 0) {
+              const haouBleedSelfDmg = attacker.combatant.haouBleed * totalHitsThisActionAny;
               attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - haouBleedSelfDmg);
               checkStaggerPanic(attacker.combatant);
-              bleedSelfNote += ` [🩸Haou Bleed tự gây ${haouBleedSelfDmg} dmg lên ${attacker.label}]`;
+              bleedSelfNote += ` [🩸Haou Bleed tự gây ${attacker.combatant.haouBleed} dmg × ${totalHitsThisActionAny} hit = ${haouBleedSelfDmg} dmg lên ${attacker.label}]`;
             }
             // Battle Ignition/Overbearing/Blessed Sparks: đếm M1 (chỉ attack mới có
             // p.isM1=true, hit/Page không tính). 2 counter TÁCH BIỆT, đếm KHÁC kiểu:
@@ -7148,6 +7225,27 @@ async function resolveOnePendingAction(encounter, p) {
                   if (tResolved) tResolved.combatant.sinking = Math.min(99, (tResolved.combatant.sinking ?? 0) + dieciSinkingGain);
                 }
                 resultLines.push(`🌀 **Dieci Association** — ${attacker.label} gắn ${dieciSinkingGain} Sinking lên mục tiêu.`);
+              }
+              // "Dark Cloud" (outfit, 6+ stack) — áp "nổ" Bleed THẬT ở đây,
+              // cùng lý do/vị trí với Dieci Association ở trên. Dùng CÔNG THỨC
+              // giống bleedSelfDmg (count/4 * Hemorrhage/Sizzling Wound) nhưng
+              // áp lên chính TARGET's Bleed count (không phải attacker's), và
+              // KHÔNG trừ count Bleed của target (chỉ "kích hoạt", không tiêu).
+              if (darkCloudExplodeGain > 0) {
+                const HEMORRHAGE_BLEED_MULT_DC = { 0: 1, 1: 1 / 3, 2: 1 / 2, 3: 1, 4: 1.5, 5: 2 };
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (!tResolved || (tResolved.combatant.bleed ?? 0) <= 0) continue;
+                  const dcTarget = tResolved.combatant;
+                  const dcHemMult = HEMORRHAGE_BLEED_MULT_DC[dcTarget.hemorrhage ?? 0] ?? 1;
+                  const dcExplodeDmgPerHit = Math.floor((dcTarget.bleed / 4) * (dcTarget.sizzlingWound ? 1.5 : 1) * dcHemMult);
+                  const dcTotalDmg = dcExplodeDmgPerHit * darkCloudExplodeGain;
+                  if (dcTotalDmg > 0) {
+                    dcTarget.currentHp = Math.max(0, dcTarget.currentHp - dcTotalDmg);
+                    checkStaggerPanic(dcTarget);
+                    resultLines.push(`🩸 **Dark Cloud** — ${tResolved.label} bị nổ Bleed ${darkCloudExplodeGain} lần, mất ${dcTotalDmg} HP.`);
+                  }
+                }
               }
             }
             // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: "outfit của Liu
@@ -7293,6 +7391,37 @@ async function resolveOnePendingAction(encounter, p) {
               if (waltzTarget) {
                 waltzTarget.combatant.waltzInWhiteHitThisRound = true;
                 verifyNote += ` ⚔️[Waltz In White đánh dấu — Waltz In Black round sau sẽ x3 Dice + Unevadeable]`;
+              }
+            }
+            // "Coffin" (Fused Blade of Ruined Mirror Worlds passive, đi kèm
+            // Dullahan) — xác nhận trực tiếp: "Coffin nhận được trang bị Fused
+            // Blade of Ruined Mirror Worlds và sử dụng các page Smackdown,
+            // Memorial Procession, Beheading, Greatsword Rend".
+            if (attacker.combatant.weaponName === "Fused Blade of Ruined Mirror Worlds"
+              && ["smackdown", "memorial procession", "beheading", "greatsword rend"].includes(p.skillKey)) {
+              attacker.combatant.coffinStacks = (attacker.combatant.coffinStacks ?? 0) + 1;
+              verifyNote += ` ⚰️[+1 Coffin Stack (hiện ${attacker.combatant.coffinStacks})]`;
+            }
+            // "Dark Cloud" — CẢ 2 passive CÙNG TÊN NHƯNG KHÁC NHAU HOÀN TOÀN
+            // (xác nhận trực tiếp: "Dark Cloud từ outfit và weapon là 2
+            // passive khác nhau nhưng cùng tên"), CÙNG điều kiện kích hoạt
+            // (dùng 1 trong 7 Page của Kurokumo Syndicate Book).
+            const KUROKUMO_SYNDICATE_PAGES = ["cloud cutter", "sky clearing cut", "shadowcloud shattercleaver", "dark cloud cleaver", "sober up", "silent mist", "shadowcloud kick"];
+            if (KUROKUMO_SYNDICATE_PAGES.includes(p.skillKey)) {
+              // WEAPON (Kurokumo Katana): "+2 Bleed cho Page của Kurokumo
+              // Syndicate" — áp lên TARGET (không phải attacker).
+              if (attacker.combatant.weaponName === "Kurokumo Katana" && p.targets) {
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (tResolved) tResolved.combatant.bleed = Math.min(BLEED_MAX, (tResolved.combatant.bleed ?? 0) + 2);
+                }
+                verifyNote += ` 🩸[Dark Cloud (Kurokumo Katana): +2 Bleed]`;
+              }
+              // OUTFIT (Kurokumo Wakashu): "+2 Dark Cloud Stack" — áp lên
+              // CHÍNH attacker (stack riêng, không liên quan weapon's Bleed).
+              if (attacker.combatant.equippedOutfit === "Kurokumo Wakashu") {
+                attacker.combatant.darkCloudOutfitStacks = Math.min(99, (attacker.combatant.darkCloudOutfitStacks ?? 0) + 2);
+                verifyNote += ` ☁️[+2 Dark Cloud Stack (hiện ${attacker.combatant.darkCloudOutfitStacks})]`;
               }
             }
             if (p.emotionDelta) {
@@ -7547,6 +7676,63 @@ async function sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, a
   }
 }
 
+// GAP ĐÃ SỬA (dự án tự động hoá weapon passive còn lại — xác nhận trực tiếp:
+// "Your Shield: block đòn thay cho một đồng đội DUY NHẤT trong turn... giống
+// Clash-hộ nhưng dùng Guard (không cần speed cao hơn, không cần roll)") — tái
+// dùng CHÍNH XÁC pattern third-party-intervention của Clash-hộ, chỉ đổi điều
+// kiện (weaponName==="Zweihander" + chưa dùng trong turn này, KHÔNG cần so
+// speed) và cơ chế áp dụng (Guard — tiêu Stamina + giảm % dmg, không cần roll
+// dice như Clash).
+async function sendYourShieldPrompts(encounter, channelId, channel, p, t, attacker) {
+  const targetResolved = resolveCombatant(encounter, t.targetId);
+  if (!targetResolved) return;
+  const allCombatantEntries = [
+    ...Object.keys(encounter.enemies).map(k => ({ id: k, combatant: encounter.enemies[k], type: "enemy" })),
+    ...Object.keys(encounter.players).map(k => ({ id: k, combatant: encounter.players[k], type: "player" })),
+  ];
+  for (const entry of allCombatantEntries) {
+    if (entry.id === p.attackerId || entry.id === t.targetId) continue;
+    if (entry.combatant.weaponName !== "Zweihander") continue;
+    if (entry.combatant.yourShieldUsedThisTurn) continue;
+    const isThirdPartyEnemy = entry.type === "enemy";
+    let thirdPartyChannel = channel;
+    let thirdPartyMention = `<@${entry.id}>`;
+    if (isThirdPartyEnemy && encounter.gmChannelId) {
+      const gmCh = await client.channels.fetch(encounter.gmChannelId).catch(() => null);
+      if (gmCh) { thirdPartyChannel = gmCh; thirdPartyMention = `GM (${entry.combatant.name})`; }
+    }
+    await thirdPartyChannel.send({
+      content: thirdPartyMention,
+      embeds: [{
+        title: "🛡️ Your Shield — Có thể block hộ!",
+        description: `${attacker.label} tấn công ${targetResolved.label} bằng \`${p.dmgStr}\` — bạn (${entry.combatant.name ?? entry.id}) có "Your Shield", có thể Guard THAY cho ${targetResolved.label} (chỉ 1 lần/turn, tiêu Stamina của chính bạn).`,
+        color: 0x9b59b6,
+      }],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`encreactivedef:${channelId}:${p.id}:${t.targetId}:yourshield:${entry.id}`)
+          .setLabel(`🛡️ Your Shield — Guard thay cho ${targetResolved.label}`)
+          .setStyle(ButtonStyle.Primary),
+      )],
+    }).catch(() => {});
+  }
+}
+
+// "Dullahan" (Fused Blade of Ruined Mirror Worlds passive) — GAP ĐÃ SỬA (xác
+// nhận trực tiếp: "Parry của bạn khi sử dụng sẽ khiến bạn đánh thường lên
+// người kẻ địch") — MỖI LẦN chọn Parry (bất kể thắng/thua — "khi sử dụng",
+// không phải "khi thành công"), tự động gây 1 đòn M1 lên attacker, dùng đúng
+// weaponBaseDamage/weaponType của target (người Parry, chủ nhân Fused Blade).
+function applyDullahanParryCounter(target, attackerCombatant) {
+  if (target.weaponName !== "Fused Blade of Ruined Mirror Worlds") return null;
+  if (!Number.isFinite(target.weaponBaseDamage)) return null;
+  const typeChar = { Slash: "S", Blunt: "B", Pierce: "P" }[target.weaponType] ?? "S";
+  const resStr = combatantResStr(attackerCombatant);
+  const preview = calcMathCore({ dmgStr: `${target.weaponBaseDamage}${typeChar}`, resStr, poiseInit: target.poise, chargeInit: target.charge });
+  attackerCombatant.currentHp = Math.max(0, attackerCombatant.currentHp - preview.totalDmg);
+  return preview.totalDmg;
+}
+
 async function sendReactiveDefensePrompt(channelId, pendingId) {
   try {
     const encounter = await getEncounter(channelId);
@@ -7709,6 +7895,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         if (canClashGeneral) {
           await sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, attacker, isM1Type);
         }
+        await sendYourShieldPrompts(encounter, channelId, channel, p, t, attacker);
         continue;
       }
 
@@ -7839,6 +8026,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       if (canClashGeneral) {
         await sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, attacker, isM1Type);
       }
+      await sendYourShieldPrompts(encounter, channelId, channel, p, t, attacker);
     }
     // Nếu MỌI target trong đòn đều dmg=0 (toàn bộ bị auto-skip ở trên, không ai
     // được gửi prompt nào) — không còn ai để chờ, resolve NGAY thay vì để pending
@@ -8467,6 +8655,54 @@ client.on("interactionCreate", async (interaction) => {
       }
       return;
     }
+    // "Your Shield" (Zweihander passive) — GAP ĐÃ SỬA (xác nhận trực tiếp:
+    // "giống Clash-hộ nhưng dùng Guard, không cần speed cao hơn, không cần
+    // roll") — đơn giản hơn Clash nhiều: áp Guard NGAY (tiêu Stamina của
+    // CHÍNH người can thiệp — entryId, không phải targetId), ngắt dmg cho
+    // targetId, đánh dấu yourShieldUsedThisTurn (giới hạn 1 lần/turn).
+    if (choice === "yourshield") {
+      const entryId = counterSkillKey; // tái dùng field thứ 6 (xem comment ở nhánh "clash")
+      try {
+        let displayText = "";
+        await withLock(encounterKey(channelId), async () => {
+          const encounter = await getEncounter(channelId);
+          if (!encounter) { displayText = "⚠️ Encounter không còn tồn tại."; return; }
+          const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
+          if (!p) { displayText = "⚠️ Action này đã được xử lý rồi."; return; }
+          if (p.reactedTargetIds?.includes(targetId)) { displayText = "⚠️ Đòn này đã được xử lý rồi."; return; }
+          const targetResolved = resolveCombatant(encounter, targetId);
+          const entryResolved = resolveCombatant(encounter, entryId);
+          const attackerResolved = resolveCombatant(encounter, p.attackerId);
+          if (!targetResolved || !entryResolved || !attackerResolved) { displayText = "⚠️ Không tìm thấy target/người can thiệp/attacker."; return; }
+          const target = targetResolved.combatant;
+          const entry = entryResolved.combatant;
+          if (entry.weaponName !== "Zweihander") { displayText = "⚠️ Bạn không còn trang bị Zweihander."; return; }
+          if (entry.yourShieldUsedThisTurn) { displayText = "⚠️ Bạn đã dùng Your Shield trong turn này rồi."; return; }
+          const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+          const attackerWeapon = attackerResolved.combatant.weaponWeight ?? "medium";
+          const t = p.targets.find(tg => tg.targetId === targetId);
+          const hitCount = Math.max(1, t?.preview?.dmgValues?.length ?? 1);
+          const opts = computeDefenseOptions(entry, attackerWeapon, hitCount, isM1Type, p.defenseBypass ?? {}, p.isEyeOfHorusFixedBurst);
+          if (!opts.guard.available) { displayText = `❌ Không đủ Stamina để Guard hộ (cần ${opts.guard.cost}, hiện có ${entry.currentStamina}).`; return; }
+          entry.currentStamina -= opts.guard.cost;
+          entry.yourShieldUsedThisTurn = true;
+          // Ngắt TOÀN BỘ dmg đòn này cho target (Your Shield chặn hộ nguyên
+          // đòn, không phải per-hit như Guard thường — giống tinh thần "block
+          // đòn thay cho 1 đồng đội" nguyên văn).
+          target.evadeCharges = (target.evadeCharges ?? 0) + hitCount;
+          const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, `🛡️ **${entry.name ?? entryId}** dùng Your Shield — Guard thay cho ${targetResolved.label} (-${opts.guard.cost} Sta của người dùng Shield).`, `<@${entryId}>`);
+          displayText = finalized.resultText;
+        });
+        await interaction.update({
+          embeds: [{ title: "🛡️ Your Shield — Kết quả", description: displayText, color: 0x9b59b6 }],
+          components: [],
+        }).catch(() => {});
+      } catch (err) {
+        log("error", "yourShield", interaction.user.id, err.message);
+        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
     try {
       let resultText = null;
       let stillWaitingFor = null;
@@ -8549,7 +8785,9 @@ client.on("interactionCreate", async (interaction) => {
             }
             if (targetResolved.type === "player") target.prescriptParried = true;
             if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-            choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)`;
+            const dullahanDmg = applyDullahanParryCounter(target, attacker.combatant);
+            if (dullahanDmg !== null) target.dullahanParriedThisTurn = true;
+            choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)${dullahanDmg !== null ? ` + [Dullahan: đánh thường trả đũa -${dullahanDmg.toFixed(3)} HP]` : ""}`;
           } else {
             choiceNote = "❌ Không phòng thủ";
           }
@@ -8607,7 +8845,9 @@ client.on("interactionCreate", async (interaction) => {
           target.parryHitSelections.push(hitIdx + 1);
           if (targetResolved.type === "player") target.prescriptParried = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-          choiceNote = `🗡️ Parry (1 roll, 0 Sta)`;
+          const dullahanDmg = applyDullahanParryCounter(target, attacker.combatant);
+            if (dullahanDmg !== null) target.dullahanParriedThisTurn = true;
+          choiceNote = `🗡️ Parry (1 roll, 0 Sta)${dullahanDmg !== null ? ` + [Dullahan: đánh thường trả đũa -${dullahanDmg.toFixed(3)} HP]` : ""}`;
         } else {
           choiceNote = "❌ Không phòng thủ";
         }
