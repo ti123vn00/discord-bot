@@ -13,6 +13,13 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
   function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
     let bonusPct = attacker.gmBonusPctOverride ?? 0;
+    // "Dullahan" (Fused Blade passive) — xác nhận trực tiếp: "Khi có Dullahan
+    // bạn nhận được 30% Dmg gây ra".
+    if ((attacker.dullahanStacks ?? 0) > 0) bonusPct += 30;
+    // "Dark Cloud" (Kurokumo Wakashu outfit passive) — xác nhận trực tiếp:
+    // "Bạn nhận 1% Dmg Up với mỗi 1 Bleed có trên người địch" — áp dụng CẢ
+    // M1 lẫn Skill/Critical (xác nhận trực tiếp: "áp dụng chung mọi loại đòn").
+    if (attacker.equippedOutfit === "Kurokumo Wakashu") bonusPct += (target.bleed ?? 0) * 1;
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận đơn giản là
     // gộp làm một với dmg bonus nên là vẫn bão hòa thôi. Tuy nhưng khác biệt của
     // nó với Dmg Bonus là người khác cũng có thể hưởng lợi do là debuff lên
