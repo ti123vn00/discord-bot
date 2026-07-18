@@ -12,7 +12,7 @@
 module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
   function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
-    let bonusPct = 0;
+    let bonusPct = attacker.gmBonusPctOverride ?? 0;
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận đơn giản là
     // gộp làm một với dmg bonus nên là vẫn bão hòa thôi. Tuy nhưng khác biệt của
     // nó với Dmg Bonus là người khác cũng có thể hưởng lợi do là debuff lên
