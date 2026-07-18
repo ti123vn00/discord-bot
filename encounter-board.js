@@ -20,10 +20,10 @@ module.exports = function ({ buildTurnOrderText, formatCombatantBlock }) {
     for (const pid of Object.keys(encounter.players)) {
       blocks.push(formatCombatantBlock(encounter.players[pid], `<@${pid}>`));
     }
-    const pending = encounter.pendingActions ?? [];
-    if (pending.length > 0) {
-      blocks.push(`⏳ **${pending.length} action đang chờ GM xác nhận** — dùng \`-encounter pending\` để xem chi tiết.`);
-    }
+    // GAP ĐÃ SỬA (xác nhận trực tiếp phản hồi tester: "bảng status có quá
+    // nhiều chữ không cần thiết (kể cả disclaimer)... cái encounter pending
+    // khá không cần thiết cũng hiện liên tục") — xoá dòng "N action đang chờ"
+    // (GM có thể tự gõ `-encounter pending` khi cần) và footer disclaimer.
     const allDead = Object.keys(encounter.enemies).length > 0 && Object.values(encounter.enemies).every(e => e.currentHp <= 0);
     // BUG ĐÃ SỬA: trước đây join() KHÔNG giới hạn độ dài — trận nhiều enemy/player
     // (VD 2v2 trở lên, hoặc nhiều enemy cùng lúc) có thể VƯỢT 4096 ký tự giới hạn
@@ -45,7 +45,6 @@ module.exports = function ({ buildTurnOrderText, formatCombatantBlock }) {
       title: `Encounter: ${encounter.name}`,
       description: description || "*(chưa có enemy/player nào)*",
       color: allDead ? 0x555555 : 0xe74c3c,
-      footer: { text: "-encounter attack/hit/enemyattack/pending/confirmall/endturn — xem -encounter help để biết hết lệnh" },
     };
   }
 
