@@ -7331,14 +7331,33 @@ async function performEndTurn(channelId, userId, isAdmin) {
 
 async function announceCurrentTurn(channelId, encounter) {
   try {
-    // GAP ĐÃ SỬA (xác nhận trực tiếp: "xử lý xong 1 turn thì không hiện bảng
-    // encounter ra để xem lại tình hình") — LUÔN gửi board (HP/status mọi người)
-    // vào kênh encounter CHÍNH mỗi khi turn chuyển, bất kể lượt tiếp theo là
-    // player hay enemy — tách riêng khỏi routing của dropdown hành động (dropdown
-    // vẫn đi đúng kênh của người cần bấm, board thì luôn ở "sân khấu chính").
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "có cách nào để nó tự động update vào
+    // tin nhắn cũ không") — THAY VÌ gửi tin nhắn MỚI mỗi lần 1 người xong lượt
+    // (gây trôi chat với trận 4-5 người), giờ EDIT LẠI đúng 1 tin nhắn board
+    // duy nhất (encounter.boardMessageId) — chỉ gửi mới khi CHƯA có, hoặc edit
+    // thất bại (tin nhắn bị xoá/quá cũ...).
     const mainChannel = await client.channels.fetch(channelId).catch(() => null);
     if (mainChannel) {
-      await mainChannel.send({ embeds: [buildEncounterBoardEmbed(encounter)] }).catch(() => {});
+      const boardEmbed = buildEncounterBoardEmbed(encounter);
+      let edited = false;
+      if (encounter.boardMessageId) {
+        const oldMsg = await mainChannel.messages.fetch(encounter.boardMessageId).catch(() => null);
+        if (oldMsg) {
+          await oldMsg.edit({ embeds: [boardEmbed] }).catch(() => {});
+          edited = true;
+        }
+      }
+      if (!edited) {
+        const newMsg = await mainChannel.send({ embeds: [boardEmbed] }).catch(() => null);
+        if (newMsg) {
+          // Lưu lại ID tin nhắn mới — dùng withLock để tránh ghi đè mất
+          // trạng thái mới hơn nếu có hành động khác xảy ra đồng thời.
+          await withLock(encounterKey(channelId), async () => {
+            const fresh = await getEncounter(channelId);
+            if (fresh) { fresh.boardMessageId = newMsg.id; await saveEncounter(channelId, fresh); }
+          }).catch(() => {});
+        }
+      }
     }
     const order = encounter.turnOrder ?? [];
     const entry = order[encounter.currentTurnIndex ?? 0];
