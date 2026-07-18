@@ -86,6 +86,9 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
       ));
       // Perk ĐỦ ĐIỀU KIỆN unlock ngay (branchPoints đủ) NHƯNG CHƯA unlock — giới hạn
       // 25 option (giới hạn cứng của Discord StringSelectMenu).
+      // GAP ĐÃ SỬA (xác nhận trực tiếp phản hồi tester: "nên có multiple
+      // choice cho dễ chọn nhanh hơn") — setMinValues(1)/setMaxValues(N) cho
+      // phép chọn NHIỀU cùng lúc — handler áp dụng TUẦN TỰ qua interaction.values.
       const unlockedSet = new Set(data.unlockedSkillTree ?? []);
       const eligiblePerks = Object.entries(PERK_POINT_COSTS)
         .filter(([perk, cost]) => {
@@ -105,7 +108,8 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`balunlock:${targetUser.id}`)
-            .setPlaceholder("🔓 Mở khoá 1 perk đủ điều kiện...")
+            .setPlaceholder("🔓 Mở khoá perk đủ điều kiện (chọn nhiều được)...")
+            .setMinValues(1).setMaxValues(perkOptions.length)
             .addOptions(perkOptions)
         ));
       }
@@ -127,9 +131,21 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
         const universalWeapon = findWeaponAnywhere(key);
         if (universalWeapon) ownedWeaponsSet.add(universalWeapon.name);
       }
-      const ownedWeapons = [...ownedWeaponsSet];
-      const ownedOutfits = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findOutfit(n));
-      const ownedAccessories = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findAccessory(n));
+      // GAP ĐÃ SỬA (xác nhận trực tiếp phản hồi tester: "vũ khí, outfit, page
+      // đang equip rồi vẫn hiện khiến họ bị rối mắt — nên ẩn những thứ bản
+      // thân đang equip") — weapon/outfit chỉ có ĐÚNG 1 slot mỗi loại nên lọc
+      // trực tiếp = equippedWeapon/equippedOutfit hiện tại.
+      const ownedWeapons = [...ownedWeaponsSet].filter(n => n !== data.equippedWeapon);
+      const ownedOutfits = Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findOutfit(n) && n !== data.equippedOutfit);
+      // Accessory: CÓ THỂ sở hữu NHIỀU hơn 1 cùng tên (equip vào nhiều slot
+      // khác nhau) — chỉ ẩn khi số slot ĐÃ dùng >= số lượng SỞ HỮU (không còn
+      // "phần dư" nào để equip thêm), không ẩn tuyệt đối như weapon/outfit.
+      const equippedAccCounts = {};
+      for (const name of (data.equippedAccessories ?? [])) { if (name) equippedAccCounts[name] = (equippedAccCounts[name] ?? 0) + 1; }
+      const ownedAccessories = Object.keys(data.items ?? {}).filter(n => {
+        if (!((data.items[n] ?? 0) > 0 && findAccessory(n))) return false;
+        return (equippedAccCounts[n] ?? 0) < data.items[n];
+      });
       const gearOptions = [
         ...ownedWeapons.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Vũ khí").setValue(`weapon:${n}`).setEmoji("⚔️")),
         ...ownedOutfits.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Outfit").setValue(`outfit:${n}`).setEmoji("🧥")),
@@ -139,13 +155,28 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`balequipgear:${targetUser.id}`)
-            .setPlaceholder("⚔️ Equip Weapon/Outfit/Accessory đã sở hữu...")
+            .setPlaceholder("⚔️ Equip Weapon/Outfit/Accessory (chọn nhiều được)...")
+            .setMinValues(1).setMaxValues(gearOptions.length)
             .addOptions(gearOptions)
         ));
       }
+      // Page/E.G.O Page: cùng logic "số dư" như accessory (có thể sở hữu
+      // nhiều bản cùng tên, equip vào nhiều slot Page/E.G.O Page khác nhau).
+      const equippedPageCounts = {};
+      for (const name of (data.equippedPages ?? [])) { if (name) equippedPageCounts[name] = (equippedPageCounts[name] ?? 0) + 1; }
+      const equippedEgoPageCounts = {};
+      for (const name of (data.equippedEgoPages ?? [])) { if (name) equippedEgoPageCounts[name] = (equippedEgoPageCounts[name] ?? 0) + 1; }
       const ownedPageNames = Object.keys(data.pages ?? {}).filter(n => (data.pages[n] ?? 0) > 0);
-      const ownedRegularPages = ownedPageNames.filter(n => { const s = findSkill(n); return s && !isEgoSkill(s); });
-      const ownedEgoPages = ownedPageNames.filter(n => { const s = findSkill(n); return s && isEgoSkill(s); });
+      const ownedRegularPages = ownedPageNames.filter(n => {
+        const s = findSkill(n);
+        if (!s || isEgoSkill(s)) return false;
+        return (equippedPageCounts[n] ?? 0) < data.pages[n];
+      });
+      const ownedEgoPages = ownedPageNames.filter(n => {
+        const s = findSkill(n);
+        if (!s || !isEgoSkill(s)) return false;
+        return (equippedEgoPageCounts[n] ?? 0) < data.pages[n];
+      });
       if (ownedRegularPages.length > 0) {
         const pageOptions = ownedRegularPages.slice(0, 25).map(n =>
           new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Page — tự chọn slot trống đầu tiên").setValue(`page:${n}`).setEmoji("📖")
@@ -153,7 +184,8 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`balequippage:${targetUser.id}`)
-            .setPlaceholder("📖 Equip Page thường đã sở hữu...")
+            .setPlaceholder("📖 Equip Page thường (chọn nhiều được)...")
+            .setMinValues(1).setMaxValues(pageOptions.length)
             .addOptions(pageOptions)
         ));
       }
@@ -164,7 +196,8 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`balequipego:${targetUser.id}`)
-            .setPlaceholder("✨ Equip E.G.O Page đã sở hữu...")
+            .setPlaceholder("✨ Equip E.G.O Page (chọn nhiều được)...")
+            .setMinValues(1).setMaxValues(egoOptions.length)
             .addOptions(egoOptions)
         ));
       }
