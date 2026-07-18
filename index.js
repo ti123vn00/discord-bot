@@ -7454,13 +7454,16 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       // target đang trang bị, CHƯA hết CD, ĐỦ Light. "counterEffect"
       // (skills.js) là dấu hiệu skill đó LÀ page-counter.
       const availableCounterPages = [];
+      const addedCounterKeys = new Set();
       for (const pageName of (target.unlockedPagesSnapshot ?? [])) {
         const pageSkill = findSkill(pageName);
         if (!pageSkill || !pageSkill.counterEffect) continue;
         const pageKey = pageName.trim().toLowerCase();
+        if (addedCounterKeys.has(pageKey)) continue; // GAP ĐÃ SỬA: tránh 2 button TRÙNG customId nếu equip cùng tên vào 2 slot
         if ((target.skillCooldowns?.[pageKey] ?? 0) > 0) continue;
         const cost = parseSkillCost(pageSkill.cost);
         if ((target.currentLight ?? 0) < (cost.light ?? 0)) continue;
+        addedCounterKeys.add(pageKey);
         availableCounterPages.push({ key: pageKey, name: pageSkill.name, lightCost: cost.light ?? 0 });
       }
 
@@ -8187,13 +8190,16 @@ client.on("interactionCreate", async (interaction) => {
         const clasher = clasherResolved.combatant;
         const candidateNames = [clasher.weaponCriticalKey, ...(clasher.unlockedPagesSnapshot ?? [])].filter(Boolean);
         const clashOptions = [];
+        const addedClashKeys = new Set();
         for (const name of candidateNames) {
           const sk = findSkill(name);
           if (!sk || sk.promptArg) continue; // promptArg cần input đặc biệt, giống hạn chế của "-encounter clash" gốc
           const key = name.trim().toLowerCase();
+          if (addedClashKeys.has(key)) continue; // GAP ĐÃ SỬA: tránh 2 option TRÙNG value nếu equip cùng tên vào 2 slot
           if ((clasher.skillCooldowns?.[key] ?? 0) > 0) continue;
           const cost = parseSkillCost(sk.cost);
           if ((clasher.currentLight ?? 0) < (cost.light ?? 0)) continue;
+          addedClashKeys.add(key);
           clashOptions.push({ key, name: sk.name });
         }
         if (clashOptions.length === 0) {
@@ -8844,11 +8850,11 @@ client.on("interactionCreate", async (interaction) => {
     const group1 = allKeys.slice(0, half);
     const group2 = allKeys.slice(half);
     const menu1 = new StringSelectMenuBuilder()
-      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}`)
+      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}:g1`)
       .setPlaceholder(`Status (nhóm 1/2: ${group1[0]}...${group1[group1.length - 1]})`)
       .addOptions(...group1.map(k => new StringSelectMenuOptionBuilder().setLabel(k).setValue(k)));
     const menu2 = new StringSelectMenuBuilder()
-      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}`)
+      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}:g2`)
       .setPlaceholder(`Status (nhóm 2/2: ${group2[0]}...${group2[group2.length - 1]})`)
       .addOptions(...group2.map(k => new StringSelectMenuOptionBuilder().setLabel(k).setValue(k)));
     await interaction.update({
