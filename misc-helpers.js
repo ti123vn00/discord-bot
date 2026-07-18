@@ -14,6 +14,9 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
 
   function computeDefenderDmgReduction(defender, { isM1 = false, isMiddleSkill = false, attackerId = null } = {}) {
     let reductionPct = defender.gmReductionPctOverride ?? 0;
+    // "Dullahan" (Fused Blade passive) — xác nhận trực tiếp: "Khi có Dullahan
+    // bạn... giảm 15% Dmg Reduction".
+    if ((defender.dullahanStacks ?? 0) > 0) reductionPct -= 15;
     if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
     if (hasPerk(defender, "No Will To Break") && defender.manifestedEGO) reductionPct += 20;
     // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Reverberation
