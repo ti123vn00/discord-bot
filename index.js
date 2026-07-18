@@ -422,7 +422,57 @@ const STATUS_FIELD_MAP_SHARED = {
 };
 function applyStatusEntries(resolved, entries, sourceId, checkStaggerPanicFn) {
   const changes = [];
-  for (const { key, raw } of entries) {
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "toàn bộ tất cả chỉ số... injuries, emotion
+  // coin, emotion level, cd skill, dmg bonus, dmg reduction") — map field cho
+  // "set" (SET trực tiếp, không cộng dồn/không cap) — CHỈ những field này được
+  // phép set trực tiếp qua gmeditmodal, để tránh GM vô tình set field nhạy cảm
+  // khác gây lỗi (VD currentHp/maxHp nên đi qua field HP riêng của Modal).
+  const SETTABLE_FIELD_MAP = {
+    emotioncoin: "emotionCoin", emotionlevel: "emotionLevel",
+    bonuspct: "gmBonusPctOverride", reductionpct: "gmReductionPctOverride",
+  };
+  for (const entry of entries) {
+    if (entry.type === "note") {
+      const before = resolved.combatant.gmNote || "(trống)";
+      resolved.combatant.gmNote = entry.text;
+      changes.push(`Note: "${before}" → **"${entry.text}"**`);
+      continue;
+    }
+    if (entry.type === "set") {
+      const amount = parseInt(entry.raw, 10);
+      if (!Number.isFinite(amount)) throw new Error(`\`set ${entry.key}:\` phải là số.`);
+      const field = SETTABLE_FIELD_MAP[entry.key];
+      if (!field) throw new Error(`"set ${entry.key}" không hợp lệ — dùng: ${Object.keys(SETTABLE_FIELD_MAP).join("/")}`);
+      const before = resolved.combatant[field] ?? 0;
+      resolved.combatant[field] = amount;
+      changes.push(`${entry.key} (set): ${before} → **${amount}**`);
+      continue;
+    }
+    if (entry.type === "injuryAdd") {
+      resolved.combatant.injuries = resolved.combatant.injuries ?? [];
+      resolved.combatant.injuries.push(entry.name);
+      changes.push(`+ injury: **${entry.name}**`);
+      continue;
+    }
+    if (entry.type === "injuryRemove") {
+      resolved.combatant.injuries = resolved.combatant.injuries ?? [];
+      const idx = resolved.combatant.injuries.indexOf(entry.name);
+      if (idx === -1) throw new Error(`Không tìm thấy injury "${entry.name}" trên ${resolved.label} (kiểm tra đúng tên chính xác, phân biệt hoa/thường).`);
+      resolved.combatant.injuries.splice(idx, 1);
+      changes.push(`- injury: **${entry.name}**`);
+      continue;
+    }
+    if (entry.type === "cd") {
+      const amount = parseInt(entry.raw, 10);
+      if (!Number.isFinite(amount)) throw new Error(`\`cd ${entry.skillKey}:\` phải là số.`);
+      resolved.combatant.skillCooldowns = resolved.combatant.skillCooldowns ?? {};
+      const before = resolved.combatant.skillCooldowns[entry.skillKey] ?? 0;
+      resolved.combatant.skillCooldowns[entry.skillKey] = Math.max(0, amount);
+      changes.push(`CD ${entry.skillKey}: ${before} → **${Math.max(0, amount)}**`);
+      continue;
+    }
+    // entry.type === "status" (mặc định, GIỮ NGUYÊN logic gốc — cộng dồn có cap)
+    const { key, raw } = entry;
     const amount = parseInt(raw, 10);
     if (!Number.isFinite(amount)) throw new Error(`\`${key}:\` phải là số.`);
     if (key === "gazeofcontempt" && amount > 0 && resolved.combatant.contemptOfTheGaze) {
@@ -462,11 +512,41 @@ function applyStatusEntries(resolved, entries, sourceId, checkStaggerPanicFn) {
 }
 // Parse cú pháp tự do "key: amount, key2: amount2" (dùng cho ô Paragraph trong
 // gmeditmodal — khác parseKeyValues vốn dùng cho toàn bộ message content).
+// GAP ĐÃ SỬA (xác nhận trực tiếp: "toàn bộ tất cả chỉ số" — injuries, emotion
+// coin, emotion level, cd skill, dmg bonus, dmg reduction) — mở rộng thêm 3
+// dạng cú pháp mới, tách biệt hoàn toàn với "key: amount" gốc (status cộng dồn
+// có cap):
+//   "set <field>: <value>"       → SET trực tiếp (không cộng dồn, không cap) —
+//                                   dùng cho emotioncoin/emotionlevel/bonuspct/
+//                                   reductionpct.
+//   "injury+: <tên>" / "injury-: <tên>" → thêm/xoá 1 injury theo TÊN chính xác.
+//   "cd <skillkey>: <value>"     → set skillCooldowns[skillkey] trực tiếp.
 function parseStatusFreeText(text) {
   const entries = [];
-  for (const part of (text ?? "").split(",")) {
-    const m = part.trim().match(/^([a-zA-Z]+)\s*:\s*(-?\d+)$/);
-    if (m) entries.push({ key: m[1].toLowerCase(), raw: m[2] });
+  let workingText = text ?? "";
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 phần để thêm note lên chỗ status của
+  // player hoặc boss/mob phòng trong các status đặc biệt mà chưa kịp
+  // implement vào code") — "note:" PHẢI ở CUỐI chuỗi (mọi thứ sau nó, kể cả
+  // dấu phẩy, được coi là nội dung note tự do — không thể parse tiếp status
+  // nào sau "note:").
+  const noteMatch = workingText.match(/note\s*:\s*(.+)$/is);
+  if (noteMatch) {
+    entries.push({ type: "note", text: noteMatch[1].trim() });
+    workingText = workingText.slice(0, noteMatch.index);
+  }
+  for (const part of workingText.split(",")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const setMatch = trimmed.match(/^set\s+([a-zA-Z]+)\s*:\s*(-?\d+)$/i);
+    if (setMatch) { entries.push({ type: "set", key: setMatch[1].toLowerCase(), raw: setMatch[2] }); continue; }
+    const injuryAddMatch = trimmed.match(/^injury\+\s*:\s*(.+)$/i);
+    if (injuryAddMatch) { entries.push({ type: "injuryAdd", name: injuryAddMatch[1].trim() }); continue; }
+    const injuryRemoveMatch = trimmed.match(/^injury-\s*:\s*(.+)$/i);
+    if (injuryRemoveMatch) { entries.push({ type: "injuryRemove", name: injuryRemoveMatch[1].trim() }); continue; }
+    const cdMatch = trimmed.match(/^cd\s+(.+?)\s*:\s*(-?\d+)$/i);
+    if (cdMatch) { entries.push({ type: "cd", skillKey: cdMatch[1].trim().toLowerCase(), raw: cdMatch[2] }); continue; }
+    const normalMatch = trimmed.match(/^([a-zA-Z]+)\s*:\s*(-?\d+)$/);
+    if (normalMatch) entries.push({ type: "status", key: normalMatch[1].toLowerCase(), raw: normalMatch[2] });
   }
   return entries;
 }
@@ -5670,6 +5750,7 @@ if (message.content.startsWith("-gacha")) {
           new ButtonBuilder().setCustomId(`encendturn:${encChannelId}:${encounter.gmId}`).setLabel("🔄 Kết thúc Turn").setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(`gmpanelstatus:${encChannelId}:${message.author.id}`).setLabel("📊 Xem trạng thái").setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId(`gmpaneladdenemy:${encChannelId}:${message.author.id}`).setLabel("➕ Add Enemy").setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`gmpanelquickstatus:${encChannelId}:${message.author.id}`).setLabel("🎯 Set Status (chọn nhanh)").setStyle(ButtonStyle.Secondary),
         ));
         message.reply({
           embeds: [{
@@ -7218,6 +7299,19 @@ async function performEndTurn(channelId, userId, isAdmin) {
     }
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
+    // "You're Too Slow": "turn sau kích hoạt lại 1 lần" — TỰ ĐỘNG gây lại dmg
+    // (không cần rtparry lần 2) lên target đã đánh dấu từ round trước, nếu
+    // target đó vẫn còn sống trong encounter.
+    for (const c of [...Object.values(encounter.enemies), ...Object.values(encounter.players)]) {
+      if (!c.youreTooSlowPending) continue;
+      const markedResolved = resolveCombatant(encounter, c.youreTooSlowPending.markedTargetId);
+      if (markedResolved && markedResolved.combatant.currentHp > 0) {
+        const resStr = combatantResStr(markedResolved.combatant);
+        const preview = calcMathCore({ dmgStr: c.youreTooSlowPending.dmgStr, resStr, poiseInit: c.poise, chargeInit: c.charge });
+        markedResolved.combatant.currentHp = Math.max(0, markedResolved.combatant.currentHp - preview.totalDmg);
+      }
+      c.youreTooSlowPending = null;
+    }
     encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
     let prescriptNotes = [];
     if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length > 0) {
@@ -7335,6 +7429,36 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
       const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
 
+      // Page-counter (xác nhận trực tiếp: "khi player bấm chọn vào page
+      // counter thì sẽ mở ra 1 phần ephemeral link tới web rtparry, thành công
+      // thì counter thành công, không thì thất bại") — tìm TẤT CẢ page counter
+      // target đang trang bị, CHƯA hết CD, ĐỦ Light. "counterEffect"
+      // (skills.js) là dấu hiệu skill đó LÀ page-counter.
+      const availableCounterPages = [];
+      for (const pageName of (target.unlockedPagesSnapshot ?? [])) {
+        const pageSkill = findSkill(pageName);
+        if (!pageSkill || !pageSkill.counterEffect) continue;
+        const pageKey = pageName.trim().toLowerCase();
+        if ((target.skillCooldowns?.[pageKey] ?? 0) > 0) continue;
+        const cost = parseSkillCost(pageSkill.cost);
+        if ((target.currentLight ?? 0) < (cost.light ?? 0)) continue;
+        availableCounterPages.push({ key: pageKey, name: pageSkill.name, lightCost: cost.light ?? 0 });
+      }
+
+      // "Clash" responsive (xác nhận trực tiếp: "khi bị đòn skill/page có dice
+      // đánh thì nếu có speed cao hơn thì sẽ có thể tiến hành bấm nút clash, ở
+      // đó sẽ hiện ra page/critical bản thân có thể dùng để clash nếu có đủ
+      // "Clash" responsive (xác nhận trực tiếp: "khi bị đòn skill/page có dice
+      // đánh thì nếu có speed cao hơn thì sẽ có thể tiến hành bấm nút clash...")
+      // — CHỈ cho đòn skill/page (không phải M1), skill đó KHÔNG có
+      // [Unclashable], VÀ target speed CAO HƠN attacker speed.
+      const canClash = !isM1Type && !bypass.unclashable
+        && (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
+      // canClashGeneral: điều kiện CHUNG (không phụ thuộc target cụ thể) để
+      // biết có nên quét toàn bộ combatant khác tìm người "Clash hộ" hay
+      // không — mỗi combatant tự so speed riêng ở vòng lặp bên dưới.
+      const canClashGeneral = !isM1Type && !bypass.unclashable;
+
       // Enemy target (player tấn công enemy): route reactive prompt TỚI kênh GM
       // control panel nếu đã link (`-encounter linkgm`) — enemy không có tài
       // khoản Discord riêng nên GM luôn là người bấm thay, hợp lý gửi thẳng vào
@@ -7373,6 +7497,29 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
           .setStyle(ButtonStyle.Danger),
       );
 
+      // Page-counter — mỗi row Discord tối đa 5 button, row chính đã đủ 4
+      // (Guard/Evade/Parry/Không phòng thủ) nên counter đi row(s) RIÊNG.
+      const counterRows = [];
+      for (let i = 0; i < availableCounterPages.length; i += 5) {
+        const chunk = availableCounterPages.slice(i, i + 5);
+        counterRows.push(new ActionRowBuilder().addComponents(
+          ...chunk.map(cp => new ButtonBuilder()
+            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:counter:${cp.key}`)
+            .setLabel(`⚔️ ${cp.name} (Counter)`)
+            .setStyle(ButtonStyle.Success)),
+        ));
+      }
+      // "Clash" — 1 nút riêng (bấm xong mới hiện dropdown chọn skill cụ thể,
+      // không biết trước skill nào nên không thể gộp chung nút như counter).
+      if (canClash) {
+        counterRows.push(new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:clash:${t.targetId}`)
+            .setLabel(`⚔️ Clash (Speed cao hơn)`)
+            .setStyle(ButtonStyle.Primary),
+        ));
+      }
+
       const dmgPreview = t.preview?.totalDmg?.toFixed(3) ?? "?";
       await sendChannel.send({
         content: mentionText,
@@ -7382,8 +7529,49 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
           color: 0xe67e22,
           footer: { text: opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}` : (isEnemyTarget ? "" : "GM cũng có thể bấm thay nếu bạn không phản hồi được.") },
         }],
-        components: [row],
+        components: [row, ...counterRows],
       }).catch(() => {});
+
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "bất kỳ ai speed cao hơn attacker đều
+      // được hiện nút Clash cho MỌI đòn skill/page trong encounter, không phải
+      // chỉ riêng mục tiêu" — ví dụ cụ thể: A/C cùng team, C tấn công B, A vẫn
+      // Clash THAY cho B được nếu speed cao hơn C) — với MỖI target của đòn
+      // này, tìm TẤT CẢ combatant KHÁC (không phải target đó, không phải chính
+      // attacker) có speed cao hơn attacker, gửi họ 1 prompt RIÊNG (chỉ 1 nút
+      // Clash-thay-cho, không có Guard/Evade/Parry/Counter vì họ không phải
+      // người chịu dmg trực tiếp). Dùng canClashGeneral (không phụ thuộc
+      // target cụ thể) vì mỗi combatant tự so speed riêng bên trong vòng lặp.
+      if (canClashGeneral) {
+        const allCombatantEntries = [
+          ...Object.keys(encounter.enemies).map(k => ({ id: k, combatant: encounter.enemies[k], type: "enemy" })),
+          ...Object.keys(encounter.players).map(k => ({ id: k, combatant: encounter.players[k], type: "player" })),
+        ];
+        for (const entry of allCombatantEntries) {
+          if (entry.id === p.attackerId || entry.id === t.targetId) continue;
+          if ((entry.combatant.currentSpeed ?? -Infinity) <= (attacker.combatant.currentSpeed ?? Infinity)) continue;
+          const isThirdPartyEnemy = entry.type === "enemy";
+          let thirdPartyChannel = channel;
+          let thirdPartyMention = `<@${entry.id}>`;
+          if (isThirdPartyEnemy && encounter.gmChannelId) {
+            const gmCh = await client.channels.fetch(encounter.gmChannelId).catch(() => null);
+            if (gmCh) { thirdPartyChannel = gmCh; thirdPartyMention = `GM (${entry.combatant.name})`; }
+          }
+          await thirdPartyChannel.send({
+            content: thirdPartyMention,
+            embeds: [{
+              title: "⚔️ Có thể Clash để đỡ hộ!",
+              description: `${attacker.label} tấn công ${targetResolved.label} bằng \`${p.dmgStr}\` — bạn (${entry.combatant.name ?? entry.id}) có Speed cao hơn, có thể Clash THAY cho ${targetResolved.label}. Nếu thắng, đòn này bị ngắt hoàn toàn — ${targetResolved.label} không ăn dmg.`,
+              color: 0x3498db,
+            }],
+            components: [new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:clash:${entry.id}`)
+                .setLabel(`⚔️ Clash thay cho ${targetResolved.label}`)
+                .setStyle(ButtonStyle.Primary),
+            )],
+          }).catch(() => {});
+        }
+      }
     }
     // Nếu MỌI target trong đòn đều dmg=0 (toàn bộ bị auto-skip ở trên, không ai
     // được gửi prompt nào) — không còn ai để chờ, resolve NGAY thay vì để pending
@@ -7750,8 +7938,8 @@ client.on("interactionCreate", async (interaction) => {
       const lightInput = new TextInputBuilder().setCustomId("light").setLabel("Light").setStyle(TextInputStyle.Short).setValue(String(enemy.currentLight ?? 0)).setRequired(true);
       const statusInput = new TextInputBuilder()
         .setCustomId("status")
-        .setLabel("Status (cộng thêm — cú pháp setstatus)")
-        .setPlaceholder("VD: rupture: 5, bleed: -3, protection: 10")
+        .setLabel("Status/Set/Injury/CD (xem placeholder)")
+        .setPlaceholder("rupture: 5 | set emotioncoin: 2 | injury+: Gãy chân | cd durandal: 3")
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(false);
       modal.addComponents(
@@ -7781,7 +7969,7 @@ client.on("interactionCreate", async (interaction) => {
       .setTitle("➕ Add Enemy");
     const keyInput = new TextInputBuilder().setCustomId("key").setLabel("Key (định danh ngắn, không dấu)").setPlaceholder("VD: mo, goblin1").setStyle(TextInputStyle.Short).setRequired(true);
     const nameInput = new TextInputBuilder().setCustomId("name").setLabel("Tên hiển thị").setPlaceholder("VD: Mo Xù").setStyle(TextInputStyle.Short).setRequired(true);
-    const hpInput = new TextInputBuilder().setCustomId("hp").setLabel("HP").setPlaceholder("VD: 500").setStyle(TextInputStyle.Short).setRequired(true);
+    const hpInput = new TextInputBuilder().setCustomId("hp").setLabel("HP (hoặc HP/Stamina)").setPlaceholder("VD: 500 hoặc 500/150 (mặc định Stamina=100)").setStyle(TextInputStyle.Short).setRequired(true);
     const resInput = new TextInputBuilder().setCustomId("res").setLabel("Resistance (tuỳ chọn)").setPlaceholder("VD: 1.5xB 1xP 0.8xS — để trống = 1x cả 3").setStyle(TextInputStyle.Short).setRequired(false);
     const weaponInput = new TextInputBuilder().setCustomId("weapon").setLabel("Weapon weight (tuỳ chọn)").setPlaceholder("light/medium/heavy — để trống = medium").setStyle(TextInputStyle.Short).setRequired(false);
     modal.addComponents(
@@ -7792,6 +7980,37 @@ client.on("interactionCreate", async (interaction) => {
       new ActionRowBuilder().addComponents(weaponInput),
     );
     await interaction.showModal(modal).catch(() => {});
+    return;
+  }
+
+  // GAP ĐÃ SỬA (xác nhận trực tiếp: "ở phần set status thì nên hiện dropdown
+  // để chọn những status có sẵn trong game để tự gắn") — Bước 1/3: chọn TARGET
+  // (enemy hoặc player, gộp chung 1 dropdown vì chỉ cần chọn 1).
+  if (interaction.customId.startsWith("gmpanelquickstatus:")) {
+    const [, channelId, ownerId] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+      return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới bấm được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      const targetOptions = [
+        ...Object.entries(encounter.enemies).map(([k, e]) => new StringSelectMenuOptionBuilder().setLabel(`👹 ${e.name} (${k})`).setValue(`enemy:${k}`)),
+        ...Object.entries(encounter.players).map(([pid, p]) => new StringSelectMenuOptionBuilder().setLabel(`🧑 ${p.name}`).setValue(`player:${pid}`)),
+      ];
+      if (targetOptions.length === 0) throw new Error("Encounter chưa có ai cả.");
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`gmquickstatustarget:${channelId}:${ownerId}`)
+        .setPlaceholder("Chọn người/enemy muốn gắn status...")
+        .addOptions(...targetOptions.slice(0, 25));
+      await interaction.reply({
+        embeds: [{ title: "🎯 Set Status — Bước 1: Chọn mục tiêu", color: 0xf39c12 }],
+        components: [new ActionRowBuilder().addComponents(menu)],
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
     return;
   }
 
@@ -7883,7 +8102,100 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId.startsWith("encreactivedef:")) {
-    const [, channelId, pendingId, targetId, choice] = interaction.customId.split(":");
+    const [, channelId, pendingId, targetId, choice, counterSkillKey] = interaction.customId.split(":");
+    // "Counter" (page-counter) — KHÁC HOÀN TOÀN guard/evade/parry/none: KHÔNG
+    // resolve ngay (phải chờ kết quả minigame rtparry trước), nên tách riêng
+    // NGOÀI withLock/finalizeReactiveChoice flow bình thường bên dưới.
+    if (choice === "counter") {
+      try {
+        const isAdmin = ADMIN_IDS.has(interaction.user.id);
+        if (interaction.user.id !== targetId && !isAdmin) {
+          await interaction.reply({ content: "⚠️ Chỉ người bị tấn công (hoặc admin) mới được dùng counter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+          return;
+        }
+        const counterSkill = findSkill(counterSkillKey);
+        if (!counterSkill || !counterSkill.counterEffect) {
+          await interaction.reply({ content: "❌ Không tìm thấy page counter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+          return;
+        }
+        await interaction.reply({
+          embeds: [{ title: `⚔️ ${counterSkill.name} — Counter`, description: "Bấm nút dưới để mở Parry Real Time. Thắng = counter thành công, thua = không phòng thủ được (ăn dmg thường).", color: 0xf39c12 }],
+          flags: MessageFlags.Ephemeral,
+        });
+        const sentMsg = await interaction.fetchReply();
+        const linkInfo = createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id, skill: counterSkill });
+        if (!linkInfo) {
+          await interaction.followUp({ content: "⚠️ Bot chưa biết URL public (thiếu RENDER_EXTERNAL_URL/PUBLIC_URL).", flags: MessageFlags.Ephemeral }).catch(() => {});
+          return;
+        }
+        // Gắn thêm context ĐỂ route /rtparry/:token/result biết đây LÀ 1 page
+        // counter đang chờ áp dụng, không phải rtparry thường (chỉ hiển thị
+        // AMAZING/GREAT không ảnh hưởng gameplay) — xem comment đầy đủ ở route đó.
+        const session = webParrySessions.get(linkInfo.token);
+        if (session) {
+          session.counterContext = { encChannelId: channelId, pendingId, targetId, counterSkillKey };
+        }
+        await interaction.followUp({
+          embeds: [{ title: `⚔️ ${counterSkill.name}`, description: "Bấm nút dưới để mở Parry Real Time.", color: 0xf39c12 }],
+          components: [buildRtparryLinkButton(linkInfo.url)],
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+      } catch (err) {
+        log("error", "counterRtparry", interaction.user.id, err.message);
+        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
+    // "Clash" responsive — bấm nút → hiện dropdown chọn 1 Page/Critical của
+    // CHÍNH target để đem ra so Dice (chỉ đọc, không sửa gì nên KHÔNG cần
+    // withLock — dropdown chọn xong mới thật sự khoá/xử lý ở handler riêng
+    // "encclashselect:").
+    if (choice === "clash") {
+      // counterSkillKey field TÁI DÙNG làm clasherId ở đây (choice="clash"
+      // dùng khác ý nghĩa so với choice="counter") — NGƯỜI THỰC HIỆN Clash,
+      // CÓ THỂ KHÁC targetId (VD A Clash thay cho B — targetId=B, clasherId=A).
+      const clasherId = counterSkillKey;
+      try {
+        const isAdmin = ADMIN_IDS.has(interaction.user.id);
+        if (interaction.user.id !== clasherId && !isAdmin) {
+          await interaction.reply({ content: "⚠️ Chỉ đúng người được quyền Clash (hoặc admin) mới bấm được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+          return;
+        }
+        const encounter = await getEncounter(channelId);
+        if (!encounter) { await interaction.reply({ content: "⚠️ Encounter không còn tồn tại.", flags: MessageFlags.Ephemeral }).catch(() => {}); return; }
+        const clasherResolved = resolveCombatant(encounter, clasherId);
+        if (!clasherResolved) { await interaction.reply({ content: "⚠️ Không tìm thấy bạn trong encounter.", flags: MessageFlags.Ephemeral }).catch(() => {}); return; }
+        const clasher = clasherResolved.combatant;
+        const candidateNames = [clasher.weaponCriticalKey, ...(clasher.unlockedPagesSnapshot ?? [])].filter(Boolean);
+        const clashOptions = [];
+        for (const name of candidateNames) {
+          const sk = findSkill(name);
+          if (!sk || sk.promptArg) continue; // promptArg cần input đặc biệt, giống hạn chế của "-encounter clash" gốc
+          const key = name.trim().toLowerCase();
+          if ((clasher.skillCooldowns?.[key] ?? 0) > 0) continue;
+          const cost = parseSkillCost(sk.cost);
+          if ((clasher.currentLight ?? 0) < (cost.light ?? 0)) continue;
+          clashOptions.push({ key, name: sk.name });
+        }
+        if (clashOptions.length === 0) {
+          await interaction.reply({ content: "❌ Không có Page/Critical nào đủ điều kiện để Clash (đủ Light, chưa hết CD).", flags: MessageFlags.Ephemeral }).catch(() => {});
+          return;
+        }
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId(`encclashselect:${channelId}:${pendingId}:${targetId}:${clasherId}`)
+          .setPlaceholder("Chọn Page/Critical để Clash")
+          .addOptions(clashOptions.slice(0, 25).map(o => new StringSelectMenuOptionBuilder().setLabel(o.name).setValue(o.key)));
+        await interaction.reply({
+          embeds: [{ title: "⚔️ Chọn Page/Critical để Clash", description: "So Dice đầu tiên — thắng thì ngắt hết đòn địch, thua thì ăn đủ dmg.", color: 0xf39c12 }],
+          components: [new ActionRowBuilder().addComponents(menu)],
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+      } catch (err) {
+        log("error", "clashSelect", interaction.user.id, err.message);
+        await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      return;
+    }
     try {
       let resultText = null;
       let stillWaitingFor = null;
@@ -8116,8 +8428,149 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ─── SELECT MENU INTERACTIONS (gacha — chọn banner / đổi Pity, xác nhận trực
-// tiếp: "Thêm pool banner giới hạn thời gian và pool banner thường") ─────────
+// ─── SELECT MENU INTERACTIONS (encclashselect — Clash responsive, xác nhận
+// trực tiếp: "khi bị đòn skill/page có dice đánh thì nếu có speed cao hơn thì
+// sẽ có thể tiến hành bấm nút clash, ở đó sẽ hiện ra page/critical bản thân có
+// thể dùng để clash") — sau khi chọn skill từ dropdown, roll THẬT skill đó, so
+// Dice đầu tiên với attacker (lấy từ p.dmgStr — đã roll sẵn lúc declare, không
+// roll lại), áp dụng ĐÚNG công thức thắng/thua Sanity+Coin của "-encounter
+// clash" gốc, rồi hoặc HUỶ toàn bộ đòn (thắng) hoặc để nguyên ăn đủ dmg (thua).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("encclashselect:")) return;
+  const [, channelId, pendingId, targetId, clasherId] = interaction.customId.split(":");
+  const chosenKey = interaction.values[0];
+  try {
+    let displayText = "";
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) { displayText = "⚠️ Encounter không còn tồn tại."; return; }
+      const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
+      if (!p) { displayText = "⚠️ Action này đã được xử lý rồi."; return; }
+      if (p.reactedTargetIds?.includes(targetId)) { displayText = "⚠️ Đòn này đã được xử lý rồi."; return; }
+      const targetResolved = resolveCombatant(encounter, targetId);
+      const clasherResolved = resolveCombatant(encounter, clasherId);
+      const attackerResolved = resolveCombatant(encounter, p.attackerId);
+      if (!targetResolved || !clasherResolved || !attackerResolved) { displayText = "⚠️ Không tìm thấy target/người Clash/attacker."; return; }
+      const target = targetResolved.combatant;
+      const clasher = clasherResolved.combatant;
+      const chosenSkill = findSkill(chosenKey);
+      if (!chosenSkill) { displayText = "❌ Không tìm thấy skill đã chọn."; return; }
+
+      const myRoll = buildSkillRollResult({ skill: chosenSkill });
+      if (myRoll.error || myRoll.firstDiceValue === null) { displayText = `❌ ${myRoll.error ?? "Skill này không có Dice để Clash."}`; return; }
+
+      // firstDiceValue của attacker: LẤY TỪ p.dmgStr đã roll sẵn lúc declare
+      // (KHÔNG roll lại — dùng đúng giá trị người chơi đã thấy), số ĐẦU TIÊN
+      // trong chuỗi (VD "6S+8S+9S" → 6).
+      const attackerFirstDiceMatch = (p.dmgStr ?? "").match(/^([\d.]+)/);
+      const attackerFirstDiceValue = attackerFirstDiceMatch ? parseFloat(attackerFirstDiceMatch[1]) : null;
+      if (attackerFirstDiceValue === null) { displayText = "❌ Đòn tấn công này không có Dice hợp lệ để Clash."; return; }
+
+      // "Clasher" (người BẤM và THỰC HIỆN Clash) roll/tiêu resource/nhận
+      // Sanity+Coin — CÓ THỂ khác "target" (người bị tấn công, chỉ được ngắt
+      // dmg nếu clasher thắng) — xác nhận trực tiếp: "A Clash THAY cho B".
+      const myPenalty = getParryClashPenalty(clasher);
+      const oppPenalty = getParryClashPenalty(attackerResolved.combatant);
+      const myEffectiveDice = myRoll.firstDiceValue - myPenalty + (clasher.clashAttackBoost ?? 0);
+      const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0);
+
+      // Tiêu Light/CD cho skill VỪA DÙNG để Clash (của CLASHER, không phải
+      // target), bất kể thắng thua (đã dùng là dùng, giống "-encounter clash"
+      // gốc không hoàn resource khi thua).
+      const cost = parseSkillCost(chosenSkill.cost);
+      clasher.currentLight = Math.max(0, (clasher.currentLight ?? 0) - (cost.light ?? 0));
+      const cdTurns = parseSkillCooldownTurns(chosenSkill.cd);
+      clasher.skillCooldowns = clasher.skillCooldowns ?? {};
+      clasher.skillCooldowns[chosenKey] = cdTurns + 1;
+
+      const clasherLabel = clasherId === targetId ? "Bạn" : clasherResolved.label;
+      let choiceNote;
+      if (myEffectiveDice > oppEffectiveDice) {
+        // THẮNG Clash — HUỶ TOÀN BỘ đòn nhắm vào TARGET (không phải clasher —
+        // dù clasher là người thắng, người được "cứu" khỏi dmg vẫn là target
+        // gốc của đòn tấn công) — văn bản gốc: "người bị clash thua sẽ bị hủy
+        // toàn bộ dice của skill/page". Tái dùng evadeCharges (perHitMult=0).
+        const hitCount = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
+        target.evadeCharges = (target.evadeCharges ?? 0) + hitCount;
+        const myBefore = clasher.currentSanity;
+        applySanityGain(clasher, 10);
+        applyEmotionDelta(clasher, 2);
+        const oppBefore = attackerResolved.combatant.currentSanity;
+        applyClashLossSanity(attackerResolved.combatant);
+        applyEmotionDelta(attackerResolved.combatant, -1);
+        checkStaggerPanic(clasher); checkStaggerPanic(attackerResolved.combatant);
+        const myDelta = clasher.currentSanity - myBefore;
+        const oppDelta = attackerResolved.combatant.currentSanity - oppBefore;
+        choiceNote = `🏆 ${clasherLabel} THẮNG Clash! **${chosenSkill.name}** (${myEffectiveDice} vs ${oppEffectiveDice}) — ngắt toàn bộ đòn nhắm vào ${targetResolved.label}, ${myDelta >= 0 ? "+" : ""}${myDelta} Sanity +2 Coin cho ${clasherLabel}, đối thủ ${oppDelta >= 0 ? "+" : ""}${oppDelta} Sanity -1 Coin.`;
+        // GAP ĐÃ SỬA (xác nhận trực tiếp: "các page counter vẫn có thể dùng để
+        // clash được đó... trong trường hợp clash thắng thì sẽ tiến hành bước
+        // gây dmg và hiệu ứng của page counter luôn") — nếu skill vừa dùng để
+        // Clash CŨNG là 1 page-counter, áp dụng THÊM dmg/hiệu ứng riêng của nó
+        // (giống hệt logic counter thành công ở route /rtparry — không tái
+        // dùng trực tiếp được vì khác context, viết lại tương tự ở đây). Hiệu
+        // ứng phụ (Protection/DefenseUp/Light...) áp lên CLASHER — người chủ
+        // động dùng skill này, không phải target.
+        const clashCounterEffect = chosenSkill.counterEffect;
+        if (clashCounterEffect) {
+          if (clashCounterEffect.light) clasher.currentLight = Math.min(clasher.maxLight, (clasher.currentLight ?? 0) + clashCounterEffect.light);
+          if (clashCounterEffect.protection) clasher.protection = (clasher.protection ?? 0) + clashCounterEffect.protection;
+          if (clashCounterEffect.defenseUp) clasher.defenseUp = (clasher.defenseUp ?? 0) + clashCounterEffect.defenseUp;
+          if (clashCounterEffect.unlocksSkillKey) clasher.unlockedFollowUpSkillKey = clashCounterEffect.unlocksSkillKey;
+          if (!clashCounterEffect.noDirectDamage) {
+            const built = autoBuildDmgStrFromSkillRoll(chosenSkill);
+            if (built.dmgStr) {
+              let counterDmgStr = built.dmgStr;
+              if (clashCounterEffect.customHitMultiplier) {
+                counterDmgStr = Array(clashCounterEffect.customHitMultiplier).fill(built.dmgStr).join(" + ");
+              }
+              const counterResStr = combatantResStr(attackerResolved.combatant);
+              const counterPreview = calcMathCore({ dmgStr: counterDmgStr, resStr: counterResStr, poiseInit: clasher.poise, chargeInit: clasher.charge });
+              attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - counterPreview.totalDmg);
+              if (clashCounterEffect.smokePerHit) {
+                const hits = clashCounterEffect.customHitMultiplier ?? 1;
+                attackerResolved.combatant.smoke = (attackerResolved.combatant.smoke ?? 0) + clashCounterEffect.smokePerHit * hits;
+              }
+              if (clashCounterEffect.paralyzeAfter) {
+                attackerResolved.combatant.paralyze = (attackerResolved.combatant.paralyze ?? 0) + clashCounterEffect.paralyzeAfter;
+              }
+              if (chosenKey === "you're too slow") {
+                clasher.youreTooSlowPending = { markedTargetId: p.attackerId, dmgStr: counterDmgStr };
+              }
+              choiceNote += ` Đồng thời phản công gây ${attackerResolved.label} -${counterPreview.totalDmg.toFixed(3)} HP (hiệu ứng page-counter).`;
+            }
+          } else {
+            choiceNote += ` (Page-counter — ngắt đòn, không tự gây dmg riêng.)`;
+          }
+        }
+      } else {
+        // THUA (hoặc hoà — hoà tính thua theo đúng "-encounter clash" gốc,
+        // dùng ">" nghiêm ngặt) — target vẫn ăn đủ dmg như bình thường (không
+        // ai tiêu evadeCharges), CLASHER (người tham gia và thua) nhận Sanity
+        // âm/-1 Coin, không phải target.
+        const myBefore = attackerResolved.combatant.currentSanity;
+        applySanityGain(attackerResolved.combatant, 10);
+        applyEmotionDelta(attackerResolved.combatant, 2);
+        const oppBefore = clasher.currentSanity;
+        applyClashLossSanity(clasher);
+        applyEmotionDelta(clasher, -1);
+        checkStaggerPanic(clasher); checkStaggerPanic(attackerResolved.combatant);
+        const myDelta = attackerResolved.combatant.currentSanity - myBefore;
+        const oppDelta = clasher.currentSanity - oppBefore;
+        choiceNote = `💔 ${clasherLabel} THUA Clash! **${chosenSkill.name}** (${myEffectiveDice} vs ${oppEffectiveDice}) — ${targetResolved.label} ăn đủ dmg, đối thủ ${myDelta >= 0 ? "+" : ""}${myDelta} Sanity +2 Coin, ${clasherLabel} ${oppDelta >= 0 ? "+" : ""}${oppDelta} Sanity -1 Coin.`;
+      }
+
+      const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, `<@${targetId}>`);
+      displayText = finalized.resultText;
+    });
+    await interaction.update({
+      embeds: [{ title: "⚔️ Clash — Kết quả", description: displayText, color: 0x2ecc71 }],
+      components: [],
+    }).catch(() => {});
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (interaction.customId.startsWith("gachabanner:")) {
@@ -8338,8 +8791,8 @@ client.on("interactionCreate", async (interaction) => {
     const lightInput = new TextInputBuilder().setCustomId("light").setLabel("Light").setStyle(TextInputStyle.Short).setValue(String(player.currentLight ?? 0)).setRequired(true);
     const statusInput = new TextInputBuilder()
       .setCustomId("status")
-      .setLabel("Status (cộng thêm — cú pháp setstatus)")
-      .setPlaceholder("VD: rupture: 5, bleed: -3, protection: 10")
+      .setLabel("Status/Set/Injury/CD (xem placeholder)")
+      .setPlaceholder("rupture: 5 | set emotioncoin: 2 | injury+: Gãy chân | cd durandal: 3")
       .setStyle(TextInputStyle.Paragraph)
       .setRequired(false);
     modal.addComponents(
@@ -8350,6 +8803,83 @@ client.on("interactionCreate", async (interaction) => {
       new ActionRowBuilder().addComponents(statusInput),
     );
     await interaction.showModal(modal).catch(() => {});
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// GAP ĐÃ SỬA — Bước 2/3: sau khi chọn target, hiện dropdown CHỌN STATUS (35
+// status hợp lệ trong STATUS_CAPS_SHARED — vượt giới hạn 25 option/dropdown
+// của Discord, nên chia làm 2 dropdown riêng, GM chọn 1 trong 2).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("gmquickstatustarget:")) return;
+  const [, channelId, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+    return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const targetSpec = interaction.values[0]; // "enemy:<key>" hoặc "player:<id>"
+  try {
+    const allKeys = Object.keys(STATUS_CAPS_SHARED);
+    const half = Math.ceil(allKeys.length / 2);
+    const group1 = allKeys.slice(0, half);
+    const group2 = allKeys.slice(half);
+    const menu1 = new StringSelectMenuBuilder()
+      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}`)
+      .setPlaceholder(`Status (nhóm 1/2: ${group1[0]}...${group1[group1.length - 1]})`)
+      .addOptions(...group1.map(k => new StringSelectMenuOptionBuilder().setLabel(k).setValue(k)));
+    const menu2 = new StringSelectMenuBuilder()
+      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}`)
+      .setPlaceholder(`Status (nhóm 2/2: ${group2[0]}...${group2[group2.length - 1]})`)
+      .addOptions(...group2.map(k => new StringSelectMenuOptionBuilder().setLabel(k).setValue(k)));
+    await interaction.update({
+      embeds: [{ title: "🎯 Set Status — Bước 2: Chọn status", description: "Danh sách chia 2 nhóm do giới hạn Discord (tối đa 25 lựa chọn/dropdown).", color: 0xf39c12 }],
+      components: [new ActionRowBuilder().addComponents(menu1), new ActionRowBuilder().addComponents(menu2)],
+    }).catch(() => {});
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// GAP ĐÃ SỬA — Bước 3/3: sau khi chọn status, mở Modal nhỏ nhập số lượng
+// (+/-), rồi áp dụng qua applyStatusEntries (dùng CHUNG logic với setstatus/
+// gmeditmodal — không viết lại).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("gmquickstatuspick:")) return;
+  const [, channelId, ownerId, targetType, targetId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+    return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const statusKey = interaction.values[0];
+  const modal = new ModalBuilder()
+    .setCustomId(`gmquickstatusmodal:${channelId}:${targetType}:${targetId}:${statusKey}`)
+    .setTitle(`Set ${statusKey}`.slice(0, 45));
+  const amountInput = new TextInputBuilder().setCustomId("amount").setLabel(`Số lượng ${statusKey} (cộng thêm, có thể âm)`).setPlaceholder("VD: 5 hoặc -3").setStyle(TextInputStyle.Short).setRequired(true);
+  modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
+  await interaction.showModal(modal).catch(() => {});
+});
+
+// Áp dụng cuối cùng — TÁI DÙNG applyStatusEntries (KHÔNG viết lại logic status).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.customId.startsWith("gmquickstatusmodal:")) return;
+  const [, channelId, targetType, targetId, statusKey] = interaction.customId.split(":");
+  try {
+    const amountRaw = interaction.fields.getTextInputValue("amount").trim();
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      const resolved = resolveCombatant(encounter, targetId);
+      if (!resolved) throw new Error(`Không tìm thấy ${targetType === "enemy" ? "enemy" : "player"} này.`);
+      const changes = applyStatusEntries(resolved, [{ type: "status", key: statusKey, raw: amountRaw }], null, checkStaggerPanic);
+      await saveEncounter(channelId, encounter);
+      appendActionLog(encounter, `📊 ${resolved.label}: ${changes.join(", ")} (qua Set Status nhanh)`);
+      await interaction.reply({
+        embeds: [{ title: "✅ Đã set status", description: `${resolved.label}: ${changes.join(", ")}`, color: 0x2ecc71 }],
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    });
   } catch (err) {
     interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
@@ -8898,7 +9428,10 @@ client.on("interactionCreate", async (interaction) => {
   try {
     const key = normalizeEnemyKey(interaction.fields.getTextInputValue("key"));
     const name = interaction.fields.getTextInputValue("name").trim();
-    const hp = parseInt(interaction.fields.getTextInputValue("hp"), 10);
+    const hpRaw = interaction.fields.getTextInputValue("hp").trim();
+    const hpStaminaMatch = hpRaw.match(/^([\d.]+)(?:\s*\/\s*([\d.]+))?$/);
+    const hp = hpStaminaMatch ? parseFloat(hpStaminaMatch[1]) : NaN;
+    const staminaInput = hpStaminaMatch?.[2] ? parseFloat(hpStaminaMatch[2]) : ENCOUNTER_DEFAULT_MAX_STAMINA;
     if (!key || key.length > ENCOUNTER_KEY_MAX_LENGTH || !/^[a-z0-9]+$/.test(key) || !name || !Number.isFinite(hp) || hp <= 0) {
       throw new Error("Key phải là chữ/số thường không dấu, Name không được trống, HP phải là số dương.");
     }
@@ -8913,7 +9446,7 @@ client.on("interactionCreate", async (interaction) => {
       const wasExisting = !!encounter.enemies[key];
       encounter.enemies[key] = createCombatant({
         name, maxHp: hp,
-        maxStamina: ENCOUNTER_DEFAULT_MAX_STAMINA,
+        maxStamina: staminaInput,
         weaponWeight: weapon, resistance: res, speedRangeMin: 3, speedRangeMax: 6,
       });
       if (!wasExisting) insertIntoTurnOrderMidRound(encounter, key, "enemy", encounter.enemies[key]);
@@ -9038,21 +9571,34 @@ client.on("interactionCreate", async (interaction) => {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    const perkName = interaction.values[0].split(":").slice(1).join(":"); // "perk:Fortified Resolve" → "Fortified Resolve" (giữ nguyên nếu tên perk có dấu ":")
+    // GAP ĐÃ SỬA (multi-select — xác nhận trực tiếp phản hồi tester) — LOOP
+    // TUẦN TỰ qua từng perk đã chọn (không phải Promise.all song song), vì
+    // unlock perk A trước có thể ẢNH HƯỞNG tới check exclusive-conflict của
+    // perk B chọn cùng lúc — mỗi perk thành công/thất bại độc lập, không dừng
+    // toàn bộ batch nếu 1 perk lỗi.
+    const results = [];
     await withLock(ownerId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
       data.unlockedSkillTree = data.unlockedSkillTree ?? [];
-      if (data.unlockedSkillTree.includes(perkName)) throw new Error(`Đã có "${perkName}" rồi.`);
-      const conflict = findExclusiveConflict(data.unlockedSkillTree, perkName);
-      if (conflict) throw new Error(`"${perkName}" loại trừ với "${conflict}" đã có sẵn.`);
-      const cost = PERK_POINT_COSTS[perkName];
-      const branch = PERK_BRANCH[perkName];
-      const branchHave = (data.branchPoints ?? {})[branch] ?? 0;
-      if (branchHave < cost) throw new Error(`Cần ${cost} điểm ${branch} — hiện chỉ có ${branchHave}.`);
-      data.unlockedSkillTree.push(perkName);
+      for (const raw of interaction.values) {
+        const perkName = raw.split(":").slice(1).join(":");
+        try {
+          if (data.unlockedSkillTree.includes(perkName)) throw new Error(`Đã có rồi.`);
+          const conflict = findExclusiveConflict(data.unlockedSkillTree, perkName);
+          if (conflict) throw new Error(`Loại trừ với "${conflict}" đã có.`);
+          const cost = PERK_POINT_COSTS[perkName];
+          const branch = PERK_BRANCH[perkName];
+          const branchHave = (data.branchPoints ?? {})[branch] ?? 0;
+          if (branchHave < cost) throw new Error(`Cần ${cost} điểm ${branch} — hiện chỉ có ${branchHave}.`);
+          data.unlockedSkillTree.push(perkName);
+          results.push(`✅ **${perkName}** (${branch}, ${cost} điểm)`);
+        } catch (err) {
+          results.push(`❌ **${perkName}**: ${err.message}`);
+        }
+      }
       await savePlayerData(ownerId, data, slot);
-      await interaction.editReply({ content: `✅ Đã mở khoá **${perkName}** (nhánh ${branch}, ${cost} điểm)!\n> Dùng lại \`-balance\` để thấy cập nhật.` });
     });
+    await interaction.editReply({ content: `${results.join("\n")}\n> Dùng lại \`-balance\` để thấy cập nhật.` });
   } catch (err) {
     await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
   }
@@ -9071,51 +9617,48 @@ client.on("interactionCreate", async (interaction) => {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    const [chosenType, chosenName] = [interaction.values[0].split(":")[0], interaction.values[0].split(":").slice(1).join(":")];
+    // GAP ĐÃ SỬA (multi-select) — LOOP TUẦN TỰ qua từng gear đã chọn, mỗi item
+    // độc lập thành công/thất bại (VD equip 2 accessory cùng tên nhưng chỉ sở
+    // hữu 1 — cái đầu thành công, cái sau báo lỗi thiếu, không mất cái đầu).
+    const results = [];
     await withLock(ownerId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
-      // Re-check sở hữu NGAY LÚC BẤM (không chỉ lúc build dropdown) — phòng
-      // trường hợp đã dùng/mất item giữa lúc dropdown hiện và lúc bấm chọn.
-      // BUG ĐÃ SỬA (xác nhận trực tiếp: "chưa thấy brawler được free... vẫn chưa
-      // pick được") — vũ khí UNIVERSALLY_KNOWN_WEAPONS (VD Brawler) BYPASS check
-      // này, nhất quán với -equipweapon text command.
-      const isUniversalChosen = chosenType === "weapon" && UNIVERSALLY_KNOWN_WEAPONS.has(chosenName.toLowerCase());
-      if (!isUniversalChosen && (data.items?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu **${chosenName}** — dùng lại \`-balance\` để cập nhật danh sách.`);
-      let resultMsg;
-      if (chosenType === "weapon") {
-        const weapon = findWeaponAnywhere(chosenName);
-        data.equippedWeapon = weapon.name;
-        resultMsg = `✅ Đã equip vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage}).`;
-      } else if (chosenType === "outfit") {
-        const outfit = findOutfit(chosenName);
-        data.equippedOutfit = outfit.name;
-        const r = outfit.resistance;
-        resultMsg = `✅ Đã equip outfit **${outfit.name}** (Res: ${r.B}xB ${r.P}xP ${r.S}xS).`;
-      } else if (chosenType === "accessory") {
-        const accessory = findAccessory(chosenName);
-        data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
-        // BUG ĐÃ SỬA (xác nhận trực tiếp: "1 player chỉ có 1 item accessory duy
-        // nhất nhưng lại equip được cả ở 3 slot accessory") — đếm số slot ĐÃ dùng
-        // CÙNG accessory này trước khi tự chọn slot trống/ghi đè — chặn nếu vượt
-        // quá số lượng sở hữu (đã re-check ở dòng trên, ownedCount = data.items).
-        const ownedCount = data.items?.[accessory.name] ?? 0;
-        const usedInAnySlot = data.equippedAccessories.filter(name => name === accessory.name).length;
-        if (usedInAnySlot >= ownedCount) {
-          throw new Error(`Bạn chỉ sở hữu **${ownedCount}** **${accessory.name}** và đã dùng hết ở các slot hiện tại — không đủ để equip thêm.`);
+      for (const raw of interaction.values) {
+        const chosenType = raw.split(":")[0];
+        const chosenName = raw.split(":").slice(1).join(":");
+        try {
+          const isUniversalChosen = chosenType === "weapon" && UNIVERSALLY_KNOWN_WEAPONS.has(chosenName.toLowerCase());
+          if (!isUniversalChosen && (data.items?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu — dùng lại \`-balance\` để cập nhật.`);
+          if (chosenType === "weapon") {
+            const weapon = findWeaponAnywhere(chosenName);
+            data.equippedWeapon = weapon.name;
+            results.push(`✅ Vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage}).`);
+          } else if (chosenType === "outfit") {
+            const outfit = findOutfit(chosenName);
+            data.equippedOutfit = outfit.name;
+            const r = outfit.resistance;
+            results.push(`✅ Outfit **${outfit.name}** (Res: ${r.B}xB ${r.P}xP ${r.S}xS).`);
+          } else if (chosenType === "accessory") {
+            const accessory = findAccessory(chosenName);
+            data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+            const ownedCount = data.items?.[accessory.name] ?? 0;
+            const usedInAnySlot = data.equippedAccessories.filter(name => name === accessory.name).length;
+            if (usedInAnySlot >= ownedCount) throw new Error(`Chỉ sở hữu ${ownedCount}, đã dùng hết ở các slot hiện tại.`);
+            let targetSlot = data.equippedAccessories.findIndex(s => !s);
+            const overwritten = targetSlot === -1;
+            if (overwritten) targetSlot = 0;
+            data.equippedAccessories[targetSlot] = accessory.name;
+            results.push(`✅ Accessory **${accessory.name}** vào slot #${targetSlot + 1}${overwritten ? " (GHI ĐÈ slot đầy)" : ""}.`);
+          } else {
+            throw new Error("Loại trang bị không hợp lệ.");
+          }
+        } catch (err) {
+          results.push(`❌ **${chosenName}**: ${err.message}`);
         }
-        // Tự chọn slot TRỐNG đầu tiên — nếu cả 3 đã đầy, ghi đè slot 1 (kèm cảnh
-        // báo) — muốn chọn slot cụ thể, dùng lệnh text `-equipaccessory <slot>`.
-        let targetSlot = data.equippedAccessories.findIndex(s => !s);
-        const overwritten = targetSlot === -1;
-        if (overwritten) targetSlot = 0;
-        data.equippedAccessories[targetSlot] = accessory.name;
-        resultMsg = `✅ Đã equip accessory **${accessory.name}** vào slot #${targetSlot + 1}${overwritten ? " (đã GHI ĐÈ slot đầy — dùng `-equipaccessory <slot>` nếu muốn chọn slot khác)" : ""}.`;
-      } else {
-        throw new Error("Loại trang bị không hợp lệ.");
       }
       await savePlayerData(ownerId, data, slot);
-      await interaction.editReply({ content: resultMsg + "\n> Dùng lại `-balance`/`-equipment` để xem cập nhật." });
     });
+    await interaction.editReply({ content: `${results.join("\n")}\n> Dùng lại \`-balance\`/\`-equipment\` để xem cập nhật.` });
   } catch (err) {
     await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
   }
@@ -9140,31 +9683,40 @@ client.on("interactionCreate", async (interaction) => {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    const [chosenType, chosenName] = [interaction.values[0].split(":")[0], interaction.values[0].split(":").slice(1).join(":")];
-    const isEgo = chosenType === "egopage";
+    // GAP ĐÃ SỬA (multi-select) — LOOP TUẦN TỰ qua từng Page đã chọn.
+    const results = [];
     await withLock(ownerId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
-      if ((data.pages?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu Page **${chosenName}** — dùng lại \`-balance\` để cập nhật danh sách.`);
-      const skill = findSkill(chosenName);
-      if (!skill) throw new Error(`Không tìm thấy Page "${chosenName}" trong hệ thống.`);
-      const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
-      data[listKey] = data[listKey] ?? [null, null, null, null, null];
-      let targetSlot;
-      let slotNote = "";
-      if (isEgo) {
-        // E.G.O Page — slot XÁC ĐỊNH theo Tier, KHÔNG tự chọn (khác Page thường).
-        const skillTier = getEgoTier(skill);
-        if (!skillTier) throw new Error(`Không xác định được Tier của "${skill.name}".`);
-        targetSlot = EGO_TIER_SLOT_ORDER.indexOf(skillTier);
-        slotNote = ` (Tier ${skillTier})`;
-      } else {
-        targetSlot = data[listKey].findIndex(s => !s);
-        if (targetSlot === -1) { targetSlot = 0; slotNote = " (đã GHI ĐÈ slot đầy — dùng `-equippage <slot>` nếu muốn chọn slot khác)"; }
+      for (const raw of interaction.values) {
+        const chosenType = raw.split(":")[0];
+        const chosenName = raw.split(":").slice(1).join(":");
+        const isEgo = chosenType === "egopage";
+        try {
+          if ((data.pages?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu — dùng lại \`-balance\` để cập nhật.`);
+          const skill = findSkill(chosenName);
+          if (!skill) throw new Error(`Không tìm thấy Page trong hệ thống.`);
+          const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
+          data[listKey] = data[listKey] ?? [null, null, null, null, null];
+          let targetSlot;
+          let slotNote = "";
+          if (isEgo) {
+            const skillTier = getEgoTier(skill);
+            if (!skillTier) throw new Error(`Không xác định được Tier của "${skill.name}".`);
+            targetSlot = EGO_TIER_SLOT_ORDER.indexOf(skillTier);
+            slotNote = ` (Tier ${skillTier})`;
+          } else {
+            targetSlot = data[listKey].findIndex(s => !s);
+            if (targetSlot === -1) { targetSlot = 0; slotNote = " (GHI ĐÈ slot đầy)"; }
+          }
+          data[listKey][targetSlot] = skill.name;
+          results.push(`✅ **${skill.name}** vào ${isEgo ? "E.G.O " : ""}slot #${targetSlot + 1}${slotNote}.`);
+        } catch (err) {
+          results.push(`❌ **${chosenName}**: ${err.message}`);
+        }
       }
-      data[listKey][targetSlot] = skill.name;
       await savePlayerData(ownerId, data, slot);
-      await interaction.editReply({ content: `✅ Đã equip **${skill.name}** vào ${isEgo ? "E.G.O " : ""}slot #${targetSlot + 1}${slotNote}.\n> Dùng lại \`-balance\`/\`-pages\` để xem cập nhật.` });
     });
+    await interaction.editReply({ content: `${results.join("\n")}\n> Dùng lại \`-balance\`/\`-pages\` để xem cập nhật.` });
   } catch (err) {
     await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
   }
@@ -10072,6 +10624,115 @@ app.post("/rtparry/:token/result", async (req, res) => {
     // phải "chặn tuyệt đối mọi cheat" (vẫn có thể script giả lập delay 90-100ms để
     // né), nhưng chặn được trường hợp lộ liễu nhất, chi phí gần như 0.
     finalType = "rejected";
+  }
+
+  // GAP ĐÃ SỬA (dự án tự động hoá page-counter qua rtparry) — nếu session này
+  // gắn với 1 pendingAction đang chờ counter (không phải rtparry thường), xử
+  // lý HOÀN TOÀN RIÊNG: áp dụng thật vào encounter (tiêu hit theo weapon
+  // weight, gây dmg phản công, áp counterEffect, set cooldown/Light), rồi
+  // return NGAY — không chạy tiếp phần hiển thị "Parry Real Time — Web"
+  // thông thường bên dưới (không liên quan gameplay).
+  if (session.counterContext) {
+    const { encChannelId, pendingId, targetId, counterSkillKey } = session.counterContext;
+    const isSuccess = finalType === "success";
+    try {
+      let displayText = "";
+      await withLock(encounterKey(encChannelId), async () => {
+        const encounter = await getEncounter(encChannelId);
+        if (!encounter) { displayText = "⚠️ Encounter không còn tồn tại."; return; }
+        const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
+        if (!p) { displayText = "⚠️ Action này đã được xử lý rồi."; return; }
+        if (p.reactedTargetIds?.includes(targetId)) { displayText = "⚠️ Bạn đã chọn phòng thủ cho đòn này rồi."; return; }
+        const targetResolved = resolveCombatant(encounter, targetId);
+        const attackerResolved = resolveCombatant(encounter, p.attackerId);
+        if (!targetResolved || !attackerResolved) { displayText = "⚠️ Không tìm thấy target/attacker."; return; }
+        const target = targetResolved.combatant;
+        const counterSkill = findSkill(counterSkillKey);
+        const effect = counterSkill?.counterEffect ?? {};
+        let choiceNote = "";
+
+        // Áp dụng hiệu ứng phụ + cooldown/Light — CHỈ khi thành công, TRỪ
+        // "alwaysUnlocks" (Yield My Flesh: mở khoá To Claim Their Bones dù
+        // thắng hay thua minigame).
+        if (isSuccess || effect.alwaysUnlocks) {
+          const cost = parseSkillCost(counterSkill.cost);
+          target.currentLight = Math.max(0, (target.currentLight ?? 0) - (cost.light ?? 0));
+          const cdTurns = parseSkillCooldownTurns(counterSkill.cd);
+          target.skillCooldowns = target.skillCooldowns ?? {};
+          target.skillCooldowns[counterSkillKey] = cdTurns + 1;
+          if (effect.light) target.currentLight = Math.min(target.maxLight, (target.currentLight ?? 0) + effect.light);
+          if (effect.protection) target.protection = (target.protection ?? 0) + effect.protection;
+          if (effect.defenseUp) target.defenseUp = (target.defenseUp ?? 0) + effect.defenseUp;
+          if (effect.unlocksSkillKey) target.unlockedFollowUpSkillKey = effect.unlocksSkillKey;
+        }
+
+        if (isSuccess) {
+          // Tiêu hit THEO WEAPON WEIGHT (tái dùng đúng cơ chế evadeCharges có
+          // sẵn — "né/ngắt" đòn địch, resolveOnePendingAction sẽ tự set
+          // perHitMult=0 theo số charge này, y hệt Evade thường).
+          const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+          const attackerWeapon = attackerResolved.combatant.weaponWeight ?? "medium";
+          const hitCount = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
+          const hitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : 1);
+          const chargesNeeded = isM1Type ? Math.ceil(hitCount / hitsPerCharge) : 1;
+          target.evadeCharges = (target.evadeCharges ?? 0) + chargesNeeded;
+
+          // Gây dmg phản công NGAY (nếu skill này tự gây dmg — noDirectDamage
+          // = false/undefined) — dùng chính công thức dice roll() của
+          // counterSkill, TỰ tính riêng (không qua p/resolveOnePendingAction
+          // của đòn đang chờ, vì đây là 1 hành động MỚI hoàn toàn — phản công).
+          if (!effect.noDirectDamage) {
+            const built = autoBuildDmgStrFromSkillRoll(counterSkill);
+            if (built.dmgStr) {
+              let counterDmgStr = built.dmgStr;
+              if (effect.customHitMultiplier) {
+                counterDmgStr = Array(effect.customHitMultiplier).fill(built.dmgStr).join(" + ");
+              }
+              const counterResStr = combatantResStr(attackerResolved.combatant);
+              const counterPreview = calcMathCore({ dmgStr: counterDmgStr, resStr: counterResStr, poiseInit: target.poise, chargeInit: target.charge });
+              attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - counterPreview.totalDmg);
+              if (effect.smokePerHit) {
+                const hits = effect.customHitMultiplier ?? 1;
+                attackerResolved.combatant.smoke = (attackerResolved.combatant.smoke ?? 0) + effect.smokePerHit * hits;
+              }
+              if (effect.paralyzeAfter) {
+                attackerResolved.combatant.paralyze = (attackerResolved.combatant.paralyze ?? 0) + effect.paralyzeAfter;
+              }
+              choiceNote = `⚔️ Counter thành công! **${counterSkill.name}** phản công ${attackerResolved.label} -${counterPreview.totalDmg.toFixed(3)} HP`;
+              // GAP ĐÃ SỬA — "You're Too Slow": "turn sau kích hoạt lại 1 lần"
+              // — lưu lại target đã đánh dấu + dmgStr đã roll, TỰ ĐỘNG kích
+              // hoạt lại (không cần rtparry lần 2) ở advanceCombatantTurn khi
+              // tới lượt kế tiếp của người dùng counter này (turn-advance.js).
+              if (counterSkillKey === "you're too slow") {
+                target.youreTooSlowPending = { markedTargetId: p.attackerId, dmgStr: counterDmgStr };
+              }
+            } else {
+              choiceNote = `⚔️ Counter thành công! **${counterSkill.name}**`;
+            }
+          } else {
+            choiceNote = `⚔️ Counter thành công! **${counterSkill.name}** — ngắt đòn tấn công`;
+          }
+        } else if (effect.alwaysUnlocks) {
+          choiceNote = `❌ Counter thất bại — ăn đủ dmg, nhưng vẫn mở khoá **${counterSkill?.name ? findSkill(effect.unlocksSkillKey)?.name ?? effect.unlocksSkillKey : effect.unlocksSkillKey}**`;
+        } else {
+          choiceNote = `❌ Counter thất bại — không phòng thủ (ăn dmg thường)`;
+        }
+
+        const finalized = await finalizeReactiveChoice(encChannelId, encounter, p, targetId, choiceNote, `<@${targetId}>`);
+        displayText = finalized.resultText;
+      });
+
+      const channel = await client.channels.fetch(session.channelId).catch(() => null);
+      if (channel) {
+        const msg = await channel.messages.fetch(session.messageId).catch(() => null);
+        if (msg) {
+          await msg.edit({ embeds: [{ title: "⚔️ Page Counter — Kết quả", description: displayText, color: isSuccess ? 0x2ecc71 : 0xe74c3c }] }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      log("error", "counterResolve", session.userId, err.message);
+    }
+    return res.json({ ok: true });
   }
 
   try {
