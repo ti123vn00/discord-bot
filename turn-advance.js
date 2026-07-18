@@ -262,6 +262,50 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // — 50-STATUS NHÓM 2 (batch 1, xác nhận trực tiếp từng cái từ tài liệu gốc) —
     // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
     combatant.diceUp = 0;
+    // "Rotate Trigram" (Augury Spear passive) — xác nhận trực tiếp: "Vào đầu
+    // mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam
+    // -> Ri -> lặp lại". Geon: +3 Dice Up. Gon: +7 Protection (cap 20). Gam: +2
+    // Light. Ri: đánh dấu chờ áp dụng vào M1 đầu tiên (xem doPlayerAttack) —
+    // "phá hủy 2 Light" nếu đủ Light, ngược lại giảm 10% Stamina địch. ĐẶT SAU
+    // dòng diceUp=0 ở trên — nếu đặt trước, Geon's +3 sẽ bị dòng đó ghi đè mất.
+    if (combatant.weaponName === "Augury Spear") {
+      const idx = combatant.rotateTrigramIndex ?? 0;
+      if (idx === 0) { // Geon
+        combatant.diceUp = (combatant.diceUp ?? 0) + 3;
+      } else if (idx === 1) { // Gon
+        combatant.protection = Math.min(20, (combatant.protection ?? 0) + 7);
+      } else if (idx === 2) { // Gam
+        combatant.currentLight = Math.min(combatant.maxLight, (combatant.currentLight ?? 0) + 2);
+      } else if (idx === 3) { // Ri
+        combatant.rotateTrigramRiPending = true;
+      }
+      combatant.rotateTrigramIndex = (idx + 1) % 4;
+    }
+    combatant.yourShieldUsedThisTurn = false;
+    // "Dark Cloud" (Kurokumo Wakashu outfit) — xác nhận trực tiếp: "Mỗi turn trừ 2 Stack".
+    if ((combatant.darkCloudOutfitStacks ?? 0) > 0) {
+      combatant.darkCloudOutfitStacks = Math.max(0, combatant.darkCloudOutfitStacks - 2);
+    }
+    // "Dullahan" (Fused Blade of Ruined Mirror Worlds passive) — xác nhận
+    // trực tiếp: "Vào turn kế sau khi bạn Parry bạn sẽ nhận được 1 Stack
+    // Dullahan và giảm bản thân 15 Sanity" (round-based, giống Waltz In
+    // White/Black — parry ở round N thì +1 stack ở lúc round N+1 bắt đầu, đây
+    // chính là thời điểm đó vì advanceCombatantTurn chạy mỗi khi round mới).
+    if (combatant.dullahanParriedThisTurn) {
+      combatant.dullahanStacks = (combatant.dullahanStacks ?? 0) + 1;
+      combatant.currentSanity = (combatant.currentSanity ?? 0) - 15;
+      combatant.dullahanParriedThisTurn = false;
+    }
+    // "...đồng thời mỗi turn end bạn sẽ mất (15 - số Coffin hiện tại trên bản
+    // thân) Sanity" — CHỈ áp dụng khi ĐANG có Dullahan (câu mô tả nằm trong
+    // "Khi có Dullahan..."). "Khi dưới -15 Sanity, mỗi turn end sẽ nhận được
+    // thêm 1 Stack Dullahan" — check NGAY sau khi trừ Sanity ở trên.
+    if ((combatant.dullahanStacks ?? 0) > 0) {
+      combatant.currentSanity = (combatant.currentSanity ?? 0) - (15 - (combatant.coffinStacks ?? 0));
+      if (combatant.currentSanity < -15) {
+        combatant.dullahanStacks += 1;
+      }
+    }
     // "Hana Association" — reset HP mất trong turn cùng lúc với diceUp.
     combatant.hpLostThisTurn = 0;
     combatant.diceDown = 0;
