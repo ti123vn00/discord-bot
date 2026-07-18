@@ -135,6 +135,10 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill`);
     else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) lines.push(`> ⏳ Manifest E.G.O CD — còn ${combatant.manifestedEGOCooldownLeft} turn`);
     if ((combatant.injuries ?? []).length > 0) lines.push(`> 🩻 Chấn thương: ${combatant.injuries.join(", ")}`);
+    // gmNote (xác nhận trực tiếp: "thêm note lên chỗ status của player hoặc
+    // boss/mob phòng trong các status đặc biệt mà chưa kịp implement vào
+    // code") — chỉ hiện khi GM đã set nội dung.
+    if (combatant.gmNote) lines.push(`> 📝 Note: ${combatant.gmNote}`);
     // Choáng (dazedStacks) — counter tự động mỗi lần Stagger (xem checkStaggerPanic),
     // KHÔNG còn nằm trong injuries[] nữa — hiển thị riêng để GM/player biết khi nào
     // Stagger sẽ kéo dài 2 turn thay vì 1 (từ stack thứ 2 trở lên).
