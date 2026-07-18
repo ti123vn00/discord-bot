@@ -102,6 +102,28 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // của player hoặc boss/mob phòng trong các status đặc biệt mà chưa kịp
       // implement vào code") — hiển thị trong buildEncounterBoardEmbed.
       gmNote: "",
+      // "Your Shield" (Zweihander passive): "khả năng block đòn thay cho MỘT
+      // đồng đội DUY NHẤT trong turn" — reset mỗi turn advance (xem
+      // turn-advance.js), giống hasIronHorus/diceUp pattern đã có.
+      yourShieldUsedThisTurn: false,
+      // "Rotate Trigram" (Augury Spear passive) — cycle Geon→Gon→Gam→Ri mỗi
+      // turn start (0=Geon, 1=Gon, 2=Gam, 3=Ri), rotateTrigramRiPending chờ
+      // áp dụng vào đòn M1 ĐẦU TIÊN sau khi rơi vào "Ri".
+      rotateTrigramIndex: 0,
+      rotateTrigramRiPending: false,
+      // "Dullahan"/"Coffin" (Fused Blade of Ruined Mirror Worlds passive) —
+      // xác nhận trực tiếp: Coffin tích từ dùng Smackdown/Memorial
+      // Procession/Beheading/Greatsword Rend (khi có trang bị Fused Blade).
+      dullahanStacks: 0,
+      coffinStacks: 0,
+      // "Dark Cloud" (Kurokumo Wakashu OUTFIT passive — KHÁC HOÀN TOÀN "Dark
+      // Cloud" của Kurokumo Katana WEAPON, xác nhận trực tiếp: "2 passive khác
+      // nhau nhưng cùng tên") — stack từ dùng Page Kurokumo Syndicate, decay
+      // 2/turn, 3+ stack +25% Bleed dmg, 6+ stack "nổ" Bleed dmg mỗi 20 Sta
+      // tiêu qua M1 (accumulator riêng, không dùng chung staminaUsedThisTurn).
+      darkCloudOutfitStacks: 0,
+      darkCloudOutfitStaminaAccumulator: 0,
+      dullahanParriedThisTurn: false, // "vào turn KẾ SAU khi Parry" — cần biết đã Parry ở turn TRƯỚC chưa
       // "Zwei Association" — flag chờ áp Tremor thật (xem comment đầy đủ ở
       // resolveOnePendingAction, tránh bị ghi đè bởi t.preview.finalTremor).
       zweiAssociationPendingTremor: false,
