@@ -93,6 +93,15 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // accumulator cho "2 Sinking + 4 Shield HP mỗi 20 Stamina qua M1".
       shieldHp: 0,
       dieciAssociationAccumulator: 0,
+      // GM panel — chỉnh sửa tự do (xác nhận trực tiếp: "toàn bộ tất cả chỉ
+      // số... dmg bonus, dmg reduction") — 2 field override thủ công, CỘNG
+      // THÊM vào bonusPct/reductionPct tính toán bình thường (không thay thế).
+      gmBonusPctOverride: 0,
+      gmReductionPctOverride: 0,
+      // Note tự do (xác nhận trực tiếp: "1 phần để thêm note lên chỗ status
+      // của player hoặc boss/mob phòng trong các status đặc biệt mà chưa kịp
+      // implement vào code") — hiển thị trong buildEncounterBoardEmbed.
+      gmNote: "",
       // "Zwei Association" — flag chờ áp Tremor thật (xem comment đầy đủ ở
       // resolveOnePendingAction, tránh bị ghi đè bởi t.preview.finalTremor).
       zweiAssociationPendingTremor: false,
