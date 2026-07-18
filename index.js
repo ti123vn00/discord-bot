@@ -2446,17 +2446,28 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
 /** buildEnemyTargetOptions — GAP ĐÃ SỬA (xác nhận trực tiếp: "phần target ở toàn
  *  bộ dropdown nên sửa lại thành cho bấm thay vì là key... giống 1 game hơn") —
  *  dùng CHUNG cho attack/critical/hit/followup — liệt kê enemy CÒN SỐNG bằng TÊN
- *  THẬT (không phải gõ key tay), + option "Tất cả (AOE)". multi-select (tối đa
- *  25 — giới hạn Discord) cho phép chọn NHIỀU enemy cùng lúc mà không cần gõ
- *  "mo,arnold" — chỉ tick chọn.
+ *  THẬT (không phải gõ key tay), + option "Tất cả (AOE)" CHỈ khi skill/M1 THẬT
+ *  SỰ là AOE (isAoe param) — BUG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp: "có trường
+ *  hợp có những người cố tình cheating chọn tất cả (AOE) dù đòn của họ chỉ 1
+ *  target") — trước đây LUÔN thêm option "all" bất kể skill có phải AOE hay
+ *  không, cho phép chọn multi-select tuỳ ý → hit toàn bộ enemy dù skill chỉ
+ *  thiết kế cho 1 target. multi-select (tối đa 25 — giới hạn Discord) chỉ áp
+ *  dụng khi isAoe=true; nếu không, dropdown giới hạn ĐÚNG 1 lựa chọn duy nhất
+ *  (caller phải setMaxValues(1) tương ứng, xem các nơi gọi).
  */
-function buildEnemyTargetOptions(encounter) {
+function buildEnemyTargetOptions(encounter, isAoe = false) {
   const aliveEnemyKeys = Object.keys(encounter?.enemies ?? {}).filter(k => encounter.enemies[k].currentHp > 0);
   const options = aliveEnemyKeys.map(k =>
     new StringSelectMenuOptionBuilder().setLabel(`${encounter.enemies[k].name} (${k})`.slice(0, 100)).setValue(k)
   );
-  options.push(new StringSelectMenuOptionBuilder().setLabel("🎯 Tất cả (AOE)").setValue("all"));
+  if (isAoe) options.push(new StringSelectMenuOptionBuilder().setLabel("🎯 Tất cả (AOE)").setValue("all"));
   return options.slice(0, 25);
+}
+// Nhận diện AOE THẬT từ chính text roll() (tag "[AOE...]" — xem skills.js,
+// VD "[AOE 3 người]"/"[AOE tất cả]"/"[AOE]") — KHÔNG đoán mò, đọc trực tiếp
+// từ nội dung skill đã roll thật.
+function skillTextIsAoe(text) {
+  return /\[AOE\b/i.test(text ?? "");
 }
 
 async function performGachaPull(userId, count, bannerKey) {
@@ -4925,6 +4936,18 @@ if (message.content.startsWith("-gacha")) {
           if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới roll thứ tự turn.");
           if (Object.keys(encounter.enemies).length + Object.keys(encounter.players).length < 1) throw new Error("Chưa có combatant nào để roll.");
           determineTurnOrder(encounter);
+          // GAP ĐÃ SỬA (xác nhận trực tiếp: "test thì chỉ thấy sang turn vẫn
+          // được 2 Light như thường, nhưng lúc encounter start... rollspeed
+          // thì lại không được cộng light") — CÙNG NGUYÊN NHÂN với prescriptRoll
+          // ngay bên dưới: rollspeed (round ĐẦU TIÊN) không đi qua
+          // advanceCombatantTurn (turn-advance.js) — nơi Light Dash perk's +2
+          // Light mỗi turn start được áp dụng — nên cần gọi riêng ở đây cho
+          // TẤT CẢ combatant có perk này, y hệt logic gốc trong turn-advance.js.
+          for (const c of [...Object.values(encounter.enemies), ...Object.values(encounter.players)]) {
+            if (hasPerk(c, "Light Dash")) {
+              c.currentLight = Math.min(c.maxLight, c.currentLight + 2);
+            }
+          }
           // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — rollspeed
           // (lần ĐẦU TIÊN bắt đầu trận) không đi qua advanceToNextTurnHolder,
           // nên người ĐẦU TIÊN trong turnOrder sẽ không có prescriptRoll/
@@ -8684,6 +8707,10 @@ client.on("interactionCreate", async (interaction) => {
     const targetStr = action === "bossattack" ? null
       : targetFromCustomId ? decodeURIComponent(parts[4] ?? "")
       : interaction.fields.getTextInputValue("targetStr");
+    // messageId của dropdown gốc (chỉ "attack" có — xem enctarget handler,
+    // parts[5]) — dùng để xoá HẲN message đó sau khi resolve xong, thay vì để
+    // lại nguyên dropdown không còn tác dụng gì.
+    const dropdownMessageId = action === "attack" ? parts[5] : null;
     if (action === "attack") {
       const isAutoCalc = parts[3] === "auto";
       const isFixedBurst = parts[3] === "fixedburst";
@@ -8713,7 +8740,15 @@ client.on("interactionCreate", async (interaction) => {
         dmgStr = interaction.fields.getTextInputValue("dmgStr");
       }
       const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { ammotype: ammoTypeInput });
-      await interaction.reply({ embeds: [embed] });
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Xóa HẳN embed này... XÓA LUÔN tin
+      // nhắn dropdown đó") — xoá message dropdown gốc (đã hết tác dụng), reply
+      // ephemeral ngắn gọn (chỉ người dùng thấy) thay vì embed công khai đầy đủ.
+      if (dropdownMessageId) {
+        const ch = await client.channels.fetch(channelId).catch(() => null);
+        const oldMsg = ch ? await ch.messages.fetch(dropdownMessageId).catch(() => null) : null;
+        if (oldMsg) await oldMsg.delete().catch(() => {});
+      }
+      await interaction.reply({ content: "✅ Đã xác nhận đòn đánh — xem kết quả ở board/reactive-defense.", flags: MessageFlags.Ephemeral }).catch(() => {});
     } else if (action === "bossattack") {
       // Boss UI (theo yêu cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI",
       // mở rộng thêm sau đó: "boss có thể được GM customize rất nhiều... 1 số đòn
@@ -8942,18 +8977,23 @@ client.on("interactionCreate", async (interaction) => {
       // thay vì là key... giống 1 game hơn") — chọn target qua DROPDOWN (tên thật,
       // multi-select cho AOE) TRƯỚC, Modal sau đó CHỈ hỏi phần dmg (không còn gõ
       // tay key enemy nữa).
-      const targetOptions = buildEnemyTargetOptions(encounter);
-      if (targetOptions.length === 1) { // chỉ có "all" — nghĩa là không còn enemy nào sống
+      // M1 (Đánh thường) LUÔN single-target — KHÔNG có vũ khí nào AOE (đã kiểm
+      // tra weapon.js) — BUG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp: "có trường hợp
+      // có những người cố tình cheating chọn tất cả (AOE) dù đòn của họ chỉ 1
+      // target") — isAoe=false + setMaxValues(1), không còn option "all" nữa
+      // nên length===0 (chứ không phải ===1) mới là "hết enemy".
+      const targetOptions = buildEnemyTargetOptions(encounter, false);
+      if (targetOptions.length === 0) {
         return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       await interaction.update({
-        embeds: [{ title: "⚔️ Đánh thường (M1) — chọn target", description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        embeds: [{ title: "⚔️ Đánh thường (M1) — chọn target", description: "Chọn 1 enemy muốn nhắm:", color: 0x3498db }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`enctarget:${channelId}:attack:${mode}`)
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
-            .setMaxValues(targetOptions.length)
+            .setMaxValues(1)
             .addOptions(...targetOptions),
         )],
       }).catch(() => {});
@@ -9028,20 +9068,23 @@ client.on("interactionCreate", async (interaction) => {
       // GAP ĐÃ SỬA (xác nhận trực tiếp: target dropdown thay vì gõ key) — chọn
       // target TRƯỚC (dropdown tên thật), Modal sau đó CHỈ hỏi dmg (đã roll sẵn,
       // pre-fill, vẫn được bảo vệ bởi fix bảo mật trước đó — sửa trong Modal
-      // không ảnh hưởng dmg thật).
-      const targetOptions = buildEnemyTargetOptions(encounter);
-      if (targetOptions.length === 1) {
+      // không ảnh hưởng dmg thật). BUG BẢO MẬT ĐÃ SỬA (cùng nguyên nhân với M1):
+      // isAoe đọc TRỰC TIẾP từ tag "[AOE...]" trong text roll() thật của
+      // Critical này — không phải LUÔN cho phép multi-select.
+      const isAoeThisCritical = skillTextIsAoe(verify.skillRollEmbed?.description);
+      const targetOptions = buildEnemyTargetOptions(encounter, isAoeThisCritical);
+      if (targetOptions.length === 0) {
         pendingCriticalRolls.delete(pendingKey);
         return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       await interaction.update({
-        embeds: [verify.skillRollEmbed, { title: `⚡ Critical: ${critSkillName} — chọn target`, description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        embeds: [verify.skillRollEmbed, { title: `⚡ Critical: ${critSkillName} — chọn target`, description: isAoeThisCritical ? "Chọn 1 hoặc nhiều enemy muốn nhắm:" : "Chọn 1 enemy muốn nhắm:", color: 0x3498db }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`enctarget:${channelId}:criticalhit:${encodeURIComponent(critSkillName)}`)
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
-            .setMaxValues(targetOptions.length)
+            .setMaxValues(isAoeThisCritical ? targetOptions.length : 1)
             .addOptions(...targetOptions),
         )],
       }).catch(() => {});
@@ -9108,19 +9151,22 @@ client.on("interactionCreate", async (interaction) => {
           components: [],
         }).catch(() => {});
       }
-      const targetOptions = buildEnemyTargetOptions(encounter);
-      if (targetOptions.length === 1) {
+      // BUG BẢO MẬT ĐÃ SỬA (cùng nguyên nhân với M1/Critical): isAoe đọc TRỰC
+      // TIẾP từ tag "[AOE...]" trong text roll() thật của Page này.
+      const isAoeThisPage = skillTextIsAoe(verify.skillRollEmbed?.description);
+      const targetOptions = buildEnemyTargetOptions(encounter, isAoeThisPage);
+      if (targetOptions.length === 0) {
         pendingCriticalRolls.delete(pendingKey);
         return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       await interaction.update({
-        embeds: [verify.skillRollEmbed, { title: `📖 ${pageName} — chọn target`, description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        embeds: [verify.skillRollEmbed, { title: `📖 ${pageName} — chọn target`, description: isAoeThisPage ? "Chọn 1 hoặc nhiều enemy muốn nhắm:" : "Chọn 1 enemy muốn nhắm:", color: 0x3498db }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`enctarget:${channelId}:hit:${encodeURIComponent(pageName)}`)
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
-            .setMaxValues(targetOptions.length)
+            .setMaxValues(isAoeThisPage ? targetOptions.length : 1)
             .addOptions(...targetOptions),
         )],
       }).catch(() => {});
@@ -9128,18 +9174,20 @@ client.on("interactionCreate", async (interaction) => {
     }
     if (value === "followup") {
       const encounter = await getEncounter(channelId);
-      const targetOptions = buildEnemyTargetOptions(encounter);
-      if (targetOptions.length === 1) {
+      // Follow-Up/Pounce là hành động từ perk (không phải skill roll từ
+      // skills.js) — không có tag [AOE] nào để đọc, mặc định LUÔN single-target.
+      const targetOptions = buildEnemyTargetOptions(encounter, false);
+      if (targetOptions.length === 0) {
         return interaction.reply({ content: "⚠️ Không còn enemy nào (còn sống) để nhắm.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       await interaction.update({
-        embeds: [{ title: "⚡ Follow-Up/Pounce — chọn target", description: "Chọn 1 hoặc nhiều enemy muốn nhắm:", color: 0x3498db }],
+        embeds: [{ title: "⚡ Follow-Up/Pounce — chọn target", description: "Chọn 1 enemy muốn nhắm:", color: 0x3498db }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`enctarget:${channelId}:followup`)
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
-            .setMaxValues(targetOptions.length)
+            .setMaxValues(1)
             .addOptions(...targetOptions),
         )],
       }).catch(() => {});
@@ -9202,8 +9250,13 @@ client.on("interactionCreate", async (interaction) => {
     const encodedTarget = encodeURIComponent(targetStr);
     if (subAction === "attack") {
       const mode = extra; // auto | fixedburst | manual
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "XÓA LUÔN tin nhắn dropdown đó") — lưu
+      // messageId của dropdown gốc vào customId Modal (Modal Submit là 1
+      // interaction HOÀN TOÀN KHÁC, không tự biết message dropdown gốc là gì
+      // nếu không lưu lại) — để sau khi Modal submit, xoá đúng message này.
+      const dropdownMessageId = interaction.message.id;
       const modal = new ModalBuilder()
-        .setCustomId(`encmodal:${channelId}:attack:${mode}:${encodedTarget}`)
+        .setCustomId(`encmodal:${channelId}:attack:${mode}:${encodedTarget}:${dropdownMessageId}`)
         .setTitle("Đánh thường (M1)");
       if (mode === "fixedburst") {
         // GAP ĐÃ SỬA HOÀN TOÀN LẦN THỨ 3 (xác nhận trực tiếp kèm passive text
@@ -9251,15 +9304,32 @@ client.on("interactionCreate", async (interaction) => {
           refSnippet: null, refLink: null, orlandoFuriosoBypassConsumed: pending.orlandoFuriosoBypassConsumed ?? false,
         },
       });
-      const warningNote = (pending.autoWarnings ?? []).length > 0 ? `\n\n⚠️ ${pending.autoWarnings.join("\n⚠️ ")}` : "";
-      if (warningNote) embed.description += warningNote;
-      await interaction.update({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed], components: [] }).catch(() => {});
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Xóa HẳN embed này — không hiển thị gì
+      // sau khi 1 action được thêm vào hàng chờ" + "XÓA LUÔN tin nhắn dropdown
+      // đó (không để lại 'edited')") — TRƯỚC ĐÂY interaction.update() sửa lại
+      // message dropdown gốc thành embed kết quả (để lại "(edited)" + nhiều
+      // chữ thừa). Giờ deferUpdate() (im lặng, không sửa gì) rồi XOÁ HẲN message
+      // dropdown gốc — không còn gì hiển thị ở đây nữa (board/reactive-defense
+      // prompt đã đủ thông tin cho người khác biết chuyện gì đang xảy ra).
+      await interaction.deferUpdate().catch(() => {});
+      await interaction.deleteReply().catch(() => {});
+      // Cảnh báo (tag Unblockable/Guard Break, hiệu ứng phụ...) vẫn quan trọng
+      // — gửi riêng ephemeral (chỉ người dùng thấy) thay vì embed công khai.
+      if ((pending.autoWarnings ?? []).length > 0) {
+        await interaction.followUp({ content: `⚠️ ${pending.autoWarnings.join("\n⚠️ ")}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
     } else if (subAction === "followup") {
       // Follow-Up không cần Modal nữa (không có field nào khác ngoài target) —
       // thực thi NGAY sau khi chọn target, giống tinh thần "thuần menu UI".
       const { followupEmbed, hitEmbed } = await performFollowUp(channelId, interaction.user.id, interaction.user.toString(), targetStr);
-      await interaction.update({ embeds: [followupEmbed], components: [] }).catch(() => {});
-      await interaction.followUp({ embeds: [hitEmbed] }).catch(() => {});
+      // GAP ĐÃ SỬA (cùng lý do với criticalhit/hit ở trên) — xoá hẳn message
+      // dropdown gốc, KHÔNG còn hitEmbed ("Action đã thêm vào hàng chờ" — cùng
+      // 1 embed y hệt, chỉ khác nguồn gọi) — followupEmbed (thông báo "Đã dùng
+      // Follow-Up/Pounce") gửi như tin nhắn MỚI, không sửa lại message cũ.
+      await interaction.deferUpdate().catch(() => {});
+      await interaction.deleteReply().catch(() => {});
+      const channel = await client.channels.fetch(channelId).catch(() => null);
+      if (channel) await channel.send({ embeds: [followupEmbed] }).catch(() => {});
     }
   } catch (err) {
     log("error", "enctargetSelect", interaction.user?.id ?? "unknown", err.message);
