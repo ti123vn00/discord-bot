@@ -274,6 +274,10 @@ const SKILLS = {
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — hồi 1 <:Light:1513786082502770719>Light`,
       ];
     },
+    // counterEffect — đánh dấu đây LÀ page-counter (dùng qua hệ thống rtparry
+    // khi bị tấn công): thắng minigame phản xạ → counter thành công, gây dmg
+    // dice NGAY + hiệu ứng phụ này lên bản thân người dùng counter.
+    counterEffect: { light: 1 },
   },
   "dodge and strike": {
     name: "Dodge and Strike",
@@ -284,6 +288,7 @@ const SKILLS = {
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash]`,
       ];
     },
+    counterEffect: {},
   },
   "soulburn": {
     name: "Soulburn",
@@ -855,6 +860,14 @@ const SKILLS = {
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — Nếu địch không đánh để né/clash: chém và nhận 2 <:Light:1513786082502770719>Light`,
       ];
     },
+    // counterEffect ĐẶC BIỆT (xác nhận trực tiếp: "nếu counter thành công ->
+    // ngắt đòn kẻ địch rồi sử dụng To Claim Their Bones gây sát thương. Nếu
+    // clash thua -> ăn hết đòn của kẻ địch rồi sau đó sử dụng To Claim Their
+    // Bones") — KHÁC MỌI page-counter khác: mở khoá "To Claim Their Bones" làm
+    // hành động tiếp theo BẤT KỂ THẮNG HAY THUA minigame (alwaysUnlocks) — chỉ
+    // khác là dmg đòn tấn công gốc có bị ngắt (thắng) hay ăn đủ (thua).
+    // noDirectDamage: dice1 không tự gây dmg (chỉ là "né/clash" trigger).
+    counterEffect: { unlocksSkillKey: "to claim their bones", noDirectDamage: true, alwaysUnlocks: true },
   },
   "to claim their bones": {
     name: "To Claim Their Bones", cost: "0 <:Light:1513786082502770719>Light", cd: "Khi Yield My Flesh kích hoạt", diceMul: "1x",
@@ -931,6 +944,7 @@ const SKILLS = {
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — ngắt 4 đòn đánh thường của địch, nhận 2 Protection`,
       ];
     },
+    counterEffect: { protection: 2 },
   },
   "jamadhar": {
     name: "Jamadhar",
@@ -1020,6 +1034,7 @@ const SKILLS = {
         `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
       ];
     },
+    counterEffect: { defenseUp: 5 },
   },
 
   // ── <:Tremor:1513762737388257380>Tremor (Augury) ──
@@ -1653,6 +1668,7 @@ roll(v = "no") {
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Counter] [Undodgeable] — né 4 đòn đánh thường; phản công gây 2 lần sát thương, mỗi lần gây 2 <:Smoke:1513778039610282015>Smoke; rồi gây 1 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
+    counterEffect: { customHitMultiplier: 2, smokePerHit: 2, paralyzeAfter: 1 },
   },
 
   // ── Misc combat skills non status ──
@@ -1690,6 +1706,9 @@ roll(v = "no") {
         `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — đâm sau lưng địch, gây 3 <:Bleed:1513762688226955285>Bleed cho turn sau`,
       ];
     },
+    // "turn sau kích hoạt lại 1 lần" (persist qua round tiếp theo) CHƯA tự
+    // động hoá — GM tạm tự theo dõi phần lặp lại này.
+    counterEffect: { light: 1 },
   },
 
   // ── Coin Trick / Pistol / Summary ──
@@ -4475,6 +4494,16 @@ Object.assign(SKILLS, {
         `${D1} **${d1}** — Ngắt một đòn của kẻ địch thông qua \`-rtparry\`, sau đó nạp **Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra *(nếu \`-rtparry\` thất bại thì vẫn nạp đạn được)*`,
       ];
     },
+    // counterEffect — GAP ĐÃ SỬA (xác nhận trực tiếp: "Tanglecleaver Reload là
+    // page counter nhé, hãy đọc description kỹ") — "Ngắt một đòn của kẻ địch
+    // thông qua -rtparry" khớp CHÍNH XÁC mẫu page-counter (không phải hit:
+    // skill thông thường). alwaysUnlocks: nạp Tigermark Round DÙ THẮNG HAY
+    // THUA minigame (xác nhận trực tiếp: "nếu -rtparry thất bại thì vẫn nạp
+    // đạn được"). noDirectDamage: dice không tự gây dmg phản công (chỉ là
+    // "ngắt đòn" + nạp đạn). loadsTigermarkRound: field ĐẶC BIỆT riêng cho
+    // page này — xử lý ở counterContext handler (index.js), không dùng
+    // unlocksSkillKey/light/protection có sẵn vì hiệu ứng hoàn toàn khác.
+    counterEffect: { alwaysUnlocks: true, noDirectDamage: true, loadsTigermarkRound: true },
   },
 
   // ── Serum K (Singularity) ──
@@ -4670,6 +4699,16 @@ function findSkill(raw) {
   for (const [k, v] of Object.entries(SKILLS)) {
     if (k.includes(key) || (keyStripped && k.includes(keyStripped) && keyStripped.length >= 3)) return v;
   }
+  // 4. GAP ĐÃ SỬA (phát hiện qua test tự động hoá page-counter: "Furūsiyya"
+  // không tìm ra được) — 1 số skill.name có ký tự Latin mở rộng (ū, æ...) mà
+  // KEY trong SKILLS lại dùng chữ cái ASCII thường (VD name "Furūsiyya" nhưng
+  // key "furusiyya") — .toLowerCase() KHÔNG tự bỏ dấu these — cần Unicode
+  // normalize (NFD tách dấu ra khỏi chữ cái gốc rồi strip) làm fallback CUỐI
+  // cùng, sau khi 3 bước tra cứu gốc đã thử hết (tránh phá các trường hợp
+  // dùng chung tên hiển thị nhưng key CỐ Ý khác nhau, VD "Dimensional Rift
+  // Dagger"/"Dimensional Rift Gauntlets" đều trỏ tên "Dimensional Rift").
+  const keyNormalized = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (keyNormalized !== key && SKILLS[keyNormalized]) return SKILLS[keyNormalized];
   return null;
 }
 
