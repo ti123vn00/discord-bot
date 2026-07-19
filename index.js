@@ -1630,6 +1630,14 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         riTarget.currentStamina = Math.max(0, riTarget.currentStamina - Math.round(riTarget.maxStamina * 0.1));
       }
     }
+    // "Tactical Suppression" (Eye Of Horus Critical) — xác nhận trực tiếp:
+    // "Nếu đánh thường trong trạng thái này, tiêu thụ toàn bộ Charge thành
+    // Charge Shield lên bản thân".
+    if (player.tacticalSuppressionActive && (player.charge ?? 0) > 0) {
+      const chargeConsumed = player.charge;
+      player.chargeShieldStack = Math.min(20, (player.chargeShieldStack ?? 0) + chargeConsumed);
+      player.charge = 0;
+    }
     // QUAN TRỌNG: Poise/Charge là "trên bản thân" → lấy từ PLAYER (người tấn công),
     // dùng CHUNG cho mọi target trong AOE (vẫn là 1 người tấn công, 1 lượng Poise).
     // Sinking/Rupture/Burn/Bleed/Tremor là "trên người địch HOẶC player khác (PvP)"
@@ -7424,6 +7432,21 @@ async function resolveOnePendingAction(encounter, p) {
                 verifyNote += ` ☁️[+2 Dark Cloud Stack (hiện ${attacker.combatant.darkCloudOutfitStacks})]`;
               }
             }
+            // "Tactical Suppression" (Eye Of Horus Critical) — xác nhận trực
+            // tiếp: "Khiêu khích toàn bộ kẻ địch, bản thân nhận 50 HP Shield x
+            // Số lượng người trên sân trong 2 Turn. Heal lại lượng máu = Lượng
+            // HP Shield hao hụt sau 2 turn." — "Khiêu khích" KHÔNG tự động hoá
+            // được (hệ thống này GM tự chọn target khi tấn công, không có AI
+            // ép buộc target) — chỉ là flavor text hiển thị, GM tự lưu ý.
+            if (p.skillKey === "tactical suppression") {
+              const totalPeopleOnField = Object.keys(encounter.enemies).length + Object.keys(encounter.players).length;
+              const shieldGranted = 50 * totalPeopleOnField;
+              attacker.combatant.shieldHp = (attacker.combatant.shieldHp ?? 0) + shieldGranted;
+              attacker.combatant.tacticalSuppressionActive = true;
+              attacker.combatant.tacticalSuppressionTurnsLeft = 2;
+              attacker.combatant.tacticalSuppressionShieldGranted = shieldGranted;
+              verifyNote += ` 🛡️[Tactical Suppression: +${shieldGranted} Shield HP (${totalPeopleOnField} người × 50), 2 turn]`;
+            }
             if (p.emotionDelta) {
               const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta);
               verifyNote += ` [Coin ${p.emotionDelta >= 0 ? "+" : ""}${p.emotionDelta}]`;
@@ -7789,163 +7812,60 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       // fixedBurst — vẫn là kind "attack") GIỮ NGUYÊN ghép nhóm theo weapon
       // weight cũ — mọi hit M1 cùng vũ khí LUÔN cùng tag, hỏi riêng từng hit
       // chỉ tổ rườm rà vô ích (20 hit Light weapon = 20 lần hỏi, quá tệ).
-      if (!isM1Type) {
-        t.perHitBypass = t.perHitBypass ?? parsePerHitBypass(p.skillRollEmbed?.description, p.tags, hitCount);
-        t.perHitChoices = t.perHitChoices ?? new Array(hitCount).fill(null);
-        const currentHitIdx = t.perHitChoices.findIndex(c => c === null);
-        if (currentHitIdx === -1) {
-          // Tất cả hit đã có quyết định — coi target này đã phản hồi xong,
-          // resolveOnePendingAction sẽ tự đọc t.perHitChoices để tính dmg.
-          if (!p.reactedTargetIds.includes(t.targetId)) p.reactedTargetIds.push(t.targetId);
-          continue;
-        }
-        const thisHitBypass = t.perHitBypass[currentHitIdx];
-        const opts = computeDefenseOptions(target, attackerWeapon, 1, isM1Type, thisHitBypass, false);
-
-        // Counter/Clash — CHỈ hiện ở hit ĐẦU TIÊN chưa quyết định (ảnh hưởng
-        // TOÀN BỘ đòn, không phải riêng 1 hit — cho phép chọn ở hit giữa chừng
-        // sẽ mâu thuẫn với các hit đã quyết định trước đó).
-        const isFirstUndecidedHit = currentHitIdx === t.perHitChoices.findIndex(c => c === null) && !t.perHitChoices.some(c => c !== null);
-        const availableCounterPages = [];
-        if (isFirstUndecidedHit) {
-          const addedCounterKeys = new Set();
-          for (const pageName of (target.unlockedPagesSnapshot ?? [])) {
-            const pageSkill = findSkill(pageName);
-            if (!pageSkill || !pageSkill.counterEffect) continue;
-            const pageKey = pageName.trim().toLowerCase();
-            if (addedCounterKeys.has(pageKey)) continue;
-            if ((target.skillCooldowns?.[pageKey] ?? 0) > 0) continue;
-            const cost = parseSkillCost(pageSkill.cost);
-            if ((target.currentLight ?? 0) < (cost.light ?? 0)) continue;
-            addedCounterKeys.add(pageKey);
-            availableCounterPages.push({ key: pageKey, name: pageSkill.name, lightCost: cost.light ?? 0 });
-          }
-        }
-        const canClash = isFirstUndecidedHit && !isM1Type && !thisHitBypass.unclashable
-          && (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
-        const canClashGeneral = isFirstUndecidedHit && !isM1Type && !thisHitBypass.unclashable;
-
-        const isEnemyTarget = targetResolved.type === "enemy";
-        let sendChannel = channel;
-        let mentionText = `<@${t.targetId}>`;
-        if (isEnemyTarget) {
-          mentionText = `<@${encounter.gmId}>`;
-          if (encounter.gmChannelId) {
-            const gmChannel = await client.channels.fetch(encounter.gmChannelId).catch(() => null);
-            if (gmChannel) sendChannel = gmChannel;
-          }
-        }
-
-        // hitIdx (currentHitIdx) LUÔN có mặt trong customId — vị trí CUỐI
-        // cùng, giữ nguyên format cũ cho counter/clash (không phá customId đã
-        // có sẵn, chỉ thêm 1 phần tử mới ở cuối).
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:guard:${currentHitIdx}`)
-            .setLabel(`🛡️ Guard (-${opts.guard.cost} Sta)`)
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(!opts.guard.available),
-          new ButtonBuilder()
-            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:evade:${currentHitIdx}`)
-            .setLabel(`💨 Evade (-${opts.evade.cost} Sta)`)
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(!opts.evade.available),
-          new ButtonBuilder()
-            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:parry:${currentHitIdx}`)
-            .setLabel(`🗡️ Parry`)
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(!opts.parry.available),
-          new ButtonBuilder()
-            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:none:${currentHitIdx}`)
-            .setLabel(`❌ Không phòng thủ`)
-            .setStyle(ButtonStyle.Danger),
-        );
-
-        const counterRows = [];
-        for (let i = 0; i < availableCounterPages.length; i += 5) {
-          const chunk = availableCounterPages.slice(i, i + 5);
-          counterRows.push(new ActionRowBuilder().addComponents(
-            ...chunk.map(cp => new ButtonBuilder()
-              .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:counter:${cp.key}`)
-              .setLabel(`⚔️ ${cp.name} (Counter)`)
-              .setStyle(ButtonStyle.Success)),
-          ));
-        }
-        if (canClash) {
-          counterRows.push(new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:clash:${t.targetId}`)
-              .setLabel(`⚔️ Clash (Speed cao hơn)`)
-              .setStyle(ButtonStyle.Primary),
-          ));
-        }
-
-        const dmgPreview = t.preview?.totalDmg?.toFixed(3) ?? "?";
-        const tagNote = [thisHitBypass.blockGuard && "Unblockable", thisHitBypass.blockEvade && "Undodgeable", thisHitBypass.blockParry && "Unparriable"].filter(Boolean);
-        await sendChannel.send({
-          content: mentionText,
-          embeds: [{
-            title: `⚔️ Đang bị tấn công! — Hit ${currentHitIdx + 1}/${hitCount}`,
-            description: `${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\` (dự kiến **${dmgPreview}** dmg tổng nếu không phòng thủ)${tagNote.length > 0 ? `\n> Hit này có tag: ${tagNote.join(", ")}` : ""}\n> ${isEnemyTarget ? "Enemy" : "Bạn"} có **${target.currentStamina} Stamina**. Chọn phòng thủ cho hit này:`,
-            color: 0xe67e22,
-          }],
-          components: [row, ...counterRows],
-        }).catch(() => {});
-
-        if (canClashGeneral) {
-          await sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, attacker, isM1Type);
-        }
-        await sendYourShieldPrompts(encounter, channelId, channel, p, t, attacker);
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "guard/evade/parry m1 không như tôi bảo
+      // bạn... medium weapon đánh 6 hit, thì hãy group lại... group nó lại
+      // thành 3 lần hỏi người dùng để họ tự ý chọn đỡ hit nào thì dỡ hoặc né
+      // giữa chừng chứ không phải 1 lần là bắt guard thì guard cả 3, né thì
+      // né cả 3") — REDESIGN THỐNG NHẤT: bỏ hẳn nhánh M1 riêng (dùng
+      // dropdown-chọn-nhóm cũ, chỉ cho phép 1 loại phòng thủ áp dụng cho toàn
+      // bộ) — giờ M1/Skill/Critical/Eye Of Horus DÙNG CHUNG 1 hệ thống
+      // group-based looping: groupSize = hitsPerCharge (Skill/Critical=1 —
+      // hành vi CŨ không đổi; M1=theo weapon weight, VD medium=2; Eye Of Horus
+      // fixedBurst=9 — tự động thành ĐÚNG 1 nhóm vì 9 hit/9-hit-per-charge=1,
+      // không cần tách riêng nữa). Mỗi NHÓM hỏi riêng, lặp tự động, mỗi nhóm
+      // chọn ĐỘC LẬP (mix Guard/Evade/Parry/Không phòng thủ tuỳ ý giữa các
+      // nhóm) — đúng tinh thần "group 3 lần hỏi, không phải 1 lần áp cho cả 3".
+      const hitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : 1);
+      const groupCount = Math.ceil(hitCount / hitsPerCharge);
+      t.perHitBypass = t.perHitBypass ?? parsePerHitBypass(p.skillRollEmbed?.description, p.tags, groupCount);
+      t.perHitChoices = t.perHitChoices ?? new Array(groupCount).fill(null);
+      const currentGroupIdx = t.perHitChoices.findIndex(c => c === null);
+      if (currentGroupIdx === -1) {
+        // Tất cả nhóm đã có quyết định — coi target này đã phản hồi xong,
+        // resolveOnePendingAction sẽ tự đọc t.perHitChoices để tính dmg.
+        if (!p.reactedTargetIds.includes(t.targetId)) p.reactedTargetIds.push(t.targetId);
         continue;
       }
+      const thisGroupBypass = t.perHitBypass[currentGroupIdx];
+      // Nhóm CUỐI có thể có ÍT hit hơn hitsPerCharge (VD 6 hit/nhóm 4-hit Light
+      // → nhóm cuối chỉ còn 2 hit) — dùng đúng số hit THẬT của nhóm này để tính
+      // cost chính xác (không phải LUÔN hitsPerCharge).
+      const hitsInThisGroup = Math.min(hitsPerCharge, hitCount - currentGroupIdx * hitsPerCharge);
+      const opts = computeDefenseOptions(target, attackerWeapon, hitsInThisGroup, isM1Type, thisGroupBypass, false);
 
-      // M1 (Đánh thường, isM1Type=true — bao gồm CẢ Eye Of Horus fixedBurst
-      // vẫn là kind "attack") — GIỮ NGUYÊN ghép nhóm theo weapon weight cũ
-      // (Light=4/charge, Medium=2/charge, Heavy=1/charge, Eye Of Horus=9/charge
-      // riêng) — xác nhận trực tiếp: "20 hit của light weapon... nên nhóm 4
-      // lần m1 của light weapon thành 1", vì mọi hit M1 LUÔN cùng tag (không
-      // như skill.roll() có thể khác tag mỗi dòng), hỏi riêng từng hit chỉ
-      // tổ rườm rà vô ích cho các đòn nhiều hit.
-      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
-
-      // Page-counter (xác nhận trực tiếp: "khi player bấm chọn vào page
-      // counter thì sẽ mở ra 1 phần ephemeral link tới web rtparry, thành công
-      // thì counter thành công, không thì thất bại") — tìm TẤT CẢ page counter
-      // target đang trang bị, CHƯA hết CD, ĐỦ Light. "counterEffect"
-      // (skills.js) là dấu hiệu skill đó LÀ page-counter.
+      // Counter/Clash — CHỈ hiện ở nhóm ĐẦU TIÊN chưa quyết định (ảnh hưởng
+      // TOÀN BỘ đòn, không phải riêng 1 nhóm — cho phép chọn ở nhóm giữa chừng
+      // sẽ mâu thuẫn với các nhóm đã quyết định trước đó).
+      const isFirstUndecidedGroup = !t.perHitChoices.some(c => c !== null);
       const availableCounterPages = [];
-      const addedCounterKeys = new Set();
-      for (const pageName of (target.unlockedPagesSnapshot ?? [])) {
-        const pageSkill = findSkill(pageName);
-        if (!pageSkill || !pageSkill.counterEffect) continue;
-        const pageKey = pageName.trim().toLowerCase();
-        if (addedCounterKeys.has(pageKey)) continue; // GAP ĐÃ SỬA: tránh 2 button TRÙNG customId nếu equip cùng tên vào 2 slot
-        if ((target.skillCooldowns?.[pageKey] ?? 0) > 0) continue;
-        const cost = parseSkillCost(pageSkill.cost);
-        if ((target.currentLight ?? 0) < (cost.light ?? 0)) continue;
-        addedCounterKeys.add(pageKey);
-        availableCounterPages.push({ key: pageKey, name: pageSkill.name, lightCost: cost.light ?? 0 });
+      if (isFirstUndecidedGroup) {
+        const addedCounterKeys = new Set();
+        for (const pageName of (target.unlockedPagesSnapshot ?? [])) {
+          const pageSkill = findSkill(pageName);
+          if (!pageSkill || !pageSkill.counterEffect) continue;
+          const pageKey = pageName.trim().toLowerCase();
+          if (addedCounterKeys.has(pageKey)) continue;
+          if ((target.skillCooldowns?.[pageKey] ?? 0) > 0) continue;
+          const cost = parseSkillCost(pageSkill.cost);
+          if ((target.currentLight ?? 0) < (cost.light ?? 0)) continue;
+          addedCounterKeys.add(pageKey);
+          availableCounterPages.push({ key: pageKey, name: pageSkill.name, lightCost: cost.light ?? 0 });
+        }
       }
-
-      // "Clash" responsive (xác nhận trực tiếp: "khi bị đòn skill/page có dice
-      // đánh thì nếu có speed cao hơn thì sẽ có thể tiến hành bấm nút clash, ở
-      // đó sẽ hiện ra page/critical bản thân có thể dùng để clash nếu có đủ
-      // "Clash" responsive (xác nhận trực tiếp: "khi bị đòn skill/page có dice
-      // đánh thì nếu có speed cao hơn thì sẽ có thể tiến hành bấm nút clash...")
-      // — CHỈ cho đòn skill/page (không phải M1), skill đó KHÔNG có
-      // [Unclashable], VÀ target speed CAO HƠN attacker speed.
-      const canClash = !isM1Type && !bypass.unclashable
+      const canClash = isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable
         && (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
-      // canClashGeneral: điều kiện CHUNG (không phụ thuộc target cụ thể) để
-      // biết có nên quét toàn bộ combatant khác tìm người "Clash hộ" hay
-      // không — mỗi combatant tự so speed riêng ở vòng lặp bên dưới.
-      const canClashGeneral = !isM1Type && !bypass.unclashable;
+      const canClashGeneral = isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable;
 
-      // Enemy target (player tấn công enemy): route reactive prompt TỚI kênh GM
-      // control panel nếu đã link (`-encounter linkgm`) — enemy không có tài
-      // khoản Discord riêng nên GM luôn là người bấm thay, hợp lý gửi thẳng vào
-      // "buồng lái" của GM thay vì kênh encounter chính (tránh trôi chat encounter
-      // NGƯỢC LẠI với lý do tách kênh ban đầu).
       const isEnemyTarget = targetResolved.type === "enemy";
       let sendChannel = channel;
       let mentionText = `<@${t.targetId}>`;
@@ -7957,30 +7877,30 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         }
       }
 
+      // groupIdx (currentGroupIdx) LUÔN có mặt trong customId — vị trí CUỐI
+      // cùng, giữ nguyên format cũ cho counter/clash.
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:guard`)
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:guard:${currentGroupIdx}`)
           .setLabel(`🛡️ Guard (-${opts.guard.cost} Sta)`)
           .setStyle(ButtonStyle.Primary)
           .setDisabled(!opts.guard.available),
         new ButtonBuilder()
-          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:evade`)
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:evade:${currentGroupIdx}`)
           .setLabel(`💨 Evade (-${opts.evade.cost} Sta)`)
           .setStyle(ButtonStyle.Primary)
           .setDisabled(!opts.evade.available),
         new ButtonBuilder()
-          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:parry`)
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:parry:${currentGroupIdx}`)
           .setLabel(`🗡️ Parry`)
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(!opts.parry.available),
         new ButtonBuilder()
-          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:none`)
+          .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:none:${currentGroupIdx}`)
           .setLabel(`❌ Không phòng thủ`)
           .setStyle(ButtonStyle.Danger),
       );
 
-      // Page-counter — mỗi row Discord tối đa 5 button, row chính đã đủ 4
-      // (Guard/Evade/Parry/Không phòng thủ) nên counter đi row(s) RIÊNG.
       const counterRows = [];
       for (let i = 0; i < availableCounterPages.length; i += 5) {
         const chunk = availableCounterPages.slice(i, i + 5);
@@ -7991,8 +7911,6 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
             .setStyle(ButtonStyle.Success)),
         ));
       }
-      // "Clash" — 1 nút riêng (bấm xong mới hiện dropdown chọn skill cụ thể,
-      // không biết trước skill nào nên không thể gộp chung nút như counter).
       if (canClash) {
         counterRows.push(new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -8003,30 +7921,26 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       }
 
       const dmgPreview = t.preview?.totalDmg?.toFixed(3) ?? "?";
+      const tagNote = [thisGroupBypass.blockGuard && "Unblockable", thisGroupBypass.blockEvade && "Undodgeable", thisGroupBypass.blockParry && "Unparriable"].filter(Boolean);
+      const groupHitRangeStart = currentGroupIdx * hitsPerCharge + 1;
+      const groupHitRangeEnd = groupHitRangeStart + hitsInThisGroup - 1;
+      const hitRangeLabel = hitsInThisGroup > 1 ? `Hit ${groupHitRangeStart}-${groupHitRangeEnd}` : `Hit ${groupHitRangeStart}`;
       await sendChannel.send({
         content: mentionText,
         embeds: [{
-          title: "⚔️ Đang bị tấn công!",
-          description: `${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\` (${hitCount} hit, dự kiến **${dmgPreview}** dmg nếu không phòng thủ)\n> ${isEnemyTarget ? "Enemy" : "Bạn"} có **${target.currentStamina} Stamina**. Chọn phòng thủ:`,
+          title: `⚔️ Đang bị tấn công! — ${hitRangeLabel}/${hitCount} (Nhóm ${currentGroupIdx + 1}/${groupCount})`,
+          description: `${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\` (dự kiến **${dmgPreview}** dmg tổng nếu không phòng thủ)${tagNote.length > 0 ? `\n> Nhóm này có tag: ${tagNote.join(", ")}` : ""}\n> ${isEnemyTarget ? "Enemy" : "Bạn"} có **${target.currentStamina} Stamina**. Chọn phòng thủ cho nhóm hit này:`,
           color: 0xe67e22,
-          footer: { text: opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}` : (isEnemyTarget ? "" : "GM cũng có thể bấm thay nếu bạn không phản hồi được.") },
         }],
         components: [row, ...counterRows],
       }).catch(() => {});
 
-      // GAP ĐÃ SỬA (xác nhận trực tiếp: "bất kỳ ai speed cao hơn attacker đều
-      // được hiện nút Clash cho MỌI đòn skill/page trong encounter, không phải
-      // chỉ riêng mục tiêu" — ví dụ cụ thể: A/C cùng team, C tấn công B, A vẫn
-      // Clash THAY cho B được nếu speed cao hơn C) — với MỖI target của đòn
-      // này, tìm TẤT CẢ combatant KHÁC (không phải target đó, không phải chính
-      // attacker) có speed cao hơn attacker, gửi họ 1 prompt RIÊNG (chỉ 1 nút
-      // Clash-thay-cho, không có Guard/Evade/Parry/Counter vì họ không phải
-      // người chịu dmg trực tiếp). Dùng canClashGeneral (không phụ thuộc
-      // target cụ thể) vì mỗi combatant tự so speed riêng bên trong vòng lặp.
       if (canClashGeneral) {
         await sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, attacker, isM1Type);
       }
       await sendYourShieldPrompts(encounter, channelId, channel, p, t, attacker);
+      continue;
+
     }
     // Nếu MỌI target trong đòn đều dmg=0 (toàn bộ bị auto-skip ở trên, không ai
     // được gửi prompt nào) — không còn ai để chờ, resolve NGAY thay vì để pending
@@ -8742,127 +8656,102 @@ client.on("interactionCreate", async (interaction) => {
         // light weapon... nên nhóm 4 lần m1 thành 1") — per-hit CHỈ áp dụng cho
         // skill/Critical/Page — M1 (isM1Type=true, bao gồm Eye Of Horus
         // fixedBurst) GIỮ NGUYÊN ghép nhóm theo weapon weight cũ.
-        if (isM1Type) {
-          const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
-          const groupCount = Math.ceil(hitCount / opts.hitsPerCharge);
-          if ((choice === "guard" || choice === "evade") && groupCount > 1 && groupCount <= 25) {
-            const maxAffordable = choice === "guard" ? opts.maxAffordableGuardCharges : opts.maxAffordableEvadeCharges;
-            if (maxAffordable <= 0) {
-              throw new Error(choice === "guard"
-                ? `Không đủ Stamina để Guard dù chỉ 1 nhóm hit (cần ${opts.guard.costPerCharge}, hiện có ${target.currentStamina}).`
-                : (opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade dù chỉ 1 nhóm hit (cần ${opts.evade.costPerCharge}, hiện có ${target.currentStamina}).`));
-            }
-            showHitPicker = {
-              maxAffordable, hitCount, groupCount, hitsPerCharge: opts.hitsPerCharge, choice,
-              costPerCharge: choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge,
-            };
-            return;
-          }
-          let choiceNote = "";
-          if (choice === "guard") {
-            if (!opts.guard.available) throw new Error(`Không đủ Stamina để Guard (cần ${opts.guard.cost}, hiện có ${target.currentStamina}).`);
-            target.currentStamina -= opts.guard.cost;
-            target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
-            if (target.hasIronHorus) target.ironHorusGuardActiveThisTurn = true;
-            if (targetResolved.type === "player") target.prescriptBlocked = true;
-            if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-            choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
-          } else if (choice === "evade") {
-            if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
-            target.currentStamina -= opts.evade.cost;
-            target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
-            if (opts.evade.cost === 0 && (target.lightDashFreeEvadeCharges ?? 0) > 0) target.lightDashFreeEvadeCharges -= 1;
-            if (targetResolved.type === "player") target.prescriptEvaded = true;
-            if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-            choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}`;
-          } else if (choice === "parry") {
-            if (!opts.parry.available) throw new Error("Parry bị khoá cho đòn này (Unparriable).");
-            target.parryRolls = target.parryRolls ?? [];
-            const penalty = getParryClashPenalty(target);
-            for (let i = 0; i < opts.chargesNeeded; i++) {
-              const rawRoll = 1 + Math.floor(Math.random() * 20);
-              target.parryRolls.push(rawRoll - penalty);
-            }
-            if (targetResolved.type === "player") target.prescriptParried = true;
-            if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-            const dullahanDmg = applyDullahanParryCounter(target, attacker.combatant);
-            if (dullahanDmg !== null) target.dullahanParriedThisTurn = true;
-            choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)${dullahanDmg !== null ? ` + [Dullahan: đánh thường trả đũa -${dullahanDmg.toFixed(3)} HP]` : ""}`;
-          } else {
-            choiceNote = "❌ Không phòng thủ";
-          }
-          const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, interaction.user.toString());
-          resultText = finalized.resultText;
-          stillWaitingFor = finalized.stillWaitingFor;
-          return;
+        // GAP ĐÃ SỬA (xác nhận trực tiếp: "guard/evade/parry m1 không như tôi
+        // bảo bạn... medium weapon đánh 6 hit, thì hãy group lại... group nó
+        // lại thành 3 lần hỏi người dùng để họ tự ý chọn đỡ hit nào... chứ
+        // không phải 1 lần là bắt guard thì guard cả 3, né thì né cả 3") —
+        // REDESIGN THỐNG NHẤT: bỏ hẳn nhánh M1 riêng (dropdown "chọn nhóm hit"
+        // showHitPicker — chỉ cho 1 loại phòng thủ áp dụng cho TOÀN BỘ hành
+        // động) — giờ M1/Skill/Critical/Eye Of Horus dùng CHUNG hệ thống
+        // per-NHÓM (groupSize = hitsPerCharge: Skill/Critical=1 hit/nhóm —
+        // hành vi cũ giữ nguyên; M1=theo weapon weight VD medium=2; Eye Of
+        // Horus fixedBurst=9 — tự động thành đúng 1 nhóm). Mỗi nhóm hỏi riêng,
+        // lặp tự động, MỖI NHÓM CHỌN ĐỘC LẬP (mix Guard/Evade/Parry/Không
+        // phòng thủ tuỳ ý giữa các nhóm khác nhau).
+        const hitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : 1);
+        const groupCount = Math.ceil(hitCount / hitsPerCharge);
+        const groupIdx = parseInt(counterSkillKeyOrHitIdx, 10);
+        t.perHitBypass = t.perHitBypass ?? parsePerHitBypass(p.skillRollEmbed?.description, p.tags, groupCount);
+        t.perHitChoices = t.perHitChoices ?? new Array(groupCount).fill(null);
+        if (!Number.isFinite(groupIdx) || groupIdx < 0 || groupIdx >= groupCount || t.perHitChoices[groupIdx] !== null) {
+          throw new Error("Nhóm hit này đã được quyết định rồi hoặc không hợp lệ — dùng lại bảng phản ứng mới nhất.");
         }
-
-        // ── PER-HIT FLOW MỚI (chỉ skill/Critical/Page — không phải M1) ──
-        const hitIdx = parseInt(counterSkillKeyOrHitIdx, 10);
-        t.perHitBypass = t.perHitBypass ?? parsePerHitBypass(p.skillRollEmbed?.description, p.tags, hitCount);
-        t.perHitChoices = t.perHitChoices ?? new Array(hitCount).fill(null);
-        if (!Number.isFinite(hitIdx) || hitIdx < 0 || hitIdx >= hitCount || t.perHitChoices[hitIdx] !== null) {
-          throw new Error("Hit này đã được quyết định rồi hoặc không hợp lệ — dùng lại bảng phản ứng mới nhất.");
-        }
-        const thisHitBypass = t.perHitBypass[hitIdx];
-        const opts = computeDefenseOptions(target, attackerWeapon, 1, isM1Type, thisHitBypass, false);
+        const thisGroupBypass = t.perHitBypass[groupIdx];
+        const hitsInThisGroup = Math.min(hitsPerCharge, hitCount - groupIdx * hitsPerCharge);
+        const opts = computeDefenseOptions(target, attackerWeapon, hitsInThisGroup, isM1Type, thisGroupBypass, false);
+        // Danh sách hit THẬT (1-based) trong nhóm này — ghi TOÀN BỘ vào
+        // *HitSelections thay vì chỉ 1 index, để resolveOnePendingAction áp
+        // đúng lựa chọn cho CẢ NHÓM (không phải chỉ 1 hit lẻ).
+        const realHitIndices = [];
+        for (let i = 0; i < hitsInThisGroup; i++) realHitIndices.push(groupIdx * hitsPerCharge + i + 1);
         let choiceNote = "";
         if (choice === "guard") {
-          if (!opts.guard.available) throw new Error(`Không đủ Stamina để Guard hit này (cần ${opts.guard.cost}, hiện có ${target.currentStamina}).`);
+          if (!opts.guard.available) throw new Error(`Không đủ Stamina để Guard nhóm này (cần ${opts.guard.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.guard.cost;
-          target.guardCharges = (target.guardCharges ?? 0) + 1;
-          // GAP ĐÃ SỬA (xác nhận trực tiếp: "hit 1 né, hit 2 guard, hit 3
-          // né/parry" — cho phép MIX nhiều loại khác nhau giữa các hit) — ghi
-          // ĐÚNG hitIdx vào guardHitSelections (không chỉ tăng charge suông) để
-          // resolveOnePendingAction áp ĐÚNG hit này, không theo thứ tự tuần tự
-          // Evade→Parry→Guard cố định như trước.
+          target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
           target.guardHitSelections = target.guardHitSelections ?? [];
-          target.guardHitSelections.push(hitIdx + 1);
+          target.guardHitSelections.push(...realHitIndices);
           if (target.hasIronHorus) target.ironHorusGuardActiveThisTurn = true;
           if (targetResolved.type === "player") target.prescriptBlocked = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-          choiceNote = `🛡️ Guard`;
+          choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
+          // "Tactical Suppression" (Eye Of Horus Critical) — xác nhận trực
+          // tiếp: "Nếu Block trong trạng thái này, húc vào 1 kẻ địch và kích
+          // hoạt Tremor Burst cùng Tremor Reverb lên người kẻ địch" — "1 kẻ
+          // địch" = chính attacker đang bị Guard/Block ở đây (ngữ cảnh tự
+          // nhiên nhất: đang Guard đòn của ai thì "húc" thẳng vào người đó).
+          if (target.tacticalSuppressionActive) {
+            const tsAtk = attacker.combatant;
+            const tsResult = calcMathCore({
+              dmgStr: "0B+TremorBurst", resStr: combatantResStr(tsAtk),
+              tremorInit: tsAtk.tremor ?? 0, tremorReverbStacks: tsAtk.tremorReverb ?? 0,
+            });
+            tsAtk.currentHp = Math.max(0, tsAtk.currentHp - tsResult.totalDmg);
+            tsAtk.currentStamina = Math.max(0, tsAtk.currentStamina - tsResult.totalTremorStaminaLoss);
+            tsAtk.tremor = tsResult.finalTremor;
+            tsAtk.tremorReverb = Math.min(TREMOR_VARIANT_MAX, (tsAtk.tremorReverb ?? 0) + 1);
+            choiceNote += ` + [Tactical Suppression: húc ${attacker.label}, Tremor Burst -${tsResult.totalTremorStaminaLoss} Sta/-${tsResult.totalDmg.toFixed(3)} HP, +1 Tremor Reverb]`;
+          }
         } else if (choice === "evade") {
-          if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade hit này (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
+          if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade nhóm này (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.evade.cost;
-          target.evadeCharges = (target.evadeCharges ?? 0) + 1;
+          target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
           target.evadeHitSelections = target.evadeHitSelections ?? [];
-          target.evadeHitSelections.push(hitIdx + 1);
+          target.evadeHitSelections.push(...realHitIndices);
           if (opts.evade.cost === 0 && (target.lightDashFreeEvadeCharges ?? 0) > 0) target.lightDashFreeEvadeCharges -= 1;
           if (targetResolved.type === "player") target.prescriptEvaded = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-          choiceNote = `💨 Evade${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}`;
+          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}`;
         } else if (choice === "parry") {
-          if (!opts.parry.available) throw new Error("Parry bị khoá cho hit này (Unparriable).");
+          if (!opts.parry.available) throw new Error("Parry bị khoá cho nhóm này (Unparriable).");
           target.parryRolls = target.parryRolls ?? [];
-          const penalty = getParryClashPenalty(target);
-          const rawRoll = 1 + Math.floor(Math.random() * 20);
-          target.parryRolls.push(rawRoll - penalty);
-          // parryHitSelections (MỚI — Parry trước đây KHÔNG có cơ chế "chọn hit
-          // cụ thể" nào, chỉ xử lý tuần tự sau Evade — giờ thêm để đối xứng với
-          // evadeHitSelections/guardHitSelections, hỗ trợ mix đúng theo từng hit).
           target.parryHitSelections = target.parryHitSelections ?? [];
-          target.parryHitSelections.push(hitIdx + 1);
+          const penalty = getParryClashPenalty(target);
+          for (let i = 0; i < opts.chargesNeeded; i++) {
+            const rawRoll = 1 + Math.floor(Math.random() * 20);
+            target.parryRolls.push(rawRoll - penalty);
+          }
+          target.parryHitSelections.push(...realHitIndices);
           if (targetResolved.type === "player") target.prescriptParried = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
           const dullahanDmg = applyDullahanParryCounter(target, attacker.combatant);
-            if (dullahanDmg !== null) target.dullahanParriedThisTurn = true;
-          choiceNote = `🗡️ Parry (1 roll, 0 Sta)${dullahanDmg !== null ? ` + [Dullahan: đánh thường trả đũa -${dullahanDmg.toFixed(3)} HP]` : ""}`;
+          if (dullahanDmg !== null) target.dullahanParriedThisTurn = true;
+          choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)${dullahanDmg !== null ? ` + [Dullahan: đánh thường trả đũa -${dullahanDmg.toFixed(3)} HP]` : ""}`;
         } else {
           choiceNote = "❌ Không phòng thủ";
         }
-        t.perHitChoices[hitIdx] = choiceNote;
+        t.perHitChoices[groupIdx] = choiceNote;
         await saveEncounter(channelId, encounter);
 
         if (t.perHitChoices.some(c => c === null)) {
-          // Còn hit chưa quyết định — KHÔNG finalize, sẽ gửi prompt hit tiếp
+          // Còn nhóm chưa quyết định — KHÔNG finalize, sẽ gửi prompt nhóm tiếp
           // theo sau khi thoát withLock (tránh gọi sendReactiveDefensePrompt —
           // hàm này tự getEncounter/withLock riêng — TRONG lock hiện tại).
           needsNextHitPrompt = true;
-          resultText = `Đã ghi nhận: ${choiceNote} cho hit ${hitIdx + 1}/${hitCount}.`;
+          resultText = `Đã ghi nhận: ${choiceNote} cho nhóm ${groupIdx + 1}/${groupCount} (hit ${realHitIndices[0]}${realHitIndices.length > 1 ? `-${realHitIndices[realHitIndices.length - 1]}` : ""}/${hitCount}).`;
           return;
         }
-        // Tất cả hit đã quyết định — finalize như bình thường.
+        // Tất cả nhóm đã quyết định — finalize như bình thường.
         const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, `Đã chọn phòng thủ riêng cho từng hit (${hitCount} hit).`, interaction.user.toString());
         resultText = finalized.resultText;
         stillWaitingFor = finalized.stillWaitingFor;
@@ -8873,34 +8762,6 @@ client.on("interactionCreate", async (interaction) => {
           components: [],
         }).catch(() => {});
         await sendReactiveDefensePrompt(channelId, pendingId);
-        return;
-      }
-      if (showHitPicker) {
-        const { maxAffordable, hitCount, groupCount, hitsPerCharge, choice: pickerChoice, costPerCharge } = showHitPicker;
-        // GAP ĐÃ SỬA (xác nhận trực tiếp) — mỗi option giờ là 1 NHÓM hit (VD "Hit
-        // 1-4" cho light weapon, hitsPerCharge=4) thay vì từng hit lẻ — value
-        // encode toàn bộ range "start-end" để handler tiếp theo tự expand đúng.
-        const hitOptions = Array.from({ length: groupCount }, (_, i) => {
-          const startHit = i * hitsPerCharge + 1;
-          const endHit = Math.min((i + 1) * hitsPerCharge, hitCount);
-          const label = startHit === endHit ? `Hit ${startHit}` : `Hit ${startHit}-${endHit}`;
-          return new StringSelectMenuOptionBuilder().setLabel(label).setValue(`${startHit}-${endHit}`);
-        });
-        await interaction.update({
-          embeds: [{
-            title: `${pickerChoice === "guard" ? "🛡️" : "💨"} Chọn nhóm hit muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}`,
-            description: `Đòn này có **${hitCount} hit** (${hitsPerCharge} hit/charge) — chọn tối đa **${maxAffordable} nhóm** (${costPerCharge} Sta/nhóm) muốn ${pickerChoice === "guard" ? "Guard" : "Evade"}, nhóm còn lại sẽ ăn dmg thật.`,
-            color: 0x3498db,
-          }],
-          components: [new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId(`encreactivehits:${channelId}:${pendingId}:${targetId}:${pickerChoice}`)
-              .setPlaceholder("Chọn nhóm hit...")
-              .setMinValues(1)
-              .setMaxValues(maxAffordable)
-              .addOptions(...hitOptions),
-          )],
-        }).catch(() => {});
         return;
       }
       await interaction.update({
@@ -8921,84 +8782,6 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ─── SELECT MENU INTERACTIONS (encreactivehits — chọn hit cụ thể cho Guard/Evade,
-// xác nhận trực tiếp qua ảnh chụp thật: "hệ thống tùy chọn né theo từng hit...
-// nhận hit 1 và 2 nhưng né/guard hit 3") ──────────────────────────────────────
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isStringSelectMenu()) return;
-  if (!interaction.customId.startsWith("encreactivehits:")) return;
-  const [, channelId, pendingId, targetId, choice] = interaction.customId.split(":");
-  try {
-    let resultText = null;
-    let stillWaitingFor = null;
-    let encounterSnapshot = null;
-    await withLock(encounterKey(channelId), async () => {
-      const encounter = await getEncounter(channelId);
-      encounterSnapshot = encounter;
-      if (!encounter) throw new Error("Encounter không còn tồn tại.");
-      const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
-      if (!p) throw new Error("Action này đã được xử lý rồi.");
-      const isAdmin = ADMIN_IDS.has(interaction.user.id);
-      if (interaction.user.id !== targetId && !isAdmin && interaction.user.id !== encounter.gmId) {
-        throw new Error("Chỉ người bị tấn công (hoặc GM) mới được chọn phòng thủ này.");
-      }
-      if (p.reactedTargetIds?.includes(targetId)) {
-        throw new Error("Bạn đã chọn phòng thủ cho đòn này rồi.");
-      }
-      const targetResolved = resolveCombatant(encounter, targetId);
-      if (!targetResolved) throw new Error("Không tìm thấy target.");
-      const target = targetResolved.combatant;
-      const attacker = resolveCombatant(encounter, p.attackerId);
-      if (!attacker) throw new Error("Không tìm thấy attacker.");
-      const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
-      const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
-      const bypass = p.defenseBypass ?? {};
-      const t = p.targets.find(tg => tg.targetId === targetId);
-      const hitCount = Math.max(1, t?.preview?.dmgValues?.length ?? 1);
-      const opts = computeDefenseOptions(target, attackerWeapon, hitCount, isM1Type, bypass, p.isEyeOfHorusFixedBurst);
-      // GAP ĐÃ SỬA (xác nhận trực tiếp: gộp theo nhóm hitsPerCharge) — value giờ
-      // là "start-end" (VD "1-4") thay vì 1 số hit đơn lẻ — expand ra đầy đủ
-      // từng hit trong nhóm. Chi phí tính theo SỐ NHÓM đã chọn (mỗi nhóm = 1
-      // charge, dù nhóm đó che 1 hay nhiều hit), không phải theo số hit thô.
-      const selectedGroups = interaction.values.map(v => {
-        const [start, end] = v.split("-").map(n => parseInt(n, 10));
-        return { start, end: end ?? start };
-      });
-      const selectedHits = selectedGroups.flatMap(g => {
-        const hits = [];
-        for (let h = g.start; h <= g.end; h++) hits.push(h);
-        return hits;
-      }).sort((a, b) => a - b);
-      const costPerCharge = choice === "guard" ? opts.guard.costPerCharge : opts.evade.costPerCharge;
-      const totalCost = selectedGroups.length * costPerCharge;
-      if (target.currentStamina < totalCost) {
-        throw new Error(`Không đủ Stamina cho ${selectedGroups.length} nhóm đã chọn (cần ${totalCost}, hiện có ${target.currentStamina}).`);
-      }
-      target.currentStamina -= totalCost;
-      let choiceNote;
-      if (choice === "guard") {
-        target.guardHitSelections = [...(target.guardHitSelections ?? []), ...selectedHits];
-        target.guardCharges = (target.guardCharges ?? 0) + selectedGroups.length;
-        choiceNote = `🛡️ Guard (-${totalCost} Sta, hit ${selectedHits.join(", ")})`;
-      } else {
-        target.evadeHitSelections = [...(target.evadeHitSelections ?? []), ...selectedHits];
-        target.evadeCharges = (target.evadeCharges ?? 0) + selectedGroups.length;
-        choiceNote = `💨 Evade (-${totalCost} Sta, hit ${selectedHits.join(", ")})`;
-      }
-      const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, interaction.user.toString());
-      resultText = finalized.resultText;
-      stillWaitingFor = finalized.stillWaitingFor;
-    });
-    await interaction.update({
-      embeds: stillWaitingFor
-        ? [{ title: "⏳ Đã ghi nhận — đang chờ người khác", description: resultText, color: 0xf39c12 }]
-        : [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }, buildEncounterBoardEmbed(encounterSnapshot)],
-      components: [],
-    }).catch(() => {});
-  } catch (err) {
-    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
-  }
-});
 
 // ─── SELECT MENU INTERACTIONS (encclashselect — Clash responsive, xác nhận
 // trực tiếp: "khi bị đòn skill/page có dice đánh thì nếu có speed cao hơn thì
