@@ -12,7 +12,7 @@
 
 module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }) {
 
-  function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, weaponCriticalKey = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
+  function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, weaponCriticalKey = null, equippedOutfit = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
     return {
       name,
       maxHp, currentHp: maxHp,
@@ -40,6 +40,13 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // vũ khí THỰC SỰ không có Critical nào (VD Patron Librarian Baton) — check qua
       // findSkill() lúc build dropdown, không tự giả định.
       weaponBaseDamage, weaponType, weaponName, weaponCriticalKey,
+      // equippedOutfit — GAP NGHIÊM TRỌNG ĐÃ SỬA: trước đây createCombatant()
+      // KHÔNG nhận tham số này (destructuring silently bỏ qua field lạ) dù
+      // index.js CÓ truyền vào lúc join — khiến MỌI check
+      // "attacker.combatant.equippedOutfit === ..." (Dark Cloud/Kurokumo
+      // Wakashu, Thumb Capo IIII...) LUÔN undefined/false. Phát hiện qua test
+      // join THẬT (không phải gán tay state trực tiếp).
+      equippedOutfit,
       // m1CountThisTurnByTarget — đếm số lần đánh thường (M1) lên TỪNG target riêng
       // biệt TRONG TURN HIỆN TẠI (key = targetId, value = count) — dùng cho passive
       // "Foreclosure Task Force President" (Eye Of Horus) leo thang theo số lần đánh
@@ -123,6 +130,27 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // tiêu qua M1 (accumulator riêng, không dùng chung staminaUsedThisTurn).
       darkCloudOutfitStacks: 0,
       darkCloudOutfitStaminaAccumulator: 0,
+      // "Scorch Propellant Round" (Thumb Syndicate ammo — Savage Double/Triple
+      // Slash, Blasting Shatterslash, Tanglecleaver Flurry) — xác nhận trực
+      // tiếp: cap 20, "hiện tại chỉ nhận được thông qua sử dụng page chứ
+      // không phải nạp từ nguồn ngoài" — bắt đầu từ 0.
+      scorchPropellantRound: 0,
+      // "Tigermark Round"/"Savage Tigermark Round" (Tiantui Star's Blade
+      // weapon) — nạp qua Tanglecleaver Reload, chuyển hoá thành Savage khi
+      // dùng Reload lúc đang có Shin (shinMangActive) active.
+      tigermarkRound: 0,
+      savageTigermarkRound: 0,
+      // "Tactical Suppression" (Eye Of Horus Critical) — xác nhận trực tiếp:
+      // "50 HP Shield x Số lượng người trên sân trong 2 Turn. Heal lại lượng
+      // máu = Lượng HP Shield hao hụt sau 2 turn... Nếu Block trong trạng thái
+      // này... Nếu đánh thường trong trạng thái này...". CD "3 Turn SAU KHI
+      // HẾT Shield HP" — khác CD thông thường (bắt đầu ngay lúc dùng), cần
+      // track riêng (cdPending chỉ bắt đầu đếm khi shieldHp về 0).
+      tacticalSuppressionActive: false,
+      tacticalSuppressionTurnsLeft: 0,
+      tacticalSuppressionShieldGranted: 0,
+      tacticalSuppressionCdPending: false,
+      tacticalSuppressionCdTurnsLeft: 0,
       dullahanParriedThisTurn: false, // "vào turn KẾ SAU khi Parry" — cần biết đã Parry ở turn TRƯỚC chưa
       // "Zwei Association" — flag chờ áp Tremor thật (xem comment đầy đủ ở
       // resolveOnePendingAction, tránh bị ghi đè bởi t.preview.finalTremor).
