@@ -4845,6 +4845,13 @@ if (message.content.startsWith("-gacha")) {
             weaponType: equippedWeaponObj?.type ?? null,
             weaponName: equippedWeaponObj?.name ?? null,
             weaponCriticalKey: equippedWeaponObj ? (equippedWeaponObj.criticalSkillKey ?? equippedWeaponObj.name) : null,
+            // GAP NGHIÊM TRỌNG ĐÃ SỬA — combatant.equippedOutfit CHƯA TỪNG được
+            // lưu lúc join (chỉ có weaponName, không có tương đương cho outfit)
+            // — khiến MỌI check "attacker.combatant.equippedOutfit === ..."
+            // trước đây (Dark Cloud/Kurokumo Wakashu, Thumb Capo IIII...) LUÔN
+            // false (undefined), phát hiện qua test join THẬT (không phải gán
+            // tay state trực tiếp).
+            equippedOutfit: profileDataForDefaults.equippedOutfit ?? null,
             resistance: res, speedRangeMin, speedRangeMax,
           });
           // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
@@ -7432,6 +7439,115 @@ async function resolveOnePendingAction(encounter, p) {
                 verifyNote += ` ☁️[+2 Dark Cloud Stack (hiện ${attacker.combatant.darkCloudOutfitStacks})]`;
               }
             }
+            // "Scorch Propellant Round" (Thumb Syndicate ammo) — xác nhận trực
+            // tiếp mô tả gốc của TỪNG dòng dice trong skills.js (savage double
+            // slash/savage triple slash/blasting shatterslash/tanglecleaver
+            // flurry). Tự động tiêu NẾU đủ Stack (không cần hỏi, xác nhận trực
+            // tiếp: "giống như Bleed/Burn tự áp"). Cap 20. Áp lên TARGET đầu
+            // tiên (4 skill này không AOE, luôn chỉ 1 target).
+            const scorchTarget = p.targets?.[0] ? resolveCombatant(encounter, p.targets[0].targetId)?.combatant : null;
+            // Snapshot TRƯỚC mọi hook mới (Scorch/Tigermark consumption ở dưới)
+            // để tính đúng "phần Tremor/Burn MỚI GÂY THÊM từ hành động này" cho
+            // Thumb Capo IIII's half-conversion (xem block cuối cùng bên dưới).
+            const tremorBeforeThumbCapo = scorchTarget?.tremor ?? 0;
+            const burnBeforeThumbCapo = scorchTarget?.burn ?? 0;
+            if (scorchTarget && ["savage double slash", "savage triple slash", "blasting shatterslash", "tanglecleaver flurry"].includes(p.skillKey)) {
+              const atk = attacker.combatant;
+              let scorchNote = "";
+              const burnFromStack = (n) => { scorchTarget.burn = Math.min(BURN_MAX, (scorchTarget.burn ?? 0) + n); };
+              const diceUpGain = (n) => { atk.diceUp = (atk.diceUp ?? 0) + n; };
+              if (p.skillKey === "savage double slash") {
+                // D1: tiêu 1 Stack → +2 Burn. D2: tiêu 1 Stack → +2 Burn +5 DiceUp, SAU ĐÓ +5 Stack (không điều kiện).
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); }
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); diceUpGain(5); }
+                atk.scorchPropellantRound = Math.min(20, (atk.scorchPropellantRound ?? 0) + 5);
+                scorchNote = ` 🔥[Scorch Propellant Round: tiêu tối đa 2, +5 Stack sau dùng (hiện ${atk.scorchPropellantRound})]`;
+              } else if (p.skillKey === "savage triple slash") {
+                // D1/D2: tiêu 1 Stack → +2 Burn (D2 thêm +5 DiceUp). D3: tiêu 1
+                // Stack → +2 Burn +2 Tremor +5 DiceUp, SAU ĐÓ +5 Stack.
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); }
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); diceUpGain(5); }
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); scorchTarget.tremor = Math.min(TREMOR_MAX, (scorchTarget.tremor ?? 0) + 2); diceUpGain(5); }
+                atk.scorchPropellantRound = Math.min(20, (atk.scorchPropellantRound ?? 0) + 5);
+                scorchNote = ` 🔥[Scorch Propellant Round: tiêu tối đa 3, +5 Stack sau dùng (hiện ${atk.scorchPropellantRound})]`;
+              } else if (p.skillKey === "blasting shatterslash") {
+                // D1/D2: tiêu 1 Stack → +2 Burn (D2 thêm +5 DiceUp). D3: tiêu 1
+                // Stack → +Burn = Tremor hiện tại của target +5 DiceUp. KHÔNG
+                // có "nhận lại Stack" (không nhắc trong mô tả gốc).
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); }
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); diceUpGain(5); }
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(scorchTarget.tremor ?? 0); diceUpGain(5); }
+                scorchNote = ` 🔥[Scorch Propellant Round: tiêu tối đa 3 (hiện ${atk.scorchPropellantRound})]`;
+              } else if (p.skillKey === "tanglecleaver flurry") {
+                // D1/D2: tiêu 1 Stack → +2 Burn +5 DiceUp. D3: TIÊU TOÀN BỘ
+                // Stack → +Burn = Tremor hiện tại + 3 DiceUp/Stack xả, VÀ nếu
+                // ĐÃ có ≥15 Stack TRƯỚC khi xả thì kích hoạt thêm Tremor Burst.
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); diceUpGain(5); }
+                if ((atk.scorchPropellantRound ?? 0) >= 1) { atk.scorchPropellantRound -= 1; burnFromStack(2); diceUpGain(5); }
+                const stackBeforeDump = atk.scorchPropellantRound ?? 0;
+                if (stackBeforeDump > 0) {
+                  atk.scorchPropellantRound = 0;
+                  burnFromStack(scorchTarget.tremor ?? 0);
+                  diceUpGain(3 * stackBeforeDump);
+                  if (stackBeforeDump >= 15) {
+                    const tbResult = calcMathCore({ dmgStr: "0B+TremorBurst", resStr: combatantResStr(scorchTarget), tremorInit: scorchTarget.tremor ?? 0 });
+                    scorchTarget.currentHp = Math.max(0, scorchTarget.currentHp - tbResult.totalDmg);
+                    scorchTarget.currentStamina = Math.max(0, scorchTarget.currentStamina - tbResult.totalTremorStaminaLoss);
+                    scorchTarget.tremor = tbResult.finalTremor;
+                  }
+                }
+                scorchNote = ` 🔥[Scorch Propellant Round: xả ${stackBeforeDump} Stack ở dòng cuối]`;
+              }
+              verifyNote += scorchNote;
+            }
+            // "Triple Slash - Blast [爆]" (Tiantui Star's Blade Critical) — xác
+            // nhận trực tiếp: "Tiêu thụ toàn bộ Tigermark Round có trên người.
+            // Cứ mỗi 1 Tigermark Round được tiêu thụ thì gây thêm 1 Burn và 1
+            // Tremor tương ứng. Nếu có trên hoặc bằng 6 Tigermark Round thì sẽ
+            // Tremor Burst".
+            if (p.skillKey === "triple slash blast [爆]" && scorchTarget && (attacker.combatant.tigermarkRound ?? 0) > 0) {
+              const consumed = attacker.combatant.tigermarkRound;
+              attacker.combatant.tigermarkRound = 0;
+              scorchTarget.burn = Math.min(BURN_MAX, (scorchTarget.burn ?? 0) + consumed);
+              scorchTarget.tremor = Math.min(TREMOR_MAX, (scorchTarget.tremor ?? 0) + consumed);
+              let tsbNote = ` 🐯[Triple Slash Blast: tiêu ${consumed} Tigermark Round → +${consumed} Burn/+${consumed} Tremor]`;
+              if (consumed >= 6) {
+                const tbR = calcMathCore({ dmgStr: "0B+TremorBurst", resStr: combatantResStr(scorchTarget), tremorInit: scorchTarget.tremor ?? 0 });
+                scorchTarget.currentHp = Math.max(0, scorchTarget.currentHp - tbR.totalDmg);
+                scorchTarget.currentStamina = Math.max(0, scorchTarget.currentStamina - tbR.totalTremorStaminaLoss);
+                scorchTarget.tremor = tbR.finalTremor;
+                tsbNote += ` + Tremor Burst (-${tbR.totalTremorStaminaLoss} Sta/-${tbR.totalDmg.toFixed(3)} HP)`;
+              }
+              verifyNote += tsbNote;
+            }
+            // "Savage Tigerslayer's Perfected Flurry of Blades [超絕猛虎殺擊亂斬]"
+            // — xác nhận trực tiếp: "Tiêu thụ toàn bộ Savage Tigermark Round có
+            // trên người. Cứ mỗi 1 Savage Tigermark Round được tiêu thụ thì gây
+            // thêm 1 Burn, 1 Tremor tương ứng vào Dice cuối".
+            if (p.skillKey === "savage tigerslayer's perfected flurry of blades [超絕猛虎殺擊亂斬]" && scorchTarget && (attacker.combatant.savageTigermarkRound ?? 0) > 0) {
+              const consumed = attacker.combatant.savageTigermarkRound;
+              attacker.combatant.savageTigermarkRound = 0;
+              scorchTarget.burn = Math.min(BURN_MAX, (scorchTarget.burn ?? 0) + consumed);
+              scorchTarget.tremor = Math.min(TREMOR_MAX, (scorchTarget.tremor ?? 0) + consumed);
+              verifyNote += ` 🐯[Savage Tigerslayer Flurry: tiêu ${consumed} Savage Tigermark Round → +${consumed} Burn/+${consumed} Tremor]`;
+            }
+            // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Khi sử dụng
+            // Tiantui Star's Blade: Khi gây Tremor bạn sẽ áp thêm Burn bằng một
+            // nửa count của Tremor và ngược lại" — chỉ tính PHẦN MỚI GÂY THÊM
+            // từ hành động này (so với snapshot lúc đầu), KHÔNG áp lại lên toàn
+            // bộ stack cũ, và KHÔNG đệ quy (chỉ 1 lượt chuyển đổi duy nhất,
+            // dùng số Tremor/Burn mới gây GỐC — tránh vòng lặp vô hạn).
+            if (scorchTarget && attacker.combatant.equippedOutfit === "Thumb Capo IIII" && attacker.combatant.weaponName === "Tiantui Star's Blade [天退星刀]") {
+              const gainedTremor = Math.max(0, (scorchTarget.tremor ?? 0) - tremorBeforeThumbCapo);
+              const gainedBurn = Math.max(0, (scorchTarget.burn ?? 0) - burnBeforeThumbCapo);
+              const extraBurnFromTremor = Math.floor(gainedTremor / 2);
+              const extraTremorFromBurn = Math.floor(gainedBurn / 2);
+              if (extraBurnFromTremor > 0) scorchTarget.burn = Math.min(BURN_MAX, (scorchTarget.burn ?? 0) + extraBurnFromTremor);
+              if (extraTremorFromBurn > 0) scorchTarget.tremor = Math.min(TREMOR_MAX, (scorchTarget.tremor ?? 0) + extraTremorFromBurn);
+              if (extraBurnFromTremor > 0 || extraTremorFromBurn > 0) {
+                verifyNote += ` 👊[Thumb Capo IIII: +${extraBurnFromTremor} Burn (từ Tremor)/+${extraTremorFromBurn} Tremor (từ Burn)]`;
+              }
+            }
             // "Tactical Suppression" (Eye Of Horus Critical) — xác nhận trực
             // tiếp: "Khiêu khích toàn bộ kẻ địch, bản thân nhận 50 HP Shield x
             // Số lượng người trên sân trong 2 Turn. Heal lại lượng máu = Lượng
@@ -8303,20 +8419,20 @@ client.on("interactionCreate", async (interaction) => {
         .setTitle(`Chỉnh sửa: ${enemy.name}`.slice(0, 45));
       const hpInput = new TextInputBuilder().setCustomId("hp").setLabel("HP").setStyle(TextInputStyle.Short).setValue(String(enemy.currentHp)).setRequired(true);
       const staInput = new TextInputBuilder().setCustomId("stamina").setLabel("Stamina").setStyle(TextInputStyle.Short).setValue(String(enemy.currentStamina)).setRequired(true);
-      const sanInput = new TextInputBuilder().setCustomId("sanity").setLabel("Sanity").setStyle(TextInputStyle.Short).setValue(String(enemy.currentSanity ?? 0)).setRequired(true);
-      const lightInput = new TextInputBuilder().setCustomId("light").setLabel("Light").setStyle(TextInputStyle.Short).setValue(String(enemy.currentLight ?? 0)).setRequired(true);
+      const sanLightInput = new TextInputBuilder().setCustomId("sanlight").setLabel("Sanity/Light").setStyle(TextInputStyle.Short).setValue(`${enemy.currentSanity ?? 0}/${enemy.currentLight ?? 0}`).setRequired(true);
       const statusInput = new TextInputBuilder()
         .setCustomId("status")
         .setLabel("Status/Set/Injury/CD (xem placeholder)")
         .setPlaceholder("rupture: 5 | set emotioncoin: 2 | injury+: Gãy chân | cd durandal: 3")
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(false);
+      const noteInput = new TextInputBuilder().setCustomId("addnote").setLabel("Ghi chú (narrate/mechanic thuần text)").setPlaceholder("Để trống nếu không đổi").setStyle(TextInputStyle.Paragraph).setValue(enemy.gmNote ?? "").setRequired(false);
       modal.addComponents(
         new ActionRowBuilder().addComponents(hpInput),
         new ActionRowBuilder().addComponents(staInput),
-        new ActionRowBuilder().addComponents(sanInput),
-        new ActionRowBuilder().addComponents(lightInput),
+        new ActionRowBuilder().addComponents(sanLightInput),
         new ActionRowBuilder().addComponents(statusInput),
+        new ActionRowBuilder().addComponents(noteInput),
       );
       await interaction.showModal(modal).catch(() => {});
     } catch (err) {
@@ -9154,20 +9270,29 @@ client.on("interactionCreate", async (interaction) => {
       .setTitle(`Chỉnh sửa: ${player.name}`.slice(0, 45));
     const hpInput = new TextInputBuilder().setCustomId("hp").setLabel("HP").setStyle(TextInputStyle.Short).setValue(String(player.currentHp)).setRequired(true);
     const staInput = new TextInputBuilder().setCustomId("stamina").setLabel("Stamina").setStyle(TextInputStyle.Short).setValue(String(player.currentStamina)).setRequired(true);
-    const sanInput = new TextInputBuilder().setCustomId("sanity").setLabel("Sanity").setStyle(TextInputStyle.Short).setValue(String(player.currentSanity ?? 0)).setRequired(true);
-    const lightInput = new TextInputBuilder().setCustomId("light").setLabel("Light").setStyle(TextInputStyle.Short).setValue(String(player.currentLight ?? 0)).setRequired(true);
+    // GAP ĐÃ SỬA (xác nhận trực tiếp: "thêm 1 mục modal là 1 phần addnote...
+    // để narrate") — Modal Discord giới hạn CỨNG 5 TextInput/Modal, đã đủ 5
+    // (hp/stamina/sanity/light/status) — gộp Sanity+Light thành 1 field
+    // (cú pháp "sanity/light", giống tinh thần HP/Stamina gộp ở addenemy) để
+    // giải phóng 1 slot riêng cho addnote.
+    const sanLightInput = new TextInputBuilder().setCustomId("sanlight").setLabel("Sanity/Light").setStyle(TextInputStyle.Short).setValue(`${player.currentSanity ?? 0}/${player.currentLight ?? 0}`).setRequired(true);
     const statusInput = new TextInputBuilder()
       .setCustomId("status")
       .setLabel("Status/Set/Injury/CD (xem placeholder)")
       .setPlaceholder("rupture: 5 | set emotioncoin: 2 | injury+: Gãy chân | cd durandal: 3")
       .setStyle(TextInputStyle.Paragraph)
       .setRequired(false);
+    // "addnote" — field RIÊNG BIỆT (KHÁC hẳn cú pháp "note:" gộp trong ô Status
+    // ở trên — vẫn giữ nguyên cú pháp đó cho tương thích) — 1 dòng text tự do
+    // để narrate hoặc ghi chú mechanic thuần text, hiển thị dưới status của
+    // player/boss trong board (dùng CHUNG field gmNote đã có sẵn).
+    const noteInput = new TextInputBuilder().setCustomId("addnote").setLabel("Ghi chú (narrate/mechanic thuần text)").setPlaceholder("Để trống nếu không đổi").setStyle(TextInputStyle.Paragraph).setValue(player.gmNote ?? "").setRequired(false);
     modal.addComponents(
       new ActionRowBuilder().addComponents(hpInput),
       new ActionRowBuilder().addComponents(staInput),
-      new ActionRowBuilder().addComponents(sanInput),
-      new ActionRowBuilder().addComponents(lightInput),
+      new ActionRowBuilder().addComponents(sanLightInput),
       new ActionRowBuilder().addComponents(statusInput),
+      new ActionRowBuilder().addComponents(noteInput),
     );
     await interaction.showModal(modal).catch(() => {});
   } catch (err) {
@@ -9791,14 +9916,15 @@ client.on("interactionCreate", async (interaction) => {
       if (!resolved) throw new Error(`Không tìm thấy ${targetType === "enemy" ? "enemy" : "player"} này (có thể đã bị xoá/rời encounter).`);
       const hpRaw = interaction.fields.getTextInputValue("hp");
       const staRaw = interaction.fields.getTextInputValue("stamina");
-      const sanRaw = interaction.fields.getTextInputValue("sanity");
-      const lightRaw = interaction.fields.getTextInputValue("light");
+      const sanLightRaw = interaction.fields.getTextInputValue("sanlight");
       const statusRaw = interaction.fields.getTextInputValue("status");
+      const noteRaw = interaction.fields.getTextInputValue("addnote");
       const hp = parseInt(hpRaw, 10);
       const sta = parseInt(staRaw, 10);
-      const san = parseInt(sanRaw, 10);
-      const light = parseInt(lightRaw, 10);
-      if (![hp, sta, san, light].every(Number.isFinite)) throw new Error("HP/Stamina/Sanity/Light phải là số hợp lệ.");
+      const sanLightParts = sanLightRaw.split("/").map(s => s.trim());
+      const san = parseInt(sanLightParts[0], 10);
+      const light = parseInt(sanLightParts[1] ?? "", 10);
+      if (![hp, sta, san, light].every(Number.isFinite)) throw new Error("HP/Stamina phải là số hợp lệ, Sanity/Light phải đúng cú pháp \"số/số\".");
       const changes = [];
       if (hp !== resolved.combatant.currentHp) { changes.push(`HP: ${resolved.combatant.currentHp} → **${Math.max(0, Math.min(resolved.combatant.maxHp, hp))}**`); resolved.combatant.currentHp = Math.max(0, Math.min(resolved.combatant.maxHp, hp)); }
       if (sta !== resolved.combatant.currentStamina) { changes.push(`Stamina: ${resolved.combatant.currentStamina} → **${Math.max(0, Math.min(resolved.combatant.maxStamina, sta))}**`); resolved.combatant.currentStamina = Math.max(0, Math.min(resolved.combatant.maxStamina, sta)); }
@@ -9810,6 +9936,11 @@ client.on("interactionCreate", async (interaction) => {
           const statusChanges = applyStatusEntries(resolved, statusEntries, null, checkStaggerPanic);
           changes.push(...statusChanges);
         }
+      }
+      if (noteRaw !== (resolved.combatant.gmNote ?? "")) {
+        const beforeNote = resolved.combatant.gmNote || "(trống)";
+        resolved.combatant.gmNote = noteRaw;
+        changes.push(`Note: "${beforeNote}" → **"${noteRaw || "(trống)"}"**`);
       }
       appendActionLog(encounter, `🎛️ GM chỉnh sửa ${resolved.label}: ${changes.length > 0 ? changes.join(", ") : "(không đổi gì)"}`);
       await saveEncounter(channelId, encounter);
@@ -11055,6 +11186,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
         const counterSkill = findSkill(counterSkillKey);
         const effect = counterSkill?.counterEffect ?? {};
         let choiceNote = "";
+        let effectResultNote = "";
 
         // Áp dụng hiệu ứng phụ + cooldown/Light — CHỈ khi thành công, TRỪ
         // "alwaysUnlocks" (Yield My Flesh: mở khoá To Claim Their Bones dù
@@ -11069,6 +11201,24 @@ app.post("/rtparry/:token/result", async (req, res) => {
           if (effect.protection) target.protection = (target.protection ?? 0) + effect.protection;
           if (effect.defenseUp) target.defenseUp = (target.defenseUp ?? 0) + effect.defenseUp;
           if (effect.unlocksSkillKey) target.unlockedFollowUpSkillKey = effect.unlocksSkillKey;
+          // "Tanglecleaver Reload" — loadsTigermarkRound: xác nhận trực tiếp
+          // "nạp Tigermark Round... tương ứng với số dice gieo ra" — gọi
+          // roll() THẬT để lấy đúng số dice (KHÔNG phải từ rtparry — rtparry
+          // chỉ là minigame phản ứng thời gian, không có dice riêng). Chuyển
+          // hoá qua Savage nếu Shin đang active (passive Tiantui Star's Blade).
+          if (effect.loadsTigermarkRound) {
+            const rollLines = counterSkill.roll();
+            const diceMatch = rollLines[rollLines.length - 1].match(/\*\*(\d+)\*\*/);
+            const rolledDiceValue = diceMatch ? parseInt(diceMatch[1], 10) : 0;
+            if (target.shinMangActive) {
+              target.savageTigermarkRound = Math.min(20, (target.savageTigermarkRound ?? 0) + (target.tigermarkRound ?? 0) + rolledDiceValue);
+              target.tigermarkRound = 0;
+              effectResultNote = ` — nạp +${rolledDiceValue} Savage Tigermark Round (chuyển hoá do Shin active, tổng ${target.savageTigermarkRound})`;
+            } else {
+              target.tigermarkRound = Math.min(20, (target.tigermarkRound ?? 0) + rolledDiceValue);
+              effectResultNote = ` — nạp +${rolledDiceValue} Tigermark Round (tổng ${target.tigermarkRound})`;
+            }
+          }
         }
 
         if (isSuccess) {
@@ -11115,10 +11265,11 @@ app.post("/rtparry/:token/result", async (req, res) => {
               choiceNote = `⚔️ Counter thành công! **${counterSkill.name}**`;
             }
           } else {
-            choiceNote = `⚔️ Counter thành công! **${counterSkill.name}** — ngắt đòn tấn công`;
+            choiceNote = `⚔️ Counter thành công! **${counterSkill.name}** — ngắt đòn tấn công${effectResultNote}`;
           }
         } else if (effect.alwaysUnlocks) {
-          choiceNote = `❌ Counter thất bại — ăn đủ dmg, nhưng vẫn mở khoá **${counterSkill?.name ? findSkill(effect.unlocksSkillKey)?.name ?? effect.unlocksSkillKey : effect.unlocksSkillKey}**`;
+          const unlockNote = effect.unlocksSkillKey ? `, nhưng vẫn mở khoá **${findSkill(effect.unlocksSkillKey)?.name ?? effect.unlocksSkillKey}**` : effectResultNote;
+          choiceNote = `❌ Counter thất bại — ăn đủ dmg${unlockNote}`;
         } else {
           choiceNote = `❌ Counter thất bại — không phòng thủ (ăn dmg thường)`;
         }
