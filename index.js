@@ -1,4 +1,4 @@
-// index.js
+// index.js .
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const express = require("express");
 const crypto = require("crypto");
