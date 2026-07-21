@@ -140,6 +140,14 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       const currentWeapon = findWeaponAnywhere(attacker.weaponName);
       isOwnCriticalBypassed = attacker.orlandoFuriosoBypass && currentWeapon?.criticalSkillKey === skillKey;
       if (existingCd > 0 && !isOwnCriticalBypassed) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
+      // "Tactical Suppression" — CD "3 Turn SAU KHI HẾT Shield HP" không dùng
+      // skillCooldowns thông thường (bắt đầu ngay lúc dùng) — check riêng.
+      if (skillKey === "tactical suppression" && attacker.tacticalSuppressionCdPending) {
+        throw new Error(`Skill "${skill.name}" đang cooldown (còn ${attacker.tacticalSuppressionCdTurnsLeft} turn kể từ khi Shield HP hết) — chưa thể dùng lại.`);
+      }
+      if (skillKey === "tactical suppression" && attacker.tacticalSuppressionActive) {
+        throw new Error(`Skill "${skill.name}" đang hoạt động (còn ${attacker.tacticalSuppressionTurnsLeft} turn) — không thể dùng lại khi đang active.`);
+      }
       // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) — "Great
       // Split" (Mimicry Blade) yêu cầu ĐỦ 5 Imitation mới dùng được (đây là điều
       // kiện BẮT BUỘC để roll, không chỉ là hiệu ứng phụ — chặn NGAY trước khi
@@ -275,4 +283,4 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     forceStagger,
     resolveSkillVerification,
   };
-}; 
+};

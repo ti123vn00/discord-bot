@@ -142,6 +142,11 @@ const commands = [
     .setName("daily")
     .setDescription("Điểm danh hàng ngày để nhận Exp, Ahn và sách (reset lúc 0h VN)"),
 
+  // ── /dothihelp ──────────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName("dothihelp")
+    .setDescription("Xem danh sách lệnh của bot (chỉ bạn thấy được — ephemeral)"),
+
   // ── /randombook ─────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("randombook")

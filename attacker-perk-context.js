@@ -16,6 +16,18 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // "Dullahan" (Fused Blade passive) — xác nhận trực tiếp: "Khi có Dullahan
     // bạn nhận được 30% Dmg gây ra".
     if ((attacker.dullahanStacks ?? 0) > 0) bonusPct += 30;
+    // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Các vũ khí/skill/page
+    // sử dụng đạn sẽ được tăng thêm 20% Dmg gây ra" — "chỉ áp dụng khi đòn đó
+    // THỰC SỰ tiêu đạn/Round nào đó trong lượt này" — check stack > 0 TRƯỚC
+    // khi resolveOnePendingAction's consumption hook chạy (sẽ tự tiêu nếu đủ,
+    // theo xác nhận "tự động tiêu nếu đủ Stack, giống Bleed/Burn tự áp").
+    if (attacker.equippedOutfit === "Thumb Capo IIII") {
+      const willConsumeScorch = ["savage double slash", "savage triple slash", "blasting shatterslash", "tanglecleaver flurry"].includes(skillKey) && (attacker.scorchPropellantRound ?? 0) > 0;
+      const willConsumeTigermark = skillKey === "triple slash blast [爆]" && (attacker.tigermarkRound ?? 0) > 0;
+      const willConsumeSavageTigermark = skillKey === "savage tigerslayer's perfected flurry of blades [超絕猛虎殺擊亂斬]" && (attacker.savageTigermarkRound ?? 0) > 0;
+      const willConsumeEyeOfHorusAmmo = isM1 && attacker.weaponName === "Eye Of Horus" && ((attacker.eyeOfHorusAmmo ?? 0) > 0 || (attacker.frostAmmo ?? 0) > 0 || (attacker.incendiaryAmmo ?? 0) > 0);
+      if (willConsumeScorch || willConsumeTigermark || willConsumeSavageTigermark || willConsumeEyeOfHorusAmmo) bonusPct += 20;
+    }
     // "Dark Cloud" (Kurokumo Wakashu outfit passive) — xác nhận trực tiếp:
     // "Bạn nhận 1% Dmg Up với mỗi 1 Bleed có trên người địch" — áp dụng CẢ
     // M1 lẫn Skill/Critical (xác nhận trực tiếp: "áp dụng chung mọi loại đòn").

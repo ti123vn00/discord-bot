@@ -94,6 +94,14 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // "Firing" (Soldato Rifle) + "Thumb Soldato" (outfit, mỗi đòn đánh thường
       // thứ 4 → +1 đạn). Max 8, tiêu để +4 Base Dmg/hit (usebullet: yes khi M1).
       bulletStack: 0,
+      // GAP ĐÃ SỬA (xác nhận trực tiếp): bulletStack = TỔNG số đạn ĐANG NẠP
+      // trong súng (max 8, không phân biệt loại) — bulletStackFrost/Incendiary
+      // = trong số đó, bao nhiêu là loại ĐẶC BIỆT (để "Firing" biết tiêu loại
+      // nào, áp đúng hiệu ứng phụ Frost/Incendiary). Khác hẳn ammo/frostAmmo/
+      // incendiaryAmmo (Inventory mang theo, cap 99, "-encounter reload" nạp
+      // TỪ đó vào bulletStack).
+      bulletStackFrost: 0,
+      bulletStackIncendiary: 0,
       // "Cinq Association": accumulator riêng cho "2 Haste/20 Stamina qua M1".
       cinqAssociationAccumulator: 0,
       // "Dieci Association": Shield HP (resource riêng, KHÔNG phải HP thường) +

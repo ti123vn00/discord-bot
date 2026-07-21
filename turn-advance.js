@@ -282,6 +282,34 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       combatant.rotateTrigramIndex = (idx + 1) % 4;
     }
     combatant.yourShieldUsedThisTurn = false;
+    // "Tactical Suppression" (Eye Of Horus Critical) — xác nhận trực tiếp:
+    // "50 HP Shield x Số lượng người trên sân trong 2 Turn. Heal lại lượng
+    // máu = Lượng HP Shield hao hụt sau 2 turn" — sau 2 turn, heal lại phần
+    // CHÊNH LỆCH giữa shieldGranted (lúc cấp) và shieldHp còn lại (phần đã
+    // "hao hụt" do bị tấn công/tiêu thụ). CD "3 Turn SAU KHI HẾT Shield HP" —
+    // track riêng: nếu shieldHp về 0 TRƯỚC khi hết 2 turn, bắt đầu đếm CD
+    // ngay (không đợi hết 2 turn).
+    if (combatant.tacticalSuppressionActive) {
+      if ((combatant.shieldHp ?? 0) <= 0 && !combatant.tacticalSuppressionCdPending) {
+        combatant.tacticalSuppressionCdPending = true;
+        combatant.tacticalSuppressionCdTurnsLeft = 3;
+      }
+      combatant.tacticalSuppressionTurnsLeft -= 1;
+      if (combatant.tacticalSuppressionTurnsLeft <= 0) {
+        const depleted = Math.max(0, combatant.tacticalSuppressionShieldGranted - (combatant.shieldHp ?? 0));
+        combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + depleted);
+        combatant.tacticalSuppressionActive = false;
+        combatant.tacticalSuppressionShieldGranted = 0;
+        if (!combatant.tacticalSuppressionCdPending) {
+          combatant.tacticalSuppressionCdPending = true;
+          combatant.tacticalSuppressionCdTurnsLeft = 3;
+        }
+      }
+    }
+    if (combatant.tacticalSuppressionCdPending && combatant.tacticalSuppressionCdTurnsLeft > 0) {
+      combatant.tacticalSuppressionCdTurnsLeft -= 1;
+      if (combatant.tacticalSuppressionCdTurnsLeft <= 0) combatant.tacticalSuppressionCdPending = false;
+    }
     // "Dark Cloud" (Kurokumo Wakashu outfit) — xác nhận trực tiếp: "Mỗi turn trừ 2 Stack".
     if ((combatant.darkCloudOutfitStacks ?? 0) > 0) {
       combatant.darkCloudOutfitStacks = Math.max(0, combatant.darkCloudOutfitStacks - 2);

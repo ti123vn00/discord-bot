@@ -46,9 +46,14 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       // hit muốn che, 1-based, không cần liên tục). Số charge cần = SỐ HIT chỉ
       // định / hitsPerCharge (làm tròn lên) — GIỮ NGUYÊN ý nghĩa "1 charge = N
       // hit-worth" như cũ, chỉ đổi cách PHÂN BỔ (tùy chọn thay vì tuần tự).
+      // MỞ RỘNG (cho luồng reactive defense prompt): "hits:" giờ CŨNG áp dụng cho
+      // Evade — dùng để tự động build ĐỦ charge che TOÀN BỘ đòn đang tới trong 1
+      // lần bấm, KHÔNG cần chọn hit cụ thể như Guard (Evade luôn che tuần tự từ
+      // đầu — guardHitSelections chỉ gán cho type="guard", xem dưới) — chỉ mượn
+      // "hits:" để TÍNH ĐÚNG chargesNeeded, không lưu selection gì cho Evade.
       let selectedHits = null;
       let chargesNeeded = 1;
-      if (type === "guard" && hitsRaw && hitsRaw.trim()) {
+      if ((type === "guard" || type === "evade") && hitsRaw && hitsRaw.trim()) {
         selectedHits = [...new Set(hitsRaw.split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n >= 1))];
         if (selectedHits.length === 0) throw new Error(`"hits:" không hợp lệ — cần danh sách số nguyên ≥1, cách nhau bằng dấu phẩy (VD: hits: 3,5).`);
         if (!attackerKeyRaw) throw new Error(`Dùng "hits:" cần kèm "attacker: <key enemy đang tấn công>" để tính đúng số charge cần (mỗi loại vũ khí che số hit khác nhau).`);
@@ -119,8 +124,10 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       combatant[chargeField] = (combatant[chargeField] ?? 0) + chargesNeeded;
       // Lưu danh sách hit CỤ THỂ muốn che (nếu dùng "hits:") — QUEUE gộp từ nhiều
       // lần gọi guard khác nhau, tiêu thụ ở confirm handler (index.js) thay vì
-      // "che tuần tự từ đầu" như logic cũ.
-      if (selectedHits) {
+      // "che tuần tự từ đầu" như logic cũ. CHỈ áp dụng cho Guard — Evade "hits:"
+      // (mở rộng ở trên) chỉ dùng để TÍNH chargesNeeded, KHÔNG có selective
+      // targeting (Evade luôn che tuần tự từ đầu theo charge có sẵn).
+      if (selectedHits && type === "guard") {
         combatant.guardHitSelections = [...new Set([...(combatant.guardHitSelections ?? []), ...selectedHits])].sort((a, b) => a - b);
       }
       checkStaggerPanic(combatant);
