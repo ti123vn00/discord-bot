@@ -54,6 +54,28 @@ module.exports = function ({ findSkill, hasPerk }) {
         options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
       }
     }
+    // "5 page đặc biệt không tốn slot page bình thường và chỉ mở khóa khi đúng
+    // faction và outfit, vũ khí đang mặc" (xác nhận trực tiếp) — Unlock, Yield
+    // My Flesh, Boundary of Death, Re-Load, Ignite Weaponry. Không phụ thuộc
+    // unlockedPagesSnapshot — tự động hiện nếu điều kiện thoả, không cần equip
+    // vào slot thường. (Tanglecleaver Reload là page-counter riêng, xử lý ở
+    // reactive-defense.js chứ không phải dropdown hit: này.)
+    const outfit = combatant.equippedOutfit;
+    const weapon = combatant.weaponName;
+    const offices = combatant.offices ?? [];
+    const SPECIAL_NO_SLOT_PAGES = [
+      { name: "Unlock", condition: outfit === "Index Proselyte" },
+      { name: "Yield My Flesh", condition: outfit === "Blade Lineage" },
+      { name: "Boundary of Death", condition: outfit === "Shi Association" },
+      { name: "Re-Load", condition: weapon === "Soldato Rifle" && (outfit === "Thumb Capo IIII" || outfit === "Thumb Soldato") },
+      { name: "Ignite Weaponry", condition: outfit === "Liu Association" && offices.includes("Liu Association") },
+    ];
+    for (const { name, condition } of SPECIAL_NO_SLOT_PAGES) {
+      if (condition && !addedPageNames.has(name)) {
+        addedPageNames.add(name);
+        options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${name} (không tốn slot)`).setValue(`hit:${name}`));
+      }
+    }
     // guard/evade/parry ĐÃ GỠ KHỎI dropdown này (xác nhận trực tiếp: "nghĩ nên bỏ
     // hẳn... thuần tương tác qua menu UI là cách tốt nhất... đã sử dụng hệ thống
     // guard mới rồi nên cái đó không cần thiết lắm") — Reactive Defense (tự động
@@ -70,6 +92,15 @@ module.exports = function ({ findSkill, hasPerk }) {
     }
     if ((hasPerk(combatant, "Follow-Up") || hasPerk(combatant, "Pounce")) && combatant.staminaUsedThisTurn >= 20 && !combatant.followUpUsedThisTurn) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("⚡ Follow-Up/Pounce").setValue("followup"));
+    }
+    // "Reload" (nút RIÊNG, KHÁC Page "Re-Load") — xác nhận trực tiếp: "Page
+    // Reload và hành động Reload khác nhau, nên làm 1 nút reload dành cho
+    // reload thông thường ở dropdown nữa" — nạp từ kho dự trữ Encounter
+    // (ammo/frostAmmo/incendiaryAmmo, đã có sẵn qua -encounter reload) vào
+    // bulletStack (Soldato Rifle), số lượng tùy ý, KHÔNG giới hạn số lần/turn.
+    // Chỉ hiện khi đang dùng Soldato Rifle (vũ khí DUY NHẤT dùng bulletStack).
+    if (combatant.weaponName === "Soldato Rifle") {
+      options.push(new StringSelectMenuOptionBuilder().setLabel(`🔫 Reload (${combatant.bulletStack ?? 0}/8 đạn trong súng)`).setValue("reload"));
     }
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "game được thiết kế là 1 turn act bao nhiêu
     // lần cũng được miễn là đủ tài nguyên... hãy làm 1 nút dropdown chỉ khi họ
