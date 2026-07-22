@@ -4505,6 +4505,25 @@ Object.assign(SKILLS, {
     // unlocksSkillKey/light/protection có sẵn vì hiệu ứng hoàn toàn khác.
     counterEffect: { alwaysUnlocks: true, noDirectDamage: true, loadsTigermarkRound: true },
   },
+  "re-load": {
+    name: "Re-Load",
+    weaponOf: "Soldato Rifle", tags: "Weapon",
+    cost: "2 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `*Chỉ sử dụng được khi sử dụng vũ khí lẫn outfit của **The Thumb Syndicate** (Page này không tốn slot)*`,
+        `${D1} Nạp một nửa số đạn tối đa của vũ khí. Số đạn nạp được từ Page này có thể tùy chọn giữa đạn thường, **Frost Ammo** và **Incendiary Ammo** tùy ý`,
+      ];
+    },
+    // customLoad — GAP ĐÃ SỬA: field ĐẶC BIỆT riêng (không phải counterEffect,
+    // vì đây không phải page-counter) — xử lý ở resolveOnePendingAction
+    // (index.js) qua p.skillKey === "re-load". Nạp bulletStack = floor(8/2)=4,
+    // KHÔNG tiêu inventory (khác hẳn lệnh -encounter reload có sẵn), loại đạn
+    // chọn qua param type: (thường/frost/incendiary, tái dùng KNOWN_KEYS "type"
+    // đã có sẵn). "Thumb Soldato" outfit: đồng minh Thumb nhận 1/2 số nạp
+    // (làm tròn lên) — xử lý cùng chỗ.
+    customLoad: { field: "bulletStack", max: 8, half: true },
+  },
 
   // ── Serum K (Singularity) ──
   "serum k": {
