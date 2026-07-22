@@ -12,7 +12,7 @@
 
 module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }) {
 
-  function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, weaponCriticalKey = null, equippedOutfit = null, resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
+  function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, weaponCriticalKey = null, equippedOutfit = null, offices = [], resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
     return {
       name,
       maxHp, currentHp: maxHp,
@@ -47,6 +47,7 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // Wakashu, Thumb Capo IIII...) LUÔN undefined/false. Phát hiện qua test
       // join THẬT (không phải gán tay state trực tiếp).
       equippedOutfit,
+      offices,
       // m1CountThisTurnByTarget — đếm số lần đánh thường (M1) lên TỪNG target riêng
       // biệt TRONG TURN HIỆN TẠI (key = targetId, value = count) — dùng cho passive
       // "Foreclosure Task Force President" (Eye Of Horus) leo thang theo số lần đánh
@@ -99,6 +100,10 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // tiếp được" — null | "ammo" | "frost" | "incendiary". Chỉ có ý nghĩa
       // khi bulletStack > 0.
       bulletStackType: null,
+      // weaponIgnitedTurnsLeft — GAP ĐÃ SỬA (Ignite Weaponry, Liu Association) —
+      // "Đốt cháy vũ khí của bạn trong 2 Turn, khiến cho đòn đánh thường sẽ áp
+      // 1/2/4 [Light/Medium/Heavy] Burn". 0 = tắt.
+      weaponIgnitedTurnsLeft: 0,
       // GAP ĐÃ SỬA (xác nhận trực tiếp): bulletStack = TỔNG số đạn ĐANG NẠP
       // trong súng (max 8, không phân biệt loại) — bulletStackFrost/Incendiary
       // = trong số đó, bao nhiêu là loại ĐẶC BIỆT (để "Firing" biết tiêu loại
