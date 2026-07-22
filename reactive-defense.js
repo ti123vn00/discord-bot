@@ -201,6 +201,11 @@ async function sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, a
   ];
   for (const entry of allCombatantEntries) {
     if (entry.id === p.attackerId || entry.id === t.targetId) continue;
+    // GAP ĐÃ SỬA (xác nhận trực tiếp): "bug có thể clash hộ cho kẻ địch" —
+    // trước đây KHÔNG check phe, nên bất kỳ ai (kể cả phe ĐỊCH của target,
+    // tức đồng minh của attacker) speed cao hơn đều được mời Clash-hộ. Chỉ
+    // ĐỒNG MINH THẬT của target (cùng type với target) mới được mời.
+    if (entry.type !== t.targetType) continue;
     if ((entry.combatant.currentSpeed ?? -Infinity) <= (attacker.combatant.currentSpeed ?? Infinity)) continue;
     const isThirdPartyEnemy = entry.type === "enemy";
     let thirdPartyChannel = channel;
@@ -221,6 +226,12 @@ async function sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, a
           .setCustomId(`encreactivedef:${channelId}:${p.id}:${t.targetId}:clash:${entry.id}`)
           .setLabel(`⚔️ Clash thay cho ${targetResolved.label}`)
           .setStyle(ButtonStyle.Primary),
+        // "hãy thêm lựa chọn không clash, tức là nút hủy" (xác nhận trực
+        // tiếp, theo tester) — không làm gì cả, chỉ ẩn prompt này đi.
+        new ButtonBuilder()
+          .setCustomId(`encreactivedef:${channelId}:${p.id}:${t.targetId}:clashdecline:${entry.id}`)
+          .setLabel(`❌ Không Clash`)
+          .setStyle(ButtonStyle.Secondary),
       )],
     }).catch(() => {});
   }
@@ -312,6 +323,16 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         if (!p.reactedTargetIds.includes(t.targetId)) p.reactedTargetIds.push(t.targetId);
         continue;
       }
+      // "Stagger" — GAP ĐÃ SỬA (xác nhận trực tiếp): "bị stagger, không thể sử
+      // dụng reactive defense hay hành động tiếp được nữa" — trước đây HOÀN
+      // TOÀN không có check này, người đang Stagger vẫn được hỏi Guard/Evade/
+      // Parry bình thường (khiến trông như Stagger "không có tác dụng gì" dù
+      // counter thời lượng vẫn đúng). Giờ tự động coi như "không phòng thủ"
+      // (ăn đủ dmg), không gửi prompt nào cả.
+      if (targetResolved.combatant.staggered) {
+        if (!p.reactedTargetIds.includes(t.targetId)) p.reactedTargetIds.push(t.targetId);
+        continue;
+      }
       // GAP ĐÃ SỬA (xác nhận trực tiếp): "bấm Guard 1 lần trong turn thì cứ mặc
       // định là guard sẵn trong turn đó do charge Guard của nó không thể bị
       // giảm được nên phải khóa lại nút guard" — Iron Horus đã Guard 1 lần rồi
@@ -368,7 +389,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       // → nhóm cuối chỉ còn 2 hit) — dùng đúng số hit THẬT của nhóm này để tính
       // cost chính xác (không phải LUÔN hitsPerCharge).
       const hitsInThisGroup = Math.min(hitsPerCharge, hitCount - currentGroupIdx * hitsPerCharge);
-      const opts = computeDefenseOptions(target, attackerWeapon, hitsInThisGroup, isM1Type, thisGroupBypass, false);
+      const opts = computeDefenseOptions(target, attackerWeapon, hitsInThisGroup, isM1Type, thisGroupBypass, p.isEyeOfHorusFixedBurst ?? false);
 
       // Counter/Clash — CHỈ hiện ở nhóm ĐẦU TIÊN chưa quyết định (ảnh hưởng
       // TOÀN BỘ đòn, không phải riêng 1 nhóm — cho phép chọn ở nhóm giữa chừng
@@ -462,7 +483,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       }
 
       const dmgPreview = t.preview?.totalDmg?.toFixed(3) ?? "?";
-      const tagNote = [thisGroupBypass.blockGuard && "Unblockable", thisGroupBypass.blockEvade && "Undodgeable", thisGroupBypass.blockParry && "Unparriable"].filter(Boolean);
+      const tagNote = [thisGroupBypass.blockGuard && "Unblockable", thisGroupBypass.blockEvade && "Undodgeable", thisGroupBypass.blockParry && "Unparriable", thisGroupBypass.guardBreak && "Guard Break"].filter(Boolean);
       const groupHitRangeStart = currentGroupIdx * hitsPerCharge + 1;
       const groupHitRangeEnd = groupHitRangeStart + hitsInThisGroup - 1;
       const hitRangeLabel = hitsInThisGroup > 1 ? `Hit ${groupHitRangeStart}-${groupHitRangeEnd}` : `Hit ${groupHitRangeStart}`;
