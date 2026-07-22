@@ -314,6 +314,11 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     if ((combatant.darkCloudOutfitStacks ?? 0) > 0) {
       combatant.darkCloudOutfitStacks = Math.max(0, combatant.darkCloudOutfitStacks - 2);
     }
+    // "Ignite Weaponry" (Liu Association) — xác nhận trực tiếp: "Đốt cháy vũ
+    // khí của bạn trong 2 Turn" — giảm dần mỗi turn end.
+    if ((combatant.weaponIgnitedTurnsLeft ?? 0) > 0) {
+      combatant.weaponIgnitedTurnsLeft -= 1;
+    }
     // "Dullahan" (Fused Blade of Ruined Mirror Worlds passive) — xác nhận
     // trực tiếp: "Vào turn kế sau khi bạn Parry bạn sẽ nhận được 1 Stack
     // Dullahan và giảm bản thân 15 Sanity" (round-based, giống Waltz In
