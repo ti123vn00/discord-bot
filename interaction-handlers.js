@@ -16,7 +16,7 @@
 // Factory tự client.on("interactionCreate", ...) (nhiều listener riêng biệt,
 // y hệt cấu trúc gốc) bên trong — không return gì cả.
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterBoardEmbed, buildEnemyTargetOptions, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterBoardEmbed, buildEnemyTargetOptions, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -578,6 +578,15 @@ client.on("interactionCreate", async (interaction) => {
     // CHÍNH target để đem ra so Dice (chỉ đọc, không sửa gì nên KHÔNG cần
     // withLock — dropdown chọn xong mới thật sự khoá/xử lý ở handler riêng
     // "encclashselect:").
+    // "Không Clash" (nút huỷ, xác nhận trực tiếp theo tester) — chỉ ẩn prompt
+    // này đi, không làm gì khác — người khác vẫn có thể Clash nếu muốn.
+    if (choice === "clashdecline") {
+      await interaction.update({
+        embeds: [{ title: "❌ Đã bỏ qua", description: "Bạn chọn không Clash hộ lần này.", color: 0x95a5a6 }],
+        components: [],
+      }).catch(() => {});
+      return;
+    }
     if (choice === "clash") {
       // counterSkillKey field TÁI DÙNG làm clasherId ở đây (choice="clash"
       // dùng khác ý nghĩa so với choice="counter") — NGƯỜI THỰC HIỆN Clash,
@@ -980,6 +989,15 @@ client.on("interactionCreate", async (interaction) => {
       embeds: [{ title: "⚔️ Clash — Kết quả", description: displayText, color: 0x2ecc71 }],
       components: [],
     }).catch(() => {});
+    // GAP ĐÃ SỬA (xác nhận trực tiếp): "sau khi responsive guard được thực thi
+    // xong thì bị che mất luôn phần dropdown turn của người đang trong turn
+    // khiến khó mà lần theo" — gửi lại (resend) dropdown turn hiện tại NGAY
+    // sau khi phản hồi xong, để nó luôn nằm Ở CUỐI kênh (dễ thấy nhất), không
+    // bị các tin nhắn reactive defense/kết quả mới hơn che khuất lên trên.
+    {
+      const encAfterReactive = await getEncounter(channelId);
+      if (encAfterReactive) announceCurrentTurn(channelId, encAfterReactive).catch(() => {});
+    }
   } catch (err) {
     interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
@@ -1379,7 +1397,31 @@ client.on("interactionCreate", async (interaction) => {
   }
   const value = interaction.values[0];
   try {
+    // "Stagger" — GAP ĐÃ SỬA (xác nhận trực tiếp): người đang Stagger "không
+    // thể sử dụng reactive defense hay hành động tiếp được nữa" — trước đây
+    // dropdown encmenu HOÀN TOÀN không check staggered, cho phép họ tiếp tục
+    // hành động chủ động (M1/skill/critical...) dù đang Stagger — chỉ cho
+    // "endmyturn" đi qua (để không bị kẹt UI, dù về lý thuyết turn của họ đã
+    // tự động bị advanceToNextTurnHolder bỏ qua).
+    if (value !== "endmyturn") {
+      const encStaggerCheck = await getEncounter(channelId);
+      const combatantStaggerCheck = encStaggerCheck?.players?.[interaction.user.id];
+      if (combatantStaggerCheck?.staggered) {
+        return interaction.reply({ content: "⚠️ Bạn đang bị Stagger — không thể hành động (kể cả phòng thủ) cho tới khi tỉnh lại.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+    }
     if (value === "attack") {
+      // "M1 cạn Stamina" — GAP ĐÃ SỬA (xác nhận trực tiếp): "dùng m1 cạn
+      // stamina xong vẫn còn act được thông qua dropdown" — trước đây KHÔNG
+      // check Stamina tối thiểu TRƯỚC khi mở target dropdown, chỉ throw lỗi
+      // SAU khi đã chọn target + nhập dmg (Modal) — để chặn SỚM ngay từ
+      // dropdown, không để họ đi hết luồng rồi mới báo lỗi.
+      const encStamCheck = await getEncounter(channelId);
+      const combatantStamCheck = encStamCheck?.players?.[interaction.user.id];
+      const minStaminaCost = WEAPON_STAMINA_COST[combatantStamCheck?.weaponWeight ?? "medium"];
+      if ((combatantStamCheck?.currentStamina ?? 0) < minStaminaCost) {
+        return interaction.reply({ content: `⚠️ Không đủ Stamina để đánh thường (cần tối thiểu ${minStaminaCost}, hiện có ${combatantStamCheck?.currentStamina ?? 0}).`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
       // M1 (Đánh thường) — theo yêu cầu trực tiếp: hỏi "đánh mấy lần" thay vì bắt
       // gõ tay cả công thức dmgStr — tự tính từ vũ khí đã equip (weaponBaseDamage/
       // weaponType lưu trên combatant, xem createCombatant/join/swapweapon). Nếu
