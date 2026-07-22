@@ -24,9 +24,12 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
   /**
    * determineTurnOrder — roll Speed cho TẤT CẢ combatant, sắp xếp giảm dần quyết
    * định thứ tự hành động. Khi bằng Speed:
-   *   - CÙNG PHE (player-player hoặc enemy-enemy) → KHÔNG tự roll lại — đánh dấu
-   *     "tiedWith" để GM/player tự thoả thuận ai trước (giữ thứ tự hiện tại làm
-   *     fallback nếu không ai lên tiếng).
+   *   - CÙNG PHE (player-player hoặc enemy-enemy) → GAP ĐÃ SỬA (xác nhận trực
+   *     tiếp): "kể cả player với player với nhau cũng nên random luôn, không
+   *     nên cho tự chọn nữa vì dễ confuse" — KHÔNG tự roll lại Speed, nhưng
+   *     entries.sort() bên dưới TỰ RANDOM thứ tự (Math.random() tie-break),
+   *     không còn "tự thoả thuận" thủ công nữa — "tiedWith" chỉ còn dùng để
+   *     HIỂN THỊ cho biết ai đang hoà Speed với ai (buildTurnOrderText).
    *   - KHÁC PHE (có cả player VÀ enemy cùng Speed) → reroll NGAY giữa các bên đang
    *     tie cho tới khi hết tie (lặp, chặn tối đa 20 lần phòng hờ — gần như không
    *     thể chạm trần này với range hữu hạn của dice thật).
@@ -64,7 +67,13 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       if (!rerolled) break;
     }
   
-    entries.sort((a, b) => b.combatant.currentSpeed - a.combatant.currentSpeed);
+    // "roll ra bằng speed" — GAP ĐÃ SỬA (xác nhận trực tiếp): "hãy thêm trường
+    // hợp nếu roll ra bằng speed thì random người đi trước hoặc sau" — trước
+    // đây chỉ REROLL khi speed bằng nhau KHÁC PHE (dòng trên); CÙNG phe bằng
+    // speed thì Array.sort() (stable từ ES2019) giữ NGUYÊN thứ tự push ban đầu
+    // (enemies trước, rồi players theo Object.keys() — không hề random). Random
+    // hoá tie-break: cùng speed thì Math.random() quyết định ai trước/sau.
+    entries.sort((a, b) => b.combatant.currentSpeed - a.combatant.currentSpeed || Math.random() - 0.5);
     const order = entries.map((e, i) => ({
       id: e.id, type: e.type, speed: e.combatant.currentSpeed,
       tiedWith: entries.filter((o, j) => j !== i && o.combatant.currentSpeed === e.combatant.currentSpeed).map(o => o.id),
@@ -227,7 +236,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     const curIdx = encounter.currentTurnIndex ?? 0;
     return order.map((e, i) => {
       const label = e.type === "enemy" ? `**${encounter.enemies[e.id]?.name ?? e.id}**` : `<@${e.id}>`;
-      const tieNote = e.tiedWith.length > 0 ? ` ⚖️ *(hoà Speed — tự thoả thuận thứ tự với ${e.tiedWith.length} người khác cùng phe)*` : "";
+      const tieNote = e.tiedWith.length > 0 ? ` ⚖️ *(hoà Speed với ${e.tiedWith.length} người khác — thứ tự đã random tự động)*` : "";
       const turnMarker = i === curIdx ? " 👉 **(đang tới lượt)**" : "";
       return `**#${i + 1}** ${label} — Speed **${e.speed}**${tieNote}${turnMarker}`;
     }).join("\n");
