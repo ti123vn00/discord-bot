@@ -16,6 +16,12 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // "Dullahan" (Fused Blade passive) — xác nhận trực tiếp: "Khi có Dullahan
     // bạn nhận được 30% Dmg gây ra".
     if ((attacker.dullahanStacks ?? 0) > 0) bonusPct += 30;
+    // "Index Proselyte" (Karmic Consequence) — GAP ĐÃ SỬA: xác nhận trực tiếp
+    // "khiến bạn nhận thêm 1% Dmg cho mỗi stack" — trước đây karmicConsequence
+    // CHỈ được tăng (combat-utils.js's prescript roll thất bại) nhưng KHÔNG
+    // BAO GIỜ thực sự áp vào bonusPct — phát hiện qua test thật (Eye Of Horus
+    // 4x9P+4x9P ra 72 thay vì 108 kỳ vọng, chênh đúng 50% = 50 stack).
+    if ((attacker.karmicConsequence ?? 0) > 0) bonusPct += attacker.karmicConsequence;
     // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Các vũ khí/skill/page
     // sử dụng đạn sẽ được tăng thêm 20% Dmg gây ra" — "chỉ áp dụng khi đòn đó
     // THỰC SỰ tiêu đạn/Round nào đó trong lượt này" — check stack > 0 TRƯỚC
