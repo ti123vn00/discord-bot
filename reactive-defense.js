@@ -388,6 +388,20 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
           addedCounterKeys.add(pageKey);
           availableCounterPages.push({ key: pageKey, name: pageSkill.name, lightCost: cost.light ?? 0 });
         }
+        // "Tanglecleaver Reload" (Tiantui Star's Blade + Thumb Capo IIII, Page
+        // không tốn slot) — xác nhận trực tiếp: "5 page đặc biệt không tốn
+        // slot page bình thường và chỉ mở khóa khi đúng faction và outfit, vũ
+        // khí đang mặc" — không phụ thuộc unlockedPagesSnapshot.
+        if (target.weaponName === "Tiantui Star's Blade [天退星刀]" && target.equippedOutfit === "Thumb Capo IIII" && !addedCounterKeys.has("tanglecleaver reload")) {
+          const reloadSkill = findSkill("Tanglecleaver Reload");
+          if (reloadSkill && (target.skillCooldowns?.["tanglecleaver reload"] ?? 0) <= 0) {
+            const reloadCost = parseSkillCost(reloadSkill.cost);
+            if ((target.currentLight ?? 0) >= (reloadCost.light ?? 0)) {
+              addedCounterKeys.add("tanglecleaver reload");
+              availableCounterPages.push({ key: "tanglecleaver reload", name: reloadSkill.name, lightCost: reloadCost.light ?? 0 });
+            }
+          }
+        }
       }
       const canClash = isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable
         && (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
