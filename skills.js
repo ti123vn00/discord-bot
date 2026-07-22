@@ -4524,6 +4524,21 @@ Object.assign(SKILLS, {
     // (làm tròn lên) — xử lý cùng chỗ.
     customLoad: { field: "bulletStack", max: 8, half: true },
   },
+  "ignite weaponry": {
+    name: "Ignite Weaponry", tags: "Burn",
+    cost: "1 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `*Nếu sử dụng outfit của **Liu Association** và gia nhập office của **Liu Association** sẽ tự động sử dụng được page này (Page này không tốn slot)*`,
+        `${D1} Đốt cháy vũ khí của bạn trong 2 Turn, khiến cho đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy] **Burn** lên kẻ địch`,
+      ];
+    },
+    // igniteWeapon — GAP ĐÃ SỬA: field ĐẶC BIỆT riêng (không phải counterEffect,
+    // không phải hit: gây dmg trực tiếp) — xử lý ở resolveOnePendingAction
+    // (index.js) qua p.skillKey === "ignite weaponry". Bật weaponIgnitedTurnsLeft
+    // = 2, mỗi M1 trong lúc đó tự áp Burn theo weaponWeight (1/2/4).
+    igniteWeapon: { turns: 2, burnByWeight: { light: 1, medium: 2, heavy: 4 } },
+  },
 
   // ── Serum K (Singularity) ──
   "serum k": {
