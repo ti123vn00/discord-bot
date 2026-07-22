@@ -19,9 +19,15 @@ module.exports = function ({ findSkill, hasPerk }) {
 
   function buildEncounterActionPanel(channelId, combatant, playerId) {
     if (!combatant || !playerId) return [];
-    const options = [
-      new StringSelectMenuOptionBuilder().setLabel("⚔️ Đánh thường (M1)").setValue("attack"),
-    ];
+    const options = [];
+    // "dùng m1 cạn stamina xong vẫn còn act được thông qua dropdown" — GAP ĐÃ
+    // SỬA (xác nhận trực tiếp) — trước đây option M1 LUÔN hiện bất kể còn
+    // Stamina hay không (chỉ chặn lúc xác nhận qua doPlayerAttack, gây cảm
+    // giác "vẫn act được" ngay từ dropdown). Ẩn HẲN nếu currentStamina <= 0
+    // (không đủ cho BẤT KỲ weaponWeight nào — light cần tối thiểu 5).
+    if ((combatant.currentStamina ?? 0) > 0) {
+      options.push(new StringSelectMenuOptionBuilder().setLabel("⚔️ Đánh thường (M1)").setValue("attack"));
+    }
     // Critical vũ khí — GAP ĐÃ SỬA (xác nhận trực tiếp: "không có dropdown để sử
     // dụng critical của vũ khí"). CHỈ hiện nếu findSkill() THỰC SỰ tìm được (loại
     // đúng trường hợp vũ khí không có Critical nào, VD Patron Librarian Baton —
@@ -133,7 +139,13 @@ module.exports = function ({ findSkill, hasPerk }) {
    */
   function buildBossActionPanel(channelId, enemyKey, gmUserId) {
     const options = [
-      new StringSelectMenuOptionBuilder().setLabel("⚔️ Tấn công (M1/skill)").setValue("attack"),
+      // GAP ĐÃ SỬA (xác nhận trực tiếp): "m1 cho boss — không có cách nào
+      // trực tiếp tiêu hao stamina của boss, phần dropdown điều khiển boss
+      // cần thêm option" — tách "Tấn công" cũ thành 2 lựa chọn RIÊNG: M1
+      // (tự trừ Stamina theo weaponWeight, value "attackm1") và Skill/
+      // Critical (không tự trừ Stamina, value "attack" giữ nguyên hành vi cũ).
+      new StringSelectMenuOptionBuilder().setLabel("⚔️ M1 (tự trừ Stamina)").setValue("attackm1"),
+      new StringSelectMenuOptionBuilder().setLabel("📖 Skill/Critical (không tự trừ Stamina)").setValue("attack"),
       new StringSelectMenuOptionBuilder().setLabel("🏁 Kết thúc lượt").setValue("endmyturn"),
     ];
     return [
