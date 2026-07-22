@@ -11,17 +11,25 @@
 
 module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
-  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
+  function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, eyeOfHorusNewCount = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
     let bonusPct = attacker.gmBonusPctOverride ?? 0;
     // "Dullahan" (Fused Blade passive) — xác nhận trực tiếp: "Khi có Dullahan
     // bạn nhận được 30% Dmg gây ra".
     if ((attacker.dullahanStacks ?? 0) > 0) bonusPct += 30;
-    // "Index Proselyte" (Karmic Consequence) — GAP ĐÃ SỬA: xác nhận trực tiếp
-    // "khiến bạn nhận thêm 1% Dmg cho mỗi stack" — trước đây karmicConsequence
-    // CHỈ được tăng (combat-utils.js's prescript roll thất bại) nhưng KHÔNG
-    // BAO GIỜ thực sự áp vào bonusPct — phát hiện qua test thật (Eye Of Horus
-    // 4x9P+4x9P ra 72 thay vì 108 kỳ vọng, chênh đúng 50% = 50 stack).
-    if ((attacker.karmicConsequence ?? 0) > 0) bonusPct += attacker.karmicConsequence;
+    // "Eye Of Horus" (Foreclosure Task Force President) — GAP ĐÃ SỬA (xác nhận
+    // trực tiếp): "Dưới hoặc bằng 2 lần: Đòn đánh thường nay sẽ được gia tăng
+    // thêm 50% sát thương" — HOÀN TOÀN chưa từng được tự động hoá trước đây
+    // (chỉ có số volley/base dice, KHÔNG có +50% dmg) — phát hiện qua test
+    // thật: bắn lần 1 ra 72 thay vì 108 kỳ vọng (kết quả "108" trước đó hoá ra
+    // là do tôi NHẦM gán cho Karmic Consequence, không liên quan gì thật).
+    if (eyeOfHorusNewCount !== null && eyeOfHorusNewCount <= 2) bonusPct += 50;
+    // "Index Proselyte" (Karmic Consequence) — GAP ĐÃ SỬA LẦN 2 (xác nhận
+    // trực tiếp): "karmicconsequence ở trên là khiến người có nó nhận thêm
+    // dmg% nhận vào chứ không phải tăng dmg% gây ra. Nó là debuff ấy" — đây là
+    // DEBUFF lên chính TARGET (người đang có Karmic Consequence chịu thêm dmg
+    // khi bị đánh), KHÔNG PHẢI buff cho attacker — check target, không phải
+    // attacker (giống hệt pattern "target.staggered" ngay dưới).
+    if ((target.karmicConsequence ?? 0) > 0) bonusPct += target.karmicConsequence;
     // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Các vũ khí/skill/page
     // sử dụng đạn sẽ được tăng thêm 20% Dmg gây ra" — "chỉ áp dụng khi đòn đó
     // THỰC SỰ tiêu đạn/Round nào đó trong lượt này" — check stack > 0 TRƯỚC
