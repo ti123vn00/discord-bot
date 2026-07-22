@@ -1385,6 +1385,25 @@ async function resolveOnePendingAction(encounter, p) {
                 }
               }
             }
+            // "Ignite Weaponry" (Liu Association, Page không tốn slot) — xác
+            // nhận trực tiếp: "Đốt cháy vũ khí của bạn trong 2 Turn, khiến cho
+            // đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy] Burn lên kẻ
+            // địch" — kích hoạt hiệu ứng (giảm dần mỗi turn end ở turn-advance.js).
+            if (p.skillKey === "ignite weaponry") {
+              attacker.combatant.weaponIgnitedTurnsLeft = 2;
+              verifyNote += ` 🔥[Ignite Weaponry: vũ khí bốc cháy trong 2 Turn]`;
+            }
+            // M1 tự động áp Burn theo weaponWeight khi vũ khí đang bốc cháy
+            // (weaponIgnitedTurnsLeft > 0) — 1/2/4 Burn cho Light/Medium/Heavy.
+            if (scorchTarget && (attacker.combatant.weaponIgnitedTurnsLeft ?? 0) > 0) {
+              const isM1TypeForIgnite = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+              if (isM1TypeForIgnite) {
+                const IGNITE_BURN_BY_WEIGHT = { light: 1, medium: 2, heavy: 4 };
+                const igniteBurnAmount = IGNITE_BURN_BY_WEIGHT[attacker.combatant.weaponWeight ?? "medium"] ?? 2;
+                scorchTarget.burn = Math.min(BURN_MAX, (scorchTarget.burn ?? 0) + igniteBurnAmount);
+                verifyNote += ` 🔥[Vũ khí bốc cháy: +${igniteBurnAmount} Burn]`;
+              }
+            }
             // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Khi sử dụng
             // Tiantui Star's Blade: Khi gây Tremor bạn sẽ áp thêm Burn bằng một
             // nửa count của Tremor và ngược lại" — chỉ tính PHẦN MỚI GÂY THÊM
