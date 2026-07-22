@@ -1121,11 +1121,12 @@ client.on("interactionCreate", async (interaction) => {
       // dropdown bossattacktarget) nằm ở parts[4].
       const enemyKey = parts[3];
       const bossTargetId = parts[4];
+      const bossIsM1Flag = parts[5]; // "m1" hoặc "skill" — xem bossmenu/bossattacktarget handler
       const bossTargetStr = bossTargetId === "all" ? "all" : `<@${bossTargetId}>`;
       const dmgStr = interaction.fields.getTextInputValue("dmgStr");
       const tags = interaction.fields.getTextInputValue("tags")?.trim() || undefined;
       const note = interaction.fields.getTextInputValue("note")?.trim() || undefined;
-      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr, { tags });
+      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr, { tags, ism1: bossIsM1Flag === "m1" ? "yes" : undefined });
       if (note) embed.description += `\n> 📝 **Hiệu ứng:** ${note}`;
       await interaction.reply({ embeds: [embed] });
       // hit/criticalhit (Modal) ĐÃ GỠ — thực thi trực tiếp từ dropdown enctarget
@@ -1815,7 +1816,8 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
       return;
     }
-    if (value === "attack") {
+    if (value === "attack" || value === "attackm1") {
+      const isM1Flow = value === "attackm1";
       // BUG ĐÃ SỬA (xác nhận trực tiếp: "bấm dropdown của boss tôi lại không
       // target player được dù tag đúng tên họ") — Modal Text Input của Discord
       // KHÔNG hỗ trợ autocomplete mention (khác với gõ tin nhắn thường) — gõ
@@ -1846,7 +1848,7 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [{ title: `⚔️ ${enemyKey} tấn công — chọn target`, description: "Chọn người chơi muốn nhắm:", color: 0xe74c3c }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
-            .setCustomId(`bossattacktarget:${channelId}:${enemyKey}:${gmUserId}`)
+            .setCustomId(`bossattacktarget:${channelId}:${enemyKey}:${gmUserId}:${isM1Flow ? "m1" : "skill"}`)
             .setPlaceholder("Chọn target...")
             .addOptions(...targetOptions.slice(0, 25)),
         )],
@@ -1866,14 +1868,14 @@ client.on("interactionCreate", async (interaction) => {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith("bossattacktarget:")) return;
-  const [, channelId, enemyKey, gmUserId] = interaction.customId.split(":");
+  const [, channelId, enemyKey, gmUserId, isM1Flag] = interaction.customId.split(":");
   const isAdmin = ADMIN_IDS.has(interaction.user.id);
   if (interaction.user.id !== gmUserId && !isAdmin) {
     return interaction.reply({ content: "⚠️ Chỉ GM/admin điều khiển được enemy này.", flags: MessageFlags.Ephemeral }).catch(() => {});
   }
   const targetId = interaction.values[0]; // playerId thật hoặc "all" — KHÔNG cần parse mention nữa
   const modal = new ModalBuilder()
-    .setCustomId(`encmodal:${channelId}:bossattack:${enemyKey}:${targetId}`)
+    .setCustomId(`encmodal:${channelId}:bossattack:${enemyKey}:${targetId}:${isM1Flag ?? "skill"}`)
     .setTitle(`${enemyKey} tấn công`.slice(0, 45));
   // GAP ĐÃ SỬA (xác nhận trực tiếp: "boss có thể được GM customize rất nhiều...
   // 1 số đòn của boss không dmg nhưng hiệu ứng... không thể làm chỉ only m1 như
