@@ -365,6 +365,7 @@ const KNOWN_KEYS = new Set([
   "banner", // -gacha banner: naruto/standard
   "usebullet", // -encounter attack usebullet: yes (Soldato Rifle's Firing passive)
   "loadtype", // -encounter hit skill: Re-Load loadtype: ammo/frost/incendiary
+  "ism1", // -encounter enemyattack ism1: yes (boss M1 that su, tu tru Stamina theo weaponWeight)
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -1035,6 +1036,24 @@ const ENCOUNTER_DEFAULT_MAX_LIGHT = 4;
 const ENCOUNTER_SANITY_MAX = 45; // luôn bắt đầu 0/45 mỗi trận theo luật
 const ENCOUNTER_STAMINA_REGEN_PER_TURN = 30;
 const ENCOUNTER_PENDING_MAX = 20; // chặn spam — 1 turn thật khó vượt quá số này
+// hasUnresolvedTargetPending — GAP ĐÃ SỬA (xác nhận trực tiếp): "người tấn
+// công vẫn tấn công tiếp được dù người bị tấn công chưa thực thi xong
+// responsive guard (điều này dẫn đến rất rối và có thể bỏ hẳn đòn đánh bằng
+// cách kệ)" — trước đây KHÔNG có check nào ngăn tạo pendingAction MỚI lên 1
+// target ĐANG CÓ pendingAction khác chưa phản hồi xong (chưa Guard/Evade/
+// Parry/Không phòng thủ) — gây chồng chất nhiều đòn treo cùng lúc lên 1
+// người, rất dễ rối và cho phép "spam đánh" trong lúc target còn đang phải
+// xử lý đòn trước. Chặn NGAY tại đây (trước khi resolveOnePendingAction mới
+// được tạo) — bắt buộc phải xử lý xong đòn trước rồi mới đánh tiếp.
+function hasUnresolvedTargetPending(encounter, targetId) {
+  for (const p of (encounter.pendingActions ?? [])) {
+    const isTargeted = (p.targets ?? []).some(t => t.targetId === targetId);
+    if (!isTargeted) continue;
+    const hasReacted = (p.reactedTargetIds ?? []).includes(targetId);
+    if (!hasReacted) return true;
+  }
+  return false;
+}
 // ── EMOTION LEVEL — buff TẠM THỜI, KHÔNG cộng dồn vĩnh viễn ─────────────────
 // Mỗi mốc Level có Duration 3 turn — hết hạn thì rớt về Level 0 và vào CD 6 turn
 // (không lên lại được dù coin đủ). Đạt Level CAO HƠN khi mốc cũ còn active → THAY
@@ -1380,6 +1399,13 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
+    // GAP ĐÃ SỬA (xác nhận trực tiếp): chặn tấn công tiếp vào 1 target ĐANG có
+    // đòn khác chưa phản hồi xong (xem hasUnresolvedTargetPending).
+    for (const t of targets) {
+      if (hasUnresolvedTargetPending(encounter, t.id)) {
+        throw new Error(`${t.label ?? t.id} còn 1 đòn khác đang chờ phản hồi (Guard/Evade/Parry/Không phòng thủ) — phải xử lý xong đòn đó trước khi tấn công tiếp.`);
+      }
+    }
     // "Rotate Trigram" — "Ri": áp dụng vào M1 ĐẦU TIÊN sau khi rơi vào "Ri"
     // (rotateTrigramRiPending từ turn-advance.js) — "phá hủy 2 Light" nếu đủ,
     // ngược lại giảm 10% Stamina của target ĐẦU TIÊN (không phải AOE toàn bộ —
@@ -1626,6 +1652,11 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
+    for (const t of targets) {
+      if (hasUnresolvedTargetPending(encounter, t.id)) {
+        throw new Error(`${t.label ?? t.id} còn 1 đòn khác đang chờ phản hồi (Guard/Evade/Parry/Không phòng thủ) — phải xử lý xong đòn đó trước khi tấn công tiếp.`);
+      }
+    }
     // "Waltz In Black": tính 1 lần (dùng target đầu tiên — skill này không AOE)
     // rồi áp cho CẢ dmgStr lẫn Unevadeable — xem comment đầy đủ ở
     // computeAttackerPerkContext (attacker-perk-context.js). BUG ĐÃ SỬA: "diceMul"
@@ -1768,6 +1799,11 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "player");
+    for (const t of targets) {
+      if (hasUnresolvedTargetPending(encounter, t.id)) {
+        throw new Error(`${t.label ?? t.id} còn 1 đòn khác đang chờ phản hồi (Guard/Evade/Parry/Không phòng thủ) — phải xử lý xong đòn đó trước khi tấn công tiếp.`);
+      }
+    }
     // QUAN TRỌNG: chiều này ENEMY là người tấn công → Poise/Charge lấy từ ENEMY.
     // TARGET (player) là người bị tấn công → 5 status kia lấy từ TỪNG TARGET riêng.
     const previews = targets.map(t => {
@@ -1801,6 +1837,22 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       const finalDmgAfterReduction = preview.totalDmg * saturateDR(1 - defReductionPct / 100);
       return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, haouRuptureApplied: haouRuptureCheck?.applied ?? false };
     });
+
+    // "ism1" — GAP ĐÃ SỬA (xác nhận trực tiếp): "m1 cho boss — không có cách
+    // nào trực tiếp tiêu hao stamina của boss" — trước đây doEnemyAttack LUÔN
+    // isM1:false (coi mọi đòn là skill, không tự trừ Stamina theo weaponWeight
+    // như player's M1 qua "-encounter attack"). ism1: yes để đánh dấu ĐÂY LÀ
+    // M1 thật của boss — tự trừ đúng WEAPON_STAMINA_COST[weaponWeight] × số
+    // hit (dùng hit nhiều nhất trong các target nếu AOE).
+    const isEnemyM1 = (verifyOpts.ism1 ?? "").trim().toLowerCase() === "yes";
+    if (isEnemyM1) {
+      const maxHitCount = Math.max(1, ...previews.map(p => p.preview?.dmgValues?.length ?? 1));
+      const enemyStaminaCost = WEAPON_STAMINA_COST[enemy.weaponWeight ?? "medium"] * maxHitCount;
+      if (enemy.currentStamina < enemyStaminaCost) {
+        throw new Error(`Không đủ Stamina — cần ${enemyStaminaCost} (${maxHitCount} hit × ${WEAPON_STAMINA_COST[enemy.weaponWeight ?? "medium"]}/hit vũ khí ${enemy.weaponWeight ?? "medium"}), còn ${enemy.currentStamina}.`);
+      }
+      enemy.currentStamina -= enemyStaminaCost;
+    }
 
     const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     encounter.pendingActions = encounter.pendingActions ?? [];
