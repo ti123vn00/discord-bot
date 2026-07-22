@@ -1,7 +1,16 @@
-// ─── PLAYER DATA HELPERS (profile, slot, migration, persistence) ────────────
-// ĐÃ TÁCH sang file riêng (player-data.js). Factory function nhận dependency
-// injection giống các module khác.
-module.exports = function({ MAX_PROFILES, Redis, VALID_ITEMS_SET, log, redis, withTimeout }) {
+// player-data.js
+// Toàn bộ helper thao tác với player data qua Redis (migrate, get/save theo
+// slot profile, quản lý tên profile...) — TÁCH khỏi index.js theo yêu cầu
+// trực tiếp: "tách nhỏ file index.js ra các file js khác" (code đã lên tới
+// 11k+ dòng, khó check/chỉnh sửa và tốn usage mỗi lần quét).
+//
+// COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào) — chỉ bọc trong
+// factory function nhận dependency từ index.js (giống pattern các module đã
+// tách trước đó — xem comment ở encounter-panels.js).
+
+module.exports = function ({ MAX_PROFILES, RedisTimeoutError, VALID_ITEMS_SET, log, redis, withTimeout }) {
+
+// ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
 function migratePlayerData(data) {
   if (data.books !== undefined || data.items !== undefined) {
     data.books = data.books ?? {};
@@ -249,6 +258,11 @@ function formatNumber(n) {
   return Math.floor(n).toLocaleString("en-US");
 }
 
-
-  return { migratePlayerData, isTimeoutError, numberEmoji, profileNamesKey, getProfileNames, setProfileName, resolveProfileLabel, getActiveProfileSlot, setActiveProfileSlot, playerKeyForSlot, dailyKeyForSlot, getPlayerData, getPlayerDataWithSlot, savePlayerData, saveMultiplePlayerData, unwrapPipelineResults, formatNumber, PROFILE_EMOJIS, PROFILE_LABELS };
+  return {
+    migratePlayerData, isTimeoutError, numberEmoji, PROFILE_LABELS, PROFILE_EMOJIS,
+    profileNamesKey, getProfileNames, setProfileName, resolveProfileLabel,
+    getActiveProfileSlot, setActiveProfileSlot, playerKeyForSlot, dailyKeyForSlot,
+    getPlayerData, getPlayerDataWithSlot, savePlayerData, saveMultiplePlayerData,
+    unwrapPipelineResults, formatNumber,
+  };
 };

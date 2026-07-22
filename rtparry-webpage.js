@@ -1,7 +1,16 @@
+// rtparry-webpage.js
+// Hàm render trang HTML "Parry Real Time" (đo phản xạ thời gian thực trên
+// trình duyệt người dùng) — TÁCH khỏi index.js theo yêu cầu trực tiếp: "tách
+// nhỏ file index.js ra các file js khác" (code đã lên tới 11k+ dòng).
+//
+// HÀM THUẦN — chỉ dùng process.env (đọc trực tiếp, không cần truyền vào) và
+// tham số đầu vào, KHÔNG phụ thuộc bất kỳ biến/hàm nào khác của index.js.
+// COPY NGUYÊN VĂN (không sửa 1 dòng logic nào).
+
 // ─── RTPARRY WEB PAGE ───────────────────────────────────────────────────────
-// ĐÃ TÁCH sang file riêng (rtparry-webpage.js) — hàm thuần render HTML/CSS/JS,
-// KHÔNG phụ thuộc gì từ index.js ngoài 3 tham số truyền vào (skillName/windowMs/
-// yellowMs) + process.env trực tiếp — an toàn tách nguyên vẹn không cần inject.
+/** Render trang Parry Real Time — HTML/CSS/JS thuần, không phụ thuộc gì bên ngoài.
+ *  performance.now() chạy hoàn toàn trên máy user, không qua round-trip server
+ *  lúc đo — đây là điểm khác biệt cốt lõi so với bản -rtparry trong Discord. */
 function renderParryWebPage(token, windowMs, yellowMs, skillName) {
   // Audio hook — CHƯA có file thật (user sẽ cung cấp sau), nên đọc từ env var, fallback
   // rỗng. Client tự kiểm tra "có URL không" trước khi play — không lỗi gì nếu để trống,
@@ -198,7 +207,5 @@ stage.addEventListener("click", () => {
 </body>
 </html>`;
 }
-
-
 
 module.exports = { renderParryWebPage };

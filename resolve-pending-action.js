@@ -1,8 +1,17 @@
-// ─── resolveOnePendingAction ─────────────────────────────────────────────────
-// ĐÃ TÁCH sang file riêng (resolve-pending-action.js) — hàm resolve damage
-// chính, chứa toàn bộ hook weapon/outfit passive. Factory function nhận
-// dependency injection giống các module khác (skill-tree.js, combat-utils.js...).
-module.exports = function({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, combatantResStr, computeAttackerPerkContext, computeDefenderDmgReduction, doPlayerAttack, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, log, performGuardEvade, r, resolveCombatant, resolveSkillVerification, rollInjury, saturateDR, savePlayerData }) {
+// resolve-pending-action.js
+// Hàm resolveOnePendingAction — tính toán và áp dụng KẾT QUẢ THẬT của 1 hành
+// động chiến đấu (M1/Skill/Critical/Enemy Attack) sau khi tất cả target đã
+// phản hồi phòng thủ, bao gồm TOÀN BỘ hook weapon/outfit passive (Coffin,
+// Dark Cloud, Tigermark Round, Thumb Capo IIII, Tactical Suppression...) —
+// TÁCH khỏi index.js theo yêu cầu trực tiếp: "tách nhỏ file index.js ra các
+// file js khác" (code đã lên tới 11k+ dòng).
+//
+// COPY NGUYÊN VĂN (không sửa 1 dòng logic nào). Dependency list được xác định
+// qua PHÂN TÍCH AST CHÍNH XÁC (acorn) — không dựa vào suy đoán thủ công, để
+// tránh sai sót ở 1 hàm lớn và phức tạp như thế này.
+
+module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, combatantResStr, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
+
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
             const attacker = resolveCombatant(encounter, p.attackerId);
@@ -826,9 +835,9 @@ async function resolveOnePendingAction(encounter, p) {
                 } else if (p.effectiveAmmoType === "incendiary") {
                   target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + 2);
                 }
-                // "Firing" (Soldato Rifle, bulletStack system) — CÙNG hiệu ứng
-                // Frost/Incendiary như trên nhưng từ pool RIÊNG (bulletStack,
-                // không phải ammo/frostAmmo/incendiaryAmmo Inventory-based).
+                // bulletStack system (Soldato Rifle's "Firing" passive) — CÙNG
+                // hiệu ứng phụ Frost/Incendiary như trên nhưng cho pool RIÊNG
+                // (bulletStack, không phải ammo/frostAmmo/incendiaryAmmo).
                 if (p.effectiveBulletType === "frost") {
                   target.paralyze = Math.min(99, (target.paralyze ?? 0) + 1);
                 } else if (p.effectiveBulletType === "incendiary") {
@@ -1348,6 +1357,34 @@ async function resolveOnePendingAction(encounter, p) {
               scorchTarget.tremor = Math.min(TREMOR_MAX, (scorchTarget.tremor ?? 0) + consumed);
               verifyNote += ` 🐯[Savage Tigerslayer Flurry: tiêu ${consumed} Savage Tigermark Round → +${consumed} Burn/+${consumed} Tremor]`;
             }
+            // "Re-Load" (Soldato Rifle + outfit The Thumb Syndicate, Page
+            // không tốn slot) — xác nhận trực tiếp: "Nạp một nửa số đạn tối đa
+            // của vũ khí. Số đạn nạp được từ Page này có thể tùy chọn giữa
+            // đạn thường, Frost Ammo và Incendiary Ammo tùy ý" — KHÔNG tiêu
+            // inventory (khác lệnh -encounter reload có sẵn). Loại đã kiểm
+            // tra xung đột ở doPlayerHit (declare) — ở đây chỉ cần nạp thật.
+            if (p.skillKey === "re-load" && attacker.combatant.weaponName === "Soldato Rifle") {
+              const loadAmount = 4; // floor(8/2) theo customLoad.max=8, half=true
+              const loadType = p.loadType ?? "ammo";
+              attacker.combatant.bulletStack = Math.min(8, (attacker.combatant.bulletStack ?? 0) + loadAmount);
+              attacker.combatant.bulletStackType = loadType;
+              verifyNote += ` 🔫[Re-Load: +${loadAmount} đạn ${loadType} (tổng ${attacker.combatant.bulletStack}/8)]`;
+              // "Thumb Soldato" (outfit): "Đồng minh thuộc Thumb ở trong trận
+              // sẽ nhận được đạn đặc biệt của riêng họ bằng một nửa số đạn mà
+              // bạn nạp được (làm tròn lên) thông qua Re-Load" — chỉ khi
+              // CHÍNH attacker có Thumb Soldato (không phải đồng minh).
+              if (attacker.combatant.equippedOutfit === "Thumb Soldato") {
+                const shareAmount = Math.ceil(loadAmount / 2);
+                for (const [allyId, ally] of Object.entries(encounter.players)) {
+                  if (allyId === p.attackerId) continue;
+                  if (!(ally.equippedOutfit ?? "").startsWith("Thumb")) continue;
+                  if ((ally.bulletStack ?? 0) > 0 && ally.bulletStackType && ally.bulletStackType !== loadType) continue; // tôn trọng "chỉ 1 loại" của chính đồng minh
+                  ally.bulletStack = Math.min(8, (ally.bulletStack ?? 0) + shareAmount);
+                  ally.bulletStackType = loadType;
+                  verifyNote += ` 🤝[Thumb Soldato: ${ally.name} nhận +${shareAmount} đạn ${loadType} (tổng ${ally.bulletStack}/8)]`;
+                }
+              }
+            }
             // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Khi sử dụng
             // Tiantui Star's Blade: Khi gây Tremor bạn sẽ áp thêm Burn bằng một
             // nửa count của Tremor và ngược lại" — chỉ tính PHẦN MỚI GÂY THÊM
@@ -1416,13 +1453,6 @@ async function resolveOnePendingAction(encounter, p) {
 
   return resultLines;
 }
-
-/** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
- *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
- *  lên target — tiếp tục luồng CHUNG: đánh dấu đã phản hồi, resolve NGAY nếu mọi
- *  target trong AOE đã xong, hoặc chờ tiếp nếu còn ai chưa bấm. TÁCH ra dùng
- *  chung cho CẢ encreactivedef (Parry/Không phòng thủ, áp dụng ngay) LẪN
- *  encreactivehits MỚI (Guard/Evade chọn hit cụ thể) — tránh trùng lặp logic. */
 
   return { resolveOnePendingAction };
 };

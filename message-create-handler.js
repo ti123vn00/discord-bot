@@ -1,9 +1,19 @@
-// ─── messageCreate handler ───────────────────────────────────────────────────
-// ĐÃ TÁCH sang file riêng (message-create-handler.js) — toàn bộ logic xử lý
-// lệnh text "-encounter ...", "-balance", "-gacha", v.v. Factory function nhận
-// dependency injection giống các module khác.
-module.exports = function({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, Redis, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceCombatantTurn, advanceToNextTurnHolder, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, computeAttackerPerkContext, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeapon, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performShinMang, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
-  return async function handleMessageCreate(message) {
+// message-create-handler.js
+// Toàn bộ xử lý lệnh prefix "-..." (encounter, profile, give, gacha, skill,
+// craft, daily, parry, inventory, dothihelp...) — TÁCH khỏi index.js theo yêu
+// cầu trực tiếp: "tách nhỏ file index.js ra các file js khác" (code đã lên
+// tới 11k+ dòng).
+//
+// COPY NGUYÊN VĂN (không sửa 1 dòng logic nào). Dependency list (138 mục)
+// được xác định qua PHÂN TÍCH AST CHÍNH XÁC (acorn) — không dựa vào suy đoán
+// thủ công, để tránh sai sót ở 1 handler lớn và phức tạp như thế này.
+//
+// Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
+// đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
+
+module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, processDailyClaimForUser, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+
+client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   try {
 
@@ -2696,25 +2706,23 @@ if (message.content.startsWith("-gacha")) {
     }
 
     if (sub === "reload") {
-      // GAP ĐÃ SỬA (xác nhận trực tiếp): "Firing passive là max 8 stack ammo
-      // được nạp TRONG SÚNG thôi không phân biệt đạn thường/frost/incendiary,
-      // còn cap 99 là số đạn tối đa được đem vào encounter cũng như chứa
-      // trong inventory" — TRƯỚC ĐÂY lệnh này nạp thẳng vào ammo/frostAmmo/
-      // incendiaryAmmo (field cấp Inventory-trong-encounter, cap 99) — SAI,
-      // phải nạp vào bulletStack (field cấp "trong súng", cap 8, dùng cho
-      // Firing passive của Soldato Rifle). Nạp tùy ý nhiều lần/turn (xác nhận
-      // trực tiếp: "Nạp tùy ý ví dụ nạp 5 xong sau đó nạp thêm 3 cũng được.
-      // Chỉ là không nạp được quá hơn max ammo của vũ khí").
+      // Ammo system (xác nhận trực tiếp): "Nhận được thông qua hành động Reload, 1
+      // turn có thể Reload bao nhiêu tùy ý, nhưng sẽ tiêu hao số đạn trong
+      // Inventory của bạn mỗi khi Reload." — chuyển đạn từ Inventory (persistent,
+      // profileData.items) sang stack Encounter (combatant field), KHÔNG giới hạn
+      // số lần gọi/turn (mỗi lần tự trừ đúng Inventory hiện có).
       const kv = parseKeyValues(rest);
       const amount = parseInt(kv["amount"] ?? "1", 10);
       const typeRaw = (kv["type"] ?? "ammo").trim().toLowerCase();
-      const AMMO_ITEM_MAP = { ammo: { item: "Ammo", field: null }, frost: { item: "Frost Ammo", field: "bulletStackFrost" }, incendiary: { item: "Incendiary Ammo", field: "bulletStackIncendiary" } };
+      const AMMO_ITEM_MAP = { ammo: { item: "Ammo", field: "ammo" }, frost: { item: "Frost Ammo", field: "frostAmmo" }, incendiary: { item: "Incendiary Ammo", field: "incendiaryAmmo" } };
       const ammoType = AMMO_ITEM_MAP[typeRaw];
       if (!Number.isFinite(amount) || amount < 1 || !ammoType) {
         message.reply(`⚠️ Cú pháp: \`-encounter reload amount: <số> type: ammo/frost/incendiary\` (mặc định type: ammo nếu bỏ trống)\n> VD: \`-encounter reload amount: 5\` hoặc \`-encounter reload amount: 2 type: frost\``);
         return;
       }
       try {
+        // Bước 1: trừ Inventory (persistent, lock RIÊNG theo user — KHÔNG lồng
+        // trong lock encounter để tránh deadlock nếu 2 lock khác thứ tự ở nơi khác).
         let actualAmount = 0;
         await withLock(message.author.id, async () => {
           const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
@@ -2725,39 +2733,17 @@ if (message.content.startsWith("-gacha")) {
           if (profileData.items[ammoType.item] <= 0) delete profileData.items[ammoType.item];
           await savePlayerData(message.author.id, profileData, slot);
         });
+        // Bước 2: cộng vào stack Encounter (lock riêng của encounter).
         await withLock(encounterKey(encChannelId), async () => {
           const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào.");
           const player = encounter.players[message.author.id];
           if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-          const beforeStack = player.bulletStack ?? 0;
-          // Giới hạn CỨNG bởi bulletStack còn chỗ trống (max 8) — không nạp
-          // được quá hơn max ammo của vũ khí, dù Inventory còn nhiều hơn.
-          const spaceLeft = Math.max(0, 8 - beforeStack);
-          if (spaceLeft <= 0) {
-            // Hoàn lại Inventory vì không nạp được (đã trừ ở bước trên).
-            await withLock(message.author.id, async () => {
-              const { data: profileData2, slot: slot2 } = await getPlayerDataWithSlot(message.author.id);
-              profileData2.items[ammoType.item] = (profileData2.items[ammoType.item] ?? 0) + actualAmount;
-              await savePlayerData(message.author.id, profileData2, slot2);
-            });
-            throw new Error(`Súng đã đầy đạn (${beforeStack}/8) — không thể Reload thêm.`);
-          }
-          const loadedAmount = Math.min(actualAmount, spaceLeft);
-          if (loadedAmount < actualAmount) {
-            // Hoàn lại phần dư (Inventory) vì súng không chứa hết.
-            const refund = actualAmount - loadedAmount;
-            await withLock(message.author.id, async () => {
-              const { data: profileData2, slot: slot2 } = await getPlayerDataWithSlot(message.author.id);
-              profileData2.items[ammoType.item] = (profileData2.items[ammoType.item] ?? 0) + refund;
-              await savePlayerData(message.author.id, profileData2, slot2);
-            });
-          }
-          player.bulletStack = Math.min(8, beforeStack + loadedAmount);
-          if (ammoType.field) player[ammoType.field] = Math.min(8, (player[ammoType.field] ?? 0) + loadedAmount);
-          appendActionLog(encounter, `🔫 <@${message.author.id}>: reload ${ammoType.item} +${loadedAmount} (bulletStack ${beforeStack} → ${player.bulletStack}/8)`);
+          const before = player[ammoType.field] ?? 0;
+          player[ammoType.field] = Math.min(AMMO_MAX, before + actualAmount);
+          appendActionLog(encounter, `🔫 <@${message.author.id}>: reload ${ammoType.item} +${actualAmount} (${before} → ${player[ammoType.field]})`);
           await saveEncounter(encChannelId, encounter);
-          message.reply(`🔫 Reload **${ammoType.item}**: +${loadedAmount} (từ Inventory) → súng đang có **${player.bulletStack}/8** đạn.`);
+          message.reply(`🔫 Reload **${ammoType.item}**: +${actualAmount} (từ Inventory) → đang có **${player[ammoType.field]}** trong Encounter.`);
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -2921,7 +2907,7 @@ if (message.content.startsWith("-gacha")) {
       try {
         const { embed, skillRollEmbed } = await doPlayerHit(encChannelId, message.author.id, message.author.toString(), dmgStr, targetStr, {
           resStr: kv["res"] ?? "", drStr: kv["dr"] ?? "", bonusPct, sanityBonusPct, critMul, diceMul, critDiv,
-          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"],
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], loadtype: kv["loadtype"],
         });
         await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
       } catch (err) {
@@ -3520,5 +3506,5 @@ if (message.content.startsWith("-gacha")) {
     console.error("[messageCreate error]", err);
     try { message.reply("❌ Có lỗi không mong muốn xảy ra.").catch(() => {}); } catch {}
   }
-};
+});
 };
