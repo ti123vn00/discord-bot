@@ -94,6 +94,11 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // "Firing" (Soldato Rifle) + "Thumb Soldato" (outfit, mỗi đòn đánh thường
       // thứ 4 → +1 đạn). Max 8, tiêu để +4 Base Dmg/hit (usebullet: yes khi M1).
       bulletStack: 0,
+      // bulletStackType — GAP ĐÃ SỬA (xác nhận trực tiếp): "chỉ 1 loại đạn được
+      // nạp vào, muốn nạp loại đạn khác thì phải sử dụng hết đạn rồi mới nạp
+      // tiếp được" — null | "ammo" | "frost" | "incendiary". Chỉ có ý nghĩa
+      // khi bulletStack > 0.
+      bulletStackType: null,
       // GAP ĐÃ SỬA (xác nhận trực tiếp): bulletStack = TỔNG số đạn ĐANG NẠP
       // trong súng (max 8, không phân biệt loại) — bulletStackFrost/Incendiary
       // = trong số đó, bao nhiêu là loại ĐẶC BIỆT (để "Firing" biết tiêu loại
