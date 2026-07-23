@@ -2971,10 +2971,10 @@ if (message.content.startsWith("-gacha")) {
         return;
       }
       try {
-        const { embed, skillRollEmbed } = await doEnemyAttack(encChannelId, message.author.id, enemyKey, dmgStr, targetStr, {
+        const { summary, skillRollEmbed } = await doEnemyAttack(encChannelId, message.author.id, enemyKey, dmgStr, targetStr, {
           skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], ism1: kv["ism1"],
         });
-        await message.reply({ embeds: skillRollEmbed ? [skillRollEmbed, embed] : [embed] });
+        await message.reply({ content: summary, embeds: skillRollEmbed ? [skillRollEmbed] : [] });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
