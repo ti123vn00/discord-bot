@@ -545,6 +545,18 @@ async function resolveOnePendingAction(encounter, p) {
                 timeMoratoriumNote = ` ⏳[Time Moratorium hoãn ${accumulatedGain.toFixed(3)} dmg, tích lũy ${target.timeMoratoriumAccumulated.toFixed(3)}]`;
                 finalDmg = 0;
               }
+              // "Shield HP" (Tactical Suppression, Dieci Association) — GAP ĐÃ
+              // SỬA: xác nhận trực tiếp "tôi không thấy shield hp" — trước đây
+              // shieldHp CHỈ TỒN TẠI như 1 con số, KHÔNG BAO GIỜ thực sự hấp
+              // thụ dmg (khác defReductionPct/% ở trên — đây là FLAT absorb,
+              // trừ TRƯỚC khi dmg còn lại mới trừ vào HP thật).
+              let shieldHpNote = "";
+              if ((target.shieldHp ?? 0) > 0 && finalDmg > 0) {
+                const absorbed = Math.min(target.shieldHp, finalDmg);
+                target.shieldHp -= absorbed;
+                finalDmg -= absorbed;
+                shieldHpNote = ` 🛡️[Shield HP hấp thụ ${absorbed.toFixed(3)}, còn ${target.shieldHp.toFixed(3)}]`;
+              }
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
               // "Hana Association": "+1 Dice Up mỗi 10 HP mất trong turn" — tích
               // luỹ hpLostThisTurn, so sánh ngưỡng 10 TRƯỚC/SAU để chỉ cộng phần
@@ -879,7 +891,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -1402,6 +1414,20 @@ async function resolveOnePendingAction(encounter, p) {
                 const igniteBurnAmount = IGNITE_BURN_BY_WEIGHT[attacker.combatant.weaponWeight ?? "medium"] ?? 2;
                 scorchTarget.burn = Math.min(BURN_MAX, (scorchTarget.burn ?? 0) + igniteBurnAmount);
                 verifyNote += ` 🔥[Vũ khí bốc cháy: +${igniteBurnAmount} Burn]`;
+              }
+            }
+            // "Tactical Suppression" (Eye Of Horus) — GAP ĐÃ SỬA (xác nhận trực
+            // tiếp: "còn chưa được tự động hóa hết") — "Nếu đánh thường trong
+            // trạng thái này: tiêu thụ toàn bộ Charge thành Charge Shield lên
+            // bản thân" — PHẦN NÀY tự động hoá được hoàn toàn (khác "Khiêu
+            // khích"/"Block húc vào 1 kẻ địch" cần GM/player tự chọn target).
+            if (attacker.combatant.tacticalSuppressionActive) {
+              const isM1TypeForTacticalSuppression = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+              if (isM1TypeForTacticalSuppression && (attacker.combatant.charge ?? 0) > 0) {
+                const chargeConverted = attacker.combatant.charge;
+                attacker.combatant.chargeShieldStack = Math.min(20, (attacker.combatant.chargeShieldStack ?? 0) + chargeConverted);
+                attacker.combatant.charge = 0;
+                verifyNote += ` 🛡️[Tactical Suppression: tiêu ${chargeConverted} Charge → +${chargeConverted} Charge Shield]`;
               }
             }
             // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Khi sử dụng
