@@ -853,7 +853,8 @@ client.on("interactionCreate", async (interaction) => {
       });
       if (needsNextHitPrompt) {
         await interaction.update({
-          embeds: [{ title: "✅ Đã ghi nhận hit này", description: resultText, color: 0x2ecc71 }],
+          content: `✅ ${resultText}`,
+          embeds: [],
           components: [],
         }).catch(() => {});
         await sendReactiveDefensePrompt(channelId, pendingId);
@@ -1173,9 +1174,9 @@ client.on("interactionCreate", async (interaction) => {
       const dmgStr = interaction.fields.getTextInputValue("dmgStr");
       const tags = interaction.fields.getTextInputValue("tags")?.trim() || undefined;
       const note = interaction.fields.getTextInputValue("note")?.trim() || undefined;
-      const { embed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr, { tags, ism1: bossIsM1Flag === "m1" ? "yes" : undefined });
-      if (note) embed.description += `\n> 📝 **Hiệu ứng:** ${note}`;
-      await interaction.reply({ embeds: [embed] });
+      const { summary, skillRollEmbed } = await doEnemyAttack(channelId, interaction.user.id, enemyKey, dmgStr, bossTargetStr, { tags, ism1: bossIsM1Flag === "m1" ? "yes" : undefined });
+      const finalSummary = note ? `${summary}\n> 📝 **Hiệu ứng:** ${note}` : summary;
+      await interaction.reply({ content: finalSummary, embeds: skillRollEmbed ? [skillRollEmbed] : [] });
       // hit/criticalhit (Modal) ĐÃ GỠ — thực thi trực tiếp từ dropdown enctarget
       // (không còn Modal nào cho 2 nhánh này nữa — xem subAction === "criticalhit"
       // || "hit" ở handler đó, LỖ HỔNG BẢO MẬT ĐÃ SỬA: dmgStr giờ roll thật +
