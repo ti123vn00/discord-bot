@@ -172,10 +172,10 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
         const label = leavingEntry.type === "enemy" ? (encounter.enemies[leavingEntry.id]?.name ?? leavingEntry.id) : `<@${leavingEntry.id}>`;
         if (succeeded) {
           c.graceOfPrescript = (c.graceOfPrescript ?? 0) + 1;
-          notes.push(`📜 **Sắc lệnh #${c.prescriptRoll}** của ${label} THÀNH CÔNG — +1 Grace of Prescript (tổng ${c.graceOfPrescript}).`);
+          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh #${c.prescriptRoll}** của ${label} THÀNH CÔNG — +1 Grace of Prescript (tổng ${c.graceOfPrescript}).`);
         } else {
           c.karmicConsequence = Math.min(100, (c.karmicConsequence ?? 0) + 5);
-          notes.push(`📜 **Sắc lệnh #${c.prescriptRoll}** của ${label} THẤT BẠI — +5 Karmic Consequence (tổng ${c.karmicConsequence}).`);
+          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh #${c.prescriptRoll}** của ${label} THẤT BẠI — +5 Karmic Consequence (tổng ${c.karmicConsequence}).`);
         }
         c.prescriptRoll = null;
         c.prescriptAttacked = false;
@@ -193,7 +193,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
           c.prescriptRoll = Math.floor(Math.random() * 7) + 1;
           const rollLabels = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
           const label = enteringEntry.type === "enemy" ? (encounter.enemies[enteringEntry.id]?.name ?? enteringEntry.id) : `<@${enteringEntry.id}>`;
-          notes.push(`📜 **Sắc lệnh mới** cho ${label}: **#${c.prescriptRoll}** — ${rollLabels[c.prescriptRoll]}.`);
+          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh mới** cho ${label}: **#${c.prescriptRoll}** — ${rollLabels[c.prescriptRoll]}.`);
         }
         const weaponInfo = findWeaponAnywhere(c.weaponName);
         const hasWillOfPrescript = (weaponInfo?.passives ?? []).some(pa => pa.name === "Will of Prescript");
@@ -202,7 +202,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
           if (livingEnemyKeys.length > 0) {
             const pick = livingEnemyKeys[Math.floor(Math.random() * livingEnemyKeys.length)];
             c.prescriptTargetId = pick;
-            notes.push(`📜 **The Prescript Target's - The Index** đánh dấu lên **${encounter.enemies[pick]?.name ?? pick}**.`);
+            notes.push(`<:The_Prescripts_Target:1528452363159998525> **The Prescript Target's - The Index** đánh dấu lên **${encounter.enemies[pick]?.name ?? pick}**.`);
           }
         }
       }
