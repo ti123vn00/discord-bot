@@ -124,17 +124,17 @@ async function announceCurrentTurn(channelId, encounter, forceNewMessage = false
     // này (boardMessageId cập nhật lại).
     const mainChannel = await client.channels.fetch(channelId).catch(() => null);
     if (mainChannel) {
-      const boardEmbed = buildEncounterBoardEmbed(encounter);
+      const boardPayload = buildEncounterBoardEmbed(encounter, channelId);
       let edited = false;
       if (!forceNewMessage && encounter.boardMessageId) {
         const oldMsg = await mainChannel.messages.fetch(encounter.boardMessageId).catch(() => null);
         if (oldMsg) {
-          await oldMsg.edit({ embeds: [boardEmbed] }).catch(() => {});
+          await oldMsg.edit({ embeds: [boardPayload.embed], components: boardPayload.components }).catch(() => {});
           edited = true;
         }
       }
       if (!edited) {
-        const newMsg = await mainChannel.send({ embeds: [boardEmbed] }).catch(() => null);
+        const newMsg = await mainChannel.send({ embeds: [boardPayload.embed], components: boardPayload.components }).catch(() => null);
         if (newMsg) {
           // Lưu lại ID tin nhắn mới — dùng withLock để tránh ghi đè mất
           // trạng thái mới hơn nếu có hành động khác xảy ra đồng thời.
