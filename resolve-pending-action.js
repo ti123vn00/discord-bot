@@ -258,7 +258,7 @@ async function resolveOnePendingAction(encounter, p) {
                 let hitIdx = 0;
                 const noteParts = [];
 
-                if (!bypass.blockEvade && (target.evadeCharges ?? 0) > 0 && ((target.evadeHitSelections ?? []).length > 0 || hitIdx < totalHits)) {
+                if (!(t.perHitBypass?.[hitIdx] ?? bypass).blockEvade && (target.evadeCharges ?? 0) > 0 && ((target.evadeHitSelections ?? []).length > 0 || hitIdx < totalHits)) {
                   const coverStart = hitIdx;
                   let used = 0;
                   if ((target.evadeHitSelections ?? []).length > 0) {
@@ -281,7 +281,7 @@ async function resolveOnePendingAction(encounter, p) {
                     noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
                   }
                 }
-                if (!bypass.blockParry && (target.parryHitSelections ?? []).length > 0) {
+                if (!(t.perHitBypass?.[hitIdx] ?? bypass).blockParry && (target.parryHitSelections ?? []).length > 0) {
                   // GAP ĐÃ SỬA (đối xứng với evadeHitSelections/guardHitSelections
                   // — xác nhận trực tiếp: "hit 1 né, hit 2 guard, hit 3 né/parry")
                   // — parryRolls[i] ứng ĐÚNG với parryHitSelections[i] (cùng thứ tự
@@ -304,7 +304,7 @@ async function resolveOnePendingAction(encounter, p) {
                   }
                   target.parryHitSelections = target.parryHitSelections.filter(h => !(h >= 1 && h <= totalHits));
                   hitIdx = Math.max(hitIdx, ...validSelected, 0);
-                } else while (!bypass.blockParry && (target.parryRolls ?? []).length > 0 && hitIdx < totalHits) {
+                } else while (!(t.perHitBypass?.[hitIdx] ?? bypass).blockParry && (target.parryRolls ?? []).length > 0 && hitIdx < totalHits) {
                   const defRoll = target.parryRolls.shift();
                   const atkRoll = 1 + Math.floor(Math.random() * 20);
                   const won = defRoll >= atkRoll;
@@ -323,8 +323,12 @@ async function resolveOnePendingAction(encounter, p) {
                     noteParts.push(`🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta — ăn full hit ${coverStart + 1}-${hitIdx})`);
                   }
                 }
-                if (!bypass.blockGuard && (target.guardCharges ?? 0) > 0 && ((target.guardHitSelections ?? []).length > 0 || hitIdx < totalHits)) {
+                const canAttemptGuard = (target.guardHitSelections ?? []).length > 0
+                  ? target.guardHitSelections.some(h => !(t.perHitBypass?.[h - 1] ?? bypass).blockGuard)
+                  : !(t.perHitBypass?.[hitIdx] ?? bypass).blockGuard;
+                if (canAttemptGuard && (target.guardCharges ?? 0) > 0 && ((target.guardHitSelections ?? []).length > 0 || hitIdx < totalHits)) {
                   const coverStart = hitIdx;
+                  let guardedHitIndices = []; // GAP ĐÃ SỬA — track ĐÚNG index (0-based) các hit ĐÃ thực sự được Guard trong nhánh này, để kiểm tra guardBreak cho ĐÚNG hit (không phải coverStart cố định, sai khi dùng guardHitSelections không tuần tự).
                   // Iron Horus (Abydos's Uniform passive) — BUG ĐÃ SỬA (xác nhận
                   // trực tiếp từ GM, đang gây ăn dmg thật trên production): "1 lần
                   // guard tốn 40 Sta nhưng CẢ TURN sẽ guard TOÀN BỘ đòn, 1 charge
@@ -335,7 +339,7 @@ async function resolveOnePendingAction(encounter, p) {
                   // cho tới khi turn kết thúc — xem advanceCombatantTurn nơi charge
                   // mới thực sự reset).
                   if (target.hasIronHorus) {
-                    while (hitIdx < totalHits) { perHitMult[hitIdx] = 1 - guardReductionPct; hitIdx++; }
+                    while (hitIdx < totalHits) { perHitMult[hitIdx] = 1 - guardReductionPct; guardedHitIndices.push(hitIdx); hitIdx++; }
                     noteParts.push(`🛡️**Guard (Iron Horus — chặn TOÀN BỘ, charge không tụt)** (giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
                   } else if ((target.guardHitSelections ?? []).length > 0) {
                     // GAP ĐÃ SỬA (xác nhận trực tiếp): "Guard không tùy chọn được
@@ -347,7 +351,7 @@ async function resolveOnePendingAction(encounter, p) {
                     // trong phạm vi đòn này (1..totalHits) — số dư (nếu chỉ định
                     // hit vượt quá totalHits của đòn thực tế) giữ lại cho đòn sau.
                     const validSelected = target.guardHitSelections.filter(h => h >= 1 && h <= totalHits);
-                    for (const h of validSelected) perHitMult[h - 1] = 1 - guardReductionPct;
+                    for (const h of validSelected) { perHitMult[h - 1] = 1 - guardReductionPct; guardedHitIndices.push(h - 1); }
                     const chargesUsed = Math.min(target.guardCharges, Math.ceil(validSelected.length / hitsPerCharge));
                     target.guardCharges = Math.max(0, target.guardCharges - chargesUsed);
                     target.guardHitSelections = target.guardHitSelections.filter(h => !(h >= 1 && h <= totalHits));
@@ -357,14 +361,14 @@ async function resolveOnePendingAction(encounter, p) {
                     let used = 0;
                     while (target.guardCharges > 0 && hitIdx < totalHits) {
                       target.guardCharges -= 1; used += 1;
-                      for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) perHitMult[hitIdx] = 1 - guardReductionPct;
+                      for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) { perHitMult[hitIdx] = 1 - guardReductionPct; guardedHitIndices.push(hitIdx); }
                     }
                     noteParts.push(`🛡️**Guard** (${used} charge, giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
                   }
                   // Guard Break: Guard VẪN cản được (đã giảm dmg ở trên), nhưng bên
                   // Guard bị Stagger NGAY (không đợi Stamina về 0) — xác nhận trực
                   // tiếp từ GM, KHÁC hẳn Unblockable (vốn làm Guard không cản được).
-                  if (bypass.guardBreak) {
+                  if (guardedHitIndices.some(idx => (t.perHitBypass?.[idx] ?? bypass).guardBreak)) {
                     // "Zwei Association": "Nếu bạn có trên hoặc bằng 10 Defense
                     // Up và khi đỡ đòn Guard Break, bạn sẽ tiêu thụ hết chúng và
                     // sẽ không bị Guard Break". Phần "Undodgeable tương tự" KHÔNG
