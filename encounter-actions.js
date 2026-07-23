@@ -15,7 +15,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS }) {
+module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
 
   async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
     let result;
@@ -238,8 +238,99 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
     });
     return result;
   }
-  
-  /** performOvercharge — logic CHUNG cho -encounter overcharge VÀ dropdown hành động. */
+
+  /** performUseItem — logic CHUNG cho -encounter useitem VÀ dropdown "Items" mới
+   *  (encounter-panels.js) — TÁCH NGUYÊN VĂN từ message-create-handler.js (không
+   *  đổi hành vi), chỉ đổi tham số messageAuthorId → userId và trả về result
+   *  string thay vì message.reply trực tiếp. */
+  async function performUseItem(channelId, userId, itemNameRaw) {
+    let result;
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+      const player = encounter.players[userId];
+      if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+      if (player.usedItemThisTurn) throw new Error("Đã dùng 1 item trong turn này rồi — chỉ được dùng 1 lần/turn.");
+      const itemName = findItem(itemNameRaw) ?? itemNameRaw;
+      const idx = (player.consumablesLoadout ?? []).findIndex(n => n.toLowerCase() === itemName.toLowerCase());
+      if (idx === -1) throw new Error(`"${itemNameRaw}" không có trong số item đã mang vào trận — dùng \`-encounter additem\` trước (xem hiện tại bằng \`-encounter status\`).`);
+      const actualName = player.consumablesLoadout[idx];
+      const isKCorpAmpule = actualName.toLowerCase() === "k-corp ampule";
+      const isChuoi = actualName.toLowerCase() === "chuối";
+      const isTao = actualName.toLowerCase() === "táo";
+      const isDuaHau = actualName.toLowerCase() === "dưa hấu";
+      const isMedkit = actualName.toLowerCase() === "medkit";
+      if (isKCorpAmpule && (player.kCorpAmpuleCooldownLeft ?? 0) > 0) {
+        throw new Error(`K-Corp Ampule đang trong CD — còn ${player.kCorpAmpuleCooldownLeft} turn nữa mới dùng lại được.`);
+      }
+      const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
+      const owned = profileData.items?.[actualName] ?? 0;
+      if (owned < 1) throw new Error(`Inventory không còn **${actualName}** để dùng (đã bị tiêu/mất từ trước).`);
+      profileData.items[actualName] = owned - 1;
+      if (profileData.items[actualName] <= 0) delete profileData.items[actualName];
+      await savePlayerData(userId, profileData, slot);
+      player.consumablesLoadout.splice(idx, 1);
+      player.usedItemThisTurn = true;
+      let effectNote = "";
+      if (isKCorpAmpule) {
+        player.kCorpAmpuleUsesThisEncounter = (player.kCorpAmpuleUsesThisEncounter ?? 0) + 1;
+        player.kCorpAmpuleCooldownLeft = 2;
+        if (player.kCorpAmpuleUsesThisEncounter >= 2) {
+          const wasAliveBeforeKCorp = player.currentHp > 0;
+          player.currentHp = 0;
+          if (wasAliveBeforeKCorp) {
+            for (const otherPid of Object.keys(encounter.players)) {
+              if (otherPid === userId) continue;
+              applyEmotionDelta(encounter.players[otherPid], 5);
+            }
+            const deathNote = await applyDeathPenalty(encounter, userId);
+            effectNote = ` ☠️ **DÙNG LẦN 2 TRONG CÙNG ENCOUNTER — CHẾT NGAY LẬP TỨC!**${deathNote}`;
+          }
+        } else {
+          for (const inj of player.injuries ?? []) restoreInjuryMaxHp(player, inj);
+          player.injuries = [];
+          player.currentHp = player.maxHp;
+          try {
+            const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(userId);
+            injSyncData.injuries = [];
+            await savePlayerData(userId, injSyncData, injSyncSlot);
+          } catch { /* không chặn action chính nếu sync lỗi */ }
+          effectNote = ` 💊 Hồi ĐẦY HP (${player.currentHp}/${player.maxHp}) + Chữa TOÀN BỘ injury! (CD 2 turn — dùng lần 2 trong trận này sẽ CHẾT NGAY.)`;
+        }
+      } else if (isChuoi) {
+        const before = player.currentHp;
+        player.currentHp = Math.min(player.maxHp, player.currentHp + 10);
+        effectNote = ` 🍌 +${(player.currentHp - before).toFixed(0)} HP (${player.currentHp}/${player.maxHp}).`;
+      } else if (isTao) {
+        player.appleDmgReductionActive = true;
+        effectNote = ` 🍎 Giảm 1 Dmg/hit phải nhận tới hết turn này.`;
+      } else if (isDuaHau) {
+        const before = player.currentStamina;
+        player.currentStamina = Math.min(player.maxStamina, player.currentStamina + 20);
+        effectNote = ` 🍉 +${(player.currentStamina - before).toFixed(0)} Stamina (${player.currentStamina}/${player.maxStamina}).`;
+      } else if (isMedkit) {
+        const before = [...(player.injuries ?? [])];
+        const healedMinor = before.filter(inj => MINOR_INJURIES.some(m => inj.startsWith(m)));
+        if (healedMinor.length === 0) {
+          effectNote = ` 🩹 Không có chấn thương nhẹ nào để chữa (Medkit KHÔNG chữa được chấn thương nặng).`;
+        } else {
+          player.injuries = before.filter(inj => !MINOR_INJURIES.some(m => inj.startsWith(m)));
+          for (const inj of healedMinor) restoreInjuryMaxHp(player, inj);
+          try {
+            const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(userId);
+            injSyncData.injuries = [...player.injuries];
+            await savePlayerData(userId, injSyncData, injSyncSlot);
+          } catch { /* không chặn action chính nếu sync lỗi */ }
+          effectNote = ` 🩹 Đã chữa ${healedMinor.length} chấn thương nhẹ: ${healedMinor.join(", ")}. (Chấn thương nặng KHÔNG được chữa bởi Medkit.)`;
+        }
+      }
+      const isKnownItemWithEffect = isKCorpAmpule || isChuoi || isTao || isDuaHau || isMedkit;
+      result = `🧪 đã dùng **${actualName}**!${effectNote}${!isKnownItemWithEffect ? " (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)" : ""}`;
+      appendActionLog(encounter, `🧪 <@${userId}> dùng **${actualName}**.${effectNote}`);
+      await saveEncounter(channelId, encounter);
+    });
+    return result;
+  }
   async function performOvercharge(channelId, userId) {
     let result;
     await withLock(encounterKey(channelId), async () => {
@@ -320,5 +411,6 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
     performManifestEgo,
     performOvercharge,
     performFollowUp,
+    performUseItem,
   };
 };
