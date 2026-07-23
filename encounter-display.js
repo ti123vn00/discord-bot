@@ -1,3 +1,4 @@
+
 // encounter-display.js
 // Nhóm hàm tra cứu/hiển thị combatant thuần (resolveCombatant, resolveTargets,
 // formatCombatantBlock) — tách khỏi index.js theo yêu cầu trực tiếp: "tiếp tục
@@ -158,6 +159,41 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.vengeanceMark > 0) statusParts.push(`<:VengeanceMark:1513768136023740436>${combatant.vengeanceMark}`);
     if (combatant.nails > 0) statusParts.push(`<:Nails:1513768423124111482>${combatant.nails}`);
     if (combatant.redPlumBlossom > 0) statusParts.push(`<:Red_Plum_Blossom:1513768345521094668>${combatant.redPlumBlossom}`);
+    // "Rà soát toàn bộ status" — GAP MỚI (xác nhận trực tiếp): "Bạn phải làm
+    // toàn bộ status là buff lẫn debuff tự động hóa lẫn hiển thị chứ" — 7
+    // status dưới đây ĐÃ tự động hoá đầy đủ từ trước (ảnh hưởng dmg/guard/
+    // clash thật, xác nhận qua audit code) nhưng CHƯA TỪNG hiển thị trên board.
+    if ((combatant.fragile ?? 0) > 0) statusParts.push(`Fragile${combatant.fragile}`);
+    if ((combatant.attackPowerUp ?? 0) > 0) statusParts.push(`Attack Power Up${combatant.attackPowerUp}`);
+    if ((combatant.attackPowerDown ?? 0) > 0) statusParts.push(`Attack Power Down${combatant.attackPowerDown}`);
+    if ((combatant.defenseUp ?? 0) > 0) statusParts.push(`Defense Up${combatant.defenseUp}`);
+    if ((combatant.defenseDown ?? 0) > 0) statusParts.push(`Defense Down${combatant.defenseDown}`);
+    if ((combatant.clashAttackBoost ?? 0) > 0) statusParts.push(`Clash Attack Boost${combatant.clashAttackBoost}`);
+    if ((combatant.chargeShieldStack ?? 0) > 0) statusParts.push(`Charge Shield${combatant.chargeShieldStack}`);
+    if ((combatant.dullahanStacks ?? 0) > 0) statusParts.push(`Dullahan${combatant.dullahanStacks}`);
+    if ((combatant.unopposedAttackBoost ?? 0) > 0) statusParts.push(`Unopposed Attack Boost${combatant.unopposedAttackBoost}`);
+    if ((combatant.imitationConsumedTotal ?? 0) > 0) statusParts.push(`Imitation Consumed${combatant.imitationConsumedTotal}`);
+    // Rà soát TOÀN BỘ 119 field combatant-factory.js (không chỉ danh sách GM
+    // Panel) — GAP MỚI (xác nhận trực tiếp): "cứ rà hết đi" — 14 field dưới đây
+    // ĐÃ tự động hoá đầy đủ (xác nhận qua audit code) nhưng CHƯA TỪNG hiển thị.
+    if ((combatant.bulletStack ?? 0) > 0) statusParts.push(`🔫 Đạn Soldato Rifle: ${combatant.bulletStack}/8${combatant.bulletStackType ? ` (${combatant.bulletStackType})` : ""}`);
+    if ((combatant.coffinStacks ?? 0) > 0) statusParts.push(`Coffin${combatant.coffinStacks}`);
+    if ((combatant.darkCloudOutfitStacks ?? 0) > 0) statusParts.push(`Dark Cloud${combatant.darkCloudOutfitStacks}`);
+    if ((combatant.graceOfPrescript ?? 0) > 0) statusParts.push(`Grace of Prescript${combatant.graceOfPrescript}`);
+    if ((combatant.imitation ?? 0) > 0) statusParts.push(`Imitation${combatant.imitation}`);
+    if (combatant.prescriptRoll !== null && combatant.prescriptRoll !== undefined) {
+      const PRESCRIPT_ROLL_LABELS = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
+      statusParts.push(`<:Prescript:1528452494945157281>Sắc lệnh #${combatant.prescriptRoll} (${PRESCRIPT_ROLL_LABELS[combatant.prescriptRoll] ?? "?"})`);
+    }
+    if ((combatant.scorchPropellantRound ?? 0) > 0) statusParts.push(`<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round${combatant.scorchPropellantRound}`);
+    if ((combatant.tigermarkRound ?? 0) > 0) statusParts.push(`<:Tigermark_Round:1528452815838777394>Tigermark Round${combatant.tigermarkRound}`);
+    if ((combatant.savageTigermarkRound ?? 0) > 0) statusParts.push(`<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round${combatant.savageTigermarkRound}`);
+    if (combatant.tacticalSuppressionCdPending) statusParts.push(`Tactical Suppression CD: còn ${combatant.tacticalSuppressionCdTurnsLeft ?? 0}T`);
+    if ((combatant.weaponIgnitedTurnsLeft ?? 0) > 0) statusParts.push(`🔥 Vũ khí bốc cháy: còn ${combatant.weaponIgnitedTurnsLeft}T`);
+    if ((combatant.setFireTurnsLeft ?? 0) > 0) statusParts.push(`🔥 Set Fire: còn ${combatant.setFireTurnsLeft}T`);
+    if ((combatant.lightDashFreeEvadeCharges ?? 0) > 0) statusParts.push(`Light Dash Free Evade${combatant.lightDashFreeEvadeCharges}`);
+    if ((combatant.gmBonusPctOverride ?? 0) !== 0) statusParts.push(`⚙️GM Dmg Override: ${combatant.gmBonusPctOverride >= 0 ? "+" : ""}${combatant.gmBonusPctOverride}%`);
+    if ((combatant.gmReductionPctOverride ?? 0) !== 0) statusParts.push(`⚙️GM Reduction Override: ${combatant.gmReductionPctOverride >= 0 ? "+" : ""}${combatant.gmReductionPctOverride}%`);
     if (combatant.freeble > 0) statusParts.push(`Freeble${combatant.freeble}`);
     if (combatant.borrowedTime > 0) statusParts.push(`Borrowed Time${combatant.borrowedTime} (còn ${combatant.borrowedTimeTurnsLeft ?? 0}T)`);
     if (combatant.fairy > 0) statusParts.push(`<:Fairy:1513782007602216960>${combatant.fairy} (còn ${combatant.fairyTurnsLeft ?? 0}T)`);
@@ -174,10 +210,10 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.tremorScorch) statusParts.push(`Tremor Scorch`);
     if (combatant.tremorHemorrhage) statusParts.push(`Tremor Hemorrhage`);
     if (combatant.spectroFrazzle > 0) statusParts.push(`Spectro Frazzle${combatant.spectroFrazzle}${combatant.spectroFrazzlePendingLoss > 0 ? ` (nợ ${combatant.spectroFrazzlePendingLoss} Sta chờ hồi)` : ""}`);
-    if (combatant.gazeAwe > 0) statusParts.push(`Gaze[Awe]${combatant.gazeAwe}${combatant.gazeAweSourceId ? ` (↔${combatant.gazeAweSourceId})` : ""}`);
-    if (combatant.contempt > 0) statusParts.push(`Contempt${combatant.contempt}${combatant.contemptSourceId ? ` (↔${combatant.contemptSourceId})` : ""}`);
-    if (combatant.gazeOfContempt > 0) statusParts.push(`Gaze of Contempt${combatant.gazeOfContempt}`);
-    if (combatant.contemptOfTheGaze) statusParts.push(`Contempt of the Gaze`);
+    if (combatant.gazeAwe > 0) statusParts.push(`<:Gaze_of_Contempt:1528452157932703934>Gaze[Awe]${combatant.gazeAwe}${combatant.gazeAweSourceId ? ` (↔${combatant.gazeAweSourceId})` : ""}`);
+    if (combatant.contempt > 0) statusParts.push(`<:Contempt_of_the_Gaze:1528452101825495100>Contempt${combatant.contempt}${combatant.contemptSourceId ? ` (↔${combatant.contemptSourceId})` : ""}`);
+    if (combatant.gazeOfContempt > 0) statusParts.push(`<:Gaze_of_Contempt:1528452157932703934>Gaze of Contempt${combatant.gazeOfContempt}`);
+    if (combatant.contemptOfTheGaze) statusParts.push(`<:Contempt_of_the_Gaze:1528452101825495100>Contempt of the Gaze`);
     if (combatant.haouFlame > 0) statusParts.push(`Haou Flame${combatant.haouFlame}`);
     if (combatant.haouBleed > 0) statusParts.push(`Haou Bleed${combatant.haouBleed}`);
     if (combatant.haouTremor > 0) statusParts.push(`Haou Tremor${combatant.haouTremor}`);
@@ -187,10 +223,44 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.burningSensation) statusParts.push(`Burning Sensation`);
     if (combatant.busyAsTribbie) statusParts.push(`Busy as Tribbie${combatant.busyAsTribbieSourceId ? ` (↔${combatant.busyAsTribbieSourceId})` : ""}`);
     if (combatant.timeMoratorium) statusParts.push(`Time Moratorium (tích ${combatant.timeMoratoriumAccumulated.toFixed(1)} dmg, còn ${combatant.timeMoratoriumTurnsLeft}T)`);
-    if (combatant.ammo > 0) statusParts.push(`🔫Ammo${combatant.ammo}`);
-    if (combatant.frostAmmo > 0) statusParts.push(`🔫Frost Ammo${combatant.frostAmmo}`);
-    if (combatant.incendiaryAmmo > 0) statusParts.push(`🔫Incendiary Ammo${combatant.incendiaryAmmo}`);
+    if (combatant.ammo > 0) statusParts.push(`<:Ammo:1528452673664319629>Ammo${combatant.ammo}`);
+    if (combatant.frostAmmo > 0) statusParts.push(`<:Ammo:1528452673664319629>Frost Ammo${combatant.frostAmmo}`);
+    if (combatant.incendiaryAmmo > 0) statusParts.push(`<:Ammo:1528452673664319629>Incendiary Ammo${combatant.incendiaryAmmo}`);
+    // "Protection"/"Regen" (50-Status Nhóm 1) — GAP ĐÃ SỬA: đã tự động hoá đầy
+    // đủ logic (attacker-perk-context.js's dmg bonus, resolve-pending-action.js's
+    // hồi HP) từ trước nhưng CHƯA TỪNG hiển thị trên board — thêm emoji mới,
+    // hiển thị luôn cho player theo dõi.
+    if (combatant.protection > 0) statusParts.push(`<:Protection:1528452299834261545>Protection${combatant.protection}${combatant.protectionTurnsLeft > 0 ? ` (còn ${combatant.protectionTurnsLeft}T)` : ""}`);
+    if (combatant.regen > 0) statusParts.push(`<:Regen:1528452633122050279>Regen${combatant.regen}`);
+    // "Shield HP" — GAP ĐÃ SỬA (xác nhận trực tiếp): "tôi không thấy shield hp"
+    // — trước đây HOÀN TOÀN không hiển thị (dù đã có field/logic kích hoạt).
+    if (combatant.shieldHp > 0) statusParts.push(`🛡️Shield HP${combatant.shieldHp.toFixed(1)}${combatant.tacticalSuppressionActive ? ` (còn ${combatant.tacticalSuppressionTurnsLeft ?? 0}T)` : ""}`);
     if (statusParts.length > 0) lines.push(`> ${statusParts.join(" | ")}`);
+    // "Tổng hợp Dmg Bonus/Reduction" — GAP MỚI (xác nhận trực tiếp): "nên hiện
+    // cả dmg reduction, dmg bonus... như 50 karmic consquence sẽ là +50% Dmg
+    // taken... để player có thể check" — CHỈ tổng hợp các hiệu ứng SELF-
+    // CONTAINED (không phụ thuộc đang đánh AI/dùng skill gì cụ thể — VD Gaze[Awe]
+    // phụ thuộc target đang đánh nên KHÔNG hiện ở đây, xem attacker-perk-context.js
+    // để biết đầy đủ những gì có ĐIỀU KIỆN theo từng đòn cụ thể).
+    const dmgEffectParts = [];
+    if ((combatant.karmicConsequence ?? 0) > 0) dmgEffectParts.push(`+${combatant.karmicConsequence}% Dmg Taken (Karmic Consequence)`);
+    if ((combatant.fragile ?? 0) > 0) dmgEffectParts.push(`+${combatant.fragile}% Dmg Taken (Fragile)`);
+    if ((combatant.hemorrhage ?? 0) > 0) dmgEffectParts.push(`+${combatant.hemorrhage * 10}% Dmg Taken (Hemorrhage)`);
+    // "Gaze[Awe]"/"Contempt" — GAP ĐÃ SỬA (xác nhận trực tiếp): "vẫn nên làm
+    // hiển thị trên người kẻ địch chứ, nó là debuff mà nên phải hiện ra hết" —
+    // dữ liệu debuff (số stack + nguồn gắn CỐ ĐỊNH) luôn biết trước, không phụ
+    // thuộc "đang đánh ai" — chỉ ĐIỀU KIỆN áp dụng mới phụ thuộc (đúng nguồn),
+    // nên vẫn tóm tắt được, chỉ cần ghi rõ điều kiện áp dụng.
+    if ((combatant.gazeAwe ?? 0) > 0) dmgEffectParts.push(`+${combatant.gazeAwe * 10}% Dmg Taken (Gaze[Awe], 2 chiều với ${combatant.gazeAweSourceId ? `<@${combatant.gazeAweSourceId}>` : "nguồn đã gắn"})`);
+    if ((combatant.contempt ?? 0) > 0) dmgEffectParts.push(`-50% Dmg Taken & -50% Dmg Bonus khi đối đầu ${combatant.contemptSourceId ? `<@${combatant.contemptSourceId}>` : "nguồn đã gắn"} (Contempt)`);
+    if ((combatant.protection ?? 0) > 0) dmgEffectParts.push(`-${combatant.protection}% Dmg Taken (Protection)`);
+    if ((combatant.chargeShieldStack ?? 0) > 0) dmgEffectParts.push(`-${combatant.chargeShieldStack * 10}% Dmg Taken (Charge Shield)`);
+    if ((combatant.dullahanStacks ?? 0) > 0) dmgEffectParts.push(`+30% Dmg Bonus (Dullahan)`);
+    if ((combatant.gazeOfContempt ?? 0) > 0) dmgEffectParts.push(`+${combatant.gazeOfContempt * 7}% Dmg Bonus (Gaze of Contempt)`);
+    if (combatant.contemptOfTheGaze) dmgEffectParts.push(`-70% Dmg Bonus (Contempt of the Gaze)`);
+    if ((combatant.unopposedAttackBoost ?? 0) > 0) dmgEffectParts.push(`+15% Dmg Bonus (Unopposed Attack Boost)`);
+    if ((combatant.imitationConsumedTotal ?? 0) > 0) dmgEffectParts.push(`+${Math.min(50, combatant.imitationConsumedTotal * 5)}% Dmg Bonus (The Imitation)`);
+    if (dmgEffectParts.length > 0) lines.push(`> 📊 ${dmgEffectParts.join(" | ")}`);
     if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
     if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
     if ((combatant.buffs ?? []).length > 0) lines.push(`> 🟢 Buff: ${combatant.buffs.map(b => b.text).join(" | ")}`);
