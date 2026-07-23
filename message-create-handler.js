@@ -11,7 +11,7 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -3041,115 +3041,8 @@ if (message.content.startsWith("-gacha")) {
       const itemNameRaw = rest.trim();
       if (!itemNameRaw) { message.reply("⚠️ Cú pháp: `-encounter useitem <tên item>` (chỉ item đã mang vào trận qua `-encounter additem`, tối đa 1 lần/turn)."); return; }
       try {
-        await withLock(encounterKey(encChannelId), async () => {
-          const encounter = await getEncounter(encChannelId);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-          if (player.usedItemThisTurn) throw new Error("Đã dùng 1 item trong turn này rồi — chỉ được dùng 1 lần/turn.");
-          const itemName = findItem(itemNameRaw) ?? itemNameRaw;
-          const idx = (player.consumablesLoadout ?? []).findIndex(n => n.toLowerCase() === itemName.toLowerCase());
-          if (idx === -1) throw new Error(`"${itemNameRaw}" không có trong số item đã mang vào trận — dùng \`-encounter additem\` trước (xem hiện tại bằng \`-encounter status\`).`);
-          const actualName = player.consumablesLoadout[idx];
-          // K-Corp Ampule — item ĐẶC BIỆT DUY NHẤT chữa được injury TRONG encounter
-          // (xác nhận trực tiếp từ GM): "Lập tức hồi 100% Máu. Chữa toàn bộ Injuries
-          // ngay lập tức. Dùng 2 cái liên tục trong 1 Encounter sẽ gây chết ngay lập
-          // tức (cd 2 turn). Giá: 1 triệu Ahn." — CD 2 turn RIÊNG của item này (khác
-          // "usedItemThisTurn" chung 1/turn cho MỌI item), và dùng LẦN THỨ 2 trong
-          // CÙNG 1 encounter (dù đã hết CD hay chưa) → CHẾT NGAY (Death Penalty/
-          // Permadeath như chết bình thường), KHÔNG hồi máu/chữa gì nữa.
-          const isKCorpAmpule = actualName.toLowerCase() === "k-corp ampule";
-          // 4 item consumable đơn giản khác (xác nhận trực tiếp từ GM, giá Ahn chỉ
-          // mang tính THAM KHẢO — hệ thống hiện chưa có cơ chế "mua" item bằng Ahn,
-          // items chỉ được GM cấp qua -setplayer items:, nên KHÔNG trừ Ahn ở đây).
-          const isChuoi = actualName.toLowerCase() === "chuối";
-          const isTao = actualName.toLowerCase() === "táo";
-          const isDuaHau = actualName.toLowerCase() === "dưa hấu";
-          const isMedkit = actualName.toLowerCase() === "medkit";
-          if (isKCorpAmpule && (player.kCorpAmpuleCooldownLeft ?? 0) > 0) {
-            throw new Error(`K-Corp Ampule đang trong CD — còn ${player.kCorpAmpuleCooldownLeft} turn nữa mới dùng lại được.`);
-          }
-          const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
-          const owned = profileData.items?.[actualName] ?? 0;
-          if (owned < 1) throw new Error(`Inventory không còn **${actualName}** để dùng (đã bị tiêu/mất từ trước).`);
-          profileData.items[actualName] = owned - 1;
-          if (profileData.items[actualName] <= 0) delete profileData.items[actualName];
-          await savePlayerData(message.author.id, profileData, slot);
-          player.consumablesLoadout.splice(idx, 1);
-          player.usedItemThisTurn = true;
-          let effectNote = "";
-          if (isKCorpAmpule) {
-            player.kCorpAmpuleUsesThisEncounter = (player.kCorpAmpuleUsesThisEncounter ?? 0) + 1;
-            player.kCorpAmpuleCooldownLeft = 2;
-            if (player.kCorpAmpuleUsesThisEncounter >= 2) {
-              // Dùng lần 2 trong CÙNG encounter → CHẾT NGAY, bất kể HP/injury hiện
-              // tại — dùng CHUNG applyDeathPenalty với cái chết combat bình thường.
-              const wasAliveBeforeKCorp = player.currentHp > 0;
-              player.currentHp = 0;
-              if (wasAliveBeforeKCorp) {
-                for (const otherPid of Object.keys(encounter.players)) {
-                  if (otherPid === message.author.id) continue;
-                  applyEmotionDelta(encounter.players[otherPid], 5);
-                }
-                const deathNote = await applyDeathPenalty(encounter, message.author.id);
-                effectNote = ` ☠️ **DÙNG LẦN 2 TRONG CÙNG ENCOUNTER — CHẾT NGAY LẬP TỨC!**${deathNote}`;
-              }
-            } else {
-              // Lần dùng ĐẦU TIÊN — hồi đầy HP + chữa TOÀN BỘ injury (kể cả maxHp
-              // penalty từ Gãy Xương/Vết thương lớn được khôi phục đầy đủ).
-              for (const inj of player.injuries ?? []) restoreInjuryMaxHp(player, inj);
-              player.injuries = [];
-              player.currentHp = player.maxHp;
-              // Sync injury đã chữa sạch về profile NGAY (giống mọi lần chữa injury
-              // khác trong trận).
-              try {
-                const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(message.author.id);
-                injSyncData.injuries = [];
-                await savePlayerData(message.author.id, injSyncData, injSyncSlot);
-              } catch { /* không chặn action chính nếu sync lỗi */ }
-              effectNote = ` 💊 Hồi ĐẦY HP (${player.currentHp}/${player.maxHp}) + Chữa TOÀN BỘ injury! (CD 2 turn — dùng lần 2 trong trận này sẽ CHẾT NGAY.)`;
-            }
-          } else if (isChuoi) {
-            // Chuối: hồi phục 10 HP, cap tại maxHp.
-            const before = player.currentHp;
-            player.currentHp = Math.min(player.maxHp, player.currentHp + 10);
-            effectNote = ` 🍌 +${(player.currentHp - before).toFixed(0)} HP (${player.currentHp}/${player.maxHp}).`;
-          } else if (isTao) {
-            // Táo: giảm 1 Dmg/hit phải nhận tới hết turn hiện tại — set cờ, logic
-            // trừ dmg THẬT nằm ở nhánh xử lý damage (xem comment "Táo (item)" gần
-            // target.currentHp -= finalDmg).
-            player.appleDmgReductionActive = true;
-            effectNote = ` 🍎 Giảm 1 Dmg/hit phải nhận tới hết turn này.`;
-          } else if (isDuaHau) {
-            // Dưa hấu: hồi phục 20 Stamina, cap tại maxStamina.
-            const before = player.currentStamina;
-            player.currentStamina = Math.min(player.maxStamina, player.currentStamina + 20);
-            effectNote = ` 🍉 +${(player.currentStamina - before).toFixed(0)} Stamina (${player.currentStamina}/${player.maxStamina}).`;
-          } else if (isMedkit) {
-            // Medkit: CHỈ chữa chấn thương NHẸ (Gãy tay/Gãy chân/Gãy Xương) —
-            // KHÔNG chữa chấn thương NẶNG (Mất tay/Mất Chân/Vết thương lớn), khác
-            // hẳn K-Corp Ampule (chữa TẤT CẢ). Chữa TOÀN BỘ chấn thương nhẹ đang
-            // mang cùng lúc (không chỉ 1 cái).
-            const before = [...(player.injuries ?? [])];
-            const healedMinor = before.filter(inj => MINOR_INJURIES.some(m => inj.startsWith(m)));
-            if (healedMinor.length === 0) {
-              effectNote = ` 🩹 Không có chấn thương nhẹ nào để chữa (Medkit KHÔNG chữa được chấn thương nặng).`;
-            } else {
-              player.injuries = before.filter(inj => !MINOR_INJURIES.some(m => inj.startsWith(m)));
-              for (const inj of healedMinor) restoreInjuryMaxHp(player, inj);
-              try {
-                const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(message.author.id);
-                injSyncData.injuries = [...player.injuries];
-                await savePlayerData(message.author.id, injSyncData, injSyncSlot);
-              } catch { /* không chặn action chính nếu sync lỗi */ }
-              effectNote = ` 🩹 Đã chữa ${healedMinor.length} chấn thương nhẹ: ${healedMinor.join(", ")}. (Chấn thương nặng KHÔNG được chữa bởi Medkit.)`;
-            }
-          }
-          appendActionLog(encounter, `🧪 <@${message.author.id}> dùng **${actualName}**.${effectNote}`);
-          await saveEncounter(encChannelId, encounter);
-          const isKnownItemWithEffect = isKCorpAmpule || isChuoi || isTao || isDuaHau || isMedkit;
-          message.reply(`🧪 ${message.author} đã dùng **${actualName}**!${effectNote}${!isKnownItemWithEffect ? " (Trừ khỏi inventory — hiệu ứng hồi phục cụ thể do GM tự xác định/narrate, hệ thống chỉ enforce giới hạn mang/dùng.)" : ""}`);
-        });
+        const result = await performUseItem(encChannelId, message.author.id, itemNameRaw);
+        message.reply(`${message.author} ${result}`);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
