@@ -17,36 +17,53 @@ const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder
 
 module.exports = function ({ findSkill, hasPerk }) {
 
+  // buildEncounterActionPanel — TOP-LEVEL dropdown, GAP REDESIGN (xác nhận
+  // trực tiếp, spec chi tiết từ user): thay vì 1 dropdown DÀI gộp hết mọi hành
+  // động, giờ chia 3 nhóm — "Attack" (M1, chọn là thực thi NGAY, không sub-menu),
+  // "Moves" (mở sub-menu riêng: Critical/Page/Follow-Up-Pounce/Overcharged
+  // Vessel), "Special" (mở sub-menu riêng: Shin/Manifested E.G.O/Reload/các
+  // hành động đặc biệt sau này) — CHỈ hiện "Moves"/"Special" nếu có ít nhất 1
+  // option bên trong (tránh bấm vào rỗng).
   function buildEncounterActionPanel(channelId, combatant, playerId) {
     if (!combatant || !playerId) return [];
     const options = [];
-    // "dùng m1 cạn stamina xong vẫn còn act được thông qua dropdown" — GAP ĐÃ
-    // SỬA (xác nhận trực tiếp) — trước đây option M1 LUÔN hiện bất kể còn
-    // Stamina hay không (chỉ chặn lúc xác nhận qua doPlayerAttack, gây cảm
-    // giác "vẫn act được" ngay từ dropdown). Ẩn HẲN nếu currentStamina <= 0
-    // (không đủ cho BẤT KỲ weaponWeight nào — light cần tối thiểu 5).
     if ((combatant.currentStamina ?? 0) > 0) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel("⚔️ Đánh thường (M1)").setValue("attack"));
+      options.push(new StringSelectMenuOptionBuilder().setLabel("⚔️ Attack (M1)").setValue("attack"));
     }
-    // Critical vũ khí — GAP ĐÃ SỬA (xác nhận trực tiếp: "không có dropdown để sử
-    // dụng critical của vũ khí"). CHỈ hiện nếu findSkill() THỰC SỰ tìm được (loại
-    // đúng trường hợp vũ khí không có Critical nào, VD Patron Librarian Baton —
-    // không tự giả định dựa trên có/không field criticalSkillKey).
+    if (buildMovesOptions(combatant).length > 0) {
+      options.push(new StringSelectMenuOptionBuilder().setLabel("🎯 Moves").setValue("openmoves"));
+    }
+    if (buildSpecialOptions(combatant).length > 0) {
+      options.push(new StringSelectMenuOptionBuilder().setLabel("✨ Special").setValue("openspecial"));
+    }
+    // "Items" — GAP MỚI (xác nhận trực tiếp): "làm thêm 1 dropdown submenu mới
+    // nữa là Items (nơi chứa những consumable items trong inventory)" — thực
+    // ra là consumablesLoadout (item đã MANG vào trận qua `-encounter additem`,
+    // sẵn sàng dùng qua `-encounter useitem`/dropdown này) — không phải toàn bộ
+    // inventory (vì luật giới hạn 4 item/trận riêng biệt với inventory tổng).
+    if (buildItemsOptions(combatant).length > 0) {
+      options.push(new StringSelectMenuOptionBuilder().setLabel("🎒 Items").setValue("openitems"));
+    }
+    options.push(new StringSelectMenuOptionBuilder().setLabel("🏁 Kết thúc lượt của tôi").setValue("endmyturn"));
+    return [
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`encmenu:${channelId}:${playerId}`)
+          .setPlaceholder("Chọn hành động...")
+          .addOptions(...options.slice(0, 25)),
+      ),
+    ];
+  }
+
+  // buildMovesOptions — TRẢ VỀ MẢNG option THÔ (không phải ActionRow) để
+  // buildEncounterActionPanel dùng kiểm tra "có gì để hiện Moves không", và
+  // buildMovesPanel dùng để build sub-menu thật — tránh tính 2 lần logic.
+  function buildMovesOptions(combatant) {
+    const options = [];
     const criticalSkill = combatant.weaponCriticalKey ? findSkill(combatant.weaponCriticalKey) : null;
     if (criticalSkill) {
-      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Bot tự roll Durandal, tự cho vào phần
-      // modal Dmg ra dmg đầu cuối lên kẻ địch") — value RIÊNG "critical:" (khác
-      // "hit:" của Page thường) để handler biết cần TỰ ROLL + pre-fill dmgStr,
-      // xem xử lý đầy đủ ở customId "critical:" trong encmenu select handler.
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`critical:${criticalSkill.name}`));
     }
-    // GAP ĐÃ SỬA (lỗi thật từ Discord: "Invalid Form Body...
-    // COMPONENT_OPTION_VALUE_DUPLICATED") — nếu CÙNG 1 tên Page được equip vào
-    // NHIỀU slot khác nhau (có thể xảy ra nếu sở hữu nhiều bản — VD qua
-    // -balance multi-select hoặc "-equippage <slot>" tay), cả 2 slot đều tạo
-    // value "hit:<tên>" GIỐNG HỆT nhau → Discord từ chối toàn bộ dropdown.
-    // Dùng Set để chỉ thêm MỖI TÊN 1 lần — dropdown không cần phân biệt slot
-    // (hành động "hit" chỉ cần biết TÊN skill, không quan tâm nó ở slot nào).
     const addedPageNames = new Set();
     for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
       if (pageName && !addedPageNames.has(pageName)) {
@@ -60,12 +77,6 @@ module.exports = function ({ findSkill, hasPerk }) {
         options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
       }
     }
-    // "5 page đặc biệt không tốn slot page bình thường và chỉ mở khóa khi đúng
-    // faction và outfit, vũ khí đang mặc" (xác nhận trực tiếp) — Unlock, Yield
-    // My Flesh, Boundary of Death, Re-Load, Ignite Weaponry. Không phụ thuộc
-    // unlockedPagesSnapshot — tự động hiện nếu điều kiện thoả, không cần equip
-    // vào slot thường. (Tanglecleaver Reload là page-counter riêng, xử lý ở
-    // reactive-defense.js chứ không phải dropdown hit: này.)
     const outfit = combatant.equippedOutfit;
     const weapon = combatant.weaponName;
     const offices = combatant.offices ?? [];
@@ -82,46 +93,55 @@ module.exports = function ({ findSkill, hasPerk }) {
         options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${name} (không tốn slot)`).setValue(`hit:${name}`));
       }
     }
-    // guard/evade/parry ĐÃ GỠ KHỎI dropdown này (xác nhận trực tiếp: "nghĩ nên bỏ
-    // hẳn... thuần tương tác qua menu UI là cách tốt nhất... đã sử dụng hệ thống
-    // guard mới rồi nên cái đó không cần thiết lắm") — Reactive Defense (tự động
-    // hiện prompt riêng khi bị tấn công, xem sendReactiveDefensePrompt trong
-    // index.js) đã thay thế hoàn toàn nhu cầu chọn phòng thủ CHỦ ĐỘNG ở đây.
+    if ((hasPerk(combatant, "Follow-Up") || hasPerk(combatant, "Pounce")) && combatant.staminaUsedThisTurn >= 20 && !combatant.followUpUsedThisTurn) {
+      options.push(new StringSelectMenuOptionBuilder().setLabel("⚡ Follow-Up/Pounce").setValue("followup"));
+    }
+    return options;
+  }
+
+  // buildSpecialOptions — tương tự buildMovesOptions, cho nhóm "Special".
+  function buildSpecialOptions(combatant) {
+    const options = [];
     if (hasPerk(combatant, "Shin")) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel("🌑 Shin/Mang (-25 Sanity)").setValue("shinmang"));
+      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1528452250861699215", name: "Shin" }));
     }
     if ((combatant.emotionLevel ?? 0) >= 1) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("😈 Manifest E.G.O (-30 Sanity)").setValue("manifestego"));
     }
+    // "Overcharged Vessel" — GAP ĐÃ SỬA (xác nhận trực tiếp): "overcharged
+    // vessel nằm ở bên Special chỉ có page, critical và followup/pounce nằm ở
+    // Moves thôi" — chuyển từ Moves sang đây.
     if (hasPerk(combatant, "Overcharged Vessel") && combatant.charge >= 10) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Overcharged Vessel (tiêu ${combatant.charge} Charge)`).setValue("overcharge"));
     }
-    if ((hasPerk(combatant, "Follow-Up") || hasPerk(combatant, "Pounce")) && combatant.staminaUsedThisTurn >= 20 && !combatant.followUpUsedThisTurn) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel("⚡ Follow-Up/Pounce").setValue("followup"));
-    }
-    // "Reload" (nút RIÊNG, KHÁC Page "Re-Load") — xác nhận trực tiếp: "Page
-    // Reload và hành động Reload khác nhau, nên làm 1 nút reload dành cho
-    // reload thông thường ở dropdown nữa" — nạp từ kho dự trữ Encounter
-    // (ammo/frostAmmo/incendiaryAmmo, đã có sẵn qua -encounter reload) vào
-    // bulletStack (Soldato Rifle), số lượng tùy ý, KHÔNG giới hạn số lần/turn.
-    // Chỉ hiện khi đang dùng Soldato Rifle (vũ khí DUY NHẤT dùng bulletStack).
     if (combatant.weaponName === "Soldato Rifle") {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`🔫 Reload (${combatant.bulletStack ?? 0}/8 đạn trong súng)`).setValue("reload"));
     }
-    // GAP ĐÃ SỬA (xác nhận trực tiếp: "game được thiết kế là 1 turn act bao nhiêu
-    // lần cũng được miễn là đủ tài nguyên... hãy làm 1 nút dropdown chỉ khi họ
-    // bấm nút End Turn thì mới End Turn của họ") — TRƯỚC ĐÂY mỗi hành động tự
-    // động kết thúc lượt luôn, SAI với thiết kế gốc. Giờ chỉ khi CHỌN option
-    // này, turn mới thực sự chuyển sang người tiếp theo (xem value ===
-    // "endmyturn" ở encmenu handler — dùng lại ĐÚNG logic advanceToNextTurnHolder
-    // của lệnh "-encounter pass" đã có).
-    options.push(new StringSelectMenuOptionBuilder().setLabel("🏁 Kết thúc lượt của tôi").setValue("endmyturn"));
+    return options;
+  }
+
+  // buildMovesPanel/buildSpecialPanel — sub-menu THẬT (kèm nút "◀ Back" đầu
+  // tiên để quay lại dropdown top-level Attack/Moves/Special).
+  function buildMovesPanel(channelId, combatant, playerId) {
+    const options = [new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...buildMovesOptions(combatant)];
     return [
       new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-          .setCustomId(`encmenu:${channelId}:${playerId}`)
-          .setPlaceholder("Chọn hành động...")
-          .addOptions(...options.slice(0, 25)), // Discord cap 25 — slice phòng hờ nếu equip đủ 10 page + nhiều buff cùng lúc
+          .setCustomId(`encmenumoves:${channelId}:${playerId}`)
+          .setPlaceholder("Moves — chọn hành động...")
+          .addOptions(...options.slice(0, 25)),
+      ),
+    ];
+  }
+
+  function buildSpecialPanel(channelId, combatant, playerId) {
+    const options = [new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...buildSpecialOptions(combatant)];
+    return [
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`encmenuspecial:${channelId}:${playerId}`)
+          .setPlaceholder("Special — chọn hành động...")
+          .addOptions(...options.slice(0, 25)),
       ),
     ];
   }
@@ -158,8 +178,41 @@ module.exports = function ({ findSkill, hasPerk }) {
     ];
   }
 
+  // buildItemsOptions — tương tự buildMovesOptions/buildSpecialOptions, cho
+  // nhóm "Items" — lấy từ consumablesLoadout (item đã mang vào trận, KHÔNG
+  // phải toàn bộ inventory). Loại trùng tên (giữ đúng semantics "dùng" chỉ
+  // cần biết TÊN, không quan tâm mang mấy cái cùng loại — giống pattern
+  // addedPageNames ở buildMovesOptions).
+  function buildItemsOptions(combatant) {
+    const options = [];
+    const addedItemNames = new Set();
+    for (const itemName of combatant.consumablesLoadout ?? []) {
+      if (itemName && !addedItemNames.has(itemName)) {
+        addedItemNames.add(itemName);
+        const countInLoadout = (combatant.consumablesLoadout ?? []).filter(n => n === itemName).length;
+        options.push(new StringSelectMenuOptionBuilder().setLabel(`🧪 ${itemName}${countInLoadout > 1 ? ` (×${countInLoadout})` : ""}`).setValue(`useitem:${itemName}`));
+      }
+    }
+    return options;
+  }
+
+  function buildItemsPanel(channelId, combatant, playerId) {
+    const options = [new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...buildItemsOptions(combatant)];
+    return [
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`encmenuitems:${channelId}:${playerId}`)
+          .setPlaceholder("Items — chọn vật phẩm để dùng...")
+          .addOptions(...options.slice(0, 25)),
+      ),
+    ];
+  }
+
   return {
     buildEncounterActionPanel,
+    buildMovesPanel,
+    buildSpecialPanel,
+    buildItemsPanel,
     buildBossActionPanel,
   };
 };
