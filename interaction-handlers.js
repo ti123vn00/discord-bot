@@ -247,6 +247,29 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  // "encboardpage:" — GAP ĐÃ SỬA (xác nhận trực tiếp): "thay vì phân luồng thì
+  // làm 1 nút để sang trang thì sao?" — nút lật trang board khi encounter quá
+  // đông. LUÔN đọc encounter MỚI NHẤT lúc bấm (không dùng snapshot cũ), chỉ
+  // GIỮ nguyên các component KHÁC đã có trên message (VD dropdown encmenu)
+  // nếu có, chỉ thay riêng row pagination.
+  if (interaction.customId.startsWith("encboardpage:")) {
+    const [, channelId, pageRaw] = interaction.customId.split(":");
+    const page = parseInt(pageRaw, 10) || 0;
+    try {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) return interaction.reply({ content: "⚠️ Encounter không còn tồn tại.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      const boardPayload = buildEncounterBoardEmbed(encounter, channelId, page);
+      const existingRows = (interaction.message.components ?? []).filter(row => !row._c?.[0]?._id?.startsWith("encboardpage:"));
+      await interaction.update({
+        embeds: [boardPayload.embed],
+        components: [...existingRows, ...boardPayload.components],
+      }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
   // (Nút action panel cũ "encact:" đã bỏ — thay bằng dropdown "encmenu:", xem
   // listener riêng "SELECT MENU INTERACTIONS (encounter)" phía dưới.)
 
@@ -324,7 +347,8 @@ client.on("interactionCreate", async (interaction) => {
           components: [],
         }).catch(() => {});
         if (isConfirm) {
-          await interaction.channel.send({ embeds: [buildEncounterBoardEmbed(encounter)] }).catch(() => {});
+          const boardPayload = buildEncounterBoardEmbed(encounter, channelId);
+          await interaction.channel.send({ embeds: [boardPayload.embed], components: boardPayload.components }).catch(() => {});
         }
       });
     } catch (err) {
@@ -449,7 +473,8 @@ client.on("interactionCreate", async (interaction) => {
     try {
       const encounter = await getEncounter(channelId);
       if (!encounter) throw new Error("Encounter không còn tồn tại.");
-      await interaction.reply({ embeds: [buildEncounterBoardEmbed(encounter)], flags: MessageFlags.Ephemeral }).catch(() => {});
+      const boardPayload = buildEncounterBoardEmbed(encounter, channelId);
+      await interaction.reply({ embeds: [boardPayload.embed], components: boardPayload.components, flags: MessageFlags.Ephemeral }).catch(() => {});
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
@@ -745,7 +770,7 @@ client.on("interactionCreate", async (interaction) => {
         }
         const thisGroupBypass = t.perHitBypass[groupIdx];
         const hitsInThisGroup = Math.min(hitsPerCharge, hitCount - groupIdx * hitsPerCharge);
-        const opts = computeDefenseOptions(target, attackerWeapon, hitsInThisGroup, isM1Type, thisGroupBypass, false);
+        const opts = computeDefenseOptions(target, attackerWeapon, hitsInThisGroup, isM1Type, thisGroupBypass, p.isEyeOfHorusFixedBurst ?? false);
         // Danh sách hit THẬT (1-based) trong nhóm này — ghi TOÀN BỘ vào
         // *HitSelections thay vì chỉ 1 index, để resolveOnePendingAction áp
         // đúng lựa chọn cho CẢ NHÓM (không phải chỉ 1 hit lẻ).
@@ -831,11 +856,12 @@ client.on("interactionCreate", async (interaction) => {
         await sendReactiveDefensePrompt(channelId, pendingId);
         return;
       }
+      const boardPayloadForUpdate = stillWaitingFor ? null : buildEncounterBoardEmbed(encounterSnapshot, channelId);
       await interaction.update({
         embeds: stillWaitingFor
           ? [{ title: "⏳ Đã ghi nhận — đang chờ người khác", description: resultText, color: 0xf39c12 }]
-          : [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }, buildEncounterBoardEmbed(encounterSnapshot)],
-        components: [],
+          : [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }, boardPayloadForUpdate.embed],
+        components: boardPayloadForUpdate ? boardPayloadForUpdate.components : [],
       }).catch(() => {});
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -2040,8 +2066,10 @@ client.on("interactionCreate", async (interaction) => {
       });
       if (!wasExisting) insertIntoTurnOrderMidRound(encounter, key, "enemy", encounter.enemies[key]);
       await saveEncounter(channelId, encounter);
+      const boardPayload = buildEncounterBoardEmbed(encounter, channelId);
       await interaction.reply({
-        embeds: [buildEncounterBoardEmbed(encounter)],
+        embeds: [boardPayload.embed],
+        components: boardPayload.components,
         content: `✅ ${wasExisting ? "Đã cập nhật lại" : "Đã thêm"} enemy **${name}** (key: \`${key}\`) với ${hp} HP.`,
       }).catch(() => {});
     });
