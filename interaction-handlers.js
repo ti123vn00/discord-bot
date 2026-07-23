@@ -1503,7 +1503,7 @@ client.on("interactionCreate", async (interaction) => {
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
             .setMaxValues(1)
-            .addOptions(...targetOptions),
+            .addOptions(new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...targetOptions),
         )],
       }).catch(() => {});
       return;
@@ -1595,7 +1595,7 @@ client.on("interactionCreate", async (interaction) => {
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
             .setMaxValues(isAoeThisCritical ? Math.min(aoeMaxThisCritical, targetOptions.length) : 1)
-            .addOptions(...targetOptions),
+            .addOptions(new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...targetOptions),
         )],
       }).catch(() => {});
       return;
@@ -1678,7 +1678,7 @@ client.on("interactionCreate", async (interaction) => {
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
             .setMaxValues(isAoeThisPage ? Math.min(aoeMaxThisPage, targetOptions.length) : 1)
-            .addOptions(...targetOptions),
+            .addOptions(new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...targetOptions),
         )],
       }).catch(() => {});
       return;
@@ -1699,7 +1699,7 @@ client.on("interactionCreate", async (interaction) => {
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
             .setMaxValues(1)
-            .addOptions(...targetOptions),
+            .addOptions(new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...targetOptions),
         )],
       }).catch(() => {});
       return;
@@ -1775,6 +1775,17 @@ client.on("interactionCreate", async (interaction) => {
   const subAction = parts[2]; // "attack" | "criticalhit" | "hit" | "followup"
   const extra = parts[3]; // mode (attack) | critSkillName encoded (criticalhit) | pageName encoded (hit) | undefined (followup)
   try {
+    // "Back" — GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp: "Chỗ attack thiếu
+    // nút back") — dropdown chọn target (Attack/Critical/Page/Follow-Up) trước
+    // đây KHÔNG có cách quay lui nếu bấm nhầm — giờ thêm "◀ Back" làm option
+    // ĐẦU TIÊN (xem chỗ buildEnemyTargetOptions được gọi phía trên), quay thẳng
+    // về dropdown top-level Attack/Moves/Special.
+    if (interaction.values[0] === "back") {
+      const encBackTarget = await getEncounter(channelId);
+      const combatantBackTarget = encBackTarget?.players?.[interaction.user.id];
+      if (!combatantBackTarget) return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      return interaction.update({ components: buildEncounterActionPanel(channelId, combatantBackTarget, interaction.user.id) }).catch(() => {});
+    }
     // "all" ưu tiên nếu có trong lựa chọn (multi-select có thể lẫn "all" với
     // enemy cụ thể — coi như muốn AOE toàn bộ), ngược lại nối các key đã chọn.
     const targetStr = interaction.values.includes("all") ? "all" : interaction.values.join(",");
