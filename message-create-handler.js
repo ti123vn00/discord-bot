@@ -188,7 +188,7 @@ client.on("messageCreate", async (message) => {
     );
     message.reply({
       embeds: [{
-        title: `🎲 Prescript${times > 1 ? ` × ${times}` : ""}`,
+        title: `<:Prescript:1528452494945157281> Prescript${times > 1 ? ` × ${times}` : ""}`,
         color: 0xe74c3c,
         description: results.join("\n"),
       }],
@@ -1991,9 +1991,11 @@ if (message.content.startsWith("-gacha")) {
             turnNumber: 1, actionLog: [],
           };
           await saveEncounter(encChannelId, encounter);
+          const boardPayload1 = buildEncounterBoardEmbed(encounter, encChannelId);
           await message.reply({
             content: `✅ Đã tạo encounter **${name}**${permadeath ? " ⚠️**PERMADEATH** (chết = permanent death, không phải Death Penalty thường)" : ""}. Dùng \`-encounter addenemy key: <key> name: <tên> hp: <số>\` để thêm enemy.`,
-            embeds: [buildEncounterBoardEmbed(encounter)],
+            embeds: [boardPayload1.embed],
+            components: boardPayload1.components,
           });
         });
       } catch (err) {
@@ -2043,10 +2045,12 @@ if (message.content.startsWith("-gacha")) {
           // cho tới hết round — giờ tự động chèn vào turnOrder hiện tại.
           if (!wasExisting) insertIntoTurnOrderMidRound(encounter, key, "enemy", encounter.enemies[key]);
           await saveEncounter(encChannelId, encounter);
+          const boardPayload2 = buildEncounterBoardEmbed(encounter, encChannelId);
           await message.reply({
             content: `✅ ${wasExisting ? "Đã cập nhật lại" : "Đã thêm"} enemy **${name}** (key: \`${key}\`) với ${hp} HP.` +
               (perksList.length > 0 ? ` (Perk: ${perksList.join(", ")})` : ""),
-            embeds: [buildEncounterBoardEmbed(encounter)],
+            embeds: [boardPayload2.embed],
+            components: boardPayload2.components,
           });
         });
       } catch (err) {
@@ -2082,9 +2086,11 @@ if (message.content.startsWith("-gacha")) {
           );
           appendActionLog(encounter, `🏃 Gỡ enemy **${name}** (key: \`${key}\`) khỏi board — bỏ chạy/bắt sống.`);
           await saveEncounter(encChannelId, encounter);
+          const boardPayload3 = buildEncounterBoardEmbed(encounter, encChannelId);
           await message.reply({
             content: `🏃 Đã gỡ enemy **${name}** (key: \`${key}\`) khỏi board — KHÔNG tính là đã hạ (bỏ chạy/bắt sống).`,
-            embeds: [buildEncounterBoardEmbed(encounter)],
+            embeds: [boardPayload3.embed],
+            components: boardPayload3.components,
           });
         });
       } catch (err) {
@@ -2307,7 +2313,6 @@ if (message.content.startsWith("-gacha")) {
               (equipNotes.length > 0 ? `\n> 🎒 Tự lấy từ trang bị: ${equipNotes.join(", ")}` : "") +
               (joined.unlockedPerks.length > 0 ? ` (Perk từ profile: ${joined.unlockedPerks.join(", ")})` : "") +
               (startNotes.length > 0 ? `\n> 🆙 ${startNotes.join(", ")}` : ""),
-            components: buildEncounterActionPanel(encChannelId, joined, message.author.id),
           });
         });
       } catch (err) {
@@ -2476,7 +2481,9 @@ if (message.content.startsWith("-gacha")) {
     if (sub === "status") {
       const encounter = await getEncounter(encChannelId);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào. Dùng `-encounter start` để tạo."); return; }
-      message.reply({ embeds: [buildEncounterBoardEmbed(encounter)], components: buildEncounterActionPanel(encChannelId, encounter.players[message.author.id], message.author.id) });
+      const boardPayload4 = buildEncounterBoardEmbed(encounter, encChannelId);
+      const actionPanelRows = buildEncounterActionPanel(encChannelId, encounter.players[message.author.id], message.author.id) ?? [];
+      message.reply({ embeds: [boardPayload4.embed], components: [...actionPanelRows, ...boardPayload4.components] });
       return;
     }
 
@@ -2859,12 +2866,14 @@ if (message.content.startsWith("-gacha")) {
     if (sub === "endturn") {
       try {
         const { encounter, shroudedNotes, prescriptNotes } = await performEndTurn(encChannelId, message.author.id, isAdmin);
+        const boardPayload5 = buildEncounterBoardEmbed(encounter, encChannelId);
         await message.reply({
           content: `🔄 **Hết turn** — hồi ${ENCOUNTER_STAMINA_REGEN_PER_TURN} Stamina (trừ ai đang Stagger), đếm ngược Stagger/Panic.` +
             (shroudedNotes.length > 0 ? `\n> ${shroudedNotes.join(", ")}` : "") +
             (prescriptNotes.length > 0 ? `\n${prescriptNotes.map(n => `> ${n}`).join("\n")}` : "") +
             `\n> 🎲 Thứ tự Turn mới:\n${buildTurnOrderText(encounter)}`,
-          embeds: [buildEncounterBoardEmbed(encounter)],
+          embeds: [boardPayload5.embed],
+          components: boardPayload5.components,
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
