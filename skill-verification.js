@@ -109,11 +109,15 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
   /** forceStagger — set Stagger NGAY LẬP TỨC bất kể Stamina hiện tại (dùng cho Guard
    *  Break — Guard xong vẫn bị Stagger ngay, không phải đợi Stamina về 0 như Stagger
    *  thường). Tôn trọng Choáng (2+ stack → 2 turn thay vì 1), KHÔNG set lại nếu đã
-   *  đang Stagger (giữ idempotent giống checkStaggerPanic). */
+   *  đang Stagger (giữ idempotent giống checkStaggerPanic).
+   *  GAP ĐÃ SỬA (xác nhận trực tiếp qua log thật: "123" tỉnh Stagger ngay sau
+   *  đúng 1 lần endturn thay vì kéo dài qua 2 turn) — công thức TRƯỚC ĐÂY lệch
+   *  đúng 1 đơn vị so với checkStaggerPanic (combat-utils.js): dùng 1/2 thay vì
+   *  2/3 — sửa lại cho KHỚP CHÍNH XÁC công thức gốc. */
   function forceStagger(combatant) {
     if (!combatant.staggered) {
       combatant.staggered = true;
-      combatant.staggerTurnsLeft = (combatant.dazedStacks ?? 0) >= 2 ? 2 : 1;
+      combatant.staggerTurnsLeft = (combatant.dazedStacks ?? 0) >= 2 ? 3 : 2;
     }
   }
   
