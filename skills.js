@@ -1261,20 +1261,20 @@ const SKILLS = {
       if (stage === 1) {
         const d1 = r(2,4);
         return [
-          `**Unlock - 1** *(không có Unlock Blade)*`,
+          `**<:Unlock:1528452595859849406>Unlock - 1** *(không có Unlock Blade)*`,
           `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — trúng: nhận **Unlock Blade - 1**`,
         ];
       } else if (stage === 2) {
         const d1 = r(3,6), d2 = r(3,6);
         return [
-          `**Unlock - 2** *(cần Unlock Blade - 1)*`,
+          `**<:Unlock:1528452595859849406>Unlock - 2** *(cần Unlock Blade - 1)*`,
           `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash]`,
           `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận **Unlock Blade - 2**`,
         ];
       } else {
         const d1 = r(6,11), d2 = r(6,11);
         return [
-          `**Unlock - 3** *(cần Unlock Blade - 2)*`,
+          `**<:Unlock:1528452595859849406>Unlock - 3** *(cần Unlock Blade - 2)*`,
           `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash]`,
           `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — nhận **Unlocked Blade**`,
         ];
@@ -3200,7 +3200,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,8), d2 = r(10,15);
       return [
-        `*[Mỗi Dice có thể tốn 5 viên đạn The Living and The Departed để +1 <:DiceUp:1513767795681398894>Dice Up/Dice và +1 <:Sinking:1513762793436741652>Sinking mỗi viên]*`,
+        `*[Mỗi Dice có thể tốn 5 viên đạn <:The_Living_The_Departed:1528452731147391137>The Living and The Departed để +1 <:DiceUp:1513767795681398894>Dice Up/Dice và +1 <:Sinking:1513762793436741652>Sinking mỗi viên]*`,
         `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Bắn liên tục vào kẻ địch`,
         `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Lao tới bắn phát cuối, gây 3 <:Sinking:1513762793436741652>Sinking. Tùy theo <:Sinking:1513762793436741652>Sinking trên địch: 0 → -2 <:DiceDown:1513767826257874964>Dice Down | 1-19 → 6 <:Bind:1513768025881317457>Bind | ≥20 → 6 Fragile`,
       ];
@@ -3653,7 +3653,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,8), d2 = r(8,12);
       return [
-        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 2 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `*+1 Clash Power với mỗi viên đạn <:The_Living_The_Departed:1528452731147391137>The Living & The Departed; áp 2 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
         `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
         `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
       ];
@@ -3665,7 +3665,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,10), d2 = r(10,16);
       return [
-        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 3 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `*+1 Clash Power với mỗi viên đạn <:The_Living_The_Departed:1528452731147391137>The Living & The Departed; áp 3 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
         `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
         `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
       ];
@@ -3677,7 +3677,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,7), d2 = r(7,10), d3 = r(10,13), d4 = r(13,16);
       return [
-        `*+1 Clash Power với mỗi viên đạn The Living & The Departed; áp 5 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
+        `*+1 Clash Power với mỗi viên đạn <:The_Living_The_Departed:1528452731147391137>The Living & The Departed; áp 5 <:Sinking:1513762793436741652>Sinking khi Clash thắng; +1 <:DiceUp:1513767795681398894>Dice Up với mỗi 5 **Butterfly** kẻ địch có*`,
         `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây **Butterfly**`,
         `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây **Butterfly**`,
         `${D3} **${d3}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — gây **Butterfly**`,
@@ -4403,8 +4403,8 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(2,4), d2 = r(3,5);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **Scorch Propellant Round** sau khi sử dụng`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** sau khi sử dụng`,
       ];
     },
   },
@@ -4414,9 +4414,9 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(1,5), d2 = r(3,8), d3 = r(3,9);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Gây 2 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn, <:Tremor:1513762737388257380>Tremor và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **Scorch Propellant Round** sau khi sử dụng`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Gây 2 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn, <:Tremor:1513762737388257380>Tremor và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** sau khi sử dụng`,
       ];
     },
   },
@@ -4426,9 +4426,9 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(4,6), d2 = r(4,8), d3 = r(8,11);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Tiêu 1 Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
       ];
     },
   },
@@ -4438,9 +4438,9 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(5,7), d2 = r(5,7), d3 = r(5,5);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst *(nếu có trên hoặc bằng 15 Stack **Scorch Propellant Round**)*. Tiêu toàn bộ Stack **Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **Scorch Propellant Round** được xả`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst *(nếu có trên hoặc bằng 15 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round**)*. Tiêu toàn bộ Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** được xả`,
       ];
     },
   },
@@ -4449,7 +4449,7 @@ Object.assign(SKILLS, {
   "tiantui star's blade": {
     name: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
     weaponType: "Medium", weaponDmg: "14 [<:Slash:1513768633434640517>Slash]",
-    passive: "**Reloading Tiantui Star's Blade** — Khi sử dụng <:Shin:1507591140180754588>Shin và dùng **Tiantui Star's Blade Reload**, bạn nhận được và chuyển hóa toàn bộ **Tigermark Round** hiện có qua **Savage Tigermark Round**",
+    passive: "**Reloading Tiantui Star's Blade** — Khi sử dụng <:Shin:1507591140180754588>Shin và dùng **Tiantui Star's Blade Reload**, bạn nhận được và chuyển hóa toàn bộ **<:Tigermark_Round:1528452815838777394>Tigermark Round** hiện có qua **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round**",
     cost: "—", cd: "—", diceMul: "—",
     roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "tiantui triple slash blast" hoặc "tiantui savage tigerslayer flurry")*`]; },
   },
@@ -4460,7 +4460,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(10,15);
       return [
-        `${D1} *Tiêu thụ toàn bộ **Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng. Nếu có trên hoặc bằng 6 **Tigermark Round**: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst*`,
+        `${D1} *Tiêu thụ toàn bộ **<:Tigermark_Round:1528452815838777394>Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng. Nếu có trên hoặc bằng 6 **<:Tigermark_Round:1528452815838777394>Tigermark Round**: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch`,
       ];
     },
@@ -4472,8 +4472,8 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(5,7), d2 = r(5,7), d3 = r(10,13), d4 = r(8,9), d5 = r(5,7), d6 = r(20,21);
       return [
-        `*Điều kiện: dùng ngay sau **Triple Slash Blast [爆]** và có ít nhất 10 **Savage Tigermark Round** trên người*`,
-        `${D1} *Tiêu thụ toàn bộ **Savage Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn, 1 <:Tremor:1513762737388257380>Tremor tương ứng vào Dice cuối*`,
+        `*Điều kiện: dùng ngay sau **Triple Slash Blast [爆]** và có ít nhất 10 **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round** trên người*`,
+        `${D1} *Tiêu thụ toàn bộ **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn, 1 <:Tremor:1513762737388257380>Tremor tương ứng vào Dice cuối*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó tiếp tục chém, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
         `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Vận lực lấy đà lùi phía sau một chút rồi chém ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
@@ -4491,7 +4491,7 @@ Object.assign(SKILLS, {
       const d1 = r(3,10);
       return [
         `*Chỉ sử dụng được khi dùng vũ khí **Tiantui Star's Blade [天退星刀]** và Outfit **The Thumb Capo IIII** (Page này không tốn slot)*`,
-        `${D1} **${d1}** — Ngắt một đòn của kẻ địch thông qua \`-rtparry\`, sau đó nạp **Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra *(nếu \`-rtparry\` thất bại thì vẫn nạp đạn được)*`,
+        `${D1} **${d1}** — Ngắt một đòn của kẻ địch thông qua \`-rtparry\`, sau đó nạp **<:Tigermark_Round:1528452815838777394>Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra *(nếu \`-rtparry\` thất bại thì vẫn nạp đạn được)*`,
       ];
     },
     // counterEffect — GAP ĐÃ SỬA (xác nhận trực tiếp: "Tanglecleaver Reload là
