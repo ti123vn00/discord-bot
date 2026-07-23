@@ -1919,7 +1919,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
 /** buildEncounterBoardEmbed — hiện TẤT CẢ enemy + TẤT CẢ player + danh sách pending
  *  action đang chờ (rút gọn, không hiện hết chi tiết — xem `-encounter pending` cho
  *  đầy đủ). */
-const { buildEncounterBoardEmbed } = require("./encounter-board")({ buildTurnOrderText, formatCombatantBlock }); // ĐÃ TÁCH sang file riêng (encounter-board.js)
+const { buildEncounterBoardEmbed, buildEncounterBoardPages, buildBoardPaginationRow } = require("./encounter-board")({ ActionRowBuilder, ButtonBuilder, ButtonStyle, buildTurnOrderText, formatCombatantBlock }); // ĐÃ TÁCH sang file riêng (encounter-board.js)
 
 /** buildPendingListText — danh sách đầy đủ pending action cho `-encounter pending`. */
 /** buildDothihelpEmbed — nội dung help ĐẦY ĐỦ, dùng CHUNG cho cả `-dothihelp`
