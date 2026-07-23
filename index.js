@@ -1902,14 +1902,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
     if (verify.busyAsTribbieNote) verifyNote += `\n>${verify.busyAsTribbieNote}`;
     result = {
-      embed: {
-        title: "🎯 Enemy attack đã thêm vào hàng chờ",
-        description:
-          `**${enemy.name}** đánh ${targets.length > 1 ? `${targets.length} player` : targets[0].label}: \`${dmgStr}\`\n` +
-          `${targetLines}${verifyNote}\n` +
-          `> Dùng \`-encounter pending\` để xem hàng chờ, "Confirm tất cả" khi xong.`,
-        color: 0xf39c12,
-      },
+      summary: `⚔️ **${enemy.name}** đánh ${targets.length > 1 ? `${targets.length} player` : targets[0].label}: \`${dmgStr}\`\n${targetLines}${verifyNote}`,
       skillRollEmbed: verify.skillRollEmbed,
     };
   });
