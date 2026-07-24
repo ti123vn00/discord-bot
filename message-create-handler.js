@@ -3426,7 +3426,7 @@ if (message.content.startsWith("-gacha")) {
   }
 
   // ── -dr ──
-  // Cú pháp: -dr <số>  (hoặc -dr: <số>)
+  // Cú pháp: -dr <số>  (hoặc -dr: <số>) .
   // Cho biết % Damage Reduction thực tế (sau bão hòa) ứng với 1 số % raw.
   if (message.content.startsWith("-dr")) {
     if (isOnCooldown(message.author.id, "dr", 2000)) {
