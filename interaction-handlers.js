@@ -350,6 +350,7 @@ client.on("interactionCreate", async (interaction) => {
           const boardPayload = buildEncounterBoardEmbed(encounter, channelId);
           await interaction.channel.send({ embeds: [boardPayload.embed], components: boardPayload.components }).catch(() => {});
         }
+        announceCurrentTurn(channelId, encounter).catch(() => {});
       });
     } catch (err) {
       log("error", "encounterConfirmAll", interaction.user?.id ?? "unknown", err.message);
@@ -703,6 +704,10 @@ client.on("interactionCreate", async (interaction) => {
           embeds: [{ title: "🛡️ Your Shield — Kết quả", description: displayText, color: 0x9b59b6 }],
           components: [],
         }).catch(() => {});
+        {
+          const encAfterYourShield = await getEncounter(channelId);
+          if (encAfterYourShield) announceCurrentTurn(channelId, encAfterYourShield).catch(() => {});
+        }
       } catch (err) {
         log("error", "yourShield", interaction.user.id, err.message);
         await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -867,6 +872,16 @@ client.on("interactionCreate", async (interaction) => {
           : [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }, boardPayloadForUpdate.embed],
         components: boardPayloadForUpdate ? boardPayloadForUpdate.components : [],
       }).catch(() => {});
+      // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp: "Dropdown vẫn còn bị che
+      // rất nặng bởi các message sau khi kẻ địch đã thực thi xong reactive
+      // defense") — nhánh Guard/Evade/Parry/Không phòng thủ (PHỔ BIẾN NHẤT)
+      // TRƯỚC ĐÂY HOÀN TOÀN THIẾU resend này (chỉ nhánh Clash bên dưới có) —
+      // gửi lại dropdown turn NGAY sau khi phản hồi xong, để nó luôn ở CUỐI
+      // kênh (dễ thấy nhất), không bị "Đã xử lý"/board embed mới hơn che khuất.
+      if (!stillWaitingFor) {
+        const encAfterMainReactive = await getEncounter(channelId);
+        if (encAfterMainReactive) announceCurrentTurn(channelId, encAfterMainReactive).catch(() => {});
+      }
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
