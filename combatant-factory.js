@@ -12,12 +12,12 @@
 
 module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }) {
 
-  function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, weaponCriticalKey = null, equippedOutfit = null, offices = [], resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
+  function createCombatant({ name, maxHp, maxStamina = ENCOUNTER_DEFAULT_MAX_STAMINA, maxSanity = ENCOUNTER_SANITY_MAX, maxLight = ENCOUNTER_DEFAULT_MAX_LIGHT, weaponWeight = "medium", weaponBaseDamage = null, weaponType = null, weaponName = null, weaponCriticalKey = null, equippedOutfit = null, offices = [], resistance = null, speedRangeMin = 3, speedRangeMax = 6 }) {
     return {
       name,
       maxHp, currentHp: maxHp,
       maxStamina, currentStamina: maxStamina,
-      maxSanity: ENCOUNTER_SANITY_MAX, currentSanity: 0,
+      maxSanity, currentSanity: 0,
       // baseMaxLight: giá trị GỐC, KHÔNG đổi — maxLight (effective) = baseMaxLight +
       // bonus từ Emotion Level đang active (xem EMOTION_LEVEL_TABLE.maxLightBonus),
       // tính lại mỗi khi Level thay đổi (lên/hết hạn) — xem applyEmotionDelta/
