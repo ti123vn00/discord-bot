@@ -280,4 +280,4 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     resolveTargets,
     formatCombatantBlock,
   };
-};
+}; 
