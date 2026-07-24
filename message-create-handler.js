@@ -11,7 +11,7 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -1993,9 +1993,14 @@ if (message.content.startsWith("-gacha")) {
           await saveEncounter(encChannelId, encounter);
           const boardPayload1 = buildEncounterBoardEmbed(encounter, encChannelId);
           await message.reply({
-            content: `✅ Đã tạo encounter **${name}**${permadeath ? " ⚠️**PERMADEATH** (chết = permanent death, không phải Death Penalty thường)" : ""}. Dùng \`-encounter addenemy key: <key> name: <tên> hp: <số>\` để thêm enemy.`,
+            content: `✅ Đã tạo encounter **${name}**${permadeath ? " ⚠️**PERMADEATH** (chết = permanent death, không phải Death Penalty thường)" : ""}. Dùng nút bên dưới để mở Bảng điều khiển GM (thêm enemy, chỉnh sửa, điều khiển turn...).`,
             embeds: [boardPayload1.embed],
-            components: boardPayload1.components,
+            components: [
+              ...boardPayload1.components,
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`gmpanelopenbtn:${encChannelId}:${message.author.id}`).setLabel("🎛️ Mở GM Panel").setStyle(ButtonStyle.Primary),
+              ),
+            ],
           });
         });
       } catch (err) {
@@ -2012,19 +2017,30 @@ if (message.content.startsWith("-gacha")) {
       const hp = parseInt(kv["hp"] ?? "", 10);
       if (!key || key.length > ENCOUNTER_KEY_MAX_LENGTH || !/^[a-z0-9]+$/.test(key) || !name || !Number.isFinite(hp) || hp <= 0) {
         message.reply(
-          "⚠️ Cú pháp: `-encounter addenemy key: <key ngắn a-z0-9> name: <tên đầy đủ> hp: <số>` (tùy chọn `stamina:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`/`perks: <tên1>,<tên2>`)\n" +
-          "> VD: `-encounter addenemy key: mo name: Mo (Brother of Iron) hp: 240`\n" +
-          "> Enemy không có profile nên perk phải gán trực tiếp qua `perks:` ở đây (player thì dùng `-unlockskilltree` riêng, lưu trên profile)."
+          "⚠️ Cú pháp: `-encounter addenemy key: <key ngắn a-z0-9> name: <tên đầy đủ> hp: <số>` (tùy chọn `stamina:`/`sanity:`/`light:`/`weapon: light|medium|heavy`/`res: 1.3xB 1.3xP 1.3xS`/`perks: <tên1>,<tên2>`/`skills: <tên1>,<tên2>`)\n" +
+          "> VD: `-encounter addenemy key: mo name: Mo (Brother of Iron) hp: 240 skills: Durandal,Blade Flourish`\n" +
+          "> Enemy không có profile nên perk phải gán trực tiếp qua `perks:` ở đây (player thì dùng `-unlockskilltree` riêng, lưu trên profile).\n" +
+          "> `skills:` — tên Page/Critical (tra CHÍNH xác cùng database skills.js với player) enemy này được PHÉP dùng khi GM chọn \"📖 Skill/Critical\" ở bossmenu/gmpanel — bot sẽ TỰ roll() y hệt player, không cần GM tự tính dmgStr.\n" +
+          "> `sanity:`/`light:` — TUỲ CHỌN, một số boss/mob không có 2 chỉ số này (mặc định 0/0 nếu bỏ trống — không hiện dòng Sanity/Light trên board)."
         );
         return;
       }
       const stamina = parseInt(kv["stamina"] ?? "", 10);
+      const sanityRaw = parseInt(kv["sanity"] ?? "", 10);
+      const lightRaw = parseInt(kv["light"] ?? "", 10);
       const weapon = normalizeWeaponWeight(kv["weapon"] ?? "medium");
       const resRaw = kv["res"] ?? "";
       const res = { B: 1, P: 1, S: 1 };
       for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
       const perksRaw = (kv["perks"] ?? "").trim();
       const perksList = perksRaw ? perksRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+      const skillsRaw = (kv["skills"] ?? "").trim();
+      const skillsList = skillsRaw ? skillsRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
+      const invalidSkills = skillsList.filter(s => !findSkill(s));
+      if (invalidSkills.length > 0) {
+        message.reply(`⚠️ Không tìm thấy skill: ${invalidSkills.map(s => `"${s}"`).join(", ")} — kiểm tra lại chính tả (khớp CHÍNH XÁC tên trong database).`);
+        return;
+      }
       const speedRangeMatch = (kv["speedrange"] ?? "").match(/(\d+)\s*[~\-]\s*(\d+)/);
       const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : 3;
       const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : 6;
@@ -2037,9 +2053,12 @@ if (message.content.startsWith("-gacha")) {
           encounter.enemies[key] = createCombatant({
             name, maxHp: hp,
             maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
+            maxSanity: Number.isFinite(sanityRaw) && sanityRaw > 0 ? sanityRaw : 0,
+            maxLight: Number.isFinite(lightRaw) && lightRaw > 0 ? lightRaw : 0,
             weaponWeight: weapon, resistance: res, speedRangeMin, speedRangeMax,
           });
           encounter.enemies[key].unlockedPerks = perksList;
+          encounter.enemies[key].unlockedPagesSnapshot = skillsList;
           // GAP ĐÃ SỬA (phát hiện qua rà soát): thêm enemy GIỮA 1 round (đã
           // rollspeed) trước đây khiến enemy này KHÔNG BAO GIỜ được hành động
           // cho tới hết round — giờ tự động chèn vào turnOrder hiện tại.
@@ -2048,7 +2067,8 @@ if (message.content.startsWith("-gacha")) {
           const boardPayload2 = buildEncounterBoardEmbed(encounter, encChannelId);
           await message.reply({
             content: `✅ ${wasExisting ? "Đã cập nhật lại" : "Đã thêm"} enemy **${name}** (key: \`${key}\`) với ${hp} HP.` +
-              (perksList.length > 0 ? ` (Perk: ${perksList.join(", ")})` : ""),
+              (perksList.length > 0 ? ` (Perk: ${perksList.join(", ")})` : "") +
+              (skillsList.length > 0 ? ` (Skills: ${skillsList.join(", ")})` : ""),
             embeds: [boardPayload2.embed],
             components: boardPayload2.components,
           });
@@ -3057,63 +3077,11 @@ if (message.content.startsWith("-gacha")) {
     // cầu trực tiếp: "phần encounter của boss cần 1 lệnh UI"). Chỉ GM/admin dùng
     // được (điều khiển enemy vốn đã giới hạn GM-only trong mọi lệnh liên quan).
     if (sub === "gmpanel") {
-      // GM Control Panel (xác nhận trực tiếp): bảng điều khiển TỔNG QUÁT cho GM —
-      // chọn enemy từ dropdown, sau đó hiện panel Attack/Guard/Evade/Parry (tái
-      // dùng NGUYÊN buildBossActionPanel đã có sẵn cho bossmenu). Có thể gọi từ
-      // kênh GM riêng (sau khi đã `-encounter linkgm`) hoặc ngay tại kênh encounter.
-      // GAP ĐÃ SỬA (xác nhận trực tiếp): "gm có thể chỉnh sửa BẤT CỨ THỨ GÌ trong
-      // encounter... điều khiển, add, edit enemy, status hoặc làm điều tương tự
-      // với player" — mở rộng thêm: dropdown enemy giờ dẫn tới màn hình chọn
-      // "⚔️ Điều khiển" HAY "✏️ Chỉnh sửa" (thay vì luôn thẳng vào Attack panel);
-      // thêm dropdown player để chỉnh sửa TƯƠNG TỰ; thêm nút "➕ Add Enemy".
+      // GM Control Panel — logic ĐÃ TÁCH sang gmpanel-builder.js (buildGmPanelContent)
+      // để dùng chung với nút "🎛️ Mở GM Panel" mới (xem -encounter start).
       try {
-        const encounter = await getEncounter(encChannelId);
-        if (!encounter) throw new Error("Channel này chưa có encounter nào — dùng `-encounter start` trước (hoặc `-encounter linkgm` nếu đang ở kênh điều khiển riêng).");
-        const isAdmin = ADMIN_IDS.has(message.author.id);
-        if (!isAdmin && message.author.id !== encounter.gmId) throw new Error("Chỉ GM/admin mới mở được bảng điều khiển.");
-        const aliveEnemies = Object.entries(encounter.enemies).filter(([, e]) => e.currentHp > 0);
-        const alivePlayers = Object.entries(encounter.players).filter(([, p]) => p.currentHp > 0);
-        const components = [];
-        if (aliveEnemies.length > 0) {
-          const enemyOptions = aliveEnemies.map(([ekey, e]) =>
-            new StringSelectMenuOptionBuilder().setLabel(`👹 ${e.name} (${ekey}) — ${e.currentHp}/${e.maxHp} HP`).setValue(ekey)
-          );
-          components.push(new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId(`gmpanelselect:${encChannelId}:${message.author.id}`)
-              .setPlaceholder("Chọn enemy (điều khiển hoặc chỉnh sửa)...")
-              .addOptions(...enemyOptions.slice(0, 25)),
-          ));
-        }
-        if (alivePlayers.length > 0) {
-          const playerOptions = alivePlayers.map(([pid, p]) =>
-            new StringSelectMenuOptionBuilder().setLabel(`🧑 ${p.name} — ${p.currentHp}/${p.maxHp} HP`).setValue(pid)
-          );
-          components.push(new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId(`gmpanelplayerselect:${encChannelId}:${message.author.id}`)
-              .setPlaceholder("Chọn player để chỉnh sửa...")
-              .addOptions(...playerOptions.slice(0, 25)),
-          ));
-        }
-        // Turn Order Enforcement UX (xác nhận trực tiếp): nút LUÔN sẵn có,
-        // không cần đợi hết vòng turnOrder mới thấy — GM có thể chủ động kết
-        // thúc sớm hoặc xem trạng thái bất cứ lúc nào từ bảng điều khiển.
-        components.push(new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`encendturn:${encChannelId}:${encounter.gmId}`).setLabel("🔄 Kết thúc Turn").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`gmpanelstatus:${encChannelId}:${message.author.id}`).setLabel("📊 Xem trạng thái").setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId(`gmpaneladdenemy:${encChannelId}:${message.author.id}`).setLabel("➕ Add Enemy").setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(`gmpanelquickstatus:${encChannelId}:${message.author.id}`).setLabel("🎯 Set Status (chọn nhanh)").setStyle(ButtonStyle.Secondary),
-        ));
-        message.reply({
-          embeds: [{
-            title: `🎛️ Bảng điều khiển GM — ${encounter.name}`,
-            description: `Turn **${encounter.turnNumber ?? 1}** | ${aliveEnemies.length} enemy còn sống | ${alivePlayers.length} player còn sống.` +
-              (aliveEnemies.length === 0 ? "\n*(Chưa có enemy nào — dùng nút ➕ Add Enemy bên dưới.)*" : ""),
-            color: 0x9b59b6,
-          }],
-          components,
-        });
+        const content = await buildGmPanelContent(encChannelId, message.author.id);
+        message.reply(content);
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
