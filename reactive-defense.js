@@ -516,6 +516,8 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       if (resultChannel) {
         await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không gây dmg)", description: lines.join("\n"), color: 0x95a5a6 }] }).catch(() => {});
       }
+      const encAfterZeroDmg = await getEncounter(channelId);
+      if (encAfterZeroDmg) announceCurrentTurn(channelId, encAfterZeroDmg).catch(() => {});
     }
   } catch (err) {
     log("error", "sendReactiveDefensePrompt", "system", err.message);
