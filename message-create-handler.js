@@ -2079,7 +2079,85 @@ if (message.content.startsWith("-gacha")) {
       return;
     }
 
-    // ── removeenemy: gỡ 1 enemy KHỎI BOARD hoàn toàn (KHÁC với hạ HP về 0 — dùng
+    // ── addenemyskill: định nghĩa 1 skill RIÊNG chỉ 1 boss cụ thể dùng được
+    // (KHÔNG cần có sẵn trong database skills.js) — GAP MỚI (xác nhận trực
+    // tiếp): "1 số boss... có hẳn 1 page riêng chỉ boss đó xài nên là phần
+    // critical/page của boss cần 1 field hiện tên, dice roll, narrate hiệu
+    // ứng". Lưu trực tiếp trên enemy (encounter.enemies[key].customSkills) —
+    // khi GM dùng qua bossmenu/gmpanel/-encounter enemyattack với
+    // `customskill: <tên>`, bot tự build dmgStr từ dice đã lưu + hiện narrative
+    // — không cần GM tự tính/gõ tay công thức mỗi lần dùng.
+    if (sub === "addenemyskill") {
+      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được thêm skill cho enemy."); return; }
+      const kv = parseKeyValues(rest);
+      const key = normalizeEnemyKey(kv["key"] ?? "");
+      const name = (kv["name"] ?? "").trim();
+      const dice = (kv["dice"] ?? "").trim();
+      if (!key || !name || !dice) {
+        message.reply(
+          "⚠️ Cú pháp: `-encounter addenemyskill key: <enemy key> name: <tên skill riêng> dice: <công thức dmg>` (tùy chọn `light:`/`cd:`/`tags:`/`narrative:`)\n" +
+          "> VD: `-encounter addenemyskill key: mo name: Iron Fist dice: 40x2B light: 3 cd: 3 tags: guardbreak narrative: Mo dồn toàn lực vào 1 cú đấm, mặt đất rung chuyển.`\n" +
+          "> Khác với `skills:` ở `-encounter addenemy` (skill CÓ SẴN trong database, dùng chung với player) — đây là skill HOÀN TOÀN RIÊNG, chỉ đúng enemy này dùng được, không cần tồn tại trong database."
+        );
+        return;
+      }
+      const lightCost = parseInt(kv["light"] ?? "0", 10);
+      const cooldownTurns = parseInt(kv["cd"] ?? "0", 10);
+      const tags = (kv["tags"] ?? "").trim();
+      const narrative = (kv["narrative"] ?? "").trim();
+      try {
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const enemy = encounter.enemies[key];
+          if (!enemy) throw new Error(`Không tìm thấy enemy "${key}" — dùng \`-encounter status\` để xem danh sách.`);
+          enemy.customSkills = enemy.customSkills ?? [];
+          const idx = enemy.customSkills.findIndex(s => s.name.toLowerCase() === name.toLowerCase());
+          const skillDef = {
+            name, dice,
+            lightCost: Number.isFinite(lightCost) && lightCost > 0 ? lightCost : 0,
+            cooldownTurns: Number.isFinite(cooldownTurns) && cooldownTurns > 0 ? cooldownTurns : 0,
+            tags, narrative,
+          };
+          if (idx >= 0) enemy.customSkills[idx] = skillDef;
+          else enemy.customSkills.push(skillDef);
+          await saveEncounter(encChannelId, encounter);
+          message.reply(
+            `✅ ${idx >= 0 ? "Đã cập nhật lại" : "Đã thêm"} skill riêng **${name}** cho **${enemy.name}** (key: \`${key}\`).\n` +
+            `> Dice: \`${dice}\`${lightCost > 0 ? ` | Light: ${lightCost}` : ""}${cooldownTurns > 0 ? ` | CD: ${cooldownTurns}T` : ""}${tags ? ` | Tags: ${tags}` : ""}\n` +
+            (narrative ? `> Narrative: *${narrative}*\n` : "") +
+            `> Dùng qua bossmenu/gmpanel (chọn "📖 Skill/Critical") hoặc \`-encounter enemyattack key: ${key} target: <...> customskill: ${name}\`.`
+          );
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "removeenemyskill") {
+      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được xoá skill của enemy."); return; }
+      const kv = parseKeyValues(rest);
+      const key = normalizeEnemyKey(kv["key"] ?? "");
+      const name = (kv["name"] ?? "").trim();
+      if (!key || !name) { message.reply("⚠️ Cú pháp: `-encounter removeenemyskill key: <enemy key> name: <tên skill riêng>`"); return; }
+      try {
+        await withLock(encounterKey(encChannelId), async () => {
+          const encounter = await getEncounter(encChannelId);
+          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+          const enemy = encounter.enemies[key];
+          if (!enemy) throw new Error(`Không tìm thấy enemy "${key}".`);
+          const before = (enemy.customSkills ?? []).length;
+          enemy.customSkills = (enemy.customSkills ?? []).filter(s => s.name.toLowerCase() !== name.toLowerCase());
+          if (enemy.customSkills.length === before) throw new Error(`Không tìm thấy skill riêng "${name}" trên enemy này.`);
+          await saveEncounter(encChannelId, encounter);
+          message.reply(`✅ Đã xoá skill riêng **${name}** khỏi **${enemy.name}**.`);
+        });
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
     // cho trường hợp enemy bỏ chạy/bị bắt sống/rút lui giữa trận, không phải chết).
     // Enemy đã gỡ KHÔNG còn trong actionLog tương lai, không tính vào "tất cả đã hạ"
     // (allDead) — nếu muốn loại enemy ra khỏi điều kiện thắng mà KHÔNG coi là enemy
@@ -2981,18 +3059,20 @@ if (message.content.startsWith("-gacha")) {
       const kv = parseKeyValues(rest);
       const enemyKey = kv["key"] ?? "";
       const dmgStr = kv["dmg"] ?? "";
+      const customSkillRaw = kv["customskill"] ?? "";
       const targetStr = kv["target"] ?? (message.mentions.users.first()?.id ?? "");
-      if (!enemyKey.trim() || !dmgStr.trim() || !targetStr.trim()) {
+      if (!enemyKey.trim() || (!dmgStr.trim() && !customSkillRaw.trim()) || !targetStr.trim()) {
         message.reply(
           "⚠️ Cú pháp: `-encounter enemyattack key: <enemy key> target: <@player hoặc all> dmg: <công thức>`\n" +
           "> VD: `-encounter enemyattack key: mo target: all dmg: 20x3P` (AOE cả party)\n" +
-          "> Tùy chọn `skill: <tên skill>` hoặc `ref: <link message>`."
+          "> Tùy chọn `skill: <tên skill>` hoặc `ref: <link message>`.\n" +
+          "> Hoặc dùng `customskill: <tên>` (skill riêng đã tạo qua `-encounter addenemyskill`) THAY VÌ `dmg:` — bot tự build công thức + narrate."
         );
         return;
       }
       try {
         const { summary, skillRollEmbed } = await doEnemyAttack(encChannelId, message.author.id, enemyKey, dmgStr, targetStr, {
-          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], ism1: kv["ism1"],
+          skill: kv["skill"], ref: kv["ref"], coin: kv["coin"], tags: kv["tags"], ism1: kv["ism1"], customskill: kv["customskill"],
         });
         await message.reply({ content: summary, embeds: skillRollEmbed ? [skillRollEmbed] : [] });
       } catch (err) {
