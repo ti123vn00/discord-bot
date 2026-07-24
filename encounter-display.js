@@ -1,4 +1,3 @@
-
 // encounter-display.js
 // Nhóm hàm tra cứu/hiển thị combatant thuần (resolveCombatant, resolveTargets,
 // formatCombatantBlock) — tách khỏi index.js theo yêu cầu trực tiếp: "tiếp tục
@@ -99,7 +98,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     const lines = [
       `**${label}**${combatant.currentHp <= 0 ? " — ĐÃ HẠ! 💀" : ""}`,
       `${hpBar} **${Math.max(0, Math.round(combatant.currentHp * 100) / 100)}/${combatant.maxHp}** HP`,
-      `> Stamina: **${combatant.currentStamina}/${combatant.maxStamina}** | Sanity: **${combatant.currentSanity}/${combatant.maxSanity}** | Light: **${combatant.currentLight}/${combatant.maxLight}**`,
+      `> Stamina: **${combatant.currentStamina}/${combatant.maxStamina}**${combatant.maxSanity > 0 ? ` | Sanity: **${combatant.currentSanity}/${combatant.maxSanity}**` : ""}${combatant.maxLight > 0 ? ` | Light: **${combatant.currentLight}/${combatant.maxLight}**` : ""}`,
       `> Res: **${resLine}** | Vũ khí: **${combatant.weaponWeight}**`,
       `> Speed Range: **${combatant.speedRangeMin}~${combatant.speedRangeMax}**${combatant.currentSpeed !== null ? ` | Speed turn này: **${combatant.currentSpeed}**` : ""}${combatant.haste > 0 ? ` | <:Haste:1375181763994849333>${combatant.haste}` : ""}${combatant.bind > 0 ? ` | <:Fix_Bind:1513768025881317457>${combatant.bind}` : ""}`,
     ];
@@ -139,7 +138,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     // gmNote (xác nhận trực tiếp: "thêm note lên chỗ status của player hoặc
     // boss/mob phòng trong các status đặc biệt mà chưa kịp implement vào
     // code") — chỉ hiện khi GM đã set nội dung.
-    if (combatant.gmNote) lines.push(`> 📝 Note: ${combatant.gmNote}`);
+    if (combatant.gmNote) lines.push(`> 📝 Text: ${combatant.gmNote}`);
     // Choáng (dazedStacks) — counter tự động mỗi lần Stagger (xem checkStaggerPanic),
     // KHÔNG còn nằm trong injuries[] nữa — hiển thị riêng để GM/player biết khi nào
     // Stagger sẽ kéo dài 2 turn thay vì 1 (từ stack thứ 2 trở lên).
