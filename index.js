@@ -366,6 +366,7 @@ const KNOWN_KEYS = new Set([
   "usebullet", // -encounter attack usebullet: yes (Soldato Rifle's Firing passive)
   "loadtype", // -encounter hit skill: Re-Load loadtype: ammo/frost/incendiary
   "ism1", // -encounter enemyattack ism1: yes (boss M1 that su, tu tru Stamina theo weaponWeight)
+  "dice", "narrative", "customskill", "cd", // -encounter addenemyskill / enemyattack customskill:
 ]);
 
 const _KV_KEY_RE_SRC = `(?:^|\\s)(${Array.from(KNOWN_KEYS).join("|")})\\s*:`;
@@ -474,6 +475,12 @@ function applyStatusEntries(resolved, entries, sourceId, checkStaggerPanicFn) {
       const before = resolved.combatant.weaponWeight;
       resolved.combatant.weaponWeight = entry.weight;
       changes.push(`Vũ khí: "${before}" → **"${entry.weight}"**`);
+      continue;
+    }
+    if (entry.type === "outfit") {
+      const before = resolved.combatant.equippedOutfit ?? "(trống)";
+      resolved.combatant.equippedOutfit = entry.value;
+      changes.push(`Outfit: "${before}" → **"${entry.value}"**`);
       continue;
     }
     if (entry.type === "perkAdd") {
@@ -631,6 +638,8 @@ function parseStatusFreeText(text) {
     // phần tử) giống hệt injury+/injury-, thay vì ghi đè toàn bộ.
     const weaponMatch = trimmed.match(/^weapon\s*:\s*(light|medium|heavy)$/i);
     if (weaponMatch) { entries.push({ type: "weapon", weight: weaponMatch[1].toLowerCase() }); continue; }
+    const outfitMatch = trimmed.match(/^outfit\s*:\s*(.+)$/i);
+    if (outfitMatch) { entries.push({ type: "outfit", value: outfitMatch[1].trim() }); continue; }
     const perkAddMatch = trimmed.match(/^perks\+\s*:\s*(.+)$/i);
     if (perkAddMatch) { entries.push({ type: "perkAdd", name: perkAddMatch[1].trim() }); continue; }
     const perkRemoveMatch = trimmed.match(/^perks-\s*:\s*(.+)$/i);
@@ -1859,10 +1868,13 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
  *  doPlayerAttack/doPlayerHit nhưng đảo chiều self/enemy (enemy là người tấn công →
  *  Poise/Charge từ enemy; player(s) là target → 5 status kia từ TỪNG player riêng). */
 async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, verifyOpts = {}) {
-  if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
-  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw } = verifyOpts;
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, customskill: customSkillNameRaw } = verifyOpts;
+  if (!customSkillNameRaw && (!dmgStr || !dmgStr.trim())) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`), hoặc dùng `customskill:` nếu enemy này có skill riêng.");
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
+  let customSkillNarrative = "";
+  let effectiveTagsRawFinal = manualTagsRaw;
+  let effectiveDmgStrFinal = dmgStr;
   await withLock(encounterKey(channelId), async () => {
     const encounter = await getEncounter(channelId);
     if (!encounter) throw new Error("Channel này chưa có encounter nào.");
@@ -1871,6 +1883,29 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     const ekey = normalizeEnemyKey(enemyKey);
     const enemy = encounter.enemies[ekey];
     if (!enemy) throw new Error(`Không tìm thấy enemy "${enemyKey}" — dùng \`-encounter status\` để xem danh sách.`);
+    // customskill: — GAP MỚI (xác nhận trực tiếp): "có hẳn 1 page riêng chỉ
+    // boss đó xài... cần 1 field hiện tên, dice roll, narrate hiệu ứng" — tự
+    // build dmgStr + tags từ skillDef đã lưu qua -encounter addenemyskill,
+    // kiểm tra/trừ Light + set Cooldown y hệt skill thật, KHÔNG cần GM tự gõ
+    // công thức tay mỗi lần dùng.
+    if (customSkillNameRaw) {
+      const skillDef = (enemy.customSkills ?? []).find(s => s.name.toLowerCase() === customSkillNameRaw.trim().toLowerCase());
+      if (!skillDef) throw new Error(`Enemy "${enemy.name}" không có skill riêng tên "${customSkillNameRaw}" — dùng \`-encounter addenemyskill\` để tạo trước, hoặc kiểm tra lại chính tả.`);
+      if ((enemy.skillCooldowns?.[skillDef.name.toLowerCase()] ?? 0) > 0) {
+        throw new Error(`"${skillDef.name}" đang trong CD — còn ${enemy.skillCooldowns[skillDef.name.toLowerCase()]} turn nữa mới dùng lại được.`);
+      }
+      if ((enemy.currentLight ?? 0) < skillDef.lightCost) {
+        throw new Error(`Không đủ Light cho "${skillDef.name}" — cần ${skillDef.lightCost}, hiện có ${enemy.currentLight ?? 0}.`);
+      }
+      enemy.currentLight = (enemy.currentLight ?? 0) - skillDef.lightCost;
+      if (skillDef.cooldownTurns > 0) {
+        enemy.skillCooldowns = enemy.skillCooldowns ?? {};
+        enemy.skillCooldowns[skillDef.name.toLowerCase()] = skillDef.cooldownTurns;
+      }
+      effectiveDmgStrFinal = skillDef.dice;
+      effectiveTagsRawFinal = [manualTagsRaw, skillDef.tags].filter(Boolean).join(",");
+      customSkillNarrative = skillDef.narrative ? `📖 **${skillDef.name}** — *${skillDef.narrative}*\n` : `📖 **${skillDef.name}**\n`;
+    }
     if (!hasEncounterStarted(encounter)) {
       throw new Error("⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước khi ai đó có thể hành động.");
     }
@@ -1884,9 +1919,9 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     if ((encounter.pendingActions ?? []).length >= ENCOUNTER_PENDING_MAX) throw new Error(`Đã có quá nhiều action chờ xác nhận (tối đa ${ENCOUNTER_PENDING_MAX}) — xử lý trước.`);
 
     const verify = await resolveSkillVerification(channelId, enemy, skillNameRaw, refRaw);
-    const effectiveTagsRaw = enemy.perceptionBlockingMask && (manualTagsRaw ?? "").toLowerCase().includes("lastaction")
-      ? `${manualTagsRaw},undodgeable,unparriable,unblockable,unclashable`
-      : manualTagsRaw;
+    const effectiveTagsRaw = enemy.perceptionBlockingMask && (effectiveTagsRawFinal ?? "").toLowerCase().includes("lastaction")
+      ? `${effectiveTagsRawFinal},undodgeable,unparriable,unblockable,unclashable`
+      : effectiveTagsRawFinal;
     const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
 
     const targets = resolveTargets(encounter, targetStr, "player");
@@ -1899,7 +1934,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     // TARGET (player) là người bị tấn công → 5 status kia lấy từ TỪNG TARGET riêng.
     const previews = targets.map(t => {
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
-      const perkCtx = computeAttackerPerkContext(enemy, t.combatant, dmgStr, { isM1: false, attackerId: enemyKey, targetId: t.id, isMiddleSkill });
+      const perkCtx = computeAttackerPerkContext(enemy, t.combatant, effectiveDmgStrFinal, { isM1: false, attackerId: enemyKey, targetId: t.id, isMiddleSkill });
       const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill, attackerId: enemyKey });
       const haouRuptureCheck = (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
       const calcOpts = {
@@ -1951,7 +1986,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       id: pendingId, kind: "enemyattack",
       attackerId: ekey, attackerType: "enemy",
       targets: previews.map(p => ({ targetId: p.target.id, targetType: "player", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
-      dmgStr, defenseBypass, tags: manualTagsRaw,
+      dmgStr: effectiveDmgStrFinal, defenseBypass, tags: effectiveTagsRawFinal,
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
@@ -1983,7 +2018,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     if (verify.refLink) verifyNote += `\n> 🔗 Tham chiếu: ${verify.refLink}\n> > ${verify.refSnippet}`;
     if (verify.busyAsTribbieNote) verifyNote += `\n>${verify.busyAsTribbieNote}`;
     result = {
-      summary: `⚔️ **${enemy.name}** đánh ${targets.length > 1 ? `${targets.length} player` : targets[0].label}: \`${dmgStr}\`\n${targetLines}${verifyNote}`,
+      summary: `${customSkillNarrative}⚔️ **${enemy.name}** đánh ${targets.length > 1 ? `${targets.length} player` : targets[0].label}: \`${effectiveDmgStrFinal}\`\n${targetLines}${verifyNote}`,
       skillRollEmbed: verify.skillRollEmbed,
     };
   });
