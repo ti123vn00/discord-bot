@@ -361,7 +361,7 @@ const KNOWN_KEYS = new Set([
   "living", "departed",
   "burn", "bleed", "bleedactions", "tremor", "charge",
   "books", "items",
-  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", "type", "ammotype", "channel", // -encounter
+  "name", "hp", "weapon", "stamina", "light", "key", "target", "skill", "skills", "ref", "text", "index", "coin", "perks", "speedrange", "amount", "oppskill", "for", "tags", "permadeath", "turn", "volleys", "attacker", "hits", "type", "ammotype", "channel", // -encounter
   "banner", // -gacha banner: naruto/standard
   "usebullet", // -encounter attack usebullet: yes (Soldato Rifle's Firing passive)
   "loadtype", // -encounter hit skill: Re-Load loadtype: ammo/frost/incendiary
@@ -452,7 +452,62 @@ function applyStatusEntries(resolved, entries, sourceId, checkStaggerPanicFn) {
     if (entry.type === "note") {
       const before = resolved.combatant.gmNote || "(trống)";
       resolved.combatant.gmNote = entry.text;
-      changes.push(`Note: "${before}" → **"${entry.text}"**`);
+      changes.push(`Text: "${before}" → **"${entry.text}"**`);
+      continue;
+    }
+    if (entry.type === "res") {
+      const before = resolved.combatant.resistance ? `${resolved.combatant.resistance.B}xB ${resolved.combatant.resistance.P}xP ${resolved.combatant.resistance.S}xS` : "1xB 1xP 1xS";
+      const newRes = { B: 1, P: 1, S: 1 };
+      for (const m of entry.raw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) newRes[m[2].toUpperCase()] = parseFloat(m[1]);
+      resolved.combatant.resistance = newRes;
+      changes.push(`Resistance: "${before}" → **"${newRes.B}xB ${newRes.P}xP ${newRes.S}xS"**`);
+      continue;
+    }
+    if (entry.type === "speedrange") {
+      const before = `${resolved.combatant.speedRangeMin}~${resolved.combatant.speedRangeMax}`;
+      resolved.combatant.speedRangeMin = entry.min;
+      resolved.combatant.speedRangeMax = entry.max;
+      changes.push(`Speed Range: "${before}" → **"${entry.min}~${entry.max}"**`);
+      continue;
+    }
+    if (entry.type === "weapon") {
+      const before = resolved.combatant.weaponWeight;
+      resolved.combatant.weaponWeight = entry.weight;
+      changes.push(`Vũ khí: "${before}" → **"${entry.weight}"**`);
+      continue;
+    }
+    if (entry.type === "perkAdd") {
+      resolved.combatant.unlockedPerks = resolved.combatant.unlockedPerks ?? [];
+      if (!resolved.combatant.unlockedPerks.includes(entry.name)) resolved.combatant.unlockedPerks.push(entry.name);
+      changes.push(`Perk: +**"${entry.name}"**`);
+      continue;
+    }
+    if (entry.type === "perkRemove") {
+      resolved.combatant.unlockedPerks = (resolved.combatant.unlockedPerks ?? []).filter(p => p !== entry.name);
+      changes.push(`Perk: -**"${entry.name}"**`);
+      continue;
+    }
+    if (entry.type === "skillAdd") {
+      if (!findSkill(entry.name)) throw new Error(`\`skills+:\` không tìm thấy skill "${entry.name}" — kiểm tra lại chính tả.`);
+      resolved.combatant.unlockedPagesSnapshot = resolved.combatant.unlockedPagesSnapshot ?? [];
+      if (!resolved.combatant.unlockedPagesSnapshot.includes(entry.name)) resolved.combatant.unlockedPagesSnapshot.push(entry.name);
+      changes.push(`Skill: +**"${entry.name}"**`);
+      continue;
+    }
+    if (entry.type === "skillRemove") {
+      resolved.combatant.unlockedPagesSnapshot = (resolved.combatant.unlockedPagesSnapshot ?? []).filter(s => s !== entry.name);
+      changes.push(`Skill: -**"${entry.name}"**`);
+      continue;
+    }
+    if (entry.type === "officeAdd") {
+      resolved.combatant.offices = resolved.combatant.offices ?? [];
+      if (!resolved.combatant.offices.includes(entry.name)) resolved.combatant.offices.push(entry.name);
+      changes.push(`Office: +**"${entry.name}"**`);
+      continue;
+    }
+    if (entry.type === "officeRemove") {
+      resolved.combatant.offices = (resolved.combatant.offices ?? []).filter(o => o !== entry.name);
+      changes.push(`Office: -**"${entry.name}"**`);
       continue;
     }
     if (entry.type === "set") {
@@ -562,6 +617,32 @@ function parseStatusFreeText(text) {
     if (injuryRemoveMatch) { entries.push({ type: "injuryRemove", name: injuryRemoveMatch[1].trim() }); continue; }
     const cdMatch = trimmed.match(/^cd\s+(.+?)\s*:\s*(-?\d+)$/i);
     if (cdMatch) { entries.push({ type: "cd", skillKey: cdMatch[1].trim().toLowerCase(), raw: cdMatch[2] }); continue; }
+    // "res:"/"speedrange:" — GAP MỚI (xác nhận trực tiếp): "chỉnh sửa
+    // resistance, speed, nói chung toàn bộ những chỉ số trong encounter đều
+    // thoải mái chỉnh sửa được" — TÁI DÙNG chính xác cú pháp của
+    // -encounter addenemy (res: 1.3xB 1xP 1xS / speedrange: 3~6) để nhất quán.
+    const resMatch = trimmed.match(/^res\s*:\s*(.+)$/i);
+    if (resMatch) { entries.push({ type: "res", raw: resMatch[1].trim() }); continue; }
+    const speedRangeMatch = trimmed.match(/^speedrange\s*:\s*(\d+)\s*[~\-]\s*(\d+)$/i);
+    if (speedRangeMatch) { entries.push({ type: "speedrange", min: parseInt(speedRangeMatch[1], 10), max: parseInt(speedRangeMatch[2], 10) }); continue; }
+    // "weapon:"/"perks+:"/"perks-:"/"skills+:"/"skills-:"/"offices+:"/"offices-:"
+    // — GAP MỚI (xác nhận trực tiếp): "chỉnh sửa được tất cả, không sót 1 thứ
+    // gì" — perks/skills/offices là ARRAY nên dùng cú pháp +/- (thêm/xoá 1
+    // phần tử) giống hệt injury+/injury-, thay vì ghi đè toàn bộ.
+    const weaponMatch = trimmed.match(/^weapon\s*:\s*(light|medium|heavy)$/i);
+    if (weaponMatch) { entries.push({ type: "weapon", weight: weaponMatch[1].toLowerCase() }); continue; }
+    const perkAddMatch = trimmed.match(/^perks\+\s*:\s*(.+)$/i);
+    if (perkAddMatch) { entries.push({ type: "perkAdd", name: perkAddMatch[1].trim() }); continue; }
+    const perkRemoveMatch = trimmed.match(/^perks-\s*:\s*(.+)$/i);
+    if (perkRemoveMatch) { entries.push({ type: "perkRemove", name: perkRemoveMatch[1].trim() }); continue; }
+    const skillAddMatch = trimmed.match(/^skills\+\s*:\s*(.+)$/i);
+    if (skillAddMatch) { entries.push({ type: "skillAdd", name: skillAddMatch[1].trim() }); continue; }
+    const skillRemoveMatch = trimmed.match(/^skills-\s*:\s*(.+)$/i);
+    if (skillRemoveMatch) { entries.push({ type: "skillRemove", name: skillRemoveMatch[1].trim() }); continue; }
+    const officeAddMatch = trimmed.match(/^offices\+\s*:\s*(.+)$/i);
+    if (officeAddMatch) { entries.push({ type: "officeAdd", name: officeAddMatch[1].trim() }); continue; }
+    const officeRemoveMatch = trimmed.match(/^offices-\s*:\s*(.+)$/i);
+    if (officeRemoveMatch) { entries.push({ type: "officeRemove", name: officeRemoveMatch[1].trim() }); continue; }
     const normalMatch = trimmed.match(/^([a-zA-Z]+)\s*:\s*(-?\d+)$/);
     if (normalMatch) entries.push({ type: "status", key: normalMatch[1].toLowerCase(), raw: normalMatch[2] });
   }
@@ -2406,9 +2487,10 @@ const { resolveOnePendingAction } = require("./resolve-pending-action")({ BLEED_
 
 const { finalizeReactiveChoice, performEndTurn, announceCurrentTurn, sendThirdPartyClashPrompts, sendYourShieldPrompts, applyDullahanParryCounter, sendReactiveDefensePrompt } = require("./reactive-defense")({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, withLock }); // ĐÃ TÁCH sang file riêng (reactive-defense.js)
 
-require("./message-create-handler")({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }); // ĐÃ TÁCH sang file riêng (message-create-handler.js)
+const { buildGmPanelContent } = require("./gmpanel-builder")({ ADMIN_IDS, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, getEncounter }); // module MỚI — TÁCH logic gmpanel để dùng chung cho lệnh text VÀ nút "🎛️ Mở GM Panel"
+require("./message-create-handler")({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }); // ĐÃ TÁCH sang file riêng (message-create-handler.js)
 
-require("./interaction-handlers")({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
+require("./interaction-handlers")({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
 
 
 client.login(TOKEN);
