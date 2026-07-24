@@ -16,7 +16,7 @@
 // Factory tự client.on("interactionCreate", ...) (nhiều listener riêng biệt,
 // y hệt cấu trúc gốc) bên trong — không return gì cả.
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -390,7 +390,7 @@ client.on("interactionCreate", async (interaction) => {
       const statusInput = new TextInputBuilder()
         .setCustomId("status")
         .setLabel("Status/Set/Injury/CD (xem placeholder)")
-        .setPlaceholder("rupture: 5 | set emotioncoin: 2 | injury+: Gãy chân | cd durandal: 3")
+        .setPlaceholder("rupture: 5 | res: 1.3xB 1xP 1xS | speedrange: 3~6 | set emotioncoin: 2 | cd durandal: 3")
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(false);
       const noteInput = new TextInputBuilder().setCustomId("addnote").setLabel("Ghi chú (narrate/mechanic thuần text)").setPlaceholder("Để trống nếu không đổi").setStyle(TextInputStyle.Paragraph).setValue(enemy.gmNote ?? "").setRequired(false);
@@ -404,6 +404,24 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.showModal(modal).catch(() => {});
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
+  // Nút "🎛️ Mở GM Panel" (xem message-create-handler.js's -encounter start) —
+  // GAP MỚI (xác nhận trực tiếp): "có thể tạo 1 nút ở dưới khiến GM có thẩm
+  // quyền mở được gmpanel luôn" — tái dùng buildGmPanelContent (đã tách sang
+  // gmpanel-builder.js) thay vì lặp lại logic.
+  if (interaction.customId.startsWith("gmpanelopenbtn:")) {
+    const [, channelId, ownerId] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+      return interaction.reply({ content: "⚠️ Chỉ người tạo encounter này mới bấm được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      const content = await buildGmPanelContent(channelId, interaction.user.id);
+      await interaction.reply(content);
+    } catch (err) {
+      await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     return;
   }
@@ -706,7 +724,7 @@ client.on("interactionCreate", async (interaction) => {
         }).catch(() => {});
         {
           const encAfterYourShield = await getEncounter(channelId);
-          if (encAfterYourShield) announceCurrentTurn(channelId, encAfterYourShield).catch(() => {});
+          if (encAfterYourShield) announceCurrentTurn(channelId, encAfterYourShield, true).catch(() => {});
         }
       } catch (err) {
         log("error", "yourShield", interaction.user.id, err.message);
@@ -880,7 +898,7 @@ client.on("interactionCreate", async (interaction) => {
       // kênh (dễ thấy nhất), không bị "Đã xử lý"/board embed mới hơn che khuất.
       if (!stillWaitingFor) {
         const encAfterMainReactive = await getEncounter(channelId);
-        if (encAfterMainReactive) announceCurrentTurn(channelId, encAfterMainReactive).catch(() => {});
+        if (encAfterMainReactive) announceCurrentTurn(channelId, encAfterMainReactive, true).catch(() => {});
       }
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -1041,7 +1059,7 @@ client.on("interactionCreate", async (interaction) => {
     // bị các tin nhắn reactive defense/kết quả mới hơn che khuất lên trên.
     {
       const encAfterReactive = await getEncounter(channelId);
-      if (encAfterReactive) announceCurrentTurn(channelId, encAfterReactive).catch(() => {});
+      if (encAfterReactive) announceCurrentTurn(channelId, encAfterReactive, true).catch(() => {});
     }
   } catch (err) {
     interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -1285,7 +1303,7 @@ client.on("interactionCreate", async (interaction) => {
     const statusInput = new TextInputBuilder()
       .setCustomId("status")
       .setLabel("Status/Set/Injury/CD (xem placeholder)")
-      .setPlaceholder("rupture: 5 | set emotioncoin: 2 | injury+: Gãy chân | cd durandal: 3")
+      .setPlaceholder("rupture: 5 | res: 1.3xB 1xP 1xS | speedrange: 3~6 | set emotioncoin: 2 | cd durandal: 3")
       .setStyle(TextInputStyle.Paragraph)
       .setRequired(false);
     // "addnote" — field RIÊNG BIỆT (KHÁC hẳn cú pháp "note:" gộp trong ô Status
@@ -2065,7 +2083,7 @@ client.on("interactionCreate", async (interaction) => {
       if (noteRaw !== (resolved.combatant.gmNote ?? "")) {
         const beforeNote = resolved.combatant.gmNote || "(trống)";
         resolved.combatant.gmNote = noteRaw;
-        changes.push(`Note: "${beforeNote}" → **"${noteRaw || "(trống)"}"**`);
+        changes.push(`Text: "${beforeNote}" → **"${noteRaw || "(trống)"}"**`);
       }
       appendActionLog(encounter, `🎛️ GM chỉnh sửa ${resolved.label}: ${changes.length > 0 ? changes.join(", ") : "(không đổi gì)"}`);
       await saveEncounter(channelId, encounter);
