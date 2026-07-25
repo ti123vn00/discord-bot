@@ -4490,7 +4490,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(3,10);
       return [
-        `*Chỉ sử dụng được khi dùng vũ khí **Tiantui Star's Blade [天退星刀]** và Outfit **The Thumb Capo IIII** (Page này không tốn slot)*`,
+        `*Chỉ sử dụng được khi dùng vũ khí **Tiantui Star's Blade [天退星刀]** và Outfit **The Thumb Capo IIII***`,
         `${D1} **${d1}** — Ngắt một đòn của kẻ địch thông qua \`-rtparry\`, sau đó nạp **<:Tigermark_Round:1528452815838777394>Tigermark Round** vào **Tiantui Star's Blade [天退星刀]** tương ứng với số dice gieo ra *(nếu \`-rtparry\` thất bại thì vẫn nạp đạn được)*`,
       ];
     },
@@ -4511,7 +4511,7 @@ Object.assign(SKILLS, {
     cost: "2 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       return [
-        `*Chỉ sử dụng được khi sử dụng vũ khí lẫn outfit của **The Thumb Syndicate** (Page này không tốn slot)*`,
+        `*Chỉ sử dụng được khi sử dụng vũ khí lẫn outfit của **The Thumb Syndicate***`,
         `${D1} Nạp một nửa số đạn tối đa của vũ khí. Số đạn nạp được từ Page này có thể tùy chọn giữa đạn thường, **Frost Ammo** và **Incendiary Ammo** tùy ý`,
       ];
     },
@@ -4529,7 +4529,7 @@ Object.assign(SKILLS, {
     cost: "1 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       return [
-        `*Nếu sử dụng outfit của **Liu Association** và gia nhập office của **Liu Association** sẽ tự động sử dụng được page này (Page này không tốn slot)*`,
+        `*Nếu sử dụng outfit của **Liu Association** và gia nhập office của **Liu Association** sẽ tự động sử dụng được page này*`,
         `${D1} Đốt cháy vũ khí của bạn trong 2 Turn, khiến cho đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy] **Burn** lên kẻ địch`,
       ];
     },
