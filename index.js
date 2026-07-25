@@ -398,7 +398,7 @@ function parseKeyValues(input) {
 // chỉ đổi input từ "đọc kv trực tiếp" thành "nhận entries đã parse sẵn".
 const STATUS_CAPS_SHARED = {
   fragile: 25, attackpowerup: 10, attackpowerdown: 10, defenseup: 20, defensedown: 20,
-  clashattackboost: 8, unopposedattackboost: 5, protection: 20, regen: 99, chargeshield: 20,
+  clashattackboost: 999, unopposedattackboost: 5, protection: 20, regen: 99, chargeshield: 20,
   paralyze: 99,
   diceup: 99, dicedown: 99, smoke: 15, vengeancemark: 10, nails: 99, redplumblossom: 99, freeble: 5,
   borrowedtime: 2, fairy: 30,
@@ -1579,9 +1579,13 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         critDiv: perkCtx.critDivOverride ?? undefined,
         poiseInit: player.poise, chargeInit: player.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG
-        // TẤN CÔNG (attacker), KHÔNG áp cho target. +4 nếu "Firing" (Soldato
-        // Rifle) đang tiêu đạn (willUseBullet) — chỉ M1, không áp skill/Critical.
-        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0) + (willUseBullet ? 4 : 0),
+        // TẤN CÔNG (attacker), KHÔNG áp cho target. "Firing" (+4 dmg) KHÔNG còn
+        // ở đây nữa — GAP SỬA LẦN 2 (xác nhận trực tiếp): +4 giờ đã nằm TRỰC
+        // TIẾP trong base NUMBER của dmgStr (12→16, xem interaction-handlers.js),
+        // để % bonus (Attack Power Up, outfit...) áp dụng lên ĐÚNG 16, không
+        // phải chỉ 12 rồi cộng riêng — flat bonus ở đây sẽ SAI (cộng SAU % thay
+        // vì TRƯỚC/CÙNG % như base thật).
+        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         // 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/Chain) — TRÊN
         // TARGET đang bị Tremor Burst kích hoạt lên (xem comment đầy đủ ở
