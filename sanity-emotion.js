@@ -62,6 +62,19 @@ module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, E
       if (hasPerk(combatant, "Emotion Surge")) combatant.currentLight = combatant.maxLight;
       else combatant.currentLight = Math.min(combatant.currentLight, combatant.maxLight);
       notes.push(`🆙 Emotion Level ${nextLevel}! (+${healAmount.toFixed(2)} HP, +${tier.diceUp} Dice Up khi dùng skill, Max Light → ${combatant.maxLight})`);
+      // "Black Suit" (outfit) — GAP MỚI (xác nhận trực tiếp): "Mỗi khi đạt
+      // Emotion Level nhận được 1 Dice Up, 1 Clash Power và 1 Protection kéo
+      // dài cho đến hết encounter" — Protection dùng ĐÚNG cơ chế
+      // protectionTurnsLeft=Infinity đã có sẵn (không cần field mới). Dice
+      // Up/Clash Attack Boost cần accumulator RIÊNG (persistentBonus) vì cả 2
+      // đều bị reset về 0 mỗi turn ở turn-advance.js — được cộng LẠI mỗi turn
+      // ở đó (xem comment tương ứng).
+      if (combatant.equippedOutfit === "Black Suit") {
+        combatant.blackSuitPersistentBonus = (combatant.blackSuitPersistentBonus ?? 0) + 1;
+        combatant.protection = Math.min(20, (combatant.protection ?? 0) + 1);
+        combatant.protectionTurnsLeft = Infinity;
+        notes.push(`🖤 **Black Suit** — +1 Dice Up/Clash Attack Boost (kéo dài hết encounter, tổng ${combatant.blackSuitPersistentBonus}) và +1 Protection vĩnh viễn.`);
+      }
     }
     return notes;
   }
