@@ -252,6 +252,12 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       combatant.protectionTurnsLeft -= 1;
       if (combatant.protectionTurnsLeft <= 0) combatant.protection = 0;
     }
+    // "The Middle Little/Big Sibling" (outfit) — Enhancement Tattoos kéo dài 2
+    // Turn, cùng pattern với Protection ở trên.
+    if ((combatant.enhancementTattoosTurnsLeft ?? 0) > 0) {
+      combatant.enhancementTattoosTurnsLeft -= 1;
+      if (combatant.enhancementTattoosTurnsLeft <= 0) combatant.enhancementTattoosStack = 0;
+    }
     // Regen/Charge Shield KHÔNG decay theo turn (chỉ mất khi ĐÃ hồi HP / ĐÃ bị tấn
     // công tương ứng) — KHÔNG có dòng reset ở đây, đúng chủ ý.
     // Iron Horus — Guard "cả turn chặn TOÀN BỘ đòn" nghĩa là hiệu lực ĐÚNG 1 turn
