@@ -2811,48 +2811,12 @@ if (message.content.startsWith("-gacha")) {
     }
 
     if (sub === "reload") {
-      // Ammo system (xác nhận trực tiếp): "Nhận được thông qua hành động Reload, 1
-      // turn có thể Reload bao nhiêu tùy ý, nhưng sẽ tiêu hao số đạn trong
-      // Inventory của bạn mỗi khi Reload." — chuyển đạn từ Inventory (persistent,
-      // profileData.items) sang stack Encounter (combatant field), KHÔNG giới hạn
-      // số lần gọi/turn (mỗi lần tự trừ đúng Inventory hiện có).
-      const kv = parseKeyValues(rest);
-      const amount = parseInt(kv["amount"] ?? "1", 10);
-      const typeRaw = (kv["type"] ?? "ammo").trim().toLowerCase();
-      const AMMO_ITEM_MAP = { ammo: { item: "Ammo", field: "ammo" }, frost: { item: "Frost Ammo", field: "frostAmmo" }, incendiary: { item: "Incendiary Ammo", field: "incendiaryAmmo" } };
-      const ammoType = AMMO_ITEM_MAP[typeRaw];
-      if (!Number.isFinite(amount) || amount < 1 || !ammoType) {
-        message.reply(`⚠️ Cú pháp: \`-encounter reload amount: <số> type: ammo/frost/incendiary\` (mặc định type: ammo nếu bỏ trống)\n> VD: \`-encounter reload amount: 5\` hoặc \`-encounter reload amount: 2 type: frost\``);
-        return;
-      }
-      try {
-        // Bước 1: trừ Inventory (persistent, lock RIÊNG theo user — KHÔNG lồng
-        // trong lock encounter để tránh deadlock nếu 2 lock khác thứ tự ở nơi khác).
-        let actualAmount = 0;
-        await withLock(message.author.id, async () => {
-          const { data: profileData, slot } = await getPlayerDataWithSlot(message.author.id);
-          const owned = profileData.items?.[ammoType.item] ?? 0;
-          actualAmount = Math.min(amount, owned);
-          if (actualAmount <= 0) throw new Error(`Không còn **${ammoType.item}** nào trong Inventory để Reload.`);
-          profileData.items[ammoType.item] = owned - actualAmount;
-          if (profileData.items[ammoType.item] <= 0) delete profileData.items[ammoType.item];
-          await savePlayerData(message.author.id, profileData, slot);
-        });
-        // Bước 2: cộng vào stack Encounter (lock riêng của encounter).
-        await withLock(encounterKey(encChannelId), async () => {
-          const encounter = await getEncounter(encChannelId);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          const player = encounter.players[message.author.id];
-          if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-          const before = player[ammoType.field] ?? 0;
-          player[ammoType.field] = Math.min(AMMO_MAX, before + actualAmount);
-          appendActionLog(encounter, `🔫 <@${message.author.id}>: reload ${ammoType.item} +${actualAmount} (${before} → ${player[ammoType.field]})`);
-          await saveEncounter(encChannelId, encounter);
-          message.reply(`🔫 Reload **${ammoType.item}**: +${actualAmount} (từ Inventory) → đang có **${player[ammoType.field]}** trong Encounter.`);
-        });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
+      // GAP ĐÃ SỬA (xác nhận trực tiếp): "khi bấm reload thì trực tiếp cho họ
+      // nạp đạn từ trong inventory vào luôn... bước xài lệnh để lấy đạn vào
+      // encounter rất không cần thiết" — lệnh này ĐÃ LỖI THỜI (kho dự trữ
+      // Encounter không còn được dùng nữa) — nút "🔫 Reload" trong dropdown
+      // Special giờ đọc + trừ THẲNG từ Inventory, không cần bước này nữa.
+      message.reply("ℹ️ Lệnh này không còn cần thiết nữa — dùng nút **🔫 Reload** trong dropdown **✨ Special** khi tới lượt, nó sẽ tự nạp thẳng từ Inventory vào súng.");
       return;
     }
 
@@ -3426,7 +3390,7 @@ if (message.content.startsWith("-gacha")) {
   }
 
   // ── -dr ──
-  // Cú pháp: -dr <số>  (hoặc -dr: <số>) .
+  // Cú pháp: -dr <số>  (hoặc -dr: <số>)
   // Cho biết % Damage Reduction thực tế (sau bão hòa) ứng với 1 số % raw.
   if (message.content.startsWith("-dr")) {
     if (isOnCooldown(message.author.id, "dr", 2000)) {
