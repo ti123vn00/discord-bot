@@ -92,6 +92,7 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       karmicConsequence: 0, // PERSISTENT, max 100 — +1%Dmg/stack (Index Proselyte tự áp lên bản thân)
       prescriptTargetId: null, // Will of Prescript — enemy đang bị đánh dấu "The Prescript Target's - The Index"
       blackSuitPersistentBonus: 0, // "Black Suit" (outfit) — số lần đạt Emotion Level, dùng cho Dice Up/Clash Attack Boost KÉO DÀI hết encounter (không reset theo turn như bản thường — xem sanity-emotion.js/turn-advance.js)
+      enhancementTattoosStack: 0, enhancementTattoosTurnsLeft: 0, enhancementTattoosStaminaAccum: 0, // "The Middle Little/Big Sibling" (outfit) — parry thành công (xem combat-utils.js) hoặc 20 Stamina qua M1 (xem resolve-pending-action.js) → +1 stack, kéo dài 2 Turn
       // bulletStack — GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) —
       // "Firing" (Soldato Rifle, biến base dmg thành 16 Pierce, xem
       // interaction-handlers.js) + "Thumb Soldato" (outfit, mỗi 20 Stamina
