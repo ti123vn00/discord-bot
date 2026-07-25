@@ -1799,8 +1799,9 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         critDiv: perkCtx.critDivOverride ?? critDiv,
         poiseInit: player.poise, chargeInit: player.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — CHỈ áp dụng cho player ĐANG TẤN
-        // CÔNG (attacker), KHÔNG áp cho target.
-        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0),
+        // CÔNG (attacker), KHÔNG áp cho target. + perkCtx.flatDmgBonus ("Blade
+        // Lineage Salsu" outfit — 1/2 Poise, xem attacker-perk-context.js).
+        flatDmgPerHit: (player.attackPowerUp ?? 0) - (player.attackPowerDown ?? 0) + (perkCtx.flatDmgBonus ?? 0),
         sinkingInit: t.combatant.sinking, ruptureInit: t.combatant.rupture,
         // 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/Chain) — TRÊN
         // TARGET đang bị Tremor Burst kích hoạt lên (xem comment đầy đủ ở
