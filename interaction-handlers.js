@@ -1178,14 +1178,25 @@ client.on("interactionCreate", async (interaction) => {
         if (!combatant || !Number.isFinite(combatant.weaponBaseDamage) || !combatant.weaponType) {
           throw new Error("Không tìm thấy dữ liệu vũ khí — dùng `-encounter attack target: ... dmg: ...` (lệnh text) thay vào đó.");
         }
+        // GAP SỬA LẦN 2 (xác nhận trực tiếp): "Firing passive là biến base dmg
+        // 12 Slash thành 16 Pierce chứ không phải +4 flat, nó khác nhau nhé
+        // thành 16 Base Dmg thì mạnh hơn đó, và các logic bonus % ảnh hưởng
+        // được" — TRƯỚC ĐÂY dùng flatDmgPerHit (+4 CỘNG SAU khi các % bonus đã
+        // tính trên 12 gốc) — SAI, vì % bonus (Attack Power Up, outfit, v.v.)
+        // đáng lẽ phải áp dụng lên TOÀN BỘ 16 (base THẬT đã đổi), không phải chỉ
+        // 12 rồi cộng thêm 4 riêng. Giờ sửa base NUMBER trong dmgStr thành 16
+        // trực tiếp (xoá flatDmgPerHit's +4 tương ứng ở doPlayerAttack).
+        var useBulletInputValue = interaction.fields.getTextInputValue("usebullet")?.trim() || undefined;
+        const willUseBulletForType = ["yes", "true", "1"].includes((useBulletInputValue ?? "").toLowerCase());
         // Type text (Blunt/Pierce/Slash) → chữ cái dmgStr cần (B/P/S).
-        const typeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
+        const typeLetter = willUseBulletForType ? "P" : { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
         if (!typeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
-        dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${typeLetter}` : `${combatant.weaponBaseDamage}${typeLetter}`;
+        const effectiveBaseDmg = willUseBulletForType ? combatant.weaponBaseDamage + 4 : combatant.weaponBaseDamage;
+        dmgStr = hitCount > 1 ? `${effectiveBaseDmg}x${hitCount}${typeLetter}` : `${effectiveBaseDmg}${typeLetter}`;
       } else {
         dmgStr = interaction.fields.getTextInputValue("dmgStr");
       }
-      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { ammotype: ammoTypeInput });
+      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { ammotype: ammoTypeInput, usebullet: useBulletInputValue });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: "Xóa HẳN embed này... XÓA LUÔN tin
       // nhắn dropdown đó") — xoá message dropdown gốc (đã hết tác dụng), reply
       // ephemeral ngắn gọn (chỉ người dùng thấy) thay vì embed công khai đầy đủ.
@@ -1414,9 +1425,14 @@ client.on("interactionCreate", async (interaction) => {
     const amountRaw = parseInt(interaction.fields.getTextInputValue("amount").trim(), 10);
     const typeRaw = interaction.fields.getTextInputValue("type").trim().toLowerCase();
     if (!Number.isFinite(amountRaw) || amountRaw < 1) throw new Error("Số lượng phải là số nguyên ≥1.");
-    const RELOAD_FIELD_MAP = { ammo: "ammo", frost: "frostAmmo", incendiary: "incendiaryAmmo" };
-    const sourceField = RELOAD_FIELD_MAP[typeRaw];
-    if (!sourceField) throw new Error(`Loại đạn không hợp lệ: "${typeRaw}" — dùng ammo/frost/incendiary.`);
+    // GAP ĐÃ SỬA (xác nhận trực tiếp): "khi bấm reload thì trực tiếp cho họ nạp
+    // đạn từ trong inventory vào luôn... bước xài lệnh để lấy đạn vào encounter
+    // rất không cần thiết" — BỎ HẲN kho dự trữ Encounter (player.ammo/
+    // frostAmmo/incendiaryAmmo) — Reload giờ đọc + trừ THẲNG từ Inventory
+    // (profileData.items), không cần `-encounter reload` bước trung gian nữa.
+    const RELOAD_ITEM_MAP = { ammo: "Ammo", frost: "Frost Ammo", incendiary: "Incendiary Ammo" };
+    const itemName = RELOAD_ITEM_MAP[typeRaw];
+    if (!itemName) throw new Error(`Loại đạn không hợp lệ: "${typeRaw}" — dùng ammo/frost/incendiary.`);
     await withLock(encounterKey(channelId), async () => {
       const encounter = await getEncounter(channelId);
       if (!encounter) throw new Error("Encounter không còn tồn tại.");
@@ -1424,23 +1440,34 @@ client.on("interactionCreate", async (interaction) => {
       if (!player) throw new Error("Bạn chưa tham gia encounter này.");
       if (player.weaponName !== "Soldato Rifle") throw new Error("Chỉ dùng được với vũ khí Soldato Rifle.");
       if ((player.bulletStack ?? 0) > 0 && player.bulletStackType && player.bulletStackType !== typeRaw) {
-        throw new Error(`Đang còn ${player.bulletStack} đạn loại **${player.bulletStackType}** trong súng — phải dùng hết (usebullet: yes qua M1) trước khi nạp loại **${typeRaw}** khác.`);
+        throw new Error(`Đang còn ${player.bulletStack} đạn loại **${player.bulletStackType}** trong súng — phải dùng hết (Firing khi M1) trước khi nạp loại **${typeRaw}** khác.`);
       }
-      const owned = player[sourceField] ?? 0;
+      const { data: profileData, slot } = await getPlayerDataWithSlot(interaction.user.id);
+      const owned = profileData.items?.[itemName] ?? 0;
       const roomLeft = 8 - (player.bulletStack ?? 0);
       const actualAmount = Math.min(amountRaw, owned, roomLeft);
       if (actualAmount <= 0) {
         throw new Error(owned <= 0
-          ? `Không còn **${typeRaw}** nào trong kho dự trữ Encounter — dùng \`-encounter reload amount: <số> type: ${typeRaw}\` trước.`
+          ? `Inventory không còn **${itemName}** nào.`
           : `Súng đã đầy (${player.bulletStack}/8) — không nạp thêm được.`);
       }
-      player[sourceField] = owned - actualAmount;
+      profileData.items[itemName] = owned - actualAmount;
+      if (profileData.items[itemName] <= 0) delete profileData.items[itemName];
+      await savePlayerData(interaction.user.id, profileData, slot);
       player.bulletStack = Math.min(8, (player.bulletStack ?? 0) + actualAmount);
       player.bulletStackType = typeRaw;
-      appendActionLog(encounter, `🔫 <@${interaction.user.id}>: Reload ${typeRaw} +${actualAmount} vào Soldato Rifle (${player.bulletStack}/8)`);
+      // Snapshot số lượng CÒN LẠI trong Inventory (sau khi trừ) — GAP MỚI (xác
+      // nhận trực tiếp): "vẫn sẽ có text tracking số ammo còn lại trong
+      // inventory ở status" — hiển thị trên board (encounter-display.js) mà
+      // không cần fetch profileData mỗi lần render — cập nhật lại MỖI khi
+      // Reload (thời điểm DUY NHẤT Inventory ammo thay đổi từ hành động trong
+      // combat).
+      player.ammoInventorySnapshot = player.ammoInventorySnapshot ?? {};
+      player.ammoInventorySnapshot[itemName] = profileData.items[itemName] ?? 0;
+      appendActionLog(encounter, `🔫 <@${interaction.user.id}>: Reload ${typeRaw} +${actualAmount} vào Soldato Rifle (${player.bulletStack}/8) — Inventory còn ${profileData.items[itemName] ?? 0}.`);
       await saveEncounter(channelId, encounter);
       await interaction.reply({
-        embeds: [{ title: "🔫 Reload", description: `Đã nạp **+${actualAmount} ${typeRaw}** vào súng — hiện có **${player.bulletStack}/8**.${actualAmount < amountRaw ? ` *(giới hạn bởi ${owned < amountRaw ? "kho dự trữ" : "sức chứa súng"})*` : ""}`, color: 0x2ecc71 }],
+        embeds: [{ title: "🔫 Reload", description: `Đã nạp **+${actualAmount} ${typeRaw}** từ Inventory vào súng — hiện có **${player.bulletStack}/8**.${actualAmount < amountRaw ? ` *(giới hạn bởi ${owned < amountRaw ? "Inventory" : "sức chứa súng"})*` : ""}\n> **${itemName}** còn lại trong Inventory: **${profileData.items[itemName] ?? 0}**.`, color: 0x2ecc71 }],
         flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     });
@@ -1567,6 +1594,14 @@ client.on("interactionCreate", async (interaction) => {
       } catch (err) {
         return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
       }
+      // GAP ĐÃ SỬA (phát hiện qua rà soát khi thêm Shock Round): resolveSkillVerification
+      // CÓ THỂ mutate combatant NGAY lúc roll() (VD Shock Round trừ bulletStack,
+      // paralyze/chains/busyAsTribbie các skill khác) — nhưng nhánh "có
+      // autoDmgStr" (skill dmg thường) TRƯỚC ĐÂY không save encounter ở đây,
+      // chỉ lưu tạm vào pendingCriticalRolls (Map riêng) rồi CHỜ TỚI lúc target
+      // đã chọn mới save — nhưng bước đó fetch encounter MỚI (getEncounter),
+      // làm MẤT TRẮNG mutation vừa làm ở đây. Save NGAY để không mất.
+      await saveEncounter(channelId, encounter);
       if (!verify.autoDmgStr) {
         // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua ảnh chụp thật của user — "Durandal"
         // Critical không có dmg trực tiếp): TRƯỚC ĐÂY nhánh này chỉ hiện embed rồi
@@ -1853,6 +1888,19 @@ client.on("interactionCreate", async (interaction) => {
           .setLabel(`Đánh mấy lần? (${combatant?.weaponBaseDamage ?? "?"} ${combatant?.weaponType ?? ""}/hit)`.slice(0, 45))
           .setPlaceholder("VD: 4").setStyle(TextInputStyle.Short).setRequired(true);
         modal.addComponents(new ActionRowBuilder().addComponents(hitCountInput));
+        // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp: "Mặc dù có đạn nhưng M1
+        // của Soldato Rifle không biến đổi nhờ Firing Passive") — dropdown Attack
+        // (mode "auto") TRƯỚC ĐÂY không có cách nào truyền usebullet: yes (chỉ
+        // tồn tại qua lệnh text tự gõ tay) — thêm field TUỲ CHỌN ("Có thể tiêu
+        // đạn" — đúng tinh thần passive, KHÔNG bắt buộc), CHỈ hiện khi đang cầm
+        // Soldato Rifle VÀ có ít nhất 1 viên trong súng.
+        if (combatant?.weaponName === "Soldato Rifle" && (combatant?.bulletStack ?? 0) > 0) {
+          const useBulletInput = new TextInputBuilder()
+            .setCustomId("usebullet")
+            .setLabel(`Dùng đạn? (Firing: Pierce +4 dmg, còn ${combatant.bulletStack})`.slice(0, 45))
+            .setPlaceholder("yes / để trống = cận chiến như thường").setStyle(TextInputStyle.Short).setRequired(false);
+          modal.addComponents(new ActionRowBuilder().addComponents(useBulletInput));
+        }
       } else {
         const dmgInput = new TextInputBuilder()
           .setCustomId("dmgStr").setLabel("Công thức dmg (chưa rõ vũ khí — gõ tay)")
