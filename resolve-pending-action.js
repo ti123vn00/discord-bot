@@ -1075,18 +1075,17 @@ async function resolveOnePendingAction(encounter, p) {
                 resultLines.push(`💧 **Blue Reverberation Ensemble Leader** — ${attacker.label} gắn 1 Tremor lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
               }
               // "Thumb Soldato" (outfit, không phải weapon mechanic) — GAP SỬA
-              // LẦN 2 (xác nhận trực tiếp, mô tả CHÍNH XÁC hơn): "Mỗi khi tiêu
-              // hao 20 Stamina thông qua đánh thường thì bạn sẽ nhận được 1
-              // Ammo" — TRƯỚC ĐÂY dùng "mỗi đòn thứ 4" (m1AttackCount % 4),
-              // KHÔNG tương đương thật (VD vũ khí medium tốn 10 Sta/hit → 4 hit
-              // = 40 Sta, không phải 20) — giờ dùng ĐÚNG accumulator theo
-              // Stamina thật đã tiêu (p.staminaCost), hỗ trợ CỘNG DỒN nhiều đạn
-              // nếu 1 đòn tốn ≥40 Stamina cùng lúc (multi-hit M1 nặng).
+              // LẦN 3 (xác nhận trực tiếp, sau khi phát hiện tương tác với
+              // Firing khiến tiêu đạn quá chậm): "sửa thành tiêu hao 40
+              // stamina để được 1 viên đạn thông qua đánh thường" — ngưỡng
+              // TĂNG GẤP ĐÔI so với 20 trước đó, giữ nguyên cơ chế accumulator
+              // (cộng dồn theo p.staminaCost thật, hỗ trợ nhiều đạn nếu 1 đòn
+              // tốn ≥80 Stamina cùng lúc).
               if (attacker.combatant.hasThumbSoldato && p.staminaCost > 0) {
                 attacker.combatant.thumbSoldatoStaminaAccum = (attacker.combatant.thumbSoldatoStaminaAccum ?? 0) + p.staminaCost;
-                const ammoGained = Math.floor(attacker.combatant.thumbSoldatoStaminaAccum / 20);
+                const ammoGained = Math.floor(attacker.combatant.thumbSoldatoStaminaAccum / 40);
                 if (ammoGained > 0) {
-                  attacker.combatant.thumbSoldatoStaminaAccum -= ammoGained * 20;
+                  attacker.combatant.thumbSoldatoStaminaAccum -= ammoGained * 40;
                   const before = attacker.combatant.bulletStack ?? 0;
                   attacker.combatant.bulletStack = Math.min(8, before + ammoGained);
                   resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận ${attacker.combatant.bulletStack - before} đạn (tổng ${attacker.combatant.bulletStack}/8).`);
