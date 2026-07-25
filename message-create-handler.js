@@ -1865,7 +1865,7 @@ if (message.content.startsWith("-gacha")) {
       message.reply(
         "⚠️ Bạn chưa nhập `dmg:`. Vui lòng nhập công thức damage.\n" +
         "> VD: `-math dmg: 10B poise: 10 critmul: 1.3`\n" +
-        "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+<:Sinking:1513762793436741652>Sinking][+<:Rupture:1513762812722155682>Rupture][+<:Poise:1513762945715142736>Poise][+<:Butterfly:1516679919399338074>Living][+<:Butterfly:1516679919399338074>Departed][+Crit<n>]`\n" +
+        "> Định dạng dmg: `<số>[x<lần>][+<extra>%] [Dice]<B|P|S>[+<:Sinking:1513762793436741652>Sinking][+<:Rupture:1513762812722155682>Rupture][+<:Poise:1513762945715142736>Poise][+<:The_Living_The_Departed:1528452731147391137>Living][+<:The_Living_The_Departed:1528452731147391137>Departed][+Crit<n>]`\n" +
         "> VD: `10x12P+1Living` — mỗi hit cộng 1 Count The Living, áp dụng từ hit kế tiếp"
       );
       return;
