@@ -46,6 +46,21 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // "Bạn nhận 1% Dmg Up với mỗi 1 Bleed có trên người địch" — áp dụng CẢ
     // M1 lẫn Skill/Critical (xác nhận trực tiếp: "áp dụng chung mọi loại đòn").
     if (attacker.equippedOutfit === "Kurokumo Wakashu") bonusPct += (target.bleed ?? 0) * 1;
+    // "The Middle Little/Big Sibling" (outfit) — GAP MỚI (xác nhận trực tiếp):
+    // "tăng 10% Dmg gây ra với mỗi Stack" Enhancement Tattoos — áp dụng CẢ M1
+    // lẫn Skill/Critical (không giới hạn, cùng tinh thần Kurokumo Wakashu).
+    if (attacker.equippedOutfit === "The Middle Little Sibling" || attacker.equippedOutfit === "The Middle Big Sibling") {
+      bonusPct += (attacker.enhancementTattoosStack ?? 0) * 10;
+    }
+    // "The Middle Big Sibling" — GAP MỚI (xác nhận trực tiếp): "+15% Dmg bản
+    // thân gây ra" (KHÔNG chỉ Blunt, TOÀN BỘ) nếu địch có Vengeance Mark —
+    // khác The Middle Little Sibling (chỉ +10% Dmg Blunt, xem damage-calc.js
+    // hoặc nơi resistance/type được áp — đã lọc theo dmgStr type ở đó).
+    if (attacker.equippedOutfit === "The Middle Big Sibling" && (target.vengeanceMark ?? 0) > 0) bonusPct += 15;
+    // "The Middle Little Sibling" — GAP MỚI (xác nhận trực tiếp): "+10% Dmg
+    // Blunt" — CHỈ khi dmgStr có hit Blunt (khác Big Sibling — toàn bộ, không
+    // giới hạn type). Regex tránh nhầm với "Bleed"/chữ khác theo sau "B".
+    if (attacker.equippedOutfit === "The Middle Little Sibling" && (target.vengeanceMark ?? 0) > 0 && /\dB(?![a-zA-Z])/.test(dmgStr ?? "")) bonusPct += 10;
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận đơn giản là
     // gộp làm một với dmg bonus nên là vẫn bão hòa thôi. Tuy nhưng khác biệt của
     // nó với Dmg Bonus là người khác cũng có thể hưởng lợi do là debuff lên
