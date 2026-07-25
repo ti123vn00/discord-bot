@@ -1203,14 +1203,39 @@ client.on("interactionCreate", async (interaction) => {
         catch { useBulletInputValue = undefined; }
         const willUseBulletForType = ["yes", "true", "1"].includes((useBulletInputValue ?? "").toLowerCase());
         // Type text (Blunt/Pierce/Slash) → chữ cái dmgStr cần (B/P/S).
-        const typeLetter = willUseBulletForType ? "P" : { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
-        if (!typeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
-        const effectiveBaseDmg = willUseBulletForType ? combatant.weaponBaseDamage + 4 : combatant.weaponBaseDamage;
-        dmgStr = hitCount > 1 ? `${effectiveBaseDmg}x${hitCount}${typeLetter}` : `${effectiveBaseDmg}${typeLetter}`;
+        const normalTypeLetter = { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
+        if (!normalTypeLetter) throw new Error(`Type vũ khí "${combatant.weaponType}" không nhận diện được (cần Blunt/Pierce/Slash).`);
+        // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp): "4 lần đánh kèm Firing...
+        // chỉ tốn 1 stack đạn và chỉ gây 2 Burn" + "5 lần đánh, tôi chỉ có 1
+        // stack đạn... nhưng thực tế 5 lần đánh đều hưởng dmg từ 5 stack đạn" —
+        // TRƯỚC ĐÂY toàn bộ hitCount hit đều coi là "có bắn đạn" (Pierce+4dmg)
+        // KHÔNG kiểm tra thực tế có đủ đạn hay không, và CHỈ trừ CỐ ĐỊNH 1 viên
+        // dù bắn bao nhiêu hit. Giờ CHIA dmgStr thành 2 phần: phần "có đạn"
+        // (Pierce+4dmg, GIỚI HẠN đúng bằng số đạn THẬT có, tối đa = hitCount)
+        // và phần "cận chiến" (type/dmg gốc vũ khí, cho các hit CÒN LẠI không
+        // đủ đạn) — số đạn tiêu = ĐÚNG số hit thật sự được chuyển đổi.
+        var effectiveBulletCountForM1 = 0;
+        if (willUseBulletForType) {
+          const bulletsAvailable = combatant.bulletStack ?? 0;
+          const bulletedHits = Math.min(hitCount, bulletsAvailable);
+          const normalHits = hitCount - bulletedHits;
+          effectiveBulletCountForM1 = bulletedHits;
+          const effectiveBaseDmg = combatant.weaponBaseDamage + 4;
+          const bulletedPart = bulletedHits > 0 ? (bulletedHits > 1 ? `${effectiveBaseDmg}x${bulletedHits}P` : `${effectiveBaseDmg}P`) : "";
+          const normalPart = normalHits > 0 ? (normalHits > 1 ? `${combatant.weaponBaseDamage}x${normalHits}${normalTypeLetter}` : `${combatant.weaponBaseDamage}${normalTypeLetter}`) : "";
+          dmgStr = [bulletedPart, normalPart].filter(Boolean).join("+");
+          if (bulletedHits === 0) {
+            // Chọn "dùng đạn" nhưng KHÔNG còn viên nào — báo rõ thay vì âm thầm
+            // đánh cận chiến hết (người chơi tưởng đã bắn nhưng thực ra không).
+            throw new Error(`Không còn viên đạn nào trong súng — không thể dùng Firing. Bỏ trống ô "Dùng đạn?" để đánh cận chiến bình thường, hoặc Reload trước.`);
+          }
+        } else {
+          dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${normalTypeLetter}` : `${combatant.weaponBaseDamage}${normalTypeLetter}`;
+        }
       } else {
         dmgStr = interaction.fields.getTextInputValue("dmgStr");
       }
-      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { ammotype: ammoTypeInput, usebullet: useBulletInputValue });
+      const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { ammotype: ammoTypeInput, usebullet: useBulletInputValue, bulletcount: effectiveBulletCountForM1 });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: "Xóa HẳN embed này... XÓA LUÔN tin
       // nhắn dropdown đó") — xoá message dropdown gốc (đã hết tác dụng), reply
       // ephemeral ngắn gọn (chỉ người dùng thấy) thay vì embed công khai đầy đủ.
@@ -1602,6 +1627,22 @@ client.on("interactionCreate", async (interaction) => {
       if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
         return interaction.reply({ content: "⚠️ Chưa tới lượt bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
+      // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp): "bấm vào skill/page sau đó
+      // back ra, hệ thống sẽ vẫn tiếp tục reroll... player có thể abuse để
+      // reroll liên tục cho tới khi ra dice max" — TRƯỚC ĐÂY mỗi lần CHỌN LẠI
+      // skill (kể cả sau khi đã Back) đều gọi resolveSkillVerification MỚI
+      // (roll() mới), ghi đè thẳng lên pendingCriticalRolls cũ mà KHÔNG kiểm
+      // tra đã có 1 roll đang chờ hay chưa — người chơi có thể roll lại vô hạn
+      // lần cho tới khi được kết quả dice tốt, MIỄN PHÍ (Light/Cooldown chỉ
+      // thực sự trừ SAU khi chọn target, không phải lúc roll hiển thị). Giờ
+      // CHẶN: nếu đã có 1 roll pending CHƯA hết hạn cho user này, không cho
+      // roll skill mới nào nữa cho tới khi roll cũ được dùng (chọn target)
+      // hoặc tự hết hạn (PENDING_CRITICAL_ROLL_TTL_MS).
+      const pendingKeyCheck = `${channelId}:${interaction.user.id}`;
+      const existingPending = pendingCriticalRolls.get(pendingKeyCheck);
+      if (existingPending && existingPending.expiresAt > Date.now()) {
+        return interaction.reply({ content: `⚠️ Bạn đang có 1 kết quả roll (**${existingPending.skillKey ?? "skill trước"}**) chưa chọn target — phải chọn target cho roll đó trước (không thể roll skill khác/roll lại để đổi kết quả).`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
       let verify;
       try {
         verify = await resolveSkillVerification(channelId, combatant, critSkillName, null, true);
@@ -1879,6 +1920,11 @@ client.on("interactionCreate", async (interaction) => {
       const encBackTarget = await getEncounter(channelId);
       const combatantBackTarget = encBackTarget?.players?.[interaction.user.id];
       if (!combatantBackTarget) return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      // GAP MỚI (xác nhận trực tiếp: "bấm vào skill/page sau đó back ra, hệ
+      // thống sẽ vẫn tiếp tục reroll") — CỐ Ý KHÔNG xoá pendingCriticalRolls ở
+      // đây — chính đường Back-rồi-chọn-lại là nơi exploit xảy ra, nên roll cũ
+      // phải VẪN bị khoá (xem check ở nhánh "critical:" phía trên) cho tới khi
+      // TTL tự hết hạn — không cung cấp lối tắt "Back = huỷ để roll lại".
       return interaction.update({ components: buildEncounterActionPanel(channelId, combatantBackTarget, interaction.user.id) }).catch(() => {});
     }
     // "all" ưu tiên nếu có trong lựa chọn (multi-select có thể lẫn "all" với

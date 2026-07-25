@@ -1397,7 +1397,7 @@ const { resolveCombatant, resolveTargets, formatCombatantBlock } = require("./en
  * @throws Error nếu input/điều kiện không hợp lệ
  */
 async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, targetStr, verifyOpts = {}) {
-  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, ammotype: ammoTypeRaw, usebullet: useBulletRaw } = verifyOpts;
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, ammotype: ammoTypeRaw, usebullet: useBulletRaw, bulletcount: bulletCountRaw } = verifyOpts;
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
@@ -1477,9 +1477,11 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     let effectiveBulletType = null;
     const useBulletNormalized = (useBulletRaw ?? "").trim().toLowerCase();
     const willUseBullet = useBulletNormalized === "yes" || useBulletNormalized === "true" || useBulletNormalized === "1";
+    let bulletsToConsume = 0;
     if (willUseBullet) {
-      if ((player.bulletStack ?? 0) < 1) throw new Error(`Không đủ đạn (Soldato Rifle) — hiện có ${player.bulletStack ?? 0}/8.`);
-      player.bulletStack -= 1;
+      bulletsToConsume = Number.isFinite(parseInt(bulletCountRaw, 10)) && parseInt(bulletCountRaw, 10) > 0 ? parseInt(bulletCountRaw, 10) : 1;
+      if ((player.bulletStack ?? 0) < bulletsToConsume) throw new Error(`Không đủ đạn (Soldato Rifle) — cần ${bulletsToConsume}, hiện có ${player.bulletStack ?? 0}/8.`);
+      player.bulletStack -= bulletsToConsume;
       effectiveBulletType = player.bulletStackType ?? "ammo";
       if (player.bulletStack === 0) player.bulletStackType = null;
     }
@@ -1669,7 +1671,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
-      lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType, effectiveBulletType, effectiveBulletCount: effectiveBulletType ? 1 : 0,
+      lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType, effectiveBulletType, effectiveBulletCount: bulletsToConsume,
     });
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được miễn
     // là đủ tài nguyên") — KHÔNG còn tự động advance turn sau MỖI hành động —
