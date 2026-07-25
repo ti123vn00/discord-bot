@@ -568,10 +568,10 @@ function calcMath(opts) {
       extraInfo += ` | +Crit${critVal}%`;
     }
     if (r.isDice && diceMul !== 1) extraInfo += ` | DiceMul ${diceMul}x`;
-    if (r.departedBonus > 0) extraInfo += ` | +${r.departedBonus} dmg <:Butterfly:1516679919399338074>Departed`;
-    if (r.departedApplied > 0) extraInfo += ` | áp +${r.departedApplied} <:Butterfly:1516679919399338074>Departed (${r.departedStacksAfter} Count)`;
-    if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi <:Butterfly:1516679919399338074>Living`;
-    if (r.livingApplied > 0) extraInfo += ` | áp +${r.livingApplied} <:Butterfly:1516679919399338074>Living (${r.livingStacksAfter} Count)`;
+    if (r.departedBonus > 0) extraInfo += ` | +${r.departedBonus} dmg <:The_Living_The_Departed:1528452731147391137>Departed`;
+    if (r.departedApplied > 0) extraInfo += ` | áp +${r.departedApplied} <:The_Living_The_Departed:1528452731147391137>Departed (${r.departedStacksAfter} Count)`;
+    if (r.livingHeal > 0) extraInfo += ` | +${r.livingHeal} Sanity hồi <:The_Living_The_Departed:1528452731147391137>Living`;
+    if (r.livingApplied > 0) extraInfo += ` | áp +${r.livingApplied} <:The_Living_The_Departed:1528452731147391137>Living (${r.livingStacksAfter} Count)`;
     if (r.isDice && r.sanityBonusUsed > 0 && r.sanityBonusUsed !== sanityBonusPct)
       extraInfo += ` | Sanity: ${r.sanityBonusUsed} (+${r.sanityBonusUsed}% Dice)`;
     if (r.tremorApplied !== 0) {
@@ -653,11 +653,11 @@ function calcMath(opts) {
     { name: "Dice Multiplier", value: diceMul.toFixed(2) + "x", inline: true, showIf: diceMul !== 1 },
     { name: "<:Poise:1513762945715142736>Poise Counts", value: poiseDisplay, inline: true, alwaysShow: true },
     { name: "Crit Divide", value: critDiv > 1 ? `÷${critDiv} per crit` : "No", inline: true, showIf: critDiv > 1 },
-    { name: "<:Butterfly:1516679919399338074>The Living", value: livingDisplay, inline: true, showIf: finalLivingStacks > 0 },
-    { name: "<:Butterfly:1516679919399338074>The Departed", value: departedDisplay, inline: true, showIf: finalDepartedStacks > 0 },
+    { name: "<:The_Living_The_Departed:1528452731147391137>The Living", value: livingDisplay, inline: true, showIf: finalLivingStacks > 0 },
+    { name: "<:The_Living_The_Departed:1528452731147391137>The Departed", value: departedDisplay, inline: true, showIf: finalDepartedStacks > 0 },
     { name: "Final DMG", value: totalDmg.toFixed(3), inline: false, alwaysShow: true },
-    { name: "<:Butterfly:1516679919399338074>Tổng Sanity hồi (The Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
-    { name: "<:Butterfly:1516679919399338074>Tổng DMG Bonus (The Departed)", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
+    { name: "<:The_Living_The_Departed:1528452731147391137>Tổng Sanity hồi (The Living)", value: `+${totalSanityHeal}`, inline: true, showIf: totalSanityHeal > 0 },
+    { name: "<:The_Living_The_Departed:1528452731147391137>Tổng DMG Bonus (The Departed)", value: totalDepartedDmg.toFixed(2), inline: true, showIf: totalDepartedDmg > 0 },
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
