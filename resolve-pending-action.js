@@ -1064,11 +1064,23 @@ async function resolveOnePendingAction(encounter, p) {
                 }
                 resultLines.push(`💧 **Blue Reverberation Ensemble Leader** — ${attacker.label} gắn 1 Tremor lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
               }
-              // "Thumb Soldato" (outfit, không phải weapon mechanic) — "Mỗi đòn
-              // đánh thường thứ 4 bạn sẽ nhận được 1 đạn" — max 8.
-              if (attacker.combatant.hasThumbSoldato && attacker.combatant.m1AttackCount % 4 === 0) {
-                attacker.combatant.bulletStack = Math.min(8, (attacker.combatant.bulletStack ?? 0) + 1);
-                resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận 1 đạn (tổng ${attacker.combatant.bulletStack}/8).`);
+              // "Thumb Soldato" (outfit, không phải weapon mechanic) — GAP SỬA
+              // LẦN 2 (xác nhận trực tiếp, mô tả CHÍNH XÁC hơn): "Mỗi khi tiêu
+              // hao 20 Stamina thông qua đánh thường thì bạn sẽ nhận được 1
+              // Ammo" — TRƯỚC ĐÂY dùng "mỗi đòn thứ 4" (m1AttackCount % 4),
+              // KHÔNG tương đương thật (VD vũ khí medium tốn 10 Sta/hit → 4 hit
+              // = 40 Sta, không phải 20) — giờ dùng ĐÚNG accumulator theo
+              // Stamina thật đã tiêu (p.staminaCost), hỗ trợ CỘNG DỒN nhiều đạn
+              // nếu 1 đòn tốn ≥40 Stamina cùng lúc (multi-hit M1 nặng).
+              if (attacker.combatant.hasThumbSoldato && p.staminaCost > 0) {
+                attacker.combatant.thumbSoldatoStaminaAccum = (attacker.combatant.thumbSoldatoStaminaAccum ?? 0) + p.staminaCost;
+                const ammoGained = Math.floor(attacker.combatant.thumbSoldatoStaminaAccum / 20);
+                if (ammoGained > 0) {
+                  attacker.combatant.thumbSoldatoStaminaAccum -= ammoGained * 20;
+                  const before = attacker.combatant.bulletStack ?? 0;
+                  attacker.combatant.bulletStack = Math.min(8, before + ammoGained);
+                  resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận ${attacker.combatant.bulletStack - before} đạn (tổng ${attacker.combatant.bulletStack}/8).`);
+                }
               }
               // "Liu Association" ĐÃ DI CHUYỂN ra khỏi block if (p.isM1) này —
               // xem ngay bên dưới (sau block M1-count kết thúc) — passive gốc
