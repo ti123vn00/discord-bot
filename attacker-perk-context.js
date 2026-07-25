@@ -295,7 +295,17 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // nơi gọi hàm này (doPlayerHit) vì cần sửa defenseBypass, không chỉ bonusPct.
     const waltzInBlackMultiplier = (skillKey === "waltz in black" && target?.waltzInWhiteHitLastRound) ? 3 : 1;
 
-    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier };
+    // "Blade Lineage Salsu" (outfit) — GAP MỚI (xác nhận trực tiếp): "add vào
+    // base dmg của page/critical theo 1/2 lượng Poise" — CHỈ áp cho
+    // skill/Critical (isM1=false), tiêu ngay sau khi dùng (chỉ áp 1 lần/turn,
+    // không phải mỗi đòn).
+    let flatDmgBonus = 0;
+    if (!isM1 && attacker.equippedOutfit === "Blade Lineage Salsu" && (attacker.blSalsuBonusDmgPending ?? 0) > 0) {
+      flatDmgBonus = attacker.blSalsuBonusDmgPending;
+      attacker.blSalsuBonusDmgPending = 0;
+    }
+
+    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus };
   }
   
 
