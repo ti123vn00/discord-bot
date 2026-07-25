@@ -12,6 +12,13 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
 
   function advanceCombatantTurn(combatant) {
     combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
+    // "Blade Lineage Salsu" (outfit) — GAP MỚI (xác nhận trực tiếp): "Vào turn
+    // start nếu Poise >=10, add vào base dmg của page/critical theo 1/2 lượng
+    // Poise" — lưu tạm để áp dụng cho lần dùng skill/Critical TIẾP THEO trong
+    // turn này (xem attacker-perk-context.js — CHỈ áp khi isM1=false).
+    if (combatant.equippedOutfit === "Blade Lineage Salsu" && (combatant.poise ?? 0) >= 10) {
+      combatant.blSalsuBonusDmgPending = Math.floor(combatant.poise / 2);
+    }
     // "Waltz In Black" (Page): "Nếu turn trước địch dính Waltz In White: skill
     // này thành 3x Dice Multiplier và Unevadeable" — xác nhận trực tiếp: "turn
     // trước" = 1 VÒNG turnOrder trước (round-based, không phải lượt riêng của
