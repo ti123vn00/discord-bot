@@ -1186,7 +1186,18 @@ client.on("interactionCreate", async (interaction) => {
         // đáng lẽ phải áp dụng lên TOÀN BỘ 16 (base THẬT đã đổi), không phải chỉ
         // 12 rồi cộng thêm 4 riêng. Giờ sửa base NUMBER trong dmgStr thành 16
         // trực tiếp (xoá flatDmgPerHit's +4 tương ứng ở doPlayerAttack).
-        var useBulletInputValue = interaction.fields.getTextInputValue("usebullet")?.trim() || undefined;
+        // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp: "Required
+        // field with custom id 'usebullet' not found... khi không nạp đạn thì
+        // không thể m1 được") — field "usebullet" CHỈ được thêm vào Modal có
+        // điều kiện (Soldato Rifle + có đạn — xem chỗ build Modal phía trên),
+        // nhưng dòng đọc lại KHÔNG kiểm tra điều kiện tương ứng, gọi
+        // getTextInputValue("usebullet") VÔ ĐIỀU KIỆN — Discord.js THROW lỗi
+        // nếu field không tồn tại trong Modal, làm CRASH toàn bộ M1 cho bất kỳ
+        // ai không có đạn (hoặc dùng vũ khí khác Soldato Rifle). Bọc try/catch
+        // để an toàn mặc định về undefined khi field không có mặt.
+        var useBulletInputValue;
+        try { useBulletInputValue = interaction.fields.getTextInputValue("usebullet")?.trim() || undefined; }
+        catch { useBulletInputValue = undefined; }
         const willUseBulletForType = ["yes", "true", "1"].includes((useBulletInputValue ?? "").toLowerCase());
         // Type text (Blunt/Pierce/Slash) → chữ cái dmgStr cần (B/P/S).
         const typeLetter = willUseBulletForType ? "P" : { Blunt: "B", Pierce: "P", Slash: "S" }[combatant.weaponType];
