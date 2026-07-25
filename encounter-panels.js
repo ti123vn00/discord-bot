@@ -97,7 +97,7 @@ module.exports = function ({ findSkill, hasPerk }) {
     for (const { name, condition } of SPECIAL_NO_SLOT_PAGES) {
       if (condition && !addedPageNames.has(name)) {
         addedPageNames.add(name);
-        options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${name} (không tốn slot)`).setValue(`hit:${name}`));
+        options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${name}`).setValue(`hit:${name}`));
       }
     }
     if ((hasPerk(combatant, "Follow-Up") || hasPerk(combatant, "Pounce")) && combatant.staminaUsedThisTurn >= 20 && !combatant.followUpUsedThisTurn) {
