@@ -106,7 +106,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     // stack ammo ở phần encounter status" — pool NỘI TẠI riêng của Eye Of Horus
     // (8, reset mỗi turn), chỉ hiển thị cho người ĐANG cầm vũ khí này.
     if ((combatant.weaponName ?? "").toLowerCase() === "eye of horus") {
-      lines.push(`> 🏹 Eye Of Horus Ammo: **${combatant.eyeOfHorusAmmo ?? 8}/8** (reset khi hết turn)`);
+      lines.push(`> <:Ammo:1528452673664319629> Eye Of Horus Ammo: **${combatant.eyeOfHorusAmmo ?? 8}/8** (reset khi hết turn)`);
     }
     if ((combatant.guardCharges ?? 0) > 0 || (combatant.evadeCharges ?? 0) > 0) {
       const parts = [];
@@ -175,7 +175,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     // Rà soát TOÀN BỘ 119 field combatant-factory.js (không chỉ danh sách GM
     // Panel) — GAP MỚI (xác nhận trực tiếp): "cứ rà hết đi" — 14 field dưới đây
     // ĐÃ tự động hoá đầy đủ (xác nhận qua audit code) nhưng CHƯA TỪNG hiển thị.
-    if ((combatant.bulletStack ?? 0) > 0) statusParts.push(`🔫 Đạn Soldato Rifle: ${combatant.bulletStack}/8${combatant.bulletStackType ? ` (${combatant.bulletStackType})` : ""}`);
+    if ((combatant.bulletStack ?? 0) > 0) statusParts.push(`<:Ammo:1528452673664319629> Đạn Soldato Rifle: ${combatant.bulletStack}/8${combatant.bulletStackType ? ` (${combatant.bulletStackType})` : ""}`);
     if (combatant.ammoInventorySnapshot && Object.keys(combatant.ammoInventorySnapshot).length > 0) {
       const snapshotParts = Object.entries(combatant.ammoInventorySnapshot).map(([name, count]) => `${name}: ${count}`).join(", ");
       statusParts.push(`🎒 Đạn trong Inventory: ${snapshotParts}`);
