@@ -242,6 +242,11 @@ async function resolveOnePendingAction(encounter, p) {
               // nhánh "fraction" đơn giản hơn (không chọn được hit nào). Giờ CẢ
               // 2 dùng CHUNG 1 logic per-hit — nhất quán, hỗ trợ chọn hit cụ thể
               // cho MỌI loại đòn (M1 hay skill).
+              // perHitMultForBulletEffect — GAP MỚI (khai báo NGOÀI khối {}
+              // bên dưới, vì perHitMult chỉ tồn tại BÊN TRONG khối đó — cần
+              // "xuất" giá trị ra ngoài để dùng ở chỗ áp Frost/Incendiary
+              // bulletStack effect phía sau, xa hơn nhiều so với khối này).
+              let perHitMultForBulletEffect = null;
               {
                 // M1 NHIỀU HIT — cho phép TRỘN nhiều LOẠI phòng thủ khác nhau để chặn
                 // các CỤM hit khác nhau trong CÙNG 1 đòn M1 (xác nhận trực tiếp từ GM:
@@ -437,6 +442,9 @@ async function resolveOnePendingAction(encounter, p) {
                     });
                   }
                 }
+                // Xuất perHitMult ra ngoài scope (xem khai báo
+                // perHitMultForBulletEffect phía trên khối này).
+                perHitMultForBulletEffect = perHitMult;
               }
               // Smoldering Resolve (perk passive, KHÔNG tiêu thụ) áp SAU Guard/Evade/
               // Parry — giảm thêm % trên phần dmg CÒN LẠI sau khi đã né/đỡ.
@@ -879,17 +887,26 @@ async function resolveOnePendingAction(encounter, p) {
                 // bulletStack system (Soldato Rifle's "Firing" passive) — CÙNG
                 // hiệu ứng phụ Frost/Incendiary như trên nhưng cho pool RIÊNG
                 // (bulletStack, không phải ammo/frostAmmo/incendiaryAmmo).
-                // GAP ĐÃ SỬA (xác nhận trực tiếp: "Critical Shock Round cũng
-                // không thấy áp 10 Burn") — NHÂN theo effectiveBulletCount (1
-                // cho M1 tiêu 1 viên, 5 cho Shock Round tiêu 5 viên cùng lúc) —
-                // trước đây CỐ ĐỊNH +1/+2 dù tiêu bao nhiêu viên, nên Shock
-                // Round (dùng qua skill-verification.js, không qua nhánh M1
-                // này) tiêu 5 viên nhưng KHÔNG BAO GIỜ áp hiệu ứng gì (vì trước
-                // đây route Critical hoàn toàn không set effectiveBulletType).
-                if (p.effectiveBulletType === "frost") {
-                  target.paralyze = Math.min(99, (target.paralyze ?? 0) + 1 * (p.effectiveBulletCount || 1));
-                } else if (p.effectiveBulletType === "incendiary") {
-                  target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + 2 * (p.effectiveBulletCount || 1));
+                // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp): "2 hit đầu tôi
+                // né và 2 hit sau tôi chịu đòn sẽ bị dính 8 burn, dù né rồi vẫn
+                // dính hiệu ứng" — TRƯỚC ĐÂY nhân CỐ ĐỊNH theo effectiveBulletCount
+                // (tổng số hit CÓ DÙNG đạn khi build dmgStr), hoàn toàn không
+                // kiểm tra per-hit hit nào trong số đó THẬT SỰ trúng — chỉ được
+                // gate bởi !evadedCompletely (all-or-nothing: chỉ chặn nếu
+                // TOÀN BỘ hit đều né, mix 2 né + 2 trúng vẫn lọt qua với FULL
+                // effectiveBulletCount). Giờ đếm ĐÚNG số hit "có đạn" (trong
+                // phạm vi 0..effectiveBulletCount-1, theo đúng thứ tự build
+                // dmgStr — phần "có đạn" luôn xây TRƯỚC phần cận chiến) mà
+                // perHitMult > 0 (THẬT SỰ trúng — Guard tính, Evade/Parry thành
+                // công KHÔNG tính, đúng luật đã xác nhận), nhân hiệu ứng theo
+                // SỐ ĐÓ thay vì effectiveBulletCount cố định.
+                const bulletedHitsLanded = (p.effectiveBulletCount ?? 0) > 0
+                  ? (perHitMultForBulletEffect ?? []).slice(0, p.effectiveBulletCount).filter(m => m > 0).length
+                  : 0;
+                if (p.effectiveBulletType === "frost" && bulletedHitsLanded > 0) {
+                  target.paralyze = Math.min(99, (target.paralyze ?? 0) + 1 * bulletedHitsLanded);
+                } else if (p.effectiveBulletType === "incendiary" && bulletedHitsLanded > 0) {
+                  target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + 2 * bulletedHitsLanded);
                 }
                 // Set Fire (Page): "đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy]
                 // Burn... mỗi lần trúng" — CHỈ áp cho M1 (p.isM1), KHÔNG áp cho Page/
