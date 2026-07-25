@@ -26,6 +26,11 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     // pattern hasIronHorus đã có), không phải defender.equippedOutfit (field
     // đó chỉ tồn tại trên profileData, không tồn tại trên combatant).
     if (defender.hasReverberationEnsemble) reductionPct += 40;
+    // "The Middle Little/Big Sibling" (outfit) — GAP MỚI (xác nhận trực tiếp):
+    // "giảm 5% Dmg nhận vào" với mỗi Stack Enhancement Tattoos.
+    if (defender.equippedOutfit === "The Middle Little Sibling" || defender.equippedOutfit === "The Middle Big Sibling") {
+      reductionPct += (defender.enhancementTattoosStack ?? 0) * 5;
+    }
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận... khác
     // biệt với Dmg Bonus là người khác cũng có thể hưởng lợi do là debuff lên
     // người kẻ địch") — Fragile/Smoke/Vengeance Mark/Tremor Decay/Gaze[Awe]/
