@@ -8,7 +8,7 @@ const OUTFITS = {
   "black suit": {
     name: "Black Suit",
     resistance: { B: 1, P: 1.3, S: 1.3 },
-    speedRange: null, // chưa có thông tin Speed cho outfit này
+    speedRange: { min: 5, max: 8 },
     keypage: [
       "Mỗi khi đạt Emotion Level nhận được 1 <:DiceUp:1513767795681398894>Dice Up, 1 Clash Power và 1 Protection kéo dài cho đến hết encounter",
       "Refund 1/5 Stamina khi đánh thường",
@@ -130,7 +130,7 @@ const OUTFITS = {
     speedRange: { min: 3, max: 6 },
     keypage: [
       "Các vũ khí/skill/page sử dụng đạn sẽ được tăng thêm 15% Dmg gây ra",
-      "Mỗi khi tiêu hao 20 Stamina thông qua đánh thường thì bạn sẽ nhận được 1 Ammo",
+      "Mỗi khi tiêu hao 40 Stamina thông qua đánh thường thì bạn sẽ nhận được 1 Ammo",
       "Đồng minh thuộc Thumb ở trong trận sẽ nhận được đạn đặc biệt của riêng họ bằng một nửa số đạn mà bạn nạp được (làm tròn lên) thông qua Re-Load",
     ],
   },
