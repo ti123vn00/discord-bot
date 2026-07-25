@@ -162,6 +162,20 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       if ((skillKeyNoColon === "great split vertical" || skillKeyNoColon === "great split horizontal") && (attacker.imitation ?? 0) < 5) {
         throw new Error(`Skill "${skill.name}" cần ít nhất 5 Imitation để dùng — hiện có ${attacker.imitation ?? 0}.`);
       }
+      // "Shock Round" (Soldato Rifle) — GAP ĐÃ SỬA (xác nhận trực tiếp, sau đó
+      // đổi điều kiện thành 5 viên đạn): field "cost: Tiêu 2 viên đạn" TRƯỚC ĐÂY
+      // chỉ là text mô tả, KHÔNG có logic thật nào enforce (parseSkillCost chỉ
+      // nhận diện Light/Sanity, không phải "viên đạn") — thêm điều kiện BẮT
+      // BUỘC + trừ thật, giống hệt pattern Great Split ở trên. Critical này
+      // HOÀN TOÀN riêng biệt, KHÔNG liên quan Bayonet Combat (Soldato Rifle có
+      // 2 Critical: 1 bình thường + 1 có điều kiện đạn).
+      if (skillKey === "shock round" && (attacker.bulletStack ?? 0) < 5) {
+        throw new Error(`Skill "${skill.name}" cần ít nhất 5 viên đạn (Soldato Rifle) để dùng — hiện có ${attacker.bulletStack ?? 0}/8.`);
+      }
+      if (skillKey === "shock round") {
+        attacker.bulletStack -= 5;
+        if (attacker.bulletStack === 0) attacker.bulletStackType = null;
+      }
       // Light/Sanity cost — đọc từ field cost của skill (xem parseSkillCost — CHỈ
       // match được pattern Light/Sanity rõ ràng, bỏ qua Heat Gauge/custom resource
       // khác). Tap Of The Light (Gloom, [10 Points]): giảm 1 NỬA Sanity Cost từ
