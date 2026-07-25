@@ -176,6 +176,10 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     // Panel) — GAP MỚI (xác nhận trực tiếp): "cứ rà hết đi" — 14 field dưới đây
     // ĐÃ tự động hoá đầy đủ (xác nhận qua audit code) nhưng CHƯA TỪNG hiển thị.
     if ((combatant.bulletStack ?? 0) > 0) statusParts.push(`🔫 Đạn Soldato Rifle: ${combatant.bulletStack}/8${combatant.bulletStackType ? ` (${combatant.bulletStackType})` : ""}`);
+    if (combatant.ammoInventorySnapshot && Object.keys(combatant.ammoInventorySnapshot).length > 0) {
+      const snapshotParts = Object.entries(combatant.ammoInventorySnapshot).map(([name, count]) => `${name}: ${count}`).join(", ");
+      statusParts.push(`🎒 Đạn trong Inventory: ${snapshotParts}`);
+    }
     if ((combatant.coffinStacks ?? 0) > 0) statusParts.push(`Coffin${combatant.coffinStacks}`);
     if ((combatant.darkCloudOutfitStacks ?? 0) > 0) statusParts.push(`Dark Cloud${combatant.darkCloudOutfitStacks}`);
     if ((combatant.graceOfPrescript ?? 0) > 0) statusParts.push(`Grace of Prescript${combatant.graceOfPrescript}`);
@@ -280,4 +284,4 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     resolveTargets,
     formatCombatantBlock,
   };
-}; 
+};
