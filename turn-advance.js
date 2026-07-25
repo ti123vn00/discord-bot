@@ -128,6 +128,14 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       combatant.currentLight = Math.min(combatant.maxLight, combatant.currentLight + 2);
     }
     combatant.staminaUsedThisTurn = 0;
+    // "Guard/Evade charge dư qua turn" — GAP ĐÃ SỬA (xác nhận trực tiếp): "nếu
+    // charge dư nhưng không bị tấn công thì sẽ bị mất sau khi end turn" —
+    // TRƯỚC ĐÂY chỉ hasIronHorus mới được reset (xem chỗ khác trong file này),
+    // combatant thường KHÔNG BAO GIỜ mất charge Guard/Evade dư (chỉ trừ khi
+    // dùng hết qua bị tấn công) — giờ reset về 0 mỗi khi hết turn của CHÍNH
+    // combatant đó, bất kể có Iron Horus hay không.
+    combatant.guardCharges = 0;
+    combatant.evadeCharges = 0;
     // eyeOfHorusAmmo — GAP ĐÃ SỬA (xác nhận trực tiếp): "khi về 0 thì không thể
     // M1 trong turn đó nữa mà phải đợi hết turn thì số ammo sẽ reset về 8" —
     // reset về full (8) mỗi khi hết turn CỦA CHÍNH combatant này (không liên
@@ -238,7 +246,7 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     combatant.attackPowerDown = 0;
     combatant.defenseUp = 0;
     combatant.defenseDown = 0;
-    combatant.clashAttackBoost = 0;
+    combatant.clashAttackBoost = (combatant.blackSuitPersistentBonus ?? 0); // "Black Suit" — GAP MỚI: Clash Attack Boost từ Emotion Level KÉO DÀI hết encounter (không như reset=0 thông thường), cộng LẠI ngay sau reset mỗi turn.
     combatant.unopposedAttackBoost = 0;
     if ((combatant.protectionTurnsLeft ?? 0) > 0) {
       combatant.protectionTurnsLeft -= 1;
@@ -262,6 +270,7 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // — 50-STATUS NHÓM 2 (batch 1, xác nhận trực tiếp từng cái từ tài liệu gốc) —
     // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
     combatant.diceUp = 0;
+    combatant.diceUp += (combatant.blackSuitPersistentBonus ?? 0); // "Black Suit" — GAP MỚI: Dice Up từ Emotion Level KÉO DÀI hết encounter, cộng LẠI ngay sau reset mỗi turn (TRƯỚC khi Rotate Trigram/Geon áp +3 riêng, để không bị ghi đè mất).
     // "Rotate Trigram" (Augury Spear passive) — xác nhận trực tiếp: "Vào đầu
     // mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam
     // -> Ri -> lặp lại". Geon: +3 Dice Up. Gon: +7 Protection (cap 20). Gam: +2
