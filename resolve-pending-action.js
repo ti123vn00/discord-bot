@@ -879,10 +879,17 @@ async function resolveOnePendingAction(encounter, p) {
                 // bulletStack system (Soldato Rifle's "Firing" passive) — CÙNG
                 // hiệu ứng phụ Frost/Incendiary như trên nhưng cho pool RIÊNG
                 // (bulletStack, không phải ammo/frostAmmo/incendiaryAmmo).
+                // GAP ĐÃ SỬA (xác nhận trực tiếp: "Critical Shock Round cũng
+                // không thấy áp 10 Burn") — NHÂN theo effectiveBulletCount (1
+                // cho M1 tiêu 1 viên, 5 cho Shock Round tiêu 5 viên cùng lúc) —
+                // trước đây CỐ ĐỊNH +1/+2 dù tiêu bao nhiêu viên, nên Shock
+                // Round (dùng qua skill-verification.js, không qua nhánh M1
+                // này) tiêu 5 viên nhưng KHÔNG BAO GIỜ áp hiệu ứng gì (vì trước
+                // đây route Critical hoàn toàn không set effectiveBulletType).
                 if (p.effectiveBulletType === "frost") {
-                  target.paralyze = Math.min(99, (target.paralyze ?? 0) + 1);
+                  target.paralyze = Math.min(99, (target.paralyze ?? 0) + 1 * (p.effectiveBulletCount || 1));
                 } else if (p.effectiveBulletType === "incendiary") {
-                  target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + 2);
+                  target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + 2 * (p.effectiveBulletCount || 1));
                 }
                 // Set Fire (Page): "đòn đánh thường sẽ áp 1/2/4 [Light/Medium/Heavy]
                 // Burn... mỗi lần trúng" — CHỈ áp cho M1 (p.isM1), KHÔNG áp cho Page/
@@ -1090,20 +1097,25 @@ async function resolveOnePendingAction(encounter, p) {
                 resultLines.push(`💧 **Blue Reverberation Ensemble Leader** — ${attacker.label} gắn 1 Tremor lên mục tiêu (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
               }
               // "Thumb Soldato" (outfit, không phải weapon mechanic) — GAP SỬA
-              // LẦN 3 (xác nhận trực tiếp, sau khi phát hiện tương tác với
-              // Firing khiến tiêu đạn quá chậm): "sửa thành tiêu hao 40
-              // stamina để được 1 viên đạn thông qua đánh thường" — ngưỡng
-              // TĂNG GẤP ĐÔI so với 20 trước đó, giữ nguyên cơ chế accumulator
-              // (cộng dồn theo p.staminaCost thật, hỗ trợ nhiều đạn nếu 1 đòn
-              // tốn ≥80 Stamina cùng lúc).
-              if (attacker.combatant.hasThumbSoldato && p.staminaCost > 0) {
+              // LẦN 4 (xác nhận trực tiếp): "cho nhận đạn vào inventory, chứ
+              // không phải là nạp thẳng giùm vào súng, nếu cho đạn thẳng vào
+              // súng thì dễ bị bug do nó là đạn thường trong khi bản thân đang
+              // xài đạn incendiary" — TRƯỚC ĐÂY cộng thẳng vào bulletStack
+              // (SAI, xung đột nếu súng đang khoá loại khác qua
+              // bulletStackType) — giờ cộng vào Inventory (profileData.items
+              // ["Ammo"], LUÔN là loại thường bất kể đang dùng loại gì) — player
+              // tự Reload lại sau như đạn Inventory bình thường. CHỈ áp cho
+              // player (attacker.type — enemy không có Inventory/profileData).
+              if (attacker.combatant.hasThumbSoldato && attacker.type === "player" && p.staminaCost > 0) {
                 attacker.combatant.thumbSoldatoStaminaAccum = (attacker.combatant.thumbSoldatoStaminaAccum ?? 0) + p.staminaCost;
                 const ammoGained = Math.floor(attacker.combatant.thumbSoldatoStaminaAccum / 40);
                 if (ammoGained > 0) {
                   attacker.combatant.thumbSoldatoStaminaAccum -= ammoGained * 40;
-                  const before = attacker.combatant.bulletStack ?? 0;
-                  attacker.combatant.bulletStack = Math.min(8, before + ammoGained);
-                  resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận ${attacker.combatant.bulletStack - before} đạn (tổng ${attacker.combatant.bulletStack}/8).`);
+                  const { data: profileDataThumb, slot: thumbSlot } = await getPlayerDataWithSlot(p.attackerId);
+                  profileDataThumb.items = profileDataThumb.items ?? {};
+                  profileDataThumb.items["Ammo"] = (profileDataThumb.items["Ammo"] ?? 0) + ammoGained;
+                  await savePlayerData(p.attackerId, profileDataThumb, thumbSlot);
+                  resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận +${ammoGained} Ammo vào Inventory (hiện có ${profileDataThumb.items["Ammo"]}) — dùng Reload để nạp vào súng.`);
                 }
               }
               // "The Middle Little/Big Sibling" (outfit) — GAP MỚI (xác nhận

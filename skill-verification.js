@@ -125,6 +125,11 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [];
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
+    // effectiveBulletType/effectiveBulletCount — GAP ĐÃ SỬA (lỗi scope): khai
+    // báo Ở ĐÂY (top-level hàm), KHÔNG PHẢI bên trong khối "if (skillNameRaw...)"
+    // bên dưới — nếu không, return { ... } ở cuối hàm (ngoài khối if đó) sẽ
+    // không truy cập được biến, throw "effectiveBulletType is not defined".
+    let effectiveBulletType = null, effectiveBulletCount = 0;
     // isOwnCriticalBypassed — KHAI BÁO Ở NGOÀI (không phải const trong block if)
     // vì cần dùng lại ở return cuối hàm (đã sửa lỗi scope thật: "isOwnCriticalBypassed
     // is not defined" — const trước đây chỉ tồn tại TRONG block if, không thoát
@@ -172,7 +177,16 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       if (skillKey === "shock round" && (attacker.bulletStack ?? 0) < 5) {
         throw new Error(`Skill "${skill.name}" cần ít nhất 5 viên đạn (Soldato Rifle) để dùng — hiện có ${attacker.bulletStack ?? 0}/8.`);
       }
+      // GAP ĐÃ SỬA (xác nhận trực tiếp: "Critical Shock Round cũng không thấy áp
+      // 10 Burn, thậm chí còn chả áp burn nào") — trước đây TIÊU 5 viên đạn
+      // nhưng KHÔNG hề lưu lại loại đạn (effectiveBulletType) hay số lượng
+      // (effectiveBulletCount) — logic Frost/Incendiary chỉ tồn tại ở doPlayerAttack
+      // (M1), Shock Round (Critical, qua doPlayerHit) hoàn toàn không đi qua đó.
+      // Lưu lại đây để resolve-pending-action.js áp ĐÚNG hiệu ứng nhân theo SỐ
+      // VIÊN thật đã tiêu (5, không phải +1/+2 cố định như M1 chỉ tiêu 1 viên).
       if (skillKey === "shock round") {
+        effectiveBulletType = attacker.bulletStackType;
+        effectiveBulletCount = 5;
         attacker.bulletStack -= 5;
         if (attacker.bulletStack === 0) attacker.bulletStackType = null;
       }
@@ -290,7 +304,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       }
     }
   
-    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed };
+    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed, effectiveBulletType, effectiveBulletCount };
   }
 
   return {

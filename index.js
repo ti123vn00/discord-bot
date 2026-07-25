@@ -1669,7 +1669,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
-      lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType, effectiveBulletType,
+      lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType, effectiveBulletType, effectiveBulletCount: effectiveBulletType ? 1 : 0,
     });
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được miễn
     // là đủ tài nguyên") — KHÔNG còn tự động advance turn sau MỖI hành động —
@@ -1831,7 +1831,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       dmgStr, defenseBypass, tags: manualTagsRaw,
       skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
-      lightCost: verify.lightCost, sanityCost: verify.sanityCost,
+      lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveBulletType: verify.effectiveBulletType, effectiveBulletCount: verify.effectiveBulletCount ?? 0,
       loadType: (loadTypeRaw ?? "ammo").trim().toLowerCase(),
     });
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được miễn

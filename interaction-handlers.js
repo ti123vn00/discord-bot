@@ -1655,6 +1655,12 @@ client.on("interactionCreate", async (interaction) => {
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
         orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
+        // GAP ĐÃ SỬA (xác nhận trực tiếp: "Critical Shock Round... chả áp burn
+        // nào") — pendingCriticalRolls trước đây KHÔNG lưu effectiveBulletType/
+        // effectiveBulletCount từ verify, làm MẤT thông tin loại/số đạn đã tiêu
+        // giữa lúc roll xong và lúc target được chọn (dropdown Critical đi qua
+        // Map trung gian này, khác luồng M1 gọi doPlayerHit trực tiếp).
+        effectiveBulletType: verify.effectiveBulletType, effectiveBulletCount: verify.effectiveBulletCount ?? 0,
         expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
       });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: target dropdown thay vì gõ key) — chọn
@@ -1720,6 +1726,12 @@ client.on("interactionCreate", async (interaction) => {
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
         orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
+        // GAP ĐÃ SỬA (xác nhận trực tiếp: "Critical Shock Round... chả áp burn
+        // nào") — pendingCriticalRolls trước đây KHÔNG lưu effectiveBulletType/
+        // effectiveBulletCount từ verify, làm MẤT thông tin loại/số đạn đã tiêu
+        // giữa lúc roll xong và lúc target được chọn (dropdown Critical đi qua
+        // Map trung gian này, khác luồng M1 gọi doPlayerHit trực tiếp).
+        effectiveBulletType: verify.effectiveBulletType, effectiveBulletCount: verify.effectiveBulletCount ?? 0,
         expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
       });
       if (!verify.autoDmgStr) {
@@ -1940,6 +1952,7 @@ client.on("interactionCreate", async (interaction) => {
           skillRollEmbed: pending.skillRollEmbed, skillKey: pending.skillKey, cooldownTurns: pending.cooldownTurns,
           emotionDelta: pending.emotionDelta, lightCost: pending.lightCost, sanityCost: pending.sanityCost,
           refSnippet: null, refLink: null, orlandoFuriosoBypassConsumed: pending.orlandoFuriosoBypassConsumed ?? false,
+          effectiveBulletType: pending.effectiveBulletType, effectiveBulletCount: pending.effectiveBulletCount ?? 0,
         },
       });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: "Vẫn nên hiện bảng roll của -skill ra"

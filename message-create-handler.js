@@ -2263,6 +2263,15 @@ if (message.content.startsWith("-gacha")) {
           const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
           const wasJoined = !!encounter.players[message.author.id];
+          // GAP MỚI (xác nhận trực tiếp): "chặn -encounter join đối với những
+          // người đã join rồi sau khi encounter đã bắt đầu thôi, những người
+          // join muộn hoặc trễ vẫn được" — CHỈ chặn RE-JOIN (đổi đồ giữa trận,
+          // dễ lạm dụng/phát sinh bug) SAU KHI đã rollspeed lần đầu — join LẦN
+          // ĐẦU (chưa từng có trong encounter.players) vẫn luôn được phép bất
+          // kể encounter đã bắt đầu hay chưa.
+          if (wasJoined && hasEncounterStarted(encounter)) {
+            throw new Error("Encounter đã bắt đầu (đã rollspeed) — không thể `-encounter join` lại để đổi trang bị/chỉ số giữa trận (tránh lạm dụng). Join lại chỉ được phép TRƯỚC khi GM chạy `-encounter rollspeed`.");
+          }
           encounter.players[message.author.id] = createCombatant({
             name: message.author.username, maxHp: finalHp,
             maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
@@ -2291,11 +2300,14 @@ if (message.content.startsWith("-gacha")) {
           const joined = encounter.players[message.author.id];
           // GAP ĐÃ SỬA (phát hiện qua rà soát): join GIỮA 1 round (đã rollspeed)
           // trước đây khiến player này KHÔNG BAO GIỜ được hành động cho tới hết
-          // round — giờ tự động chèn vào turnOrder hiện tại (chỉ lần join ĐẦU,
-          // không phải update lại profile giữa chừng).
-          if (!wasJoined) {
-            insertIntoTurnOrderMidRound(encounter, message.author.id, "player", joined);
-          }
+          // GAP SỬA LẠI (xác nhận trực tiếp): "join muộn... chỉ có turn (speed)
+          // khi turn order đã kết thúc" — TRƯỚC ĐÂY tự động chèn NGAY vào giữa
+          // vòng hiện tại (insertIntoTurnOrderMidRound) — SAI với ý muốn, join
+          // muộn không nên hành động được ngay trong vòng đang chạy dở. Giờ
+          // KHÔNG chèn gì cả — determineTurnOrder (chạy lại MỖI round qua
+          // `-encounter endturn`) tự động quét TOÀN BỘ encounter.players hiện
+          // có, nên người join muộn tự nhiên được đưa vào turnOrder ngay khi
+          // vòng hiện tại kết thúc, không cần thêm cờ theo dõi riêng nào.
           joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
           // Injuries PERSIST qua encounter (xác nhận trực tiếp từ GM) — snapshot
           // TRỰC TIẾP từ profile (KHÔNG reset về rỗng như trước đây). maxHp đã tính
