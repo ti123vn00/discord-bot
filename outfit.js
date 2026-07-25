@@ -130,7 +130,7 @@ const OUTFITS = {
     speedRange: { min: 3, max: 6 },
     keypage: [
       "Các vũ khí/skill/page sử dụng đạn sẽ được tăng thêm 15% Dmg gây ra",
-      "Mỗi đòn đánh thường thứ 4 bạn sẽ nhận được 1 đạn",
+      "Mỗi khi tiêu hao 20 Stamina thông qua đánh thường thì bạn sẽ nhận được 1 Ammo",
       "Đồng minh thuộc Thumb ở trong trận sẽ nhận được đạn đặc biệt của riêng họ bằng một nửa số đạn mà bạn nạp được (làm tròn lên) thông qua Re-Load",
     ],
   },
