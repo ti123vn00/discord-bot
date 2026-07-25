@@ -842,6 +842,21 @@ async function resolveOnePendingAction(encounter, p) {
                   target.bleed = Math.min(BLEED_MAX, (target.bleed ?? 0) + 1);
                   target.redPlumBlossom = Math.max(0, target.redPlumBlossom - 1);
                 }
+                // "Blade Lineage Salsu" (outfit) — GAP MỚI (xác nhận trực tiếp):
+                // "Khi Crit bạn gây 1 Red Plum Blossom lên kẻ địch, nếu có hơn
+                // hoặc bằng 5 Red Plum Blossom thì sẽ gây 1 Bleed" — CƠ CHẾ
+                // KHÁC với khối ngay trên (khối trên TIÊU redPlumBlossom CÓ
+                // SẴN, không điều kiện ngưỡng — đây là GÂY THÊM mỗi Crit, CHỈ
+                // Bleed khi đạt ngưỡng 5, rồi reset về 0 để tích luỹ lại).
+                // Đặt SAU khối trên để tránh bị khối trên tiêu ngay trong cùng
+                // vòng lặp.
+                if (attacker.combatant.equippedOutfit === "Blade Lineage Salsu" && lastHitForStatus?.didCrit) {
+                  target.redPlumBlossom = (target.redPlumBlossom ?? 0) + 1;
+                  if (target.redPlumBlossom >= 5) {
+                    target.bleed = Math.min(BLEED_MAX, (target.bleed ?? 0) + 1);
+                    target.redPlumBlossom = 0;
+                  }
+                }
                 // Fairy (50-Status Nhóm 2, xác nhận trực tiếp): "trừ HP = count/3
                 // MỖI Action" — giả định (đã nêu ở combatant-factory.js): "mỗi
                 // Action" = mỗi lần CHÍNH attacker (người mang Fairy) hành động —
