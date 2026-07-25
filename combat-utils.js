@@ -321,6 +321,17 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       attackerCombatant.currentHp = Math.max(0, attackerCombatant.currentHp - 10);
       vendettaNote = " ⚡-10 HP (Electrifying Vendetta — phần 'ngắt đòn tiếp theo' GM tự xử lý)";
     }
+    // "The Middle Little/Big Sibling" (outfit) — GAP MỚI (xác nhận trực tiếp):
+    // "Khi parry... nhận light thành công" — user LÀM RÕ đây KHÔNG phải nhận
+    // Light thật, mà là "parry thành công → +1 Stack Enhancement Tattoos"
+    // (phần "M1 nhận light" xử lý riêng ở resolve-pending-action.js, theo
+    // accumulator 20 Stamina — xem comment tương ứng). Reset lại 2 Turn mỗi
+    // lần kích hoạt (không cộng dồn thời hạn, chỉ cộng dồn SỐ stack).
+    if (combatant.equippedOutfit === "The Middle Little Sibling" || combatant.equippedOutfit === "The Middle Big Sibling") {
+      combatant.enhancementTattoosStack = (combatant.enhancementTattoosStack ?? 0) + 1;
+      combatant.enhancementTattoosTurnsLeft = 2;
+      vendettaNote += ` 💉[Enhancement Tattoos +1 (tổng ${combatant.enhancementTattoosStack})]`;
+    }
     return vendettaNote;
   }
   
