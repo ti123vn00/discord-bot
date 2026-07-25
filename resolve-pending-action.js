@@ -234,7 +234,14 @@ async function resolveOnePendingAction(encounter, p) {
               // baseGuardPct ngay trên) — Defense Up/Down áp dụng BÌNH THƯỜNG dù
               // có Iron Horus hay không, giống mọi combatant khác.
               const defenseUpDownPct = ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
-              const guardReductionPct = Math.min(1, Math.max(0, baseGuardPct + defenseUpDownPct));
+              const guardReductionPct_base = Math.min(1, Math.max(0, baseGuardPct + defenseUpDownPct));
+              // "Blade Lineage" (outfit) — GAP MỚI (xác nhận trực tiếp): "Nếu
+              // người dùng có trên hoặc bằng 10 Poise, đòn đánh thường của bạn
+              // sẽ bỏ qua 50% giảm dmg của block" — kiểm tra ATTACKER (người
+              // đang tấn công, KHÔNG PHẢI target đang Guard) có Poise>=10.
+              const guardReductionPct = (attacker.combatant.equippedOutfit === "Blade Lineage" && (attacker.combatant.poise ?? 0) >= 10)
+                ? guardReductionPct_base * 0.5
+                : guardReductionPct_base;
               // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "hệ thống tùy
               // chọn né theo từng hit... nhận hit 1 và 2 nhưng né/guard hit 3")
               // — TRƯỚC ĐÂY chỉ M1 mới có logic per-hit (cho phép trộn nhiều loại
@@ -442,6 +449,9 @@ async function resolveOnePendingAction(encounter, p) {
                     });
                   }
                 }
+                // "Blade Lineage" (outfit) — GAP MỚI (xác nhận trực tiếp):
+                // "Mỗi khi kẻ địch block đòn đánh của bạn, bạn nhận được 2
+                // Poise" — trigger khi có ÍT NHẤT 1 hit bị target Guard.
                 // Xuất perHitMult ra ngoài scope (xem khai báo
                 // perHitMultForBulletEffect phía trên khối này).
                 perHitMultForBulletEffect = perHitMult;
@@ -968,6 +978,15 @@ async function resolveOnePendingAction(encounter, p) {
               } else {
                 attacker.combatant.poise = firstPreview.finalPoiseStacks;
               }
+              // "Blade Lineage" (outfit) — GAP FIX (đặt SAU dòng ghi đè poise ở
+              // trên, vì bất kể "Smoke Overload" hay không, dòng đó LUÔN chạy
+              // và sẽ xoá mất +2 nếu đặt TRƯỚC nó) — GAP MỚI (xác nhận trực
+              // tiếp): "Mỗi khi kẻ địch block đòn đánh của bạn, bạn nhận được
+              // 2 Poise" — trigger khi có hit bị Guard (perHitMult giảm nhưng
+              // không về 0, khác Evade/Parry thành công).
+              if (attacker.combatant.equippedOutfit === "Blade Lineage" && (perHitMultForBulletEffect ?? []).some(m => m > 0 && m < 1)) {
+                attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 2);
+              }
               attacker.combatant.charge = firstPreview.finalCharge;
               // Eye Of Horus — cộng THÊM (không ghi đè) SAU dòng gán finalCharge ở
               // trên — xem comment đầy đủ tại chỗ khai báo eyeOfHorusChargeGainedThisAction.
@@ -1123,6 +1142,9 @@ async function resolveOnePendingAction(encounter, p) {
               // ["Ammo"], LUÔN là loại thường bất kể đang dùng loại gì) — player
               // tự Reload lại sau như đạn Inventory bình thường. CHỈ áp cho
               // player (attacker.type — enemy không có Inventory/profileData).
+              // "Blade Lineage" (outfit) — GAP MỚI (xác nhận trực tiếp): "Bạn
+              // nhận được 3 Poise mỗi khi dùng Page" — CHỈ áp cho skill/Page
+              // (không phải M1, kiểm tra !p.isM1).
               if (attacker.combatant.hasThumbSoldato && attacker.type === "player" && p.staminaCost > 0) {
                 attacker.combatant.thumbSoldatoStaminaAccum = (attacker.combatant.thumbSoldatoStaminaAccum ?? 0) + p.staminaCost;
                 const ammoGained = Math.floor(attacker.combatant.thumbSoldatoStaminaAccum / 40);
@@ -1202,6 +1224,16 @@ async function resolveOnePendingAction(encounter, p) {
                   }
                 }
               }
+            }
+            // "Blade Lineage" (outfit) — GAP FIX SCOPE (đặt SAI trong khối
+            // if (p.isM1...) ở trên trước đây, khối đó CHỈ chạy khi isM1=true
+            // — nhưng keypage này CẦN CHẠY KHI KHÔNG PHẢI M1, nên KHÔNG BAO
+            // GIỜ trigger được) — GAP MỚI (xác nhận trực tiếp): "Bạn nhận được
+            // 3 Poise mỗi khi dùng Page". Tự tạo vòng for MỚI (biến "t" gốc đã
+            // ra khỏi scope từ lâu, đóng ở dòng ~961) — giống hệt cách gap
+            // tương tự (Liu Association) ngay dưới đây đã giải quyết.
+            if (attacker.combatant.equippedOutfit === "Blade Lineage" && !p.isM1 && attacker.type === "player" && p.targets.length > 0) {
+              attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 3);
             }
             // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: "outfit của Liu
             // association chưa áp dụng được việc khi áp burn sẽ trừ stamina kẻ
