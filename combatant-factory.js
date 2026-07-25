@@ -92,9 +92,11 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       karmicConsequence: 0, // PERSISTENT, max 100 — +1%Dmg/stack (Index Proselyte tự áp lên bản thân)
       prescriptTargetId: null, // Will of Prescript — enemy đang bị đánh dấu "The Prescript Target's - The Index"
       // bulletStack — GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) —
-      // "Firing" (Soldato Rifle) + "Thumb Soldato" (outfit, mỗi đòn đánh thường
-      // thứ 4 → +1 đạn). Max 8, tiêu để +4 Base Dmg/hit (usebullet: yes khi M1).
+      // "Firing" (Soldato Rifle, biến base dmg thành 16 Pierce, xem
+      // interaction-handlers.js) + "Thumb Soldato" (outfit, mỗi 20 Stamina
+      // tiêu qua đánh thường → +1 đạn, xem thumbSoldatoStaminaAccum). Max 8.
       bulletStack: 0,
+      thumbSoldatoStaminaAccum: 0, // "Thumb Soldato" — tích luỹ Stamina đã tiêu qua M1, đạt 20 thì +1 đạn (reset phần dư, KHÔNG mất — xem resolve-pending-action.js)
       // bulletStackType — GAP ĐÃ SỬA (xác nhận trực tiếp): "chỉ 1 loại đạn được
       // nạp vào, muốn nạp loại đạn khác thì phải sử dụng hết đạn rồi mới nạp
       // tiếp được" — null | "ammo" | "frost" | "incendiary". Chỉ có ý nghĩa
