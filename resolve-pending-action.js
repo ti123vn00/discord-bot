@@ -1091,9 +1091,42 @@ async function resolveOnePendingAction(encounter, p) {
                   resultLines.push(`🔫 **Thumb Soldato** — ${attacker.label} nhận ${attacker.combatant.bulletStack - before} đạn (tổng ${attacker.combatant.bulletStack}/8).`);
                 }
               }
+              // "The Middle Little/Big Sibling" (outfit) — GAP MỚI (xác nhận
+              // trực tiếp, làm rõ lại): "mỗi khi 20 stamina tiêu hao qua đánh
+              // thường thì nhận được 1 Stack Enhancement Tattoos, chứ không
+              // phải là nhận thêm light" — CÙNG pattern accumulator với Thumb
+              // Soldato (ngưỡng 20 thay vì 40) — reset lại 2 Turn mỗi lần được
+              // cộng thêm stack (không cộng dồn thời hạn).
+              if ((attacker.combatant.equippedOutfit === "The Middle Little Sibling" || attacker.combatant.equippedOutfit === "The Middle Big Sibling") && p.staminaCost > 0) {
+                attacker.combatant.enhancementTattoosStaminaAccum = (attacker.combatant.enhancementTattoosStaminaAccum ?? 0) + p.staminaCost;
+                const stackGained = Math.floor(attacker.combatant.enhancementTattoosStaminaAccum / 20);
+                if (stackGained > 0) {
+                  attacker.combatant.enhancementTattoosStaminaAccum -= stackGained * 20;
+                  attacker.combatant.enhancementTattoosStack = (attacker.combatant.enhancementTattoosStack ?? 0) + stackGained;
+                  attacker.combatant.enhancementTattoosTurnsLeft = 2;
+                  resultLines.push(`💉 **Enhancement Tattoos** — ${attacker.label} nhận +${stackGained} stack (tổng ${attacker.combatant.enhancementTattoosStack}).`);
+                }
+              }
               // "Liu Association" ĐÃ DI CHUYỂN ra khỏi block if (p.isM1) này —
               // xem ngay bên dưới (sau block M1-count kết thúc) — passive gốc
               // KHÔNG giới hạn "chỉ M1", nên phải kiểm tra cho MỌI loại hành động.
+              // "Pointillist's Uniform" (outfit) — GAP MỚI (xác nhận trực tiếp):
+              // "Mỗi khi đánh thường bạn nhận được 1 Sanity tương ứng với mỗi 1
+              // hiệu ứng bất lợi khác nhau kẻ địch có trên người" — đếm SỐ LOẠI
+              // debuff KHÁC NHAU (không phải tổng stack) đang có trên target,
+              // cộng đúng số đó vào Sanity của attacker.
+              if (attacker.combatant.equippedOutfit === "Pointillist's Uniform" && p.isM1) {
+                const DEBUFF_FIELDS_TO_COUNT = ["bleed", "rupture", "sinking", "tremor", "burn", "paralyze", "hemorrhage", "fragile", "attackPowerDown", "defenseDown", "diceDown", "smoke", "nails", "bind", "haouFlame", "haouBleed", "haouTremor", "haouRupture", "haouSinking"];
+                for (const t of p.targets) {
+                  const tResolved = resolveCombatant(encounter, t.targetId);
+                  if (!tResolved) continue;
+                  const debuffTypeCount = DEBUFF_FIELDS_TO_COUNT.filter(f => (tResolved.combatant[f] ?? 0) > 0).length;
+                  if (debuffTypeCount > 0) {
+                    attacker.combatant.currentSanity = Math.min(attacker.combatant.maxSanity, (attacker.combatant.currentSanity ?? 0) + debuffTypeCount);
+                    resultLines.push(`🎨 **Pointillist's Uniform** — ${attacker.label} nhận ${debuffTypeCount} Sanity (${debuffTypeCount} loại debuff trên ${tResolved.label}).`);
+                  }
+                }
+              }
               // "Dieci Association": áp Sinking THẬT ở đây (sau khi target.sinking
               // = t.preview.finalSinking đã ghi đè xong ở vòng lặp target chính) —
               // dieciSinkingGain đã tính sẵn ở đầu hàm (xem block shieldHp).
