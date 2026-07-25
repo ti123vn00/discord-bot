@@ -2375,7 +2375,7 @@ roll(v = "no") {
   },
   "shock round": {
     name: "Shock Round", weaponOf: "Soldato Rifle", tags: "Weapon",
-    cost: "Tiêu 2 viên đạn", cd: "1 Turn", diceMul: "1x",
+    cost: "Tiêu 5 viên đạn", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,7), d2 = r(9,17);
       return [
