@@ -64,6 +64,13 @@ module.exports = function ({ findSkill, hasPerk }) {
     if (criticalSkill) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`critical:${criticalSkill.name}`));
     }
+    // "Shock Round" — GAP MỚI (xác nhận trực tiếp): "Soldato Rifle... có 2
+    // critical, 1 cái bình thường và 1 cái có điều kiện để xài là đạn" —
+    // Critical THỨ 2, HOÀN TOÀN riêng biệt weaponCriticalKey (chỉ có 1 giá trị
+    // duy nhất) — chỉ hiện khi cầm Soldato Rifle VÀ đủ 5 viên đạn trong súng.
+    if (combatant.weaponName === "Soldato Rifle" && (combatant.bulletStack ?? 0) >= 5) {
+      options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: Shock Round (tiêu 5 đạn, còn ${combatant.bulletStack})`).setValue("critical:Shock Round"));
+    }
     const addedPageNames = new Set();
     for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
       if (pageName && !addedPageNames.has(pageName)) {
