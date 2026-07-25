@@ -42,8 +42,18 @@ async function resolveOnePendingAction(encounter, p) {
             if (p.staminaCost && attacker.type === "player") {
               attacker.combatant.currentStamina = Math.max(0, attacker.combatant.currentStamina - p.staminaCost);
               attacker.combatant.staminaUsedThisTurn += p.staminaCost;
+              // "Black Suit" (outfit) — GAP MỚI (xác nhận trực tiếp): "Refund
+              // 1/5 Stamina khi đánh thường" — CHỈ áp cho M1 (staminaCost chỉ
+              // được set khi isM1:true, không phải skill/Critical dùng
+              // lightCost/sanityCost khác).
+              let blackSuitRefundNote = "";
+              if (attacker.combatant.equippedOutfit === "Black Suit") {
+                const refundAmount = Math.round(p.staminaCost / 5 * 100) / 100;
+                attacker.combatant.currentStamina = Math.min(attacker.combatant.maxStamina, attacker.combatant.currentStamina + refundAmount);
+                blackSuitRefundNote = ` 🖤[Black Suit Refund +${refundAmount} Sta]`;
+              }
               checkStaggerPanic(attacker.combatant);
-              staminaNote = ` (-${p.staminaCost} Sta${attacker.combatant.staggered ? " 💫Stagger!" : ""})`;
+              staminaNote = ` (-${p.staminaCost} Sta${blackSuitRefundNote}${attacker.combatant.staggered ? " 💫Stagger!" : ""})`;
               // Regain Mind (Shin, [30 Points]): mỗi 40 Stamina mất do M1 (đánh
               // thường) → +10 Sanity. Tích lũy riêng (KHÔNG dùng chung
               // staminaUsedThisTurn vì cái đó reset mỗi turn còn đây cần tích lũy
