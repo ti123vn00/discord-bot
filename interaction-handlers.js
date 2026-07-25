@@ -662,7 +662,10 @@ client.on("interactionCreate", async (interaction) => {
           clashOptions.push({ key, name: sk.name });
         }
         if (clashOptions.length === 0) {
-          await interaction.reply({ content: "❌ Không có Page/Critical nào đủ điều kiện để Clash (đủ Light, chưa hết CD).", flags: MessageFlags.Ephemeral }).catch(() => {});
+          const reason = candidateNames.length === 0
+            ? "chưa có Page/Critical/skill nào được gán (nếu là enemy, dùng `skills:` ở `-encounter addenemy` hoặc `skills+:` qua GM Panel để gán trước)"
+            : "tất cả Page/Critical hiện có đều KHÔNG đủ Light hoặc đang trong CD";
+          await interaction.reply({ content: `❌ Không thể Clash — ${reason}.`, flags: MessageFlags.Ephemeral }).catch(() => {});
           return;
         }
         const menu = new StringSelectMenuBuilder()
