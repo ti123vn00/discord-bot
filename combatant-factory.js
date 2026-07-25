@@ -91,6 +91,7 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       graceOfPrescript: 0, // PERSISTENT (không reset theo turn) — dùng cho Will of Prescript's %Dmg
       karmicConsequence: 0, // PERSISTENT, max 100 — +1%Dmg/stack (Index Proselyte tự áp lên bản thân)
       prescriptTargetId: null, // Will of Prescript — enemy đang bị đánh dấu "The Prescript Target's - The Index"
+      blackSuitPersistentBonus: 0, // "Black Suit" (outfit) — số lần đạt Emotion Level, dùng cho Dice Up/Clash Attack Boost KÉO DÀI hết encounter (không reset theo turn như bản thường — xem sanity-emotion.js/turn-advance.js)
       // bulletStack — GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) —
       // "Firing" (Soldato Rifle, biến base dmg thành 16 Pierce, xem
       // interaction-handlers.js) + "Thumb Soldato" (outfit, mỗi 20 Stamina
