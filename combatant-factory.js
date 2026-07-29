@@ -92,6 +92,14 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       karmicConsequence: 0, // PERSISTENT, max 100 — +1%Dmg/stack (Index Proselyte tự áp lên bản thân)
       prescriptTargetId: null, // Will of Prescript — enemy đang bị đánh dấu "The Prescript Target's - The Index"
       blackSuitPersistentBonus: 0, // "Black Suit" (outfit) — số lần đạt Emotion Level, dùng cho Dice Up/Clash Attack Boost KÉO DÀI hết encounter (không reset theo turn như bản thường — xem sanity-emotion.js/turn-advance.js)
+      // "Shi Association" (outfit) keypage 3 — "Mỗi 1 đồng minh chết trong trận
+      // bạn nhận được 2 Dice Up cho đến hết encounter" — CÙNG PATTERN với
+      // blackSuitPersistentBonus ở trên (persistent, KHÔNG reset theo turn) —
+      // đã CỘNG SẴN x2/lần (không phải đếm số lần rồi nhân sau) vì chỉ áp vào
+      // đúng 1 field (diceUp), không như Black Suit áp vào nhiều field khác
+      // nhau. Tăng lúc detect đồng minh (player khác) chết ở
+      // resolve-pending-action.js, cộng LẠI vào diceUp mỗi turn ở turn-advance.js.
+      shiAssociationDiceUpBonus: 0,
       enhancementTattoosStack: 0, enhancementTattoosTurnsLeft: 0, enhancementTattoosStaminaAccum: 0, // "The Middle Little/Big Sibling" (outfit) — parry thành công (xem combat-utils.js) hoặc 20 Stamina qua M1 (xem resolve-pending-action.js) → +1 stack, kéo dài 2 Turn
       blSalsuBonusDmgPending: 0, // "Blade Lineage Salsu" (outfit) — turn start nếu Poise>=10, lưu tạm 1/2 Poise, áp vào base dmg skill/Critical TIẾP THEO (xem turn-advance.js/attacker-perk-context.js)
       renderingActive: false, diceUpSlashOnly: 0, // "Blade Lineage Mentor" (outfit) — Rending kích hoạt khi dùng page Blade Lineage Syndicate, kéo dài đến hết turn (xem resolve-pending-action.js/turn-advance.js)
