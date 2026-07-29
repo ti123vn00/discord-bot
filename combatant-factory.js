@@ -334,6 +334,23 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
     // BlackSilence (Struggling): "giảm mọi Light Cost của Page đi 1 (không về 0)
     // và +4 Dice Up cho Critical vũ khí" — flag.
     blackSilence: false,
+    // GAP MỚI (audit accessory.js theo yêu cầu trực tiếp — "Giày Wan MK3" và
+    // "Composition Tool" đều CHƯA có code nào, chỉ có mô tả trong data) —
+    // "Quickstep": mỗi 3 đòn Critical → đòn Critical tiếp theo reset CD ngay.
+    // criticalUseCount đếm TỔNG số Critical đã dùng (không phân biệt skill
+    // nào); khi chạm bội số 3 thì bật cờ quickstepCdResetPending cho lần
+    // Critical KẾ TIẾP (bất kỳ skill nào — diễn giải hợp lý nhất từ mô tả gốc,
+    // xem resolve-pending-action.js/skill-verification.js).
+    criticalUseCount: 0,
+    quickstepCdResetPending: false,
+    // "Chain-Dashes": "Cứ mỗi hai lần né thì lần né tiếp theo sẽ né được 2
+    // hit" — evadeCount đếm TỔNG số lần né thành công; khi chạm bội số 2 thì
+    // bật cờ cho lần né KẾ TIẾP block được 2 hit thay vì 1 (xem
+    // interaction-handlers.js's nhánh evade).
+    evadeCount: 0,
+    chainDashesBonusHitPending: false,
+    // "Reactive" (Composition Tool) — persistent cả trận (KHÔNG reset theo turn).
+    staggerResistUsed: 0,
     // Nails: "mỗi đòn kẻ thù NHẬN sẽ nhận thêm Bleed = count Nails, mỗi lần nhận 1
     // đòn giảm 1/3 count Nails" — áp dụng khi combatant này là TARGET bị tấn công.
     nails: 0,

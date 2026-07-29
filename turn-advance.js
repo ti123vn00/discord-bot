@@ -26,6 +26,12 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
   function advanceCombatantTurn(combatant) {
     combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
     applyShiAssociationPoiseFloor(combatant);
+    // GAP MỚI (audit accessory.js theo yêu cầu trực tiếp) — "Perfect Cube":
+    // "Perfect Body" — "Mỗi turn end được hồi 10 HP" — CHỈ hồi khi còn sống
+    // (currentHp > 0, tránh "hồi sinh" người đã chết 0 HP một cách vô lý).
+    if ((combatant.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("perfect cube") && (combatant.currentHp ?? 0) > 0) {
+      combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + 10);
+    }
     // "Blade Lineage Salsu" (outfit) — GAP MỚI (xác nhận trực tiếp): "Vào turn
     // start nếu Poise >=10, add vào base dmg của page/critical theo 1/2 lượng
     // Poise" — lưu tạm để áp dụng cho lần dùng skill/Critical TIẾP THEO trong

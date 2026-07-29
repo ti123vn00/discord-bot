@@ -803,12 +803,24 @@ client.on("interactionCreate", async (interaction) => {
         const realHitIndices = [];
         for (let i = 0; i < hitsInThisGroup; i++) realHitIndices.push(groupIdx * hitsPerCharge + i + 1);
         let choiceNote = "";
+        // "Chain-Dashes" (Giày Wan MK3) — cờ đánh dấu bonus VỪA được tiêu thụ ở
+        // lần né NÀY (chỉ có ý nghĩa khi choice==="evade") — khai báo ở scope
+        // NGOÀI if/else-if (giống choiceNote) vì cần đọc lại SAU t.perHitChoices[groupIdx]
+        // = choiceNote (nằm ngoài khối if/else-if) để gộp nhóm hit kế tiếp.
+        let chainDashesBonusConsumedThisTurn = false;
         if (choice === "guard") {
           if (!opts.guard.available) {
             if (thisGroupBypass.blockGuard) throw new Error("Nhóm hit này có tag Unblockable — không thể Guard.");
             throw new Error(`Không đủ Stamina để Guard nhóm này (cần ${opts.guard.cost}, hiện có ${target.currentStamina}).`);
           }
           target.currentStamina -= opts.guard.cost;
+          // GAP MỚI (audit accessory.js) — "Resourceful" (Giày Wan MK3): "Các
+          // hành động phòng thủ được refund 1/4 Stamina" — hoàn lại NGAY sau
+          // khi trừ, áp cho MỌI hành động phòng thủ có tốn Stamina thật (Guard
+          // ở đây, Evade ở nhánh dưới — Parry vốn đã 0 Sta nên không cần).
+          if (opts.guard.cost > 0 && (target.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("giày wan mk3")) {
+            target.currentStamina = Math.min(target.maxStamina, target.currentStamina + opts.guard.cost / 4);
+          }
           target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
           target.guardHitSelections = target.guardHitSelections ?? [];
           target.guardHitSelections.push(...realHitIndices);
@@ -836,13 +848,52 @@ client.on("interactionCreate", async (interaction) => {
         } else if (choice === "evade") {
           if (!opts.evade.available) throw new Error(opts.evade.blockedReason ? `Evade bị khoá: ${opts.evade.blockedReason}.` : `Không đủ Stamina để Evade nhóm này (cần ${opts.evade.cost}, hiện có ${target.currentStamina}).`);
           target.currentStamina -= opts.evade.cost;
+          // "Resourceful" (Giày Wan MK3) — xem comment đầy đủ ở nhánh Guard.
+          if (opts.evade.cost > 0 && (target.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("giày wan mk3")) {
+            target.currentStamina = Math.min(target.maxStamina, target.currentStamina + opts.evade.cost / 4);
+          }
+          // GAP MỚI (audit accessory.js) — "Chain-Dashes" (Giày Wan MK3): xử lý
+          // ĐẦY ĐỦ ở dưới (sau khi commit choice nhóm này) — gộp LUÔN nhóm hit
+          // KẾ TIẾP vào cùng lần né này khi có bonus (xem sau t.perHitChoices[groupIdx]
+          // = choiceNote bên dưới) — KHÔNG sửa chargesNeeded ở đây vì mỗi nhóm
+          // vốn đã được chia vừa đúng 1 charge từ đầu (nhân đôi hitsPerCharge ở
+          // computeDefenseOptions không có tác dụng gì, đã thử và xác nhận qua
+          // test thật nên bỏ đi).
           target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
           target.evadeHitSelections = target.evadeHitSelections ?? [];
           target.evadeHitSelections.push(...realHitIndices);
           if (opts.evade.cost === 0 && (target.lightDashFreeEvadeCharges ?? 0) > 0) target.lightDashFreeEvadeCharges -= 1;
           if (targetResolved.type === "player") target.prescriptEvaded = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}`;
+          // GAP MỚI (audit accessory.js) — "Shimmering" (Composition Tool):
+          // "Cho 1 Light khi né hoặc parry thành công" — evade ĐÃ resolve
+          // thành công tới đây (không throw ở check available phía trên) nên
+          // tính là "thành công", cộng ngay 1 Light.
+          if ((target.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("composition tool")) {
+            target.currentLight = Math.min(target.maxLight, (target.currentLight ?? 0) + 1);
+          }
+          // "Chain-Dashes" (Giày Wan MK3) — tiêu thụ cờ bonus (nếu vừa dùng
+          // xong) rồi MỚI tăng evadeCount + set cờ mới cho lần né KẾ TIẾP (thứ
+          // tự: tiêu trước, tăng/set sau — tránh 1 lần né vừa tiêu vừa tự cấp
+          // lại bonus cho chính nó). Việc GỘP nhóm hit kế tiếp thật sự (nếu cờ
+          // đang tiêu thụ ở lần né NÀY) nằm ở đoạn code SAU t.perHitChoices[groupIdx]
+          // = choiceNote bên dưới (cần biết groupIdx/groupCount/hitsPerCharge đã
+          // tính sẵn ở phạm vi ngoài, và cần chắc chắn choice CHÍNH THỨC đã ghi
+          // nhận trước khi gộp thêm nhóm sau).
+          let chainDashesNote = "";
+          if (target.chainDashesBonusHitPending) {
+            target.chainDashesBonusHitPending = false;
+            chainDashesBonusConsumedThisTurn = true;
+            chainDashesNote = " ⚡[Chain-Dashes: gộp luôn nhóm hit tiếp theo]";
+          }
+          if ((target.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("giày wan mk3")) {
+            target.evadeCount = (target.evadeCount ?? 0) + 1;
+            if (target.evadeCount % 2 === 0) {
+              target.chainDashesBonusHitPending = true;
+              chainDashesNote += " 💨[Chain-Dashes: lần né tiếp theo sẽ gộp nhóm kế]";
+            }
+          }
+          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}${chainDashesNote}`;
         } else if (choice === "parry") {
           if (!opts.parry.available) throw new Error("Parry bị khoá cho nhóm này (Unparriable).");
           target.parryRolls = target.parryRolls ?? [];
@@ -855,6 +906,10 @@ client.on("interactionCreate", async (interaction) => {
           target.parryHitSelections.push(...realHitIndices);
           if (targetResolved.type === "player") target.prescriptParried = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
+          // "Shimmering" (Composition Tool) — xem comment đầy đủ ở nhánh evade.
+          if ((target.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("composition tool")) {
+            target.currentLight = Math.min(target.maxLight, (target.currentLight ?? 0) + 1);
+          }
           const dullahanDmg = applyDullahanParryCounter(target, attacker.combatant);
           if (dullahanDmg !== null) target.dullahanParriedThisTurn = true;
           choiceNote = `🗡️ Parry (${opts.chargesNeeded} roll, 0 Sta)${dullahanDmg !== null ? ` + [Dullahan: đánh thường trả đũa -${dullahanDmg.toFixed(3)} HP]` : ""}`;
@@ -862,6 +917,22 @@ client.on("interactionCreate", async (interaction) => {
           choiceNote = "❌ Không phòng thủ";
         }
         t.perHitChoices[groupIdx] = choiceNote;
+        // "Chain-Dashes" (Giày Wan MK3) — GAP MỚI (audit accessory.js): nếu
+        // bonus VỪA được tiêu thụ ở lần né NÀY, TỰ ĐỘNG gộp luôn nhóm hit KẾ
+        // TIẾP (nếu còn) vào cùng kết quả evade — không cần prompt riêng cho
+        // nhóm đó, không tốn thêm Stamina (bonus miễn phí, đã trừ Sta đúng 1
+        // lần cho nhóm HIỆN TẠI ở trên rồi). Đánh dấu perHitChoices[groupIdx+1]
+        // (khác null) để sendReactiveDefensePrompt (dùng
+        // t.perHitChoices.findIndex(c => c === null)) TỰ BỎ QUA nhóm này khi
+        // tìm nhóm kế tiếp cần hỏi — không cần sửa gì ở reactive-defense.js.
+        if (chainDashesBonusConsumedThisTurn && groupIdx + 1 < groupCount && t.perHitChoices[groupIdx + 1] === null) {
+          const nextGroupHitsInGroup = Math.min(hitsPerCharge, hitCount - (groupIdx + 1) * hitsPerCharge);
+          const nextGroupHitIndices = [];
+          for (let i = 0; i < nextGroupHitsInGroup; i++) nextGroupHitIndices.push((groupIdx + 1) * hitsPerCharge + i + 1);
+          target.evadeHitSelections = target.evadeHitSelections ?? [];
+          target.evadeHitSelections.push(...nextGroupHitIndices);
+          t.perHitChoices[groupIdx + 1] = "💨 Evade (gộp tự động từ Chain-Dashes, 0 Sta)";
+        }
         await saveEncounter(channelId, encounter);
 
         if (t.perHitChoices.some(c => c === null)) {
@@ -1673,7 +1744,7 @@ client.on("interactionCreate", async (interaction) => {
         const p = {
           id: pendingId, kind: "critical", attackerId: interaction.user.id,
           targets: [], dmgStr: `Critical: ${critSkillName}`, defenseBypass: {},
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
@@ -1695,7 +1766,7 @@ client.on("interactionCreate", async (interaction) => {
         lightCost: verify.lightCost,
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
-        orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
+        orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "Critical Shock Round... chả áp burn
         // nào") — pendingCriticalRolls trước đây KHÔNG lưu effectiveBulletType/
         // effectiveBulletCount từ verify, làm MẤT thông tin loại/số đạn đã tiêu
@@ -1766,7 +1837,7 @@ client.on("interactionCreate", async (interaction) => {
         lightCost: verify.lightCost,
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
-        orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
+        orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "Critical Shock Round... chả áp burn
         // nào") — pendingCriticalRolls trước đây KHÔNG lưu effectiveBulletType/
         // effectiveBulletCount từ verify, làm MẤT thông tin loại/số đạn đã tiêu
@@ -1784,7 +1855,7 @@ client.on("interactionCreate", async (interaction) => {
         const p = {
           id: pendingId, kind: "hit", attackerId: interaction.user.id,
           targets: [], dmgStr: `Page: ${pageName}`, defenseBypass: {},
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false,
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);

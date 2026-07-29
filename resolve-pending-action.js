@@ -1390,6 +1390,25 @@ async function resolveOnePendingAction(encounter, p) {
               }
               verifyNote += ` ⚡[Orlando Furioso đã tiêu thụ]`;
             }
+            // "Quickstep" (Giày Wan MK3) — GAP MỚI (audit accessory.js): tiêu
+            // thụ cờ bypass NGAY SAU khi commit (giống Orlando Furioso ở trên),
+            // ĐỒNG THỜI tăng criticalUseCount cho MỌI lần dùng Critical (kể cả
+            // lần vừa được miễn CD) — cứ chạm bội số 3 thì bật lại cờ cho lần
+            // Critical kế tiếp.
+            if (p.quickstepBypassConsumed) {
+              attacker.combatant.quickstepCdResetPending = false;
+              if (attacker.combatant.skillCooldowns && p.skillKey) {
+                attacker.combatant.skillCooldowns[p.skillKey] = 0;
+              }
+              verifyNote += ` 👟[Quickstep đã tiêu thụ]`;
+            }
+            if (p.kind === "critical" && attacker.type === "player" && (attacker.combatant.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("giày wan mk3")) {
+              attacker.combatant.criticalUseCount = (attacker.combatant.criticalUseCount ?? 0) + 1;
+              if (attacker.combatant.criticalUseCount % 3 === 0) {
+                attacker.combatant.quickstepCdResetPending = true;
+                verifyNote += ` 👟[Quickstep: Critical tiếp theo miễn CD]`;
+              }
+            }
             // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 2) —
             // "Knowledge" (Dieci Association Kata/Key): mỗi lần dùng ĐÚNG Critical
             // của vũ khí này → hồi 5 Sanity cho bản thân.

@@ -40,10 +40,18 @@ module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, E
   function applyEmotionDelta(combatant, delta) {
     const notes = [];
     if (!delta) return notes;
+    // GAP MỚI (audit accessory.js theo yêu cầu trực tiếp) — "Energetic"
+    // (Composition Tool): "Gia tăng x2 hiệu quả nhận Emotion Coin" — CHỈ nhân
+    // khi delta DƯƠNG (nhận thêm coin), KHÔNG nhân khi delta ÂM (tiêu coin,
+    // VD Shin/Mang) — "nhận" trong mô tả gốc chỉ nói việc CỘNG thêm. Đặt Ở
+    // ĐÂY (hàm trung tâm duy nhất mọi nơi gọi applyEmotionDelta) để áp dụng
+    // đồng nhất cho MỌI nguồn Emotion Coin (M1, Critical, Emotion Coin từ
+    // giết địch/đồng đội chết...), không cần sửa từng điểm gọi riêng lẻ.
+    const effectiveDelta = delta > 0 && (combatant.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("composition tool") ? delta * 2 : delta;
     // BUG ĐÃ SỬA (xác nhận trực tiếp: "emotion level thì không cho âm coin, dù có
     // trừ thì tới 0 là dừng") — trước đây cộng delta trực tiếp KHÔNG clamp, coin
     // có thể âm vô hạn (VD Shin/Mang tốn 1 Coin nhiều lần liên tiếp).
-    combatant.emotionCoin = Math.max(0, (combatant.emotionCoin ?? 0) + delta);
+    combatant.emotionCoin = Math.max(0, (combatant.emotionCoin ?? 0) + effectiveDelta);
     const maxLevel = getMaxEmotionLevel(combatant);
     while (
       combatant.emotionLevel < maxLevel &&

@@ -441,6 +441,17 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
   
   function checkStaggerPanic(combatant) {
     if (combatant.currentStamina <= 0 && !combatant.staggered) {
+      // GAP MỚI (audit accessory.js theo yêu cầu trực tiếp) — "Reactive"
+      // (Composition Tool): "Cho khả năng kháng Stagger hai lần mỗi
+      // encounter" — tối đa 2 lần/encounter (staggerResistUsed, KHÔNG reset
+      // theo turn — persistent cả trận). Kháng thành công thì bump Stamina
+      // lên 1 (tránh lặp vô hạn resist cùng 1 sự kiện currentStamina<=0) và
+      // KHÔNG chạy tiếp logic Stagger bên dưới.
+      if ((combatant.staggerResistUsed ?? 0) < 2 && (combatant.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("composition tool")) {
+        combatant.staggerResistUsed = (combatant.staggerResistUsed ?? 0) + 1;
+        combatant.currentStamina = 1;
+        return;
+      }
       combatant.staggered = true;
       // Choáng (luật xác nhận trực tiếp từ GM: "game không có status Choáng riêng,
       // chỉ có Stagger" — Choáng KHÔNG PHẢI 1 chấn thương random độc lập như Gãy tay/
