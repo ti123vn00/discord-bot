@@ -344,6 +344,7 @@ function findItemAdmin(input) {
 // ─── parseKeyValues ───────────────────────────────────────────────────────────
 const KNOWN_KEYS = new Set([
   "book", "count", "item", "itemcount", "ahn", "exp", "grade", "bonusskillpoints", "lunacy", "code", // lunacy = -setprofile, code = -redeem
+  "combatreward", // "-give ... combatreward: yes" — đánh dấu EXP/Ahn là thưởng thắng trận, để nhân hệ số Casual Outfit/Rats Outfit/Businessman theo outfit người NHẬN
   "wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light", // 9 nhánh Skill Tree (branchPoints)
   "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", // 4 cờ điều kiện đặc biệt
   "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1

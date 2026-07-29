@@ -483,6 +483,35 @@ client.on("messageCreate", async (message) => {
       message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
       return;
     }
+    // "combatreward: yes" — GAP MỚI (đã thống nhất trực tiếp với Fragaria):
+    // kiến trúc hiện tại KHÔNG có cơ chế tự phát EXP/Ahn khi thắng combat (GM
+    // luôn tự `-give` thủ công) — Casual Outfit/Rats Outfit/Businessman chỉ
+    // có thể tự động hoá được PHẦN NHÂN HỆ SỐ, không phải phần TRIGGER (không
+    // có "combat ended, player won" event nào để tự bắt). Đánh dấu RÕ RÀNG
+    // bằng cờ này (mặc định KHÔNG áp dụng — chỉ boost khi GM gõ rõ) để tránh
+    // vô tình nhân hệ số cho những lần `-give` KHÔNG liên quan tới thắng trận
+    // (VD tặng quà, bù lỗi...).
+    const isCombatReward = (kv["combatreward"] ?? "").trim().toLowerCase() === "yes";
+    let combatRewardNote = null;
+    let finalExpGain = expGain;
+    let finalAhnGain = ahnGain;
+    if (isCombatReward && (expGain !== 0 || ahnGain !== 0)) {
+      const targetProfileForReward = await getPlayerData(targetUser.id);
+      const rewardOutfit = targetProfileForReward.equippedOutfit;
+      if (rewardOutfit === "Casual Outfit") {
+        finalExpGain = Math.round(expGain * 1.2);
+        finalAhnGain = Math.round(ahnGain * 1.2);
+        combatRewardNote = "🎽 Casual Outfit — +20% EXP và Ahn";
+      } else if (rewardOutfit === "Rats Outfit") {
+        finalExpGain = Math.round(expGain * 1.5);
+        finalAhnGain = Math.round(ahnGain * 0.5);
+        combatRewardNote = "🐀 Rats Outfit — +50% EXP, -50% Ahn";
+      } else if (rewardOutfit === "Businessman") {
+        finalExpGain = Math.round(expGain * 0.5);
+        finalAhnGain = Math.round(ahnGain * 1.5);
+        combatRewardNote = "💼 Businessman — +50% Ahn, -50% EXP";
+      }
+    }
     let bookName = null;
     if (bookRaw) {
       bookName = findBook(bookRaw);
@@ -506,9 +535,10 @@ client.on("messageCreate", async (message) => {
 
     // Thay vì thực hiện ngay, hiển thị preview + nút Xác nhận/Hủy để tránh
     // chuyển nhầm người/nhầm số lượng (đặc biệt nguy hiểm với admin give exp/grade/ahn).
-    const previewLines = buildGivePreviewLines({ ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget });
+    const previewLines = buildGivePreviewLines({ ahnGain: finalAhnGain, bookName, bookCount, itemName, itemCount, expGain: finalExpGain, gradeTarget });
+    if (combatRewardNote) previewLines.push(`${combatRewardNote} (gốc ${expGain} EXP/${formatNumber(ahnGain)} Ahn → ${finalExpGain} EXP/${formatNumber(finalAhnGain)} Ahn)`);
     const giveId = registerPendingGive(message.author.id, targetUser.id, isAdmin, {
-      ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
+      ahnGain: finalAhnGain, bookName, bookCount, itemName, itemCount, expGain: finalExpGain, gradeTarget,
     });
     message.reply({
       embeds: [{

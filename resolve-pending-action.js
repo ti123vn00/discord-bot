@@ -27,6 +27,23 @@ function applyShiAssociationPoiseFloor(combatant) {
   }
 }
 
+// "Pointillist's Uniform" (outfit) keypage 1 — "Khi Max Sanity mọi hiệu ứng
+// bất lợi bạn gây ra được gia tăng 1.25x lần" — CÙNG PATTERN với "Dark Cloud"
+// (Kurokumo Wakashu, xem block Bleed bên dưới: "Gây thêm 1.25x Bleed") — CHỈ
+// nhân phần MỚI GÂY THÊM (chênh lệch before/after của đòn NÀY), không nhân
+// lại toàn bộ stack cũ đã có sẵn trên target trước đó. Dùng CHUNG cho cả 5
+// status core (Sinking/Rupture/Burn/Bleed/Tremor) — áp dụng ở MỌI loại hành
+// động (M1/Skill/Critical), KHÁC keypage 2 (chỉ M1) vì mô tả gốc không giới
+// hạn "đánh thường". Không cộng thêm cap riêng (BLEED_MAX/TREMOR_MAX/...) ở
+// đây — giữ nguyên quy ước các dòng gán gốc đã có (có cap thì cap đã nằm ở
+// nơi khác/preview, không lặp lại ở helper này).
+function applyPointillistDebuffBoost(beforeVal, afterVal, attackerCombatant) {
+  if (attackerCombatant?.equippedOutfit === "Pointillist's Uniform" && (attackerCombatant.currentSanity ?? 0) >= (attackerCombatant.maxSanity ?? 0) && afterVal > beforeVal) {
+    return beforeVal + Math.floor((afterVal - beforeVal) * 1.25);
+  }
+  return afterVal;
+}
+
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
   // perHitMultForBulletEffect — khai báo Ở ĐÂY (top-level hàm, KHÔNG PHẢI bên
@@ -747,8 +764,8 @@ async function resolveOnePendingAction(encounter, p) {
               // !evadedCompletely — NÉ MỘT PHẦN (M1 nhiều hit, evadedCompletely vẫn
               // false) thì status vẫn áp bình thường (đúng — 1 phần đòn vẫn trúng).
               if (!evadedCompletely) {
-                target.sinking = t.preview.finalSinking;
-                target.rupture = t.preview.finalRupture;
+                target.sinking = applyPointillistDebuffBoost(target.sinking ?? 0, t.preview.finalSinking, attacker.combatant);
+                target.rupture = applyPointillistDebuffBoost(target.rupture ?? 0, t.preview.finalRupture, attacker.combatant);
                 // QUAN TRỌNG: dùng burnStacksAfter/bleedStacksAfter (giá trị NGAY SAU
                 // gain/consume từ dmgStr, TRƯỚC khi calcMathCore áp công thức "cuối
                 // turn") — KHÔNG dùng finalBurn/finalBleed (đã bị giảm nửa SẴN, vì
@@ -758,6 +775,7 @@ async function resolveOnePendingAction(encounter, p) {
                 // hoàn toàn với luật, và làm hỏng cả Break the Dams/Craving Synergy/
                 // Thirst (chúng cần biết bleed CHƯA bị giảm khi check điều kiện). Halving
                 // THẬT giờ chỉ xảy ra trong advanceCombatantTurn (xem comment ở đó).
+                const burnBeforeThisHit = target.burn ?? 0;
                 const lastHitForStatus = t.preview.instanceResults[t.preview.instanceResults.length - 1];
                 target.burn = lastHitForStatus?.burnStacksAfter ?? target.burn;
                 const bleedBeforeThisHit = target.bleed ?? 0;
@@ -769,6 +787,12 @@ async function resolveOnePendingAction(encounter, p) {
                   const bleedGainedThisHit = rawNewBleed - bleedBeforeThisHit;
                   rawNewBleed = bleedBeforeThisHit + Math.floor(bleedGainedThisHit * 1.25);
                 }
+                // "Pointillist's Uniform" — outfit KHÁC "Kurokumo Wakashu" (1
+                // combatant chỉ mặc được 1 outfit) nên không lo 2 khối trên
+                // chồng lẫn nhau — gọi SAU Dark Cloud để áp cho TRƯỜNG HỢP
+                // Pointillist's riêng (Dark Cloud không kích hoạt thì rawNewBleed
+                // vẫn là giá trị gốc, helper tự so before/after để tính đúng gain).
+                rawNewBleed = applyPointillistDebuffBoost(bleedBeforeThisHit, rawNewBleed, attacker.combatant);
                 target.bleed = rawNewBleed;
                 // Hemorrhage (xác nhận trực tiếp): "+1 stack MỖI LẦN áp Bleed" —
                 // phát hiện bằng cách so sánh Bleed TRƯỚC/SAU đòn này (tăng = có áp
@@ -778,14 +802,14 @@ async function resolveOnePendingAction(encounter, p) {
                   target.hemorrhage = Math.min(HEMORRHAGE_MAX, (target.hemorrhage ?? 0) + 1);
                   target.hemorrhageAppliedThisTurn = true;
                 }
-                target.tremor = t.preview.finalTremor;
+                target.tremor = applyPointillistDebuffBoost(target.tremor ?? 0, t.preview.finalTremor, attacker.combatant);
                 // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua test thực tế của user
                 // — Burn tag "+NBurn" gõ tay hoàn toàn KHÔNG hoạt động) —
                 // calcMathCore đã tính đúng finalBurn (bao gồm cả +NBurn tag)
                 // từ trước, nhưng index.js CHƯA BAO GIỜ áp dụng nó vào
                 // target.burn thật — khác với finalTremor/finalSinking/
                 // finalRupture đều đã có sẵn dòng gán tương tự.
-                target.burn = t.preview.burnStackAfterHit;
+                target.burn = applyPointillistDebuffBoost(burnBeforeThisHit, t.preview.burnStackAfterHit, attacker.combatant);
                 // "Zwei Association": áp Tremor THẬT ở đây (SAU khi ghi đè từ
                 // preview đã chạy xong ở dòng trên) — finalizeReactiveChoice chỉ
                 // đánh dấu pending vì áp trực tiếp ở đó sẽ bị ghi đè mất bởi dòng
@@ -1153,6 +1177,28 @@ async function resolveOnePendingAction(encounter, p) {
                 const chargingGain = attacker.combatant.hasWarpCorpCleaner ? Math.round(1 * 1.5) : 1;
                 attacker.combatant.charge = Math.min(CHARGE_MAX, (attacker.combatant.charge ?? 0) + chargingGain);
                 resultLines.push(`⚡ **Charging** — ${attacker.label} nhận ${chargingGain} Charge (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
+              // GAP MỚI (audit toàn bộ weapon.js theo yêu cầu trực tiếp: "phần 5
+              // và phần 6 thì có sẵn trong file code hết rồi... chưa tự động
+              // hóa để hoạt động trong encounter thật") — "Speed" (Viriscent
+              // Pyrojade Ring/Cinq Rapier): "4 đòn đánh thường sẽ nhận 1 Haste"
+              // — weapon.js ghi "[ĐÃ TỰ ĐỘNG HOÁ]" nhưng audit thật KHÔNG tìm
+              // thấy code nào cả (chỉ có trong book-system.js's unlock list) —
+              // implement THẬT ở đây, CÙNG pattern m1AttackCount % 4 với
+              // Charging ở trên (2 mechanic hoàn toàn song song, chỉ khác field
+              // đích: Charge vs Haste).
+              if (weaponMechanics.includes("warp_speed_haste") && attacker.combatant.m1AttackCount % 4 === 0) {
+                attacker.combatant.haste = (attacker.combatant.haste ?? 0) + 1;
+                resultLines.push(`💨 **Speed** — ${attacker.label} nhận 1 Haste (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
+              }
+              // GAP MỚI (audit weapon.js) — "Blade" (Blade Lineage Hwando):
+              // "3 đòn đánh thường (M1) sẽ nhận 1 Poise" — weapon.js hoàn toàn
+              // KHÔNG có tag [ĐÃ/KHÔNG TỰ ĐỘNG HOÁ] (bị bỏ sót, khác các weapon
+              // khác đều có), audit xác nhận chưa có code — implement CÙNG
+              // pattern m1AttackCount % N (N=3 thay vì 4).
+              if (weaponMechanics.includes("blade_hwando_poise") && attacker.combatant.m1AttackCount % 3 === 0) {
+                attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 1);
+                resultLines.push(`⚔️ **Blade** — ${attacker.label} nhận 1 Poise (đòn đánh thường thứ ${attacker.combatant.m1AttackCount}).`);
               }
               // "Blue Reverberation Ensemble" (L'Heure du Loup/Yesterday's
               // Promise): 4 đòn đánh thường → +1 Tremor lên TẤT CẢ target.
