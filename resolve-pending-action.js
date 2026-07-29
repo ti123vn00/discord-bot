@@ -14,6 +14,11 @@ module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_M
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
+  // perHitMultForBulletEffect — khai báo Ở ĐÂY (top-level hàm, KHÔNG PHẢI bên
+  // trong vòng for (const t of p.targets) bên dưới) — để dùng được ở CẢ bên
+  // trong vòng for LẪN các đoạn code SAU KHI vòng for đó đã đóng (VD Blade
+  // Lineage keypage 1's trigger, đặt sau chỗ ghi đè poise chung).
+  let perHitMultForBulletEffect = null;
             const attacker = resolveCombatant(encounter, p.attackerId);
             if (!attacker) { resultLines.push(`⚠️ Bỏ qua 1 action — không tìm thấy attacker ${p.attackerId} (có thể đã rời encounter).`); return resultLines; }
 
@@ -249,11 +254,11 @@ async function resolveOnePendingAction(encounter, p) {
               // nhánh "fraction" đơn giản hơn (không chọn được hit nào). Giờ CẢ
               // 2 dùng CHUNG 1 logic per-hit — nhất quán, hỗ trợ chọn hit cụ thể
               // cho MỌI loại đòn (M1 hay skill).
-              // perHitMultForBulletEffect — GAP MỚI (khai báo NGOÀI khối {}
-              // bên dưới, vì perHitMult chỉ tồn tại BÊN TRONG khối đó — cần
-              // "xuất" giá trị ra ngoài để dùng ở chỗ áp Frost/Incendiary
-              // bulletStack effect phía sau, xa hơn nhiều so với khối này).
-              let perHitMultForBulletEffect = null;
+              // perHitMultForBulletEffect — khai báo Ở TOP-LEVEL hàm (xem đầu
+              // hàm resolveOnePendingAction), KHÔNG PHẢI ở đây — nếu không, dù
+              // "xuất" ra khỏi khối {} bên dưới thì vẫn chỉ tồn tại trong PHẠM
+              // VI vòng for (const t of p.targets) này, không tới được các
+              // đoạn code NẰM NGOÀI vòng for đó (VD Blade Lineage keypage 1).
               {
                 // M1 NHIỀU HIT — cho phép TRỘN nhiều LOẠI phòng thủ khác nhau để chặn
                 // các CỤM hit khác nhau trong CÙNG 1 đòn M1 (xác nhận trực tiếp từ GM:
@@ -1234,6 +1239,28 @@ async function resolveOnePendingAction(encounter, p) {
             // tương tự (Liu Association) ngay dưới đây đã giải quyết.
             if (attacker.combatant.equippedOutfit === "Blade Lineage" && !p.isM1 && attacker.type === "player" && p.targets.length > 0) {
               attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 3);
+            }
+            // "Blade Lineage Mentor" (outfit) — GAP MỚI (xác nhận trực tiếp):
+            // "Mỗi khi sử dụng page của Blade Lineage Syndicate bạn nhận được
+            // Rending cho đến hết turn. Giúp gia tăng 30% Dmg Slash và tăng 3
+            // Dice Up cho mọi Dice là Slash" — "page của Blade Lineage
+            // Syndicate" xác định qua skill.weaponOf chứa "Blade Lineage" (VD
+            // "Blade Lineage Hwando"). "renderingActive" reset về false ở
+            // advanceCombatantTurn (kéo dài ĐẾN HẾT TURN, không phải vĩnh
+            // viễn). +30% Dmg Slash áp trong attacker-perk-context.js (chỉ khi
+            // dmgStr có hit Slash). +3 Dice Up CHỈ cho Dice Slash — vì hệ
+            // thống diceUp hiện tại LÀ SỐ HIỂN THỊ (GM/player tự cộng thủ công
+            // khi tính dmgStr, KHÔNG tự động áp vào calc — xác nhận qua
+            // encounter-display.js/message-create-handler.js's cách dùng
+            // diceUp khác) — nên field riêng "diceUpSlashOnly" cũng chỉ cần
+            // HIỂN THỊ trên board để GM/player tự biết cộng khi roll Dice
+            // Slash, nhất quán với cách diceUp thường hoạt động.
+            if (attacker.combatant.equippedOutfit === "Blade Lineage Mentor" && !p.isM1 && attacker.type === "player" && p.targets.length > 0) {
+              const usedSkill = findSkill(p.skillKey);
+              if (usedSkill?.weaponOf?.includes("Blade Lineage")) {
+                attacker.combatant.renderingActive = true;
+                attacker.combatant.diceUpSlashOnly = (attacker.combatant.diceUpSlashOnly ?? 0) + 3;
+              }
             }
             // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận trực tiếp: "outfit của Liu
             // association chưa áp dụng được việc khi áp burn sẽ trừ stamina kẻ

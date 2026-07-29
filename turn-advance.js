@@ -255,6 +255,10 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     combatant.defenseDown = 0;
     combatant.clashAttackBoost = (combatant.blackSuitPersistentBonus ?? 0); // "Black Suit" — GAP MỚI: Clash Attack Boost từ Emotion Level KÉO DÀI hết encounter (không như reset=0 thông thường), cộng LẠI ngay sau reset mỗi turn.
     combatant.unopposedAttackBoost = 0;
+    // "Blade Lineage Mentor" (outfit) — Rending kéo dài ĐẾN HẾT TURN (không
+    // phải vĩnh viễn như Black Suit) — reset mỗi turn mới.
+    combatant.renderingActive = false;
+    combatant.diceUpSlashOnly = 0;
     if ((combatant.protectionTurnsLeft ?? 0) > 0) {
       combatant.protectionTurnsLeft -= 1;
       if (combatant.protectionTurnsLeft <= 0) combatant.protection = 0;

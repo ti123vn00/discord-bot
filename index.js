@@ -1772,6 +1772,13 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
     // Chuyển sang nhân TRỰC TIẾP giá trị base trong dmgStr string bằng regex.
     const waltzInBlackApplies = verify.skillKey === "waltz in black" && targets[0]?.combatant?.waltzInWhiteHitLastRound;
     if (waltzInBlackApplies) defenseBypass.blockEvade = true;
+    // "Blade Lineage Mentor" (outfit) — GAP MỚI (xác nhận trực tiếp): "Khi trên
+    // hoặc bằng 10 Poise, To Claim Their Bones của bạn sẽ trở thành Undodgeable
+    // và nhận 5 Dice Up" — cùng pattern động với Waltz In Black ngay trên.
+    if (player.equippedOutfit === "Blade Lineage Mentor" && (player.poise ?? 0) >= 10 && verify.skillKey === "to claim their bones") {
+      defenseBypass.blockEvade = true;
+      player.diceUp = (player.diceUp ?? 0) + 5;
+    }
     const previews = targets.map(t => {
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false, attackerId: playerId, targetId: t.id, isMiddleSkill, skillKey: verify.skillKey });

@@ -153,6 +153,9 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.tremor > 0) statusParts.push(`<:Tremor:1513762737388257380>${combatant.tremor}`);
     if (combatant.paralyze > 0) statusParts.push(`<:Paralyze:1513763316479295548>${combatant.paralyze}`);
     if (combatant.diceUp > 0) statusParts.push(`<:DiceUp:1513767795681398894>${combatant.diceUp}`);
+    // "Blade Lineage Mentor" (outfit) — diceUpSlashOnly CHỈ hiển thị (giống
+    // diceUp thường), GM/player tự cộng thủ công khi roll Dice Slash.
+    if (combatant.diceUpSlashOnly > 0) statusParts.push(`<:DiceUp:1513767795681398894>${combatant.diceUpSlashOnly} (chỉ Slash)`);
     if (combatant.diceDown > 0) statusParts.push(`<:DiceDown:1513767826257874964>${combatant.diceDown}`);
     if (combatant.smoke > 0) statusParts.push(`<:Smoke:1513778039610282015>${combatant.smoke}`);
     if (combatant.vengeanceMark > 0) statusParts.push(`<:VengeanceMark:1513768136023740436>${combatant.vengeanceMark}`);

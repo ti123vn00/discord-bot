@@ -61,6 +61,10 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // Blunt" — CHỈ khi dmgStr có hit Blunt (khác Big Sibling — toàn bộ, không
     // giới hạn type). Regex tránh nhầm với "Bleed"/chữ khác theo sau "B".
     if (attacker.equippedOutfit === "The Middle Little Sibling" && (target.vengeanceMark ?? 0) > 0 && /\dB(?![a-zA-Z])/.test(dmgStr ?? "")) bonusPct += 10;
+    // "Blade Lineage Mentor" (outfit) — GAP MỚI (xác nhận trực tiếp): "gia
+    // tăng 30% Dmg Slash" khi Rending đang active (kéo dài đến hết turn, xem
+    // resolve-pending-action.js/turn-advance.js) — regex tránh nhầm "Sinking".
+    if (attacker.equippedOutfit === "Blade Lineage Mentor" && attacker.renderingActive && /\dS(?![a-zA-Z])/.test(dmgStr ?? "")) bonusPct += 30;
     // GAP ĐÃ SỬA (xác nhận trực tiếp: "các status làm tăng dmg nhận đơn giản là
     // gộp làm một với dmg bonus nên là vẫn bão hòa thôi. Tuy nhưng khác biệt của
     // nó với Dmg Bonus là người khác cũng có thể hưởng lợi do là debuff lên
