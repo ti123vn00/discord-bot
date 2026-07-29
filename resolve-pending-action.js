@@ -12,6 +12,21 @@
 
 module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, combatantResStr, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
 
+// "Shi Association" (outfit) keypage 2 — "Khi dưới hoặc bằng 25% HP, Poise
+// của bạn sẽ được set về 5 Poise và sẽ không bao giờ giảm xuống hơn mức này"
+// — helper DÙNG CHUNG (không cần dependency injection gì thêm, chỉ đọc/ghi
+// trực tiếp combatant, giống style file này) — gọi ở MỌI điểm currentHp/poise
+// của 1 combatant vừa được chốt lại trong hàm resolveOnePendingAction (xem
+// các nơi gọi bên dưới). CHỈ set LÊN (Math.max), không bao giờ tự hạ Poise
+// xuống nếu đang > 25% HP — mọi dòng ghi Poise khác trong file này (+2 Blade
+// Lineage, +4 Shi Katana, +3 Blade Lineage Page...) đều CỘNG DỒN (không có
+// dòng nào TRỪ Poise) nên gọi 1 lần SAU CÙNG mỗi khối là đủ, không lo bị đè.
+function applyShiAssociationPoiseFloor(combatant) {
+  if (combatant?.equippedOutfit === "Shi Association" && (combatant.maxHp ?? 0) > 0 && (combatant.currentHp / combatant.maxHp) <= 0.25) {
+    combatant.poise = Math.max(combatant.poise ?? 0, 5);
+  }
+}
+
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
   // perHitMultForBulletEffect — khai báo Ở ĐÂY (top-level hàm, KHÔNG PHẢI bên
@@ -595,6 +610,10 @@ async function resolveOnePendingAction(encounter, p) {
                 shieldHpNote = ` 🛡️[Shield HP hấp thụ ${absorbed.toFixed(3)}, còn ${target.shieldHp.toFixed(3)}]`;
               }
               target.currentHp = Math.max(0, target.currentHp - finalDmg);
+              // "Shi Association" — floor Poise NGAY khi rơi <=25% Max HP do bị
+              // tấn công (không đợi tới lượt hành động kế tiếp của họ — mô tả
+              // gốc không giới hạn chỉ áp khi họ là attacker).
+              applyShiAssociationPoiseFloor(target);
               // "Hana Association": "+1 Dice Up mỗi 10 HP mất trong turn" — tích
               // luỹ hpLostThisTurn, so sánh ngưỡng 10 TRƯỚC/SAU để chỉ cộng phần
               // CHÊNH LỆCH (không ghi đè diceUp có thể đã tăng từ nguồn khác).
@@ -693,7 +712,19 @@ async function resolveOnePendingAction(encounter, p) {
                 } else if (targetResolved.type === "player") {
                   for (const otherPid of Object.keys(encounter.players)) {
                     if (otherPid === t.targetId) continue;
-                    applyEmotionDelta(encounter.players[otherPid], 5);
+                    const allyCombatant = encounter.players[otherPid];
+                    applyEmotionDelta(allyCombatant, 5);
+                    // "Shi Association" (outfit) keypage 3 — GAP MỚI: "Mỗi 1
+                    // đồng minh chết trong trận bạn nhận được 2 Dice Up cho đến
+                    // hết encounter" — TÁI SỬ DỤNG đúng vòng for "đồng đội" đã
+                    // có sẵn ở trên (đồng đội = mọi player KHÁC trong
+                    // encounter.players, cùng quy ước với Emotion Coin ngay
+                    // trên) — cộng dồn vào field persistent, áp lại vào diceUp
+                    // mỗi turn ở turn-advance.js (giống pattern
+                    // blackSuitPersistentBonus).
+                    if (allyCombatant.equippedOutfit === "Shi Association") {
+                      allyCombatant.shiAssociationDiceUpBonus = (allyCombatant.shiAssociationDiceUpBonus ?? 0) + 2;
+                    }
                   }
                 }
               }
@@ -774,6 +805,7 @@ async function resolveOnePendingAction(encounter, p) {
                 target.currentSanity = t.preview.finalSanity;
                 if (haouSinkingTriggered) {
                   target.currentHp = Math.max(0, target.currentHp - target.haouSinking);
+                  applyShiAssociationPoiseFloor(target);
                   target.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, target.currentSanity - 1);
                   checkStaggerPanic(target);
                 }
@@ -992,6 +1024,10 @@ async function resolveOnePendingAction(encounter, p) {
               if (attacker.combatant.equippedOutfit === "Blade Lineage" && (perHitMultForBulletEffect ?? []).some(m => m > 0 && m < 1)) {
                 attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 2);
               }
+              // "Shi Association" — floor Poise của CHÍNH attacker sau khi Poise
+              // vừa được ghi đè/cộng từ hành động này (đặt SAU cùng khối trên,
+              // giống lý do Blade Lineage +2 phải đặt sau dòng ghi đè chính).
+              applyShiAssociationPoiseFloor(attacker.combatant);
               attacker.combatant.charge = firstPreview.finalCharge;
               // Eye Of Horus — cộng THÊM (không ghi đè) SAU dòng gán finalCharge ở
               // trên — xem comment đầy đủ tại chỗ khai báo eyeOfHorusChargeGainedThisAction.
