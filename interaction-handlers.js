@@ -16,6 +16,9 @@
 // Factory tự client.on("interactionCreate", ...) (nhiều listener riêng biệt,
 // y hệt cấu trúc gốc) bên trong — không return gì cả.
 
+const fs = require("fs");
+const path = require("path");
+
 module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
@@ -429,6 +432,32 @@ client.on("interactionCreate", async (interaction) => {
   // GAP ĐÃ SỬA (xác nhận trực tiếp: "add... enemy") — nút "➕ Add Enemy" trong
   // gmpanel, mở Modal nhập key/name/hp/res/weapon (tái dùng field giống lệnh
   // text -encounter addenemy).
+  if (interaction.customId.startsWith("gmpaneladdskill:")) {
+    const [, channelId, ownerId] = interaction.customId.split(":");
+    if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+      return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới bấm được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      const enemyOptions = Object.entries(encounter.enemies).filter(([, e]) => e.currentHp > 0)
+        .map(([k, e]) => new StringSelectMenuOptionBuilder().setLabel(`👹 ${e.name} (${k})`).setValue(k));
+      if (enemyOptions.length === 0) throw new Error("Chưa có enemy nào còn sống.");
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`gmaddskillenemyselect:${channelId}:${ownerId}`)
+        .setPlaceholder("Chọn enemy sẽ nhận skill riêng...")
+        .addOptions(...enemyOptions.slice(0, 25));
+      await interaction.reply({
+        embeds: [{ title: "📖 Add Skill — Bước 1: Chọn enemy", color: 0xf39c12 }],
+        components: [new ActionRowBuilder().addComponents(menu)],
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+
   if (interaction.customId.startsWith("gmpaneladdenemy:")) {
     const [, channelId, ownerId] = interaction.customId.split(":");
     if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
@@ -2289,9 +2318,86 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// GAP ĐÃ SỬA (xác nhận trực tiếp: "add... enemy") — submit Modal Add Enemy, TÁI
-// DÙNG chính xác logic của lệnh text -encounter addenemy (createCombatant,
-// insertIntoTurnOrderMidRound...), chỉ đổi nguồn input từ kv text sang Modal fields.
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("gmaddskillenemyselect:")) return;
+  const [, channelId, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId && !ADMIN_IDS.has(interaction.user.id)) {
+    return interaction.reply({ content: "⚠️ Chỉ người mở bảng điều khiển này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  const enemyKey = interaction.values[0];
+  // GAP MỚI (audit accessory.js/addenemyskill theo yêu cầu trực tiếp) — Bước
+  // 2/2: modal nhập thông tin skill. Discord modal giới hạn TỐI ĐA 5 field —
+  // addenemyskill (text command) có 7 tham số (name/dice/light/cd/tags/
+  // narrative/sfx) nên GỘP light+cd vào 1 field và narrative+sfx vào 1 field
+  // (phân cách bằng dấu phẩy/gạch đứng), parse lại ở lúc submit.
+  const modal = new ModalBuilder()
+    .setCustomId(`gmaddskillmodal:${channelId}:${enemyKey}`)
+    .setTitle("📖 Add Skill riêng cho Enemy");
+  const nameInput = new TextInputBuilder().setCustomId("name").setLabel("Tên skill").setPlaceholder("VD: Iron Fist").setStyle(TextInputStyle.Short).setRequired(true);
+  const diceInput = new TextInputBuilder().setCustomId("dice").setLabel("Công thức dmg (dice)").setPlaceholder("VD: 40x2B").setStyle(TextInputStyle.Short).setRequired(true);
+  const lightCdInput = new TextInputBuilder().setCustomId("lightcd").setLabel("Light cost, CD turn (tuỳ chọn)").setPlaceholder("VD: 3, 3 — để trống nếu không có").setStyle(TextInputStyle.Short).setRequired(false);
+  const tagsInput = new TextInputBuilder().setCustomId("tags").setLabel("Tags (tuỳ chọn)").setPlaceholder("VD: guardbreak").setStyle(TextInputStyle.Short).setRequired(false);
+  const narrativeSfxInput = new TextInputBuilder().setCustomId("narrativesfx").setLabel("Narrative | SFX file (tuỳ chọn)").setPlaceholder("VD: Mo dồn lực vào 1 cú đấm. | iron_fist.mp3").setStyle(TextInputStyle.Paragraph).setRequired(false);
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(nameInput),
+    new ActionRowBuilder().addComponents(diceInput),
+    new ActionRowBuilder().addComponents(lightCdInput),
+    new ActionRowBuilder().addComponents(tagsInput),
+    new ActionRowBuilder().addComponents(narrativeSfxInput),
+  );
+  await interaction.showModal(modal).catch(() => {});
+});
+
+// Submit modal Add Skill (bước 2/2) — TÁI DÙNG chính xác logic của lệnh text
+// `-encounter addenemyskill` (cùng validate/cùng field customSkills), chỉ đổi
+// nguồn input từ kv text sang Modal fields + dropdown đã chọn enemy trước đó.
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  if (!interaction.customId.startsWith("gmaddskillmodal:")) return;
+  const [, channelId, enemyKey] = interaction.customId.split(":");
+  try {
+    const name = interaction.fields.getTextInputValue("name").trim();
+    const dice = interaction.fields.getTextInputValue("dice").trim();
+    if (!name || !dice) throw new Error("Tên skill và công thức dmg không được để trống.");
+    const lightCdRaw = (interaction.fields.getTextInputValue("lightcd") ?? "").trim();
+    const [lightRaw, cdRaw] = lightCdRaw.split(",").map(s => (s ?? "").trim());
+    const lightCost = parseInt(lightRaw ?? "", 10);
+    const cooldownTurns = parseInt(cdRaw ?? "", 10);
+    const tags = (interaction.fields.getTextInputValue("tags") ?? "").trim();
+    const narrativeSfxRaw = (interaction.fields.getTextInputValue("narrativesfx") ?? "").trim();
+    const [narrativeRaw, sfxRaw] = narrativeSfxRaw.split("|").map(s => (s ?? "").trim());
+    const narrative = narrativeRaw ?? "";
+    const sfx = sfxRaw ?? "";
+    if (sfx && !fs.existsSync(path.join(__dirname, "assets", "audio", "sfx", sfx))) {
+      throw new Error(`Không tìm thấy file \`${sfx}\` trong \`/assets/audio/sfx/\` — kiểm tra lại tên file/đã bỏ file vào repo chưa.`);
+    }
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Encounter không còn tồn tại.");
+      const enemy = encounter.enemies[enemyKey];
+      if (!enemy) throw new Error(`Enemy "${enemyKey}" không còn tồn tại (có thể đã bị xoá).`);
+      enemy.customSkills = enemy.customSkills ?? [];
+      const idx = enemy.customSkills.findIndex(s => s.name.toLowerCase() === name.toLowerCase());
+      const skillDef = {
+        name, dice,
+        lightCost: Number.isFinite(lightCost) && lightCost > 0 ? lightCost : 0,
+        cooldownTurns: Number.isFinite(cooldownTurns) && cooldownTurns > 0 ? cooldownTurns : 0,
+        tags, narrative, sfx: sfx || null,
+      };
+      if (idx === -1) enemy.customSkills.push(skillDef); else enemy.customSkills[idx] = skillDef;
+      await saveEncounter(channelId, encounter);
+      await interaction.reply({
+        content: `✅ Đã thêm skill riêng **${name}** cho **${enemy.name}** (key: \`${enemyKey}\`).\n> Dice: \`${dice}\`${lightCost > 0 ? ` | Light: ${lightCost}` : ""}${cooldownTurns > 0 ? ` | CD: ${cooldownTurns} turn` : ""}${tags ? ` | Tags: ${tags}` : ""}${sfx ? ` | SFX: ${sfx}` : ""}\n> Dùng qua bossmenu/gmpanel (chọn "📖 Skill/Critical") hoặc \`-encounter enemyattack key: ${enemyKey} target: <...> customskill: ${name}\`.`,
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    });
+  } catch (err) {
+    interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   if (!interaction.customId.startsWith("gmaddenemymodal:")) return;

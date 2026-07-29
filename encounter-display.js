@@ -89,6 +89,12 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     const hpPct = combatant.maxHp > 0 ? Math.max(0, combatant.currentHp / combatant.maxHp) : 0;
     const filled = Math.round(hpPct * 10);
     const hpBar = "🟥".repeat(filled) + "⬛".repeat(10 - filled);
+    // GAP MỚI (xác nhận trực tiếp): Stamina nên có bar giống HP — 10 ô vuông
+    // MÀU VÀNG (khác HP đỏ), mỗi ô = 10% Max Stamina — CÙNG công thức
+    // Math.round(pct * 10) với HP để nhất quán cách làm tròn.
+    const staminaPct = combatant.maxStamina > 0 ? Math.max(0, combatant.currentStamina / combatant.maxStamina) : 0;
+    const staminaFilled = Math.round(staminaPct * 10);
+    const staminaBar = "🟨".repeat(staminaFilled) + "⬛".repeat(10 - staminaFilled);
     const r = combatant.resistance;
     const resLine = combatant.staggered
       ? `2x/2x/2x (STAGGER, gốc ${r.B}xB ${r.P}xP ${r.S}xS)`
@@ -98,10 +104,15 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     const lines = [
       `**${label}**${combatant.currentHp <= 0 ? " — ĐÃ HẠ! 💀" : ""}`,
       `${hpBar} **${Math.max(0, Math.round(combatant.currentHp * 100) / 100)}/${combatant.maxHp}** HP`,
-      `> Stamina: **${combatant.currentStamina}/${combatant.maxStamina}**${combatant.maxSanity > 0 ? ` | Sanity: **${combatant.currentSanity}/${combatant.maxSanity}**` : ""}${combatant.maxLight > 0 ? ` | Light: **${combatant.currentLight}/${combatant.maxLight}**` : ""}`,
+      `${staminaBar} **${combatant.currentStamina}/${combatant.maxStamina}** Stamina`,
+    ];
+    if (combatant.maxSanity > 0 || combatant.maxLight > 0) {
+      lines.push(`> ${combatant.maxSanity > 0 ? `Sanity: **${combatant.currentSanity}/${combatant.maxSanity}**` : ""}${combatant.maxLight > 0 ? `${combatant.maxSanity > 0 ? " | " : ""}Light: **${combatant.currentLight}/${combatant.maxLight}**` : ""}`);
+    }
+    lines.push(
       `> Res: **${resLine}** | Vũ khí: **${combatant.weaponWeight}**`,
       `> Speed Range: **${combatant.speedRangeMin}~${combatant.speedRangeMax}**${combatant.currentSpeed !== null ? ` | Speed turn này: **${combatant.currentSpeed}**` : ""}${combatant.haste > 0 ? ` | <:Haste:1375181763994849333>${combatant.haste}` : ""}${combatant.bind > 0 ? ` | <:Fix_Bind:1513768025881317457>${combatant.bind}` : ""}`,
-    ];
+    );
     // eyeOfHorusAmmo — GAP ĐÃ SỬA (xác nhận trực tiếp): "tôi không thấy phần
     // stack ammo ở phần encounter status" — pool NỘI TẠI riêng của Eye Of Horus
     // (8, reset mỗi turn), chỉ hiển thị cho người ĐANG cầm vũ khí này.
@@ -127,7 +138,6 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
       emotionLine += ` — ⏳ CD còn ${combatant.emotionLevelCooldownLeft} turn`;
     }
     lines.push(emotionLine);
-    if ((combatant.unlockedPerks ?? []).length > 0) lines.push(`> ✨ Perk: ${combatant.unlockedPerks.join(", ")}`);
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) lines.push(`> ⚡ **Overcharged** — +${combatant.overchargedDiceUpBonus} Dice Up, +${combatant.overchargedDmgBonusPct}% Dmg — còn ${combatant.overchargedTurnsLeft} turn`);
     if ((combatant.breakTheDamsCdLeft ?? 0) > 0) lines.push(`> ⏳ Break the Dams CD — còn ${combatant.breakTheDamsCdLeft} turn`);
     if (combatant.shinMangActive) lines.push(`> 🌑 **Shin/Mang active** (vòng ${combatant.shinMangRounds}) — -0,2x Res bản thân, +${combatant.shinMangRounds * 10}% Dmg M1+skill, True Dmg`);

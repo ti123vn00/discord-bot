@@ -46,7 +46,7 @@ const WEAPONS = {
     type: "Slash",
     baseDamage: 13,
     passives: [
-      { name: "Blade", mechanicId: "blade_hwando_poise", desc: "3 đòn đánh thường (M1) sẽ nhận 1 Poise. [ĐÃ TỰ ĐỘNG HOÁ.]" },
+      { name: "Blade", desc: "3 đòn đánh thường (M1) sẽ nhận 1 Poise" },
     ],
     // Critical "Sharp Cuts" ĐÃ CÓ trong skills.js (key "sharp cuts", weaponOf:
     // "Blade Lineage Hwando") — roll qua `-skill sharp cuts`. LƯU Ý: skills.js CŨNG
@@ -97,12 +97,14 @@ const WEAPONS = {
           "Trong 1 turn khi tấn công 1 đối tượng, nếu đánh thường: 1 lần → bắn thêm 1 Repeat Ammo, gây sát thương chuẩn. " +
           "Dưới hoặc bằng 3 lần → +50% sát thương. Dưới hoặc bằng 6 lần → Base dmg nâng lên 4x9. " +
           "Mỗi lần đánh thường: gắn 2 Tremor + 2 Charge lên bản thân. " +
-          "[ĐÃ TỰ ĐỘNG HOÁ — xem eyeOfHorusTargetHitCounts/eyeOfHorusVolleyCount trong resolve-pending-action.js/index.js — comment cũ ghi sai, đã audit lại xác nhận có code thật đầy đủ.]",
+          "[KHÔNG TỰ ĐỘNG HOÁ — leo thang theo SỐ LẦN đánh thường TRONG 1 TURN lên CÙNG 1 đối tượng, hệ thống hiện không track " +
+          "counter dạng này; GM/player tự cộng % dmg + đổi base dmg + gắn Tremor/Charge bằng tay theo đúng mốc.]",
       },
       {
         name: "Ammo: 8",
         desc:
-          "[ĐÃ TỰ ĐỘNG HOÁ — xem eyeOfHorusAmmo/eyeOfHorusReloadPending trong combatant-factory.js/turn-advance.js — comment cũ ghi sai (viết trước khi hệ thống Ammo được xây), đã audit lại xác nhận có code thật.]",
+          "[KHÔNG TỰ ĐỘNG HOÁ — không có hệ thống \"đạn\"/reload trong bot, tương tự Light/Stamina/Sanity/Charge. " +
+          "GM/player tự đếm 8 lượt bắn rồi tự narrate hết đạn/reload theo ý đồ riêng của bàn chơi.]",
       },
     ],
     // Critical "Tactical Suppression" — có trong skills.js (key "tactical
@@ -149,13 +151,13 @@ const WEAPONS = {
     name: "Fused Blade of Ruined Mirror Worlds", weight: "heavy", type: "Slash", baseDamage: 28,
     passives: [{
       name: "Dullahan",
-      desc: "Parry của bạn khi sử dụng sẽ khiến bạn đánh thường lên người kẻ địch. Vào turn kế sau khi bạn Parry bạn sẽ nhận được 1 Stack Dullahan và giảm bản thân 15 Sanity. Khi có Dullahan bạn nhận được 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end bạn sẽ mất (15 - số Coffin hiện tại trên bản thân) Sanity. Khi dưới -15 Sanity, mỗi turn end bạn sẽ nhận được thêm 1 Stack Dullahan. [ĐÃ TỰ ĐỘNG HOÁ — xem dullahanStacks/coffinStacks/dullahanParriedThisTurn/applyDullahanParryCounter trong combatant-factory.js/resolve-pending-action.js/interaction-handlers.js/misc-helpers.js/turn-advance.js — comment cũ ghi sai, đã audit lại xác nhận có code thật đầy đủ.]",
+      desc: "Parry của bạn khi sử dụng sẽ khiến bạn đánh thường lên người kẻ địch. Vào turn kế sau khi bạn Parry bạn sẽ nhận được 1 Stack Dullahan và giảm bản thân 15 Sanity. Khi có Dullahan bạn nhận được 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end bạn sẽ mất (15 - số Coffin hiện tại trên bản thân) Sanity. Khi dưới -15 Sanity, mỗi turn end bạn sẽ nhận được thêm 1 Stack Dullahan. [KHÔNG TỰ ĐỘNG HOÁ — cơ chế Dullahan/Coffin quá đặc thù, GM/player tự quản lý.]",
     }],
     criticalSkillKey: "requiem",
   },
   "zweihander": {
     name: "Zweihander", weight: "heavy", type: "Slash", baseDamage: 25,
-    passives: [{ name: "Your Shield", desc: "Bạn sẽ có khả năng block đòn thay cho một đồng đội duy nhất trong turn. [ĐÃ TỰ ĐỘNG HOÁ — xem yourShieldUsedThisTurn, nút \"Your Shield\" trong reactive-defense.js/interaction-handlers.js — comment cũ ghi sai, đã audit lại xác nhận có code thật.]" }],
+    passives: [{ name: "Your Shield", desc: "Bạn sẽ có khả năng block đòn thay cho một đồng đội duy nhất trong turn. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "patrolling",
   },
   "mimicry blade": {
@@ -165,12 +167,12 @@ const WEAPONS = {
   },
   "augury spear": {
     name: "Augury Spear", weight: "light", type: "Pierce", baseDamage: 6,
-    passives: [{ name: "Rotate Trigram", desc: "Vào đầu mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam -> Ri -> lặp lại. [ĐÃ TỰ ĐỘNG HOÁ — xem rotateTrigramIndex trong turn-advance.js — comment cũ ghi sai, đã audit lại xác nhận có code thật.]" }],
+    passives: [{ name: "Rotate Trigram", desc: "Vào đầu mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam -> Ri -> lặp lại. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "unyielding strike",
   },
   "kurokumo katana": {
     name: "Kurokumo Katana", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Dark Cloud", desc: "Page của Kurokumo Syndicate gây thêm +2 Bleed. [ĐÃ TỰ ĐỘNG HOÁ — xem check weaponName===\"Kurokumo Katana\" trong resolve-pending-action.js — comment cũ ghi sai, đã audit lại xác nhận có code thật (khác outfit Kurokumo Wakashu's Dark Cloud riêng).]" }],
+    passives: [{ name: "Dark Cloud", desc: "Page của Kurokumo Syndicate gây thêm +2 Bleed. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
     criticalSkillKey: "thundercleaver",
   },
   "shi association katana": {
@@ -200,7 +202,7 @@ const WEAPONS = {
   },
   "soldato rifle": {
     name: "Soldato Rifle", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Firing", desc: "Có thể tiêu stack đạn có trong người để đòn đánh thường chuyển qua dmg Pierce và +4 Base Dmg. Vũ khí này có max 8 viên đạn một lượt. [ĐÃ TỰ ĐỘNG HOÁ — xem bulletStack trong combatant-factory.js/resolve-pending-action.js/interaction-handlers.js — comment cũ ghi sai, đã audit lại xác nhận có code thật.]" }],
+    passives: [{ name: "Firing", desc: "Có thể tiêu stack đạn có trong người để đòn đánh thường chuyển qua dmg Pierce và +4 Base Dmg. Vũ khí này có max 8 viên đạn một lượt. [KHÔNG TỰ ĐỘNG HOÁ — hệ thống Ammo không được track.]" }],
     criticalSkillKey: "bayonet combat",
   },
   "atelier logic": {

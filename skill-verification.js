@@ -135,9 +135,6 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     // is not defined" — const trước đây chỉ tồn tại TRONG block if, không thoát
     // ra được tới return nằm NGOÀI block đó).
     let isOwnCriticalBypassed = false;
-    // isQuickstepBypassed — CÙNG lý do scope với isOwnCriticalBypassed ở trên
-    // (khai báo ngoài if-block để return cuối hàm truy cập được).
-    let isQuickstepBypassed = false;
   
     if (skillNameRaw && skillNameRaw.trim()) {
       const skill = findSkill(skillNameRaw.trim());
@@ -151,8 +148,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // khí hiện tại (không phải bất kỳ skill nào), tránh miễn CD nhầm skill khác.
       const currentWeapon = findWeaponAnywhere(attacker.weaponName);
       isOwnCriticalBypassed = attacker.orlandoFuriosoBypass && currentWeapon?.criticalSkillKey === skillKey;
-      isQuickstepBypassed = isCritical && attacker.quickstepCdResetPending && (attacker.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("giày wan mk3");
-      if (existingCd > 0 && !isOwnCriticalBypassed && !isQuickstepBypassed) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
+      if (existingCd > 0 && !isOwnCriticalBypassed) throw new Error(`Skill "${skill.name}" đang cooldown — còn ${existingCd} turn nữa.`);
       // "Tactical Suppression" — CD "3 Turn SAU KHI HẾT Shield HP" không dùng
       // skillCooldowns thông thường (bắt đầu ngay lúc dùng) — check riêng.
       if (skillKey === "tactical suppression" && attacker.tacticalSuppressionCdPending) {
@@ -308,7 +304,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       }
     }
   
-    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed, quickstepBypassConsumed: isQuickstepBypassed, effectiveBulletType, effectiveBulletCount };
+    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed, effectiveBulletType, effectiveBulletCount };
   }
 
   return {

@@ -11,10 +11,7 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-const fs = require("fs");
-const path = require("path");
-
-module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -486,35 +483,6 @@ client.on("messageCreate", async (message) => {
       message.reply(`❌ Grade phải từ ${GRADE_MAX}–${GRADE_MIN}.`);
       return;
     }
-    // "combatreward: yes" — GAP MỚI (đã thống nhất trực tiếp với Fragaria):
-    // kiến trúc hiện tại KHÔNG có cơ chế tự phát EXP/Ahn khi thắng combat (GM
-    // luôn tự `-give` thủ công) — Casual Outfit/Rats Outfit/Businessman chỉ
-    // có thể tự động hoá được PHẦN NHÂN HỆ SỐ, không phải phần TRIGGER (không
-    // có "combat ended, player won" event nào để tự bắt). Đánh dấu RÕ RÀNG
-    // bằng cờ này (mặc định KHÔNG áp dụng — chỉ boost khi GM gõ rõ) để tránh
-    // vô tình nhân hệ số cho những lần `-give` KHÔNG liên quan tới thắng trận
-    // (VD tặng quà, bù lỗi...).
-    const isCombatReward = (kv["combatreward"] ?? "").trim().toLowerCase() === "yes";
-    let combatRewardNote = null;
-    let finalExpGain = expGain;
-    let finalAhnGain = ahnGain;
-    if (isCombatReward && (expGain !== 0 || ahnGain !== 0)) {
-      const targetProfileForReward = await getPlayerData(targetUser.id);
-      const rewardOutfit = targetProfileForReward.equippedOutfit;
-      if (rewardOutfit === "Casual Outfit") {
-        finalExpGain = Math.round(expGain * 1.2);
-        finalAhnGain = Math.round(ahnGain * 1.2);
-        combatRewardNote = "🎽 Casual Outfit — +20% EXP và Ahn";
-      } else if (rewardOutfit === "Rats Outfit") {
-        finalExpGain = Math.round(expGain * 1.5);
-        finalAhnGain = Math.round(ahnGain * 0.5);
-        combatRewardNote = "🐀 Rats Outfit — +50% EXP, -50% Ahn";
-      } else if (rewardOutfit === "Businessman") {
-        finalExpGain = Math.round(expGain * 0.5);
-        finalAhnGain = Math.round(ahnGain * 1.5);
-        combatRewardNote = "💼 Businessman — +50% Ahn, -50% EXP";
-      }
-    }
     let bookName = null;
     if (bookRaw) {
       bookName = findBook(bookRaw);
@@ -538,10 +506,9 @@ client.on("messageCreate", async (message) => {
 
     // Thay vì thực hiện ngay, hiển thị preview + nút Xác nhận/Hủy để tránh
     // chuyển nhầm người/nhầm số lượng (đặc biệt nguy hiểm với admin give exp/grade/ahn).
-    const previewLines = buildGivePreviewLines({ ahnGain: finalAhnGain, bookName, bookCount, itemName, itemCount, expGain: finalExpGain, gradeTarget });
-    if (combatRewardNote) previewLines.push(`${combatRewardNote} (gốc ${expGain} EXP/${formatNumber(ahnGain)} Ahn → ${finalExpGain} EXP/${formatNumber(finalAhnGain)} Ahn)`);
+    const previewLines = buildGivePreviewLines({ ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget });
     const giveId = registerPendingGive(message.author.id, targetUser.id, isAdmin, {
-      ahnGain: finalAhnGain, bookName, bookCount, itemName, itemCount, expGain: finalExpGain, gradeTarget,
+      ahnGain, bookName, bookCount, itemName, itemCount, expGain, gradeTarget,
     });
     message.reply({
       embeds: [{
@@ -2017,13 +1984,6 @@ if (message.content.startsWith("-gacha")) {
             name, enemies: {}, players: {},
             gmId: message.author.id, createdAt: Date.now(),
             pendingActions: [], permadeath,
-            // stageBgm/bgmOverride — GAP MỚI (BGM/SFX file đính kèm): stageBgm là
-            // BGM mặc định của cả stage (set qua -encounter setbgm), bgmOverride
-            // là BGM tạm ghi đè khi có skill/transformation đặc biệt (set qua
-            // -encounter setbgmoverride, xoá qua -encounter clearbgmoverride) —
-            // CHỈ lưu TÊN FILE, không lưu file thật (file thật nằm trong
-            // /assets/audio/bgm/ của repo, Fragaria tự cung cấp).
-            stageBgm: null, bgmOverride: null,
             // turnNumber — bắt đầu 1 (Turn 1), tăng mỗi -encounter endturn.
             // actionLog — lịch sử ĐẦY ĐỦ các action đã CONFIRM (KHÔNG phải pending
             // — pendingActions là hàng chờ TRƯỚC khi confirm, actionLog là log SAU
@@ -2135,10 +2095,9 @@ if (message.content.startsWith("-gacha")) {
       const dice = (kv["dice"] ?? "").trim();
       if (!key || !name || !dice) {
         message.reply(
-          "⚠️ Cú pháp: `-encounter addenemyskill key: <enemy key> name: <tên skill riêng> dice: <công thức dmg>` (tùy chọn `light:`/`cd:`/`tags:`/`narrative:`/`sfx:`)\n" +
-          "> VD: `-encounter addenemyskill key: mo name: Iron Fist dice: 40x2B light: 3 cd: 3 tags: guardbreak narrative: Mo dồn toàn lực vào 1 cú đấm, mặt đất rung chuyển. sfx: iron_fist.mp3`\n" +
-          "> Khác với `skills:` ở `-encounter addenemy` (skill CÓ SẴN trong database, dùng chung với player) — đây là skill HOÀN TOÀN RIÊNG, chỉ đúng enemy này dùng được, không cần tồn tại trong database.\n" +
-          "> `sfx:` (tùy chọn) — tên file audio trong `/assets/audio/sfx/` sẽ tự đính kèm mỗi khi skill này được dùng."
+          "⚠️ Cú pháp: `-encounter addenemyskill key: <enemy key> name: <tên skill riêng> dice: <công thức dmg>` (tùy chọn `light:`/`cd:`/`tags:`/`narrative:`)\n" +
+          "> VD: `-encounter addenemyskill key: mo name: Iron Fist dice: 40x2B light: 3 cd: 3 tags: guardbreak narrative: Mo dồn toàn lực vào 1 cú đấm, mặt đất rung chuyển.`\n" +
+          "> Khác với `skills:` ở `-encounter addenemy` (skill CÓ SẴN trong database, dùng chung với player) — đây là skill HOÀN TOÀN RIÊNG, chỉ đúng enemy này dùng được, không cần tồn tại trong database."
         );
         return;
       }
@@ -2146,11 +2105,6 @@ if (message.content.startsWith("-gacha")) {
       const cooldownTurns = parseInt(kv["cd"] ?? "0", 10);
       const tags = (kv["tags"] ?? "").trim();
       const narrative = (kv["narrative"] ?? "").trim();
-      const sfx = (kv["sfx"] ?? "").trim();
-      if (sfx && !fs.existsSync(path.join(__dirname, "assets", "audio", "sfx", sfx))) {
-        message.reply(`❌ Không tìm thấy file \`${sfx}\` trong \`/assets/audio/sfx/\` — kiểm tra lại tên file/đã bỏ file vào repo chưa.`);
-        return;
-      }
       try {
         await withLock(encounterKey(encChannelId), async () => {
           const encounter = await getEncounter(encChannelId);
@@ -2163,7 +2117,7 @@ if (message.content.startsWith("-gacha")) {
             name, dice,
             lightCost: Number.isFinite(lightCost) && lightCost > 0 ? lightCost : 0,
             cooldownTurns: Number.isFinite(cooldownTurns) && cooldownTurns > 0 ? cooldownTurns : 0,
-            tags, narrative, sfx: sfx || null,
+            tags, narrative,
           };
           if (idx >= 0) enemy.customSkills[idx] = skillDef;
           else enemy.customSkills.push(skillDef);
@@ -2204,74 +2158,6 @@ if (message.content.startsWith("-gacha")) {
       }
       return;
     }
-
-    // GAP MỚI — BGM/SFX (file đính kèm, theo yêu cầu trực tiếp — KHÔNG phải
-    // voice channel thật, chỉ gửi kèm file trong text channel, không tự phát/
-    // loop). Quy ước thư mục CỐ ĐỊNH /assets/audio/bgm/ và /assets/audio/sfx/
-    // (giống repo thật của Fragaria, KHÔNG PHẢI trong container này) — GM chỉ
-    // gõ TÊN FILE (VD "boss_theme.mp3"), code tự ghép đường dẫn. File audio
-    // THẬT phải do Fragaria tự bỏ vào đúng thư mục đó trong repo thật — bot
-    // không tự tạo ra nội dung audio được.
-    if (sub === "setbgm" || sub === "setbgmoverride") {
-      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được đổi BGM."); return; }
-      const fileNameRaw = rest.trim();
-      if (!fileNameRaw) {
-        message.reply(
-          sub === "setbgm"
-            ? "⚠️ Cú pháp: `-encounter setbgm <tên file>` (VD: `-encounter setbgm boss_theme.mp3`) — file phải nằm sẵn trong `/assets/audio/bgm/` của repo thật."
-            : "⚠️ Cú pháp: `-encounter setbgmoverride <tên file>` — dùng khi 1 skill/transformation cần ghi đè BGM stage tạm thời (VD nhạc biến hình). Dùng `-encounter clearbgmoverride` để quay lại BGM stage gốc."
-        );
-        return;
-      }
-      const bgmPath = path.join(__dirname, "assets", "audio", "bgm", fileNameRaw);
-      if (!fs.existsSync(bgmPath)) {
-        message.reply(`❌ Không tìm thấy file \`${fileNameRaw}\` trong \`/assets/audio/bgm/\` — kiểm tra lại tên file/đã bỏ file vào repo chưa (đây là file THẬT bạn tự cung cấp, bot không tự tạo audio).`);
-        return;
-      }
-      try {
-        await withLock(encounterKey(encChannelId), async () => {
-          const encounter = await getEncounter(encChannelId);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          if (sub === "setbgm") encounter.stageBgm = fileNameRaw;
-          else encounter.bgmOverride = fileNameRaw;
-          await saveEncounter(encChannelId, encounter);
-        });
-        await message.reply({
-          content: sub === "setbgm" ? `🎵 BGM stage: **${fileNameRaw}**` : `🎵 BGM override (tạm thời): **${fileNameRaw}**`,
-          files: [new AttachmentBuilder(bgmPath)],
-        });
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
-    if (sub === "clearbgmoverride") {
-      if (!isAdmin) { message.reply("⚠️ Chỉ admin/GM mới được đổi BGM."); return; }
-      try {
-        let stageBgmToRepost = null;
-        await withLock(encounterKey(encChannelId), async () => {
-          const encounter = await getEncounter(encChannelId);
-          if (!encounter) throw new Error("Channel này chưa có encounter nào.");
-          if (!encounter.bgmOverride) throw new Error("Hiện không có BGM override nào đang áp dụng.");
-          encounter.bgmOverride = null;
-          stageBgmToRepost = encounter.stageBgm ?? null;
-          await saveEncounter(encChannelId, encounter);
-        });
-        if (stageBgmToRepost) {
-          const bgmPath = path.join(__dirname, "assets", "audio", "bgm", stageBgmToRepost);
-          if (fs.existsSync(bgmPath)) {
-            await message.reply({ content: `🎵 Quay lại BGM stage: **${stageBgmToRepost}**`, files: [new AttachmentBuilder(bgmPath)] });
-            return;
-          }
-        }
-        message.reply("✅ Đã xoá BGM override (không có BGM stage nào để quay lại).");
-      } catch (err) {
-        message.reply(`❌ ${err.message}`);
-      }
-      return;
-    }
-
     // cho trường hợp enemy bỏ chạy/bị bắt sống/rút lui giữa trận, không phải chết).
     // Enemy đã gỡ KHÔNG còn trong actionLog tương lai, không tính vào "tất cả đã hạ"
     // (allDead) — nếu muốn loại enemy ra khỏi điều kiện thắng mà KHÔNG coi là enemy
@@ -2487,20 +2373,6 @@ if (message.content.startsWith("-gacha")) {
           // tự set field lên combatant trực tiếp, bypass flow join thật). Thêm
           // flag đúng pattern (giống hasZweiAssociation...) để sửa tận gốc.
           joined.hasIndexProselyte = equippedOutfitNameNormalized === "index proselyte";
-          // "Shi Association" (outfit) keypage 1 — GAP MỚI: "Bạn nhận thêm 60
-          // Max HP, tuy nhiên HP của bạn không thể vượt quá hơn mốc 60 Max HP
-          // được cho thêm đó" — CHỈ tăng ceiling (maxHp), KHÔNG cộng thêm vào
-          // currentHp (joined.currentHp ở đây vẫn đang = finalHp CŨ, TRƯỚC khi
-          // +60 — đúng ý keypage: không được "hồi free" theo Max HP mới, phải
-          // tự hồi lên như bình thường). Đặt SAU createCombatant() (không đặt
-          // TRONG combatant-factory.js) vì maxHp param truyền vào đó CHÍNH LÀ
-          // currentHp khởi tạo (currentHp: maxHp) — nếu cộng 60 trước đó sẽ vô
-          // tình hồi luôn +60 currentHp, sai ý keypage. Không cần gate
-          // !wasJoined vì đây là stat modifier cố định theo trang bị (giống mọi
-          // hasXXX khác ở trên), phải tính lại mỗi lần join/rejoin đổi đồ.
-          if (joined.equippedOutfit === "Shi Association") {
-            joined.maxHp += 60;
-          }
           // GAP ĐÃ SỬA (xác nhận trực tiếp: "Index Proselyte outfit cũng chưa
           // tự động hóa phần roll dice 1-7 để lấy prescript") — player join
           // GIỮA encounter (sau khi rollspeed đã chạy) trước đây KHÔNG BAO GIỜ
@@ -2532,17 +2404,6 @@ if (message.content.startsWith("-gacha")) {
               // mãi mãi (không bao giờ hết hạn tự nhiên qua decay thông thường).
               joined.protectionTurnsLeft = 2;
               startNotes.push("+10 Protection (Udjat, hết sau 2 turn)");
-            }
-            // GAP MỚI (audit accessory.js theo yêu cầu trực tiếp — Perfect
-            // Cube/Giày Wan MK3/Composition Tool đều CHƯA có code nào cả, chỉ
-            // có mô tả trong data) — "Perfect Cube": "Perfect Start" (+50% Max
-            // Light lúc start) + "Perfect Mind" (+30 Sanity lúc start). "Perfect
-            // Body" (hồi 10 HP mỗi turn end) đặt riêng ở turn-advance.js.
-            const ownedAccessoriesForPerk = (joined.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase());
-            if (ownedAccessoriesForPerk.includes("perfect cube")) {
-              joined.currentLight = Math.min(joined.maxLight, Math.floor(joined.maxLight * 0.5));
-              joined.currentSanity = Math.min(joined.maxSanity, (joined.currentSanity ?? 0) + 30);
-              startNotes.push(`+${Math.floor(joined.maxLight * 0.5)} Light (Perfect Start, 50% Max Light)`, "+30 Sanity (Perfect Mind)");
             }
           }
           await saveEncounter(encChannelId, encounter);

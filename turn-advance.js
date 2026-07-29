@@ -10,28 +10,8 @@
 
 module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
 
-  // "Shi Association" (outfit) keypage 2 — CÙNG helper với bản trong
-  // resolve-pending-action.js (duplicate có chủ đích, KHÔNG inject qua
-  // dependency — hàm quá nhỏ, giữ đơn giản, đúng tinh thần "COPY NGUYÊN VĂN"
-  // của các file tách nhỏ trong project này). Gọi ở ĐẦU advanceCombatantTurn
-  // làm SAFETY NET — bắt các trường hợp HP tụt <=25% từ nguồn KHÔNG đi qua 2
-  // điểm chính đã xử lý ở resolve-pending-action.js (VD GM chỉnh HP tay qua
-  // GM Panel).
-  function applyShiAssociationPoiseFloor(combatant) {
-    if (combatant?.equippedOutfit === "Shi Association" && (combatant.maxHp ?? 0) > 0 && (combatant.currentHp / combatant.maxHp) <= 0.25) {
-      combatant.poise = Math.max(combatant.poise ?? 0, 5);
-    }
-  }
-
   function advanceCombatantTurn(combatant) {
     combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
-    applyShiAssociationPoiseFloor(combatant);
-    // GAP MỚI (audit accessory.js theo yêu cầu trực tiếp) — "Perfect Cube":
-    // "Perfect Body" — "Mỗi turn end được hồi 10 HP" — CHỈ hồi khi còn sống
-    // (currentHp > 0, tránh "hồi sinh" người đã chết 0 HP một cách vô lý).
-    if ((combatant.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("perfect cube") && (combatant.currentHp ?? 0) > 0) {
-      combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + 10);
-    }
     // "Blade Lineage Salsu" (outfit) — GAP MỚI (xác nhận trực tiếp): "Vào turn
     // start nếu Poise >=10, add vào base dmg của page/critical theo 1/2 lượng
     // Poise" — lưu tạm để áp dụng cho lần dùng skill/Critical TIẾP THEO trong
@@ -308,7 +288,6 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
     combatant.diceUp = 0;
     combatant.diceUp += (combatant.blackSuitPersistentBonus ?? 0); // "Black Suit" — GAP MỚI: Dice Up từ Emotion Level KÉO DÀI hết encounter, cộng LẠI ngay sau reset mỗi turn (TRƯỚC khi Rotate Trigram/Geon áp +3 riêng, để không bị ghi đè mất).
-    combatant.diceUp += (combatant.shiAssociationDiceUpBonus ?? 0); // "Shi Association" keypage 3 — mỗi đồng minh chết +2 Dice Up VĨNH VIỄN hết encounter, cùng pattern Black Suit (cộng lại ngay sau reset mỗi turn).
     // "Rotate Trigram" (Augury Spear passive) — xác nhận trực tiếp: "Vào đầu
     // mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam
     // -> Ri -> lặp lại". Geon: +3 Dice Up. Gon: +7 Protection (cap 20). Gam: +2

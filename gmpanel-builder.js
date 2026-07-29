@@ -45,6 +45,16 @@ module.exports = function ({ ADMIN_IDS, ActionRowBuilder, ButtonBuilder, ButtonS
       new ButtonBuilder().setCustomId(`gmpaneladdenemy:${channelId}:${userId}`).setLabel("➕ Add Enemy").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`gmpanelquickstatus:${channelId}:${userId}`).setLabel("🎯 Set Status (chọn nhanh)").setStyle(ButtonStyle.Secondary),
     ));
+    // GAP MỚI (xác nhận trực tiếp: "hoàn toàn không có lệnh hay cách nào add
+    // [skill riêng cho enemy] ở gmpanel cả") — trước đây CHỈ có lệnh text
+    // `-encounter addenemyskill`, không có nút — thêm nút riêng (hàng MỚI, để
+    // không tràn 5 nút/hàng của Discord) mở dropdown chọn enemy rồi modal nhập
+    // skill, TÁI DÙNG logic addenemyskill (xem gmaddskillmodal:).
+    if (aliveEnemies.length > 0) {
+      components.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`gmpaneladdskill:${channelId}:${userId}`).setLabel("📖 Add Skill cho Enemy").setStyle(ButtonStyle.Primary),
+      ));
+    }
     return {
       embeds: [{
         title: `🎛️ Bảng điều khiển GM — ${encounter.name}`,

@@ -92,14 +92,6 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       karmicConsequence: 0, // PERSISTENT, max 100 — +1%Dmg/stack (Index Proselyte tự áp lên bản thân)
       prescriptTargetId: null, // Will of Prescript — enemy đang bị đánh dấu "The Prescript Target's - The Index"
       blackSuitPersistentBonus: 0, // "Black Suit" (outfit) — số lần đạt Emotion Level, dùng cho Dice Up/Clash Attack Boost KÉO DÀI hết encounter (không reset theo turn như bản thường — xem sanity-emotion.js/turn-advance.js)
-      // "Shi Association" (outfit) keypage 3 — "Mỗi 1 đồng minh chết trong trận
-      // bạn nhận được 2 Dice Up cho đến hết encounter" — CÙNG PATTERN với
-      // blackSuitPersistentBonus ở trên (persistent, KHÔNG reset theo turn) —
-      // đã CỘNG SẴN x2/lần (không phải đếm số lần rồi nhân sau) vì chỉ áp vào
-      // đúng 1 field (diceUp), không như Black Suit áp vào nhiều field khác
-      // nhau. Tăng lúc detect đồng minh (player khác) chết ở
-      // resolve-pending-action.js, cộng LẠI vào diceUp mỗi turn ở turn-advance.js.
-      shiAssociationDiceUpBonus: 0,
       enhancementTattoosStack: 0, enhancementTattoosTurnsLeft: 0, enhancementTattoosStaminaAccum: 0, // "The Middle Little/Big Sibling" (outfit) — parry thành công (xem combat-utils.js) hoặc 20 Stamina qua M1 (xem resolve-pending-action.js) → +1 stack, kéo dài 2 Turn
       blSalsuBonusDmgPending: 0, // "Blade Lineage Salsu" (outfit) — turn start nếu Poise>=10, lưu tạm 1/2 Poise, áp vào base dmg skill/Critical TIẾP THEO (xem turn-advance.js/attacker-perk-context.js)
       renderingActive: false, diceUpSlashOnly: 0, // "Blade Lineage Mentor" (outfit) — Rending kích hoạt khi dùng page Blade Lineage Syndicate, kéo dài đến hết turn (xem resolve-pending-action.js/turn-advance.js)
@@ -334,23 +326,6 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
     // BlackSilence (Struggling): "giảm mọi Light Cost của Page đi 1 (không về 0)
     // và +4 Dice Up cho Critical vũ khí" — flag.
     blackSilence: false,
-    // GAP MỚI (audit accessory.js theo yêu cầu trực tiếp — "Giày Wan MK3" và
-    // "Composition Tool" đều CHƯA có code nào, chỉ có mô tả trong data) —
-    // "Quickstep": mỗi 3 đòn Critical → đòn Critical tiếp theo reset CD ngay.
-    // criticalUseCount đếm TỔNG số Critical đã dùng (không phân biệt skill
-    // nào); khi chạm bội số 3 thì bật cờ quickstepCdResetPending cho lần
-    // Critical KẾ TIẾP (bất kỳ skill nào — diễn giải hợp lý nhất từ mô tả gốc,
-    // xem resolve-pending-action.js/skill-verification.js).
-    criticalUseCount: 0,
-    quickstepCdResetPending: false,
-    // "Chain-Dashes": "Cứ mỗi hai lần né thì lần né tiếp theo sẽ né được 2
-    // hit" — evadeCount đếm TỔNG số lần né thành công; khi chạm bội số 2 thì
-    // bật cờ cho lần né KẾ TIẾP block được 2 hit thay vì 1 (xem
-    // interaction-handlers.js's nhánh evade).
-    evadeCount: 0,
-    chainDashesBonusHitPending: false,
-    // "Reactive" (Composition Tool) — persistent cả trận (KHÔNG reset theo turn).
-    staggerResistUsed: 0,
     // Nails: "mỗi đòn kẻ thù NHẬN sẽ nhận thêm Bleed = count Nails, mỗi lần nhận 1
     // đòn giảm 1/3 count Nails" — áp dụng khi combatant này là TARGET bị tấn công.
     nails: 0,
