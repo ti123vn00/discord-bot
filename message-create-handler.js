@@ -2373,6 +2373,20 @@ if (message.content.startsWith("-gacha")) {
           // tự set field lên combatant trực tiếp, bypass flow join thật). Thêm
           // flag đúng pattern (giống hasZweiAssociation...) để sửa tận gốc.
           joined.hasIndexProselyte = equippedOutfitNameNormalized === "index proselyte";
+          // "Shi Association" (outfit) keypage 1 — GAP MỚI: "Bạn nhận thêm 60
+          // Max HP, tuy nhiên HP của bạn không thể vượt quá hơn mốc 60 Max HP
+          // được cho thêm đó" — CHỈ tăng ceiling (maxHp), KHÔNG cộng thêm vào
+          // currentHp (joined.currentHp ở đây vẫn đang = finalHp CŨ, TRƯỚC khi
+          // +60 — đúng ý keypage: không được "hồi free" theo Max HP mới, phải
+          // tự hồi lên như bình thường). Đặt SAU createCombatant() (không đặt
+          // TRONG combatant-factory.js) vì maxHp param truyền vào đó CHÍNH LÀ
+          // currentHp khởi tạo (currentHp: maxHp) — nếu cộng 60 trước đó sẽ vô
+          // tình hồi luôn +60 currentHp, sai ý keypage. Không cần gate
+          // !wasJoined vì đây là stat modifier cố định theo trang bị (giống mọi
+          // hasXXX khác ở trên), phải tính lại mỗi lần join/rejoin đổi đồ.
+          if (joined.equippedOutfit === "Shi Association") {
+            joined.maxHp += 60;
+          }
           // GAP ĐÃ SỬA (xác nhận trực tiếp: "Index Proselyte outfit cũng chưa
           // tự động hóa phần roll dice 1-7 để lấy prescript") — player join
           // GIỮA encounter (sau khi rollspeed đã chạy) trước đây KHÔNG BAO GIỜ
