@@ -165,6 +165,39 @@ async function announceCurrentTurn(channelId, encounter, forceNewMessage = false
     const order = encounter.turnOrder ?? [];
     const entry = order[encounter.currentTurnIndex ?? 0];
     if (!entry) {
+      // Quest system (-contract) — yêu cầu trực tiếp: "mục đích của nó là hoàn
+      // toàn tự động hóa cho player farm... GM không phải lúc nào cũng có mặt
+      // được" — TỰ ĐỘNG gọi performEndTurn (không chờ bấm nút thủ công) khi hết
+      // 1 vòng turnOrder, CHỈ áp dụng cho encounter.isQuest (encounter GM thường
+      // vẫn giữ nguyên hành vi cũ — cần bấm nút, vì GM có mặt điều khiển thật).
+      //
+      // ĐIỀU KIỆN CHÍNH XÁC (xác nhận trực tiếp): CHỈ tự end turn khi (1) TẤT
+      // CẢ combatant đã hành động xong lượt của mình (currentTurnIndex vượt
+      // quá cuối turnOrder — chính là "!entry" ở check phía trên, xảy ra khi
+      // MỌI người — cả AI lẫn người thật — đã tự pass/kết thúc lượt) VÀ (2)
+      // KHÔNG còn pendingActions nào tồn dư (VD: AOE nhắm nhiều người, 1 vài
+      // người vẫn CHƯA phản hồi Guard/Evade/Parry dù đã qua lượt họ) — check
+      // TƯỜNG MINH (2) ở đây TRƯỚC khi gọi, thay vì chỉ dựa vào performEndTurn
+      // tự throw rồi catch ngầm — rõ ràng hơn cho người đọc code sau này, dù
+      // hành vi thực tế giống hệt (performEndTurn vẫn tự check lại 1 lần nữa,
+      // an toàn kép).
+      if (encounter.isQuest && (encounter.pendingActions ?? []).length === 0) {
+        try {
+          await performEndTurn(channelId, encounter.gmId, true);
+          aiHooks.maybeRunAiTurn(channelId).catch(() => {});
+        } catch {
+          // Trường hợp hiếm (race condition — pendingAction MỚI vừa được tạo
+          // ngay giữa lúc check (2) và lúc gọi performEndTurn thật) — bỏ qua
+          // lần này, hook sẽ tự trigger lại khi action đó resolve xong.
+        }
+        return;
+      }
+      // Quest CÒN pendingAction tồn dư (chưa đủ điều kiện tự end turn) — KHÔNG
+      // làm gì cả (không gửi nút thủ công cho quest, vì không có GM thật để bấm)
+      // — hook sẽ tự re-check lại điều kiện này ngay khi pendingAction đó
+      // resolve xong (finalizeReactiveChoice's hook → maybeRunAiTurn →
+      // announceCurrentTurn nếu cần).
+      if (encounter.isQuest) return;
       // Turn Order Enforcement UX (xác nhận trực tiếp): "không có nút end turn
       // các thứ như 1 game rpg thực thụ" — hết 1 vòng turnOrder, thay vì im lặng
       // (bắt GM tự nhớ gõ lệnh text), gửi NGAY 1 nút bấm rõ ràng cho GM.
