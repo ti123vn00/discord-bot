@@ -193,6 +193,16 @@ async function announceCurrentTurn(channelId, encounter, forceNewMessage = false
     } else {
       const enemy = encounter.enemies[entry.id];
       if (!enemy || enemy.currentHp <= 0) return;
+      // BUG THẬT phát hiện qua test thật (Fragaria báo trực tiếp kèm ảnh chụp
+      // màn hình) — nhánh này trước đây LUÔN gửi panel "Điều khiển <tên>..." +
+      // ping GM cho MỌI lượt enemy, KHÔNG kiểm tra enemy.aiControlled — khiến
+      // host của party board (tự động thành encounter.gmId) vẫn thấy và bấm
+      // điều khiển thủ công được mob lẽ ra phải 100% tự động (Stage 3-4). AI đã
+      // tự xử lý lượt này qua maybeRunAiTurn (hook riêng, xem message-create-
+      // handler.js/party-board.js/enemy-ai.js) — không cần và không nên gửi
+      // panel thủ công nữa, tránh vừa gây hiểu lầm vừa có thể xung đột (2 nguồn
+      // cùng hành động cho 1 turn).
+      if (enemy.aiControlled) return;
       const targetChannelId = encounter.gmChannelId || channelId;
       const channel = await client.channels.fetch(targetChannelId).catch(() => null);
       if (!channel) return;
