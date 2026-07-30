@@ -44,18 +44,40 @@ module.exports = function ({
   /** decideDefenseChoice — thuần logic quyết định (không side-effect), nhận vào
    *  target combatant + options đã tính (opts) + dmg lớn nhất trong nhóm hit
    *  này (maxHitDmgInGroup) — trả về 1 trong "guard"/"evade"/"parry"/"none". */
-  function decideDefenseChoice(target, opts, maxHitDmgInGroup) {
+  function decideDefenseChoice(target, opts, maxHitDmgInGroup, hasGuardBreak = false) {
     const hpPct = target.maxHp > 0 ? target.currentHp / target.maxHp : 0;
     const bigHit = maxHitDmgInGroup > target.maxHp * 0.10;
     const lowHp = hpPct <= 0.20;
-    if (!bigHit && !lowHp) return "none";
+    const lethal = maxHitDmgInGroup >= target.currentHp;
+    if (!bigHit && !lowHp && !lethal) return "none";
 
-    let choice = opts.guard.available ? "guard" : (opts.evade.available ? "evade" : (opts.parry.available ? "parry" : "none"));
+    // Task yêu cầu trực tiếp (xác nhận: "AI hiện tại giống bao cát... eye gouger
+    // chả bao giờ guard, hay guard những đòn có guard break") — Guard Break vẫn
+    // giảm được dmg (xem resolve-pending-action.js's applyDefenseChoiceToTarget)
+    // NHƯNG gây Stagger ngay lập tức bất kể — Guard trong trường hợp này gần
+    // như vô nghĩa (đỡ được dmg nhưng vẫn bị Stagger) — ưu tiên NÉ thay vì Guard
+    // khi phát hiện tag Guard Break, nếu Evade khả thi.
+    let choice;
+    if (hasGuardBreak && opts.evade.available) {
+      choice = "evade";
+    } else {
+      choice = opts.guard.available ? "guard" : (opts.evade.available ? "evade" : (opts.parry.available ? "parry" : "none"));
+    }
 
     // Rule 4: Guard/Evade đã chọn sẽ tự Stagger (Stamina về ≤0) → đổi qua Parry.
     if (choice === "guard" && (target.currentStamina - opts.guard.cost) <= 0 && opts.parry.available) {
       choice = "parry";
     } else if (choice === "evade" && (target.currentStamina - opts.evade.cost) <= 0 && opts.parry.available) {
+      choice = "parry";
+    }
+    // Task yêu cầu trực tiếp: "nếu không còn stamina để né hoặc đỡ nữa và khi
+    // nhận đòn sẽ khiến HP về xuống hơn 0 thì AI sẽ bắt đầu parry" — trường hợp
+    // CẢ Guard LẪN Evade đều KHÔNG khả thi (hết Stamina, không phải do tự
+    // Stagger mà do không đủ trả phí) NHƯNG đòn này lại CHÍ MẠNG (lethal) — cố
+    // Parry dù cost thường là 0 Sta (chỉ cần opts.parry.available), thay vì im
+    // lặng chịu chết (choice="none" từ fallback chain phía trên nếu parry cũng
+    // không available thì mới thật sự đành chịu).
+    if (choice === "none" && lethal && opts.parry.available) {
       choice = "parry";
     }
     return choice;
@@ -130,7 +152,7 @@ module.exports = function ({
           for (let i = 0; i < hitsInThisGroup; i++) realHitIndices.push(groupIdx * hitsPerCharge + i + 1);
           const instancesInGroup = (t.preview?.instanceResults ?? []).slice(groupIdx * hitsPerCharge, groupIdx * hitsPerCharge + hitsInThisGroup);
           const maxHitDmgInGroup = instancesInGroup.length > 0 ? Math.max(...instancesInGroup.map(r => r.dmg ?? 0)) : 0;
-          const choice = decideDefenseChoice(target, opts, maxHitDmgInGroup);
+          const choice = decideDefenseChoice(target, opts, maxHitDmgInGroup, !!thisGroupBypass?.guardBreak);
           const choiceNote = applyDefenseChoiceToTarget(choice, target, opts, realHitIndices);
           t.perHitChoices[groupIdx] = choiceNote;
           decisionNotes.push(`Nhóm ${groupIdx + 1}/${groupCount} (hit ${realHitIndices[0]}${realHitIndices.length > 1 ? `-${realHitIndices[realHitIndices.length - 1]}` : ""}): ${choiceNote}`);
@@ -274,13 +296,40 @@ module.exports = function ({
     const weaponWeight = mob.weaponWeight ?? "medium";
     const staCostPerHit = WEAPON_STAMINA_COST[weaponWeight] ?? 10;
     const hitsPerBurst = WEAPON_DEFENSE_HITS[weaponWeight] ?? 1;
-    if ((mob.staminaUsedThisTurn ?? 0) >= 20) return false;
-    // Số hit AN TOÀN tối đa trong burst này — không vượt hitsPerBurst, và PHẢI
-    // giữ currentStamina > 0 SAU khi trừ (không tự Stagger — checkStaggerPanic
-    // kích hoạt khi currentStamina <= 0, không phải < 0).
+    // Task yêu cầu trực tiếp (xác nhận: "tần suất m1 của các AI boss cũng không
+    // nhiều khiến player khá tiện về mặt phòng thủ") — TRƯỚC ĐÂY dừng CỨNG ngay
+    // khi đủ 20 Stamina (1 Light) — quá thụ động, và LÃNG PHÍ cơ chế Light vốn
+    // ĐÃ tự scale theo Stamina dùng (turn-advance.js: lightGained =
+    // Math.floor(staminaUsedThisTurn/20) — dùng 60 Stamina = 3 Light, không chỉ
+    // 1!). Giờ KHÔNG dừng cứng ở 20 nữa — tiếp tục burst thêm nếu vẫn AN TOÀN.
+    //
+    // BUG THẬT phát hiện qua phản biện trực tiếp: "mob Stamina chỉ ~60 như Rats
+    // mà xài gần hết (chỉ cần >0) chẳng phải lố bịch sao" — ĐÚNG, bản sửa lần
+    // trước CHỈ chặn tự Stagger NGAY (>0) mà KHÔNG dự trữ gì cho phòng thủ các
+    // turn SAU — mob "cháy" hết Stamina 1 turn rồi bất lực Guard/Evade nhiều
+    // turn liền cho tới khi hồi lại (ngược hẳn mục đích "thử thách hơn" của Task
+    // 8). Giờ dự trữ tối thiểu 25% MAX Stamina (KHÔNG phải current) cho phòng
+    // thủ — offense chỉ được tiêu tới ngưỡng này, không tiêu tới sát 0 nữa. 25%
+    // là ước lượng hợp lý (đủ Guard/Evade ít nhất 1 đòn đáng kể sau đó) — có thể
+    // điều chỉnh nếu cảm thấy chưa đúng ý.
+    // Task yêu cầu trực tiếp: "nên random số lượng m1 lại, không phải lúc nào
+    // cũng chỉ duy nhất 1 số lượng" — TRƯỚC ĐÂY dự trữ CỐ ĐỊNH 25% khiến mob
+    // LUÔN dừng ở CÙNG 1 điểm mỗi turn (dễ đoán) — giờ RANDOM tỉ lệ dự trữ mỗi
+    // turn (15%-40% max Stamina, roll 1 LẦN DUY NHẤT khi turn CỦA MOB NÀY bắt
+    // đầu — staminaUsedThisTurn===0 — giữ NGUYÊN xuyên suốt turn đó, KHÔNG roll
+    // lại giữa các burst cùng turn để tránh hành vi kỳ quặc "vừa nới lỏng vừa
+    // xiết lại" giữa chừng).
+    if ((mob.staminaUsedThisTurn ?? 0) === 0) {
+      mob.thisTurnStaminaReservePct = 0.15 + Math.random() * 0.25;
+    }
+    const reservePct = mob.thisTurnStaminaReservePct ?? 0.25;
+    const minStaminaReserve = Math.ceil((mob.maxStamina ?? 100) * reservePct);
+    // Số hit AN TOÀN tối đa trong burst này — không vượt hitsPerBurst, PHẢI giữ
+    // currentStamina > 0 SAU khi trừ (không tự Stagger) VÀ không tụt dưới
+    // minStaminaReserve (dự trữ phòng thủ cho các turn sau, tỉ lệ random).
     let safeHits = 0;
     for (let i = 1; i <= hitsPerBurst; i++) {
-      if (mob.currentStamina - i * staCostPerHit <= 0) break;
+      if (mob.currentStamina - i * staCostPerHit < minStaminaReserve) break;
       safeHits = i;
     }
     if (safeHits === 0) return false; // không đủ Stamina dù chỉ 1 hit an toàn
@@ -305,6 +354,12 @@ module.exports = function ({
           const mob3 = enc3?.enemies?.[mobKey];
           if (!mob3) return;
           mob3.staminaUsedThisTurn = (mob3.staminaUsedThisTurn ?? 0) + totalStaCost;
+          // BUG THẬT phát hiện qua test thật (random luôn ra CÙNG 1 kết quả dù
+          // chạy nhiều lần riêng biệt) — mob3 là fetch MỚI, TÁCH BIỆT hoàn toàn
+          // khỏi "mob" (biến ngoài, dòng ~230) — thisTurnStaminaReservePct vừa
+          // random ở trên KHÔNG tự động có mặt trong mob3, bị mất trước khi lưu
+          // nếu không copy tay. Copy sang đây để lưu ĐÚNG giá trị đã roll.
+          mob3.thisTurnStaminaReservePct = mob.thisTurnStaminaReservePct;
           await saveEncounter(channelId, enc3);
         });
         return true;

@@ -1072,6 +1072,24 @@ const SKILLS = {
       ];
     },
   },
+  // "Singularity" — CATEGORY MỚI (xác nhận trực tiếp): "1 loại equipment riêng
+  // biệt chỉ có 1 slot duy nhất, KHÔNG tính slot với accessory/outfit/weapon".
+  // "Borrowed Eyes" (Singularity item CỦA Eye Gouger) cho thêm 1 PAGE KHÔNG TỐN
+  // SLOT PAGE THƯỜNG, cùng tên "Borrowed Eyes" (giống pattern "Tanglecleaver
+  // Reload" — page đặc biệt không tốn slot — xem reactive-defense.js). Ở ĐÂY
+  // CHỈ định nghĩa SKILL/PAGE — hệ thống EQUIP Singularity CHO PLAYER (slot
+  // riêng, cách sở hữu...) CHƯA XÂY — Eye Gouger (mob) dùng trực tiếp qua
+  // quest-data.js's skills[] KHÔNG cần qua cơ chế equip nào cả.
+  "borrowed eyes": {
+    name: "Borrowed Eyes", tags: "Singularity",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "6 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5, 10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** — Bạn được tự động né những đòn kế tiếp sắp phải dính tương ứng với số dice gieo ra [Không thể né được Undodgeable]`,
+      ];
+    },
+  },
   "celestial sight": {
     name: "Celestial Sight",
     cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
@@ -2930,7 +2948,7 @@ roll(v = "no") {
     },
   },
   "falco berigora": {
-    name: "Falco Berigora", weaponOf: "Manifested E.G.O (Hoshino)", tags: "Ego Pages",
+    name: "Falco Berigora", weaponOf: "Manifested E.G.O (Hoshino)", tags: "Weapon",
     // Light: "??" GIỮ NGUYÊN như GM ghi (chưa xác nhận số cụ thể) — KHÔNG tự bịa.
     cost: "?? Light", cd: "3 Turn", diceMul: "1x",
     roll() {
@@ -2942,7 +2960,7 @@ roll(v = "no") {
     },
   },
   "wedjat": {
-    name: "Wedjat", weaponOf: "Manifested E.G.O (Hoshino)", tags: "Ego Pages",
+    name: "Wedjat", weaponOf: "Manifested E.G.O (Hoshino)", tags: "Weapon",
     cost: "— (chưa rõ Light cost)", cd: "1 Turn", diceMul: "1x",
     roll() {
       return [
@@ -3738,9 +3756,11 @@ roll(v = "no") {
     },
   },
 
-  // ══════════════ EGO Pages — Manifested E.G.O ══════════════
+  // ══════════════ Manifested E.G.O — Weapon Skills (KHÔNG phải EGO Page 5-slot,
+  // xem comment isEgoSkill trong index.js — đây là skill CỦA vũ khí manifested,
+  // không phải page từ Book of Library nên không equip vào 5 slot Tier) ══════════════
   "crescent divinity": {
-    name: "Crescent Divinity", weaponOf: "Manifested E.G.O", tags: "EGO Page",
+    name: "Crescent Divinity", weaponOf: "Manifested E.G.O", tags: "Weapon",
     cost: "1 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,13);
@@ -3750,7 +3770,7 @@ roll(v = "no") {
     },
   },
   "purge of light": {
-    name: "Purge of Light", weaponOf: "Manifested E.G.O", tags: "EGO Page",
+    name: "Purge of Light", weaponOf: "Manifested E.G.O", tags: "Weapon",
     cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(21,30);
@@ -4816,8 +4836,49 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
   const totalEmotionDelta = tracked.reduce((sum, t) => sum + t.delta, 0);
 
   const warnings = [];
-  const diceTypeByLine = []; // { result, type } theo ĐÚNG thứ tự tracked[]
+  const diceTypeByLine = []; // { result, type, statusTags } theo ĐÚNG thứ tự tracked[]
   const TYPE_MAP = { Slash: "S", Blunt: "B", Pierce: "P" };
+  // Task yêu cầu trực tiếp (repro cụ thể: "Soldato Rifle Critical Shock Round
+  // hoàn toàn không áp Tremor/Tremor Burst" + "Index Longsword Critical không
+  // áp Rupture được") — GAP HỆ THỐNG RỘNG phát hiện: TRƯỚC ĐÂY dmgStr auto-build
+  // CHỈ lấy damage+type (VD "17B"), CÒN Tremor/Rupture/Bleed/Sinking/Burn nhắc
+  // tới trong text roll() hoàn toàn KHÔNG được tự gắn vào dmgStr — chỉ CẢNH BÁO
+  // suông "tự gõ tay" (xem warnings bên dưới, dòng cũ vẫn giữ để phòng trường
+  // hợp parse thiếu). Giờ tự parse TỪNG DÒNG DICE để tìm "N <:Emoji:ID>TênStatus"
+  // (khớp ĐÚNG cú pháp damage-calc.js hỗ trợ: +NRupture/+NSinking/+NBleed/+NBurn/
+  // +NTremor/+NTremorBurst) rồi GẮN TRỰC TIẾP vào ĐÚNG dice đó (không phải gộp
+  // chung cho cả dmgStr — mỗi dice có thể có status KHÁC NHAU, xem ví dụ Shock
+  // Round: Dice 1 chỉ +4Tremor, Dice 2 mới có +3Tremor+TremorBurst).
+  //
+  // CHỈ auto-tag Tremor/TremorBurst/Rupture/Sinking/Bleed/Burn (áp lên TARGET,
+  // luôn CỘNG dương khi roll() mô tả bằng "gây X Y") — KHÔNG auto-tag Poise/
+  // Charge (thường là CỦA BẢN THÂN attacker, hướng +/- không rõ ràng từ text) —
+  // 2 loại đó vẫn giữ cảnh báo cũ, GM/player tự gõ tay nếu cần.
+  // THỨ TỰ QUAN TRỌNG: "Tremor Burst" PHẢI match TRƯỚC "Tremor" (tiền tố trùng —
+  // giống hệt vấn đề đã ghi trong damage-calc.js's parser).
+  const AUTO_STATUS_TAGS = [
+    { name: "Tremor Burst", tag: "TremorBurst", needsCount: false },
+    { name: "Tremor", tag: "Tremor", needsCount: true },
+    { name: "Rupture", tag: "Rupture", needsCount: true },
+    { name: "Sinking", tag: "Sinking", needsCount: true },
+    { name: "Bleed", tag: "Bleed", needsCount: true },
+    { name: "Burn", tag: "Burn", needsCount: true },
+  ];
+  function extractAutoStatusTags(line) {
+    let remaining = line;
+    let suffix = "";
+    for (const { name, tag, needsCount } of AUTO_STATUS_TAGS) {
+      const re = needsCount
+        ? new RegExp(`(\\d+)\\s*<:[^:>]+:\\d+>${name.replace(/\s/g, "\\s*")}`, "i")
+        : new RegExp(`<:[^:>]+:\\d+>${name.replace(/\s/g, "\\s*")}`, "i");
+      const m = remaining.match(re);
+      if (m) {
+        suffix += needsCount ? `+${m[1]}${tag}` : `+${tag}`;
+        remaining = remaining.replace(m[0], ""); // tránh khớp lại "Tremor" bên trong "Tremor Burst" đã tiêu thụ
+      }
+    }
+    return suffix;
+  }
   let trackedIdx = 0;
   for (const line of lines) {
     // Chỉ những dòng BẮT ĐẦU bằng emoji DiceN mới là 1 dice THẬT — các dòng khác
@@ -4835,7 +4896,7 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
     // ứng 1 lần gọi r() (có typeMatch — tức có tag [Slash/Blunt/Pierce]).
     if (typeMatch) {
       if (tracked[trackedIdx]) {
-        diceTypeByLine.push({ result: tracked[trackedIdx].result, type: TYPE_MAP[typeMatch[1]] });
+        diceTypeByLine.push({ result: tracked[trackedIdx].result, type: TYPE_MAP[typeMatch[1]], statusTags: extractAutoStatusTags(line) });
       }
       trackedIdx++;
     }
@@ -4852,14 +4913,14 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
   if (foundTags.size > 0) {
     warnings.push(`Skill có tag: ${[...foundTags].join(", ")} — dmgStr KHÔNG tự thêm được (áp theo TỪNG dice riêng), tự gõ thêm vào ô "tags" khi confirm nếu cần.`);
   }
-  if (/Dice Up|Poise|Light|Rupture|Bleed|Tremor|Sinking/i.test(lines.join(" ")) && diceTypeByLine.length > 0) {
-    warnings.push(`Skill có ghi chú hiệu ứng phụ (Dice Up/Poise/Light/status...) — xem embed roll bên dưới để tự áp dụng, dmgStr chỉ chứa phần sát thương.`);
+  if (/Dice Up|Poise|Light/i.test(lines.join(" ")) && diceTypeByLine.length > 0) {
+    warnings.push(`Skill có ghi chú hiệu ứng phụ (Dice Up/Poise/Light — không tự áp được, hướng +/- không rõ từ text) — xem embed roll bên dưới để tự áp dụng.`);
   }
 
   if (diceTypeByLine.length === 0) {
     return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines };
   }
-  const dmgStr = diceTypeByLine.map(d => `${d.result}${d.type}`).join(" + ");
+  const dmgStr = diceTypeByLine.map(d => `${d.result}${d.type}${d.statusTags ?? ""}`).join(" + ");
   return { dmgStr, warnings, tracked, totalEmotionDelta, lines };
 }
 

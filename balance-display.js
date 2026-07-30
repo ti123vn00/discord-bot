@@ -14,7 +14,7 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
+module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
@@ -52,12 +52,20 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, calcSkillTreeP
       .map(([b, perks]) => `**${BRANCH_DISPLAY_NAME[b] ?? b}:** ${perks.join(", ")}`);
     const skillTreeValue = `${branchLines.join(" | ")}\n> **Chưa phân bổ:** ${pool - allocated}/${pool} điểm` +
       (perkLines.length > 0 ? `\n\n${perkLines.join("\n")}` : "\n\n*(chưa mở khoá perk nào)*");
+    // Task yêu cầu trực tiếp: "-balance nên hiện hp hiện tại" — dùng CHÍNH công
+    // thức Max HP theo Grade (khớp player-join-builder.js's effectiveGradeMaxHp,
+    // KHÔNG lặp lại bug carry-over đã sửa — đây CHỈ hiển thị, không tạo combatant).
+    const gradeBasedMaxHpForDisplay = 140 + 20 * (GRADE_MIN - grade);
+    const injuryPenaltyForDisplay = calcInjuryMaxHpPenalty(data.injuries ?? []);
+    const effectiveMaxHpForDisplay = Math.max(1, gradeBasedMaxHpForDisplay - injuryPenaltyForDisplay);
+    const currentHpForDisplay = Math.min(data.currentHp ?? effectiveMaxHpForDisplay, effectiveMaxHpForDisplay);
     const embed = {
       title: `💼 Thông tin của ${targetUser.displayName ?? targetUser.username}`,
       color: 0x5865f2,
       thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
       fields: [
         { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
+        { name: "❤️ HP hiện tại", value: `**${currentHpForDisplay}** / **${effectiveMaxHpForDisplay}** HP${isSelf ? `\n> Dùng \`-heal hp: <ahn>\` để hồi thêm bằng Ahn` : ""}`, inline: true },
         { name: "<:EXP:1525313466905399346> Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
         { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },
         { name: "<:Lunacy:1524989409529823342> Lunacy", value: `**${formatNumber(data.lunacy ?? 0)}** Lunacy`, inline: true },

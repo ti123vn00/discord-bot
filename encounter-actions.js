@@ -214,6 +214,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       if (!encounter) throw new Error("Channel này chưa có encounter nào.");
       const player = encounter.players[userId];
       if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+      if (!player.manifestedEGOUnlock) throw new Error("Nhân vật của bạn chưa unlock Manifest E.G.O (cần GM/admin cấp cờ `ManifestedEGOUnlock` qua `-flag`).");
       if ((player.emotionLevel ?? 0) < 1) throw new Error("Cần đang ở Emotion Level ≥1 mới kích hoạt được Manifest E.G.O.");
       if (!player.manifestedEGO && (player.manifestedEGOCooldownLeft ?? 0) > 0) {
         throw new Error(`Đang trong CD Manifest E.G.O — còn ${player.manifestedEGOCooldownLeft} turn.`);

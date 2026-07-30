@@ -117,6 +117,15 @@ async function performEndTurn(channelId, userId, isAdmin) {
       // hệt rollspeed (không đi qua advanceToNextTurnHolder nên cần gọi riêng).
       prescriptNotes = validateAndRerollPrescript(encounter, null, encounter.turnOrder[0] ?? null);
     }
+    // Task yêu cầu trực tiếp: "prescript chỉ tổng kết khi turnorder end chứ
+    // không phải endturn của player" — gộp TẤT CẢ prescriptNotes đã tích luỹ từ
+    // các lần pass/endmyturn CÁ NHÂN trong suốt round VỪA XONG (encounter.
+    // pendingPrescriptNotes — xem combat-utils.js's advanceToNextTurnHolder)
+    // vào ĐÂY, hiện 1 lần DUY NHẤT ở tổng kết round-end thật, rồi clear để
+    // round tiếp theo tích luỹ mới từ đầu.
+    const accumulatedPrescriptNotes = encounter.pendingPrescriptNotes ?? [];
+    encounter.pendingPrescriptNotes = [];
+    prescriptNotes = [...accumulatedPrescriptNotes, ...prescriptNotes];
     await saveEncounter(channelId, encounter);
     announceCurrentTurn(channelId, encounter, true).catch(() => {});
     resultInfo = { encounter, shroudedNotes, prescriptNotes };

@@ -10,7 +10,7 @@
 // qua PHÂN TÍCH AST CHÍNH XÁC (acorn) — không dựa vào suy đoán thủ công, để
 // tránh sai sót ở 1 hàm lớn và phức tạp như thế này.
 
-module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, checkQuestOutcome, combatantResStr, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, grantContractReward, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
+module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, checkQuestOutcome, clearUserActiveEncounterChannel, combatantResStr, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, grantContractReward, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -452,6 +452,17 @@ async function resolveOnePendingAction(encounter, p) {
                         defenseNote += ` 🎲[Dice ${i + 1} +${effect.diceUp} Dice Up]`;
                       }
                     });
+                  }
+                  // Task yêu cầu trực tiếp: "page light attack khi trúng không
+                  // hồi light" — GAP THẬT: mô tả trong skills.js ("hồi 2 Light
+                  // sau khi trúng") CHƯA TỪNG được tự động hoá thành code thật —
+                  // giờ áp đúng, GATE bởi !evadedCompletely (né hoàn toàn = không
+                  // trúng gì cả, không hồi).
+                  if (p.skillKey.toLowerCase() === "light attack" && !evadedCompletely) {
+                    const beforeLight = attacker.combatant.currentLight ?? 0;
+                    attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 6, beforeLight + 2);
+                    const lightGained = attacker.combatant.currentLight - beforeLight;
+                    if (lightGained > 0) defenseNote += ` <:Light:1513786082502770719>+${lightGained} Light (Light Attack)`;
                   }
                 }
                 // "Blade Lineage" (outfit) — GAP MỚI (xác nhận trực tiếp):
@@ -1318,6 +1329,13 @@ async function resolveOnePendingAction(encounter, p) {
               attacker.combatant.skillCooldowns[p.skillKey] = p.cooldownTurns + 1;
               verifyNote += ` [CD ${p.skillKey}: ${p.cooldownTurns}T]`;
             }
+            // Task yêu cầu trực tiếp: "page unlock... đáng lẽ dù nó có là cd 0
+            // turn nhưng có description là 1 turn chỉ dùng được 1 lần" — set cờ
+            // riêng (reset mỗi turn ở turn-advance.js), KHÔNG dùng skillCooldowns
+            // thường vì CD=0 (không kích hoạt được điều kiện > 0 ở trên).
+            if (p.skillKey?.toLowerCase() === "unlock") {
+              attacker.combatant.unlockUsedThisTurn = true;
+            }
             // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp) — TIÊU THỤ
             // bypass sau khi commit (cooldownTurns đã = 0 từ lúc declare, ở đây chỉ
             // cần clear flag để KHÔNG lặp lại miễn CD cho Critical LẦN SAU nữa).
@@ -1710,6 +1728,12 @@ async function resolveOnePendingAction(encounter, p) {
         if (note) resultLines.push(note);
       }
       resultLines.push(`💀 **Cả team đã gục ngã — Contract thất bại.** Encounter kết thúc.`);
+    }
+    // Task yêu cầu trực tiếp: "cấm không cho join nhiều encounter một lúc" —
+    // clear NGAY active-encounter-index cho TẤT CẢ member khi quest kết thúc
+    // (thắng/thua), để họ join/tạo contract mới được ngay.
+    for (const pid of encounter.questMeta?.memberIds ?? []) {
+      clearUserActiveEncounterChannel(pid).catch(() => {});
     }
     // Đánh dấu để caller (reactive-defense.js/interaction-handlers.js — nơi gọi
     // resolveOnePendingAction) tự deleteEncounter SAU KHI saveEncounter xong (thứ

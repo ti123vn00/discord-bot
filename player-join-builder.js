@@ -106,6 +106,12 @@ module.exports = function ({
     joined.hasZweiAssociation = equippedOutfitNameNormalized === "zwei association";
     joined.hasHanaAssociation = equippedOutfitNameNormalized === "hana association";
     joined.hasIndexProselyte = equippedOutfitNameNormalized === "index proselyte";
+    // Task yêu cầu trực tiếp: "manifested ego không có check true false khiến
+    // ai cũng có được dù đáng lẽ chỉ những ai có check true mới có" — GAP THẬT:
+    // profileData.ManifestedEGOUnlock (cờ admin set qua -flag) đã tồn tại từ
+    // trước nhưng CHƯA BAO GIỜ được copy vào combatant hay check ở đâu cả — copy
+    // vào đây để performManifestEgo (encounter-actions.js) check được.
+    joined.manifestedEGOUnlock = profileDataForDefaults.ManifestedEGOUnlock === true;
     if (!wasJoined && hasEncounterStarted(encounter)) {
       validateAndRerollPrescript(encounter, null, { id: userId, type: "player" });
     }

@@ -175,7 +175,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
           notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh #${c.prescriptRoll}** của ${label} THÀNH CÔNG — +1 Grace of Prescript (tổng ${c.graceOfPrescript}).`);
         } else {
           c.karmicConsequence = Math.min(100, (c.karmicConsequence ?? 0) + 5);
-          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh #${c.prescriptRoll}** của ${label} THẤT BẠI — +5 Karmic Consequence (tổng ${c.karmicConsequence}).`);
+          notes.push(`<:Karmic_Consequence:1532503901687779338> **Sắc lệnh #${c.prescriptRoll}** của ${label} THẤT BẠI — +5 Karmic Consequence (tổng ${c.karmicConsequence}).`);
         }
         c.prescriptRoll = null;
         c.prescriptAttacked = false;
@@ -198,11 +198,27 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
         const weaponInfo = findWeaponAnywhere(c.weaponName);
         const hasWillOfPrescript = (weaponInfo?.passives ?? []).some(pa => pa.name === "Will of Prescript");
         if (hasWillOfPrescript) {
+          // Xoá dấu ở mục tiêu CŨ (nếu có, từ lần roll trước đó) trước khi gán
+          // mục tiêu MỚI — tránh sót lại "Bị đánh dấu bởi X" trên mục tiêu ĐÃ
+          // KHÔNG còn bị đánh dấu nữa.
+          if (c.prescriptTargetId && encounter.enemies[c.prescriptTargetId]) {
+            delete encounter.enemies[c.prescriptTargetId].markedByPrescriptTargetOf;
+          }
           const livingEnemyKeys = Object.keys(encounter.enemies ?? {}).filter(k => (encounter.enemies[k]?.currentHp ?? 0) > 0);
           if (livingEnemyKeys.length > 0) {
             const pick = livingEnemyKeys[Math.floor(Math.random() * livingEnemyKeys.length)];
             c.prescriptTargetId = pick;
-            notes.push(`<:The_Prescripts_Target:1528452363159998525> **The Prescript Target's - The Index** đánh dấu lên **${encounter.enemies[pick]?.name ?? pick}**.`);
+            // Task yêu cầu trực tiếp: "cần làm rõ ràng the prescript target trên
+            // mục tiêu hơn" — TRƯỚC ĐÂY chỉ lưu ID (không hiện tên rõ ràng ở board
+            // status, và mục tiêu BỊ đánh dấu không hề biết mình bị đánh dấu bởi
+            // ai) — giờ lưu thêm tên để hiện rõ (marker), VÀ đánh dấu NGƯỢC LẠI
+            // trên chính combatant mục tiêu (markedByPrescriptTargetOf — encounter-
+            // display.js đọc field này để hiện "Bị đánh dấu bởi X" ngay trên mục
+            // tiêu, không cần biết ai đang giữ Will of Prescript).
+            const markerLabel = enteringEntry.type === "enemy" ? (encounter.enemies[enteringEntry.id]?.name ?? enteringEntry.id) : `<@${enteringEntry.id}>`;
+            c.prescriptTargetName = encounter.enemies[pick]?.name ?? pick;
+            encounter.enemies[pick].markedByPrescriptTargetOf = markerLabel;
+            notes.push(`<:The_Prescripts_Target:1528452363159998525> **The Prescript Target's - The Index** đánh dấu lên **${c.prescriptTargetName}**.`);
           }
         }
       }
@@ -225,6 +241,17 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     const wrapped = idx >= order.length; // true = đã hết 1 vòng turnOrder
     const enteringEntry = wrapped ? null : order[idx];
     const prescriptNotes = validateAndRerollPrescript(encounter, leavingEntry, enteringEntry);
+    // Task yêu cầu trực tiếp: "sửa lại prescript chỉ tổng kết khi turnorder end
+    // chứ không phải endturn của player" — TRƯỚC ĐÂY prescriptNotes hiện NGAY
+    // trong reply của TỪNG lần pass/endmyturn cá nhân (ồn ào, rải rác) — giờ
+    // GOM vào encounter.pendingPrescriptNotes (persist), CHỈ hiện tổng hợp 1 lần
+    // ở performEndTurn (round-end thật) rồi mới clear. Vẫn TRẢ VỀ prescriptNotes
+    // như cũ (không đổi signature, tránh phá vỡ nơi khác đang dùng) — chỉ là
+    // các handler pass/endmyturn giờ KHÔNG hiện nó ra reply nữa (xem các file
+    // message-create-handler.js/interaction-handlers.js).
+    if (prescriptNotes.length > 0) {
+      encounter.pendingPrescriptNotes = (encounter.pendingPrescriptNotes ?? []).concat(prescriptNotes);
+    }
     return { wrapped, prescriptNotes };
   }
   

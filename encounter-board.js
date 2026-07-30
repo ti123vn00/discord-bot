@@ -24,8 +24,18 @@ module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, build
     if ((encounter.turnOrder ?? []).length > 0) {
       blocks.push(`🎲 **Thứ tự Turn**\n${buildTurnOrderText(encounter)}`);
     }
-    for (const ekey of Object.keys(encounter.enemies)) {
-      blocks.push(formatCombatantBlock(encounter.enemies[ekey], `⚔️ ${encounter.enemies[ekey].name} (${ekey})`));
+    // Task yêu cầu trực tiếp: "kẻ địch bị đánh bại hp về 0 thì nên ẩn ra khỏi
+    // encounter status để nhìn cho gọn" — CHỈ ẩn enemy ĐÃ CHẾT (currentHp<=0),
+    // KHÔNG liên quan gì tới quyết định "không cắt bớt khi board dài" ở trên
+    // (đó là về ĐỘ DÀI, đây là về TRẠNG THÁI đã-chết cụ thể) — nếu TẤT CẢ đều
+    // đã chết thì hiện 1 dòng tóm tắt thay vì bỏ trống hẳn phần enemy.
+    const aliveEnemyKeys = Object.keys(encounter.enemies).filter(ekey => encounter.enemies[ekey].currentHp > 0);
+    if (aliveEnemyKeys.length > 0) {
+      for (const ekey of aliveEnemyKeys) {
+        blocks.push(formatCombatantBlock(encounter.enemies[ekey], `⚔️ ${encounter.enemies[ekey].name} (${ekey})`));
+      }
+    } else if (Object.keys(encounter.enemies).length > 0) {
+      blocks.push(`☠️ *(Tất cả enemy đã bị đánh bại)*`);
     }
     for (const pid of Object.keys(encounter.players)) {
       blocks.push(formatCombatantBlock(encounter.players[pid], `<@${pid}>`));

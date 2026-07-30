@@ -28,6 +28,7 @@ module.exports = function ({
   redis, withTimeout, withLock, withDoubleLock, getEncounter, saveEncounter, createCombatant,
   getPlayerData, buildJoinedCombatant, determineTurnOrder,
   validateAndRerollPrescript, appendActionLog, hasPerk, ADMIN_IDS, aiHooks, pickRandomBgm,
+  setUserActiveEncounterChannel,
 }) {
   const MAX_PARTY_SIZE = 3;
 
@@ -217,6 +218,7 @@ module.exports = function ({
           ? (board.hostName ?? "Host")
           : (board.guests.find(g => g.id === id)?.name ?? "Player");
         await buildJoinedCombatant(encounter, id, memberName, profiles[id], {});
+        await setUserActiveEncounterChannel(id, channelId).catch(() => {});
       }
 
       // Spawn đủ mob theo killCount — key dạng "<mobKey>1", "<mobKey>2"...

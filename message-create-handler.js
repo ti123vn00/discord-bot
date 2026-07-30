@@ -11,7 +11,7 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -428,6 +428,61 @@ client.on("messageCreate", async (message) => {
     } catch (err) {
       log("error", "balance", targetUser.id, err.message);
       message.reply("❌ Có lỗi xảy ra khi lấy dữ liệu.");
+    }
+    return;
+  }
+
+  // Task yêu cầu trực tiếp: "-balance nên hiện hp hiện tại và phần dropdown heal
+  // injury và hp bằng ahn" — làm bằng LỆNH TEXT thay vì dropdown (KHÔNG phải vì
+  // bỏ qua yêu cầu — buildBalanceEmbed đã DÙNG HẾT 5/5 ActionRow tối đa Discord
+  // cho phép khi đủ điều kiện branch+perk+gear+page+egopage, không còn chỗ cho 1
+  // dropdown mới mà không có rủi ro vượt giới hạn cứng của Discord).
+  //
+  // GIẢ ĐỊNH CẦN XÁC NHẬN: rate "500 Ahn/1 HP" và "50.000 Ahn/1 chấn thương" là
+  // MÌNH TỰ ĐẶT (không có số cụ thể nào được cho trước) — báo lại nếu sai.
+  if (message.content.startsWith("-heal")) {
+    if (isOnCooldown(message.author.id, "heal", 3000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé."); return; }
+    const kv = parseKeyValues(message.content.slice("-heal".length));
+    const userId = message.author.id;
+    try {
+      await withLock(userId, async () => {
+        const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
+        const { grade } = calcGrade(profileData.exp ?? 0);
+        const gradeBasedMaxHp = 140 + 20 * (GRADE_MIN - grade);
+        const injuryPenalty = calcInjuryMaxHpPenalty(profileData.injuries ?? []);
+        const effectiveMaxHp = Math.max(1, gradeBasedMaxHp - injuryPenalty);
+        const currentHp = Math.min(profileData.currentHp ?? effectiveMaxHp, effectiveMaxHp);
+
+        if (kv["injury"]) {
+          const injuryList = profileData.injuries ?? [];
+          const idx = injuryList.findIndex(i => i.toLowerCase().includes(kv["injury"].toLowerCase()));
+          if (idx === -1) throw new Error(`Không tìm thấy chấn thương "${kv["injury"]}" trong danh sách của bạn — dùng \`-balance\` để xem.`);
+          const INJURY_HEAL_COST = 50000; // GIẢ ĐỊNH — xem note ở trên
+          if ((profileData.ahn ?? 0) < INJURY_HEAL_COST) throw new Error(`Cần ${formatNumber(INJURY_HEAL_COST)} Ahn để chữa chấn thương này — bạn chỉ có ${formatNumber(profileData.ahn ?? 0)} Ahn.`);
+          const removedName = injuryList[idx];
+          injuryList.splice(idx, 1);
+          profileData.injuries = injuryList;
+          profileData.ahn = (profileData.ahn ?? 0) - INJURY_HEAL_COST;
+          await savePlayerData(userId, profileData, slot);
+          message.reply(`🩹 Đã chữa **${removedName}** — tốn ${formatNumber(INJURY_HEAL_COST)} Ahn (còn ${formatNumber(profileData.ahn)} Ahn). Max HP đã hồi lại tương ứng.`);
+          return;
+        }
+
+        const hpAmountRaw = parseInt(kv["hp"], 10);
+        if (!hpAmountRaw || hpAmountRaw <= 0) throw new Error("Dùng `-heal hp: <số HP muốn hồi>` hoặc `-heal injury: <tên chấn thương>` (VD: `-heal injury: Gãy Xương`).");
+        const missingHp = effectiveMaxHp - currentHp;
+        if (missingHp <= 0) throw new Error("Bạn đã đầy HP rồi, không cần hồi.");
+        const actualHeal = Math.min(hpAmountRaw, missingHp);
+        const HP_HEAL_RATE_AHN = 500; // GIẢ ĐỊNH — xem note ở trên
+        const cost = actualHeal * HP_HEAL_RATE_AHN;
+        if ((profileData.ahn ?? 0) < cost) throw new Error(`Cần ${formatNumber(cost)} Ahn để hồi ${actualHeal} HP (rate ${HP_HEAL_RATE_AHN} Ahn/HP) — bạn chỉ có ${formatNumber(profileData.ahn ?? 0)} Ahn.`);
+        profileData.ahn = (profileData.ahn ?? 0) - cost;
+        profileData.currentHp = currentHp + actualHeal;
+        await savePlayerData(userId, profileData, slot);
+        message.reply(`❤️ Đã hồi **${actualHeal} HP** (${currentHp} → ${profileData.currentHp}/${effectiveMaxHp}) — tốn ${formatNumber(cost)} Ahn (còn ${formatNumber(profileData.ahn)} Ahn).`);
+      });
+    } catch (err) {
+      message.reply(`❌ ${err.message}`);
     }
     return;
   }
@@ -1838,6 +1893,13 @@ if (message.content.startsWith("-gacha")) {
         message.reply(`ℹ️ Bạn đang ở **${resolveProfileLabel(names, slot)}** rồi.`);
         return;
       }
+      // Task yêu cầu trực tiếp: "đang lúc giữa encounter thì không được đổi
+      // profile" — chặn nếu user đang active trong 1 encounter bất kỳ.
+      const activeChan = await getUserActiveEncounterChannel(userId);
+      if (activeChan) {
+        message.reply(`⚠️ Bạn đang trong 1 encounter (channel <#${activeChan}>) — không thể đổi profile giữa trận. Kết thúc encounter đó trước đã.`);
+        return;
+      }
       await setActiveProfileSlot(userId, slot);
       const names = await getProfileNames(userId);
       message.reply(`✅ Đã chuyển sang **${PROFILE_EMOJIS[slot]} ${resolveProfileLabel(names, slot)}**!\n> Tất cả lệnh từ bây giờ sẽ dùng save này.`);
@@ -1978,6 +2040,11 @@ if (message.content.startsWith("-gacha")) {
     if (sub === "new") {
       const kv = parseKeyValues(rest);
       const contractKey = (kv["key"] ?? "").trim();
+      const activeChanNew = await getUserActiveEncounterChannel(message.author.id);
+      if (activeChanNew) {
+        message.reply(`⚠️ Bạn đang trong 1 encounter khác (channel <#${activeChanNew}>) — không thể tạo contract mới cho tới khi kết thúc encounter đó.`);
+        return;
+      }
       try {
         const board = await createPartyBoard(channelId, message.author.id, message.author.username, contractKey);
         const contract = CONTRACTS[board.contractKey];
@@ -1989,6 +2056,11 @@ if (message.content.startsWith("-gacha")) {
     }
 
     if (sub === "join") {
+      const activeChanContractJoin = await getUserActiveEncounterChannel(message.author.id);
+      if (activeChanContractJoin) {
+        message.reply(`⚠️ Bạn đang trong 1 encounter khác (channel <#${activeChanContractJoin}>) — không thể join party mới cho tới khi kết thúc encounter đó.`);
+        return;
+      }
       try {
         const board = await joinPartyBoard(channelId, message.author.id, message.author.username);
         const contract = CONTRACTS[board.contractKey];
@@ -2359,6 +2431,13 @@ if (message.content.startsWith("-gacha")) {
         message.reply("☠️ Nhân vật của bạn đang **Permanent Death** (chết vĩnh viễn từ 1 encounter permadeath trước đó) — không thể tham gia encounter nào cho tới khi được hồi sinh qua Rewound Time (`-rewoundtime` — GM/admin dùng giúp bạn).");
         return;
       }
+      // Task yêu cầu trực tiếp: "cấm không cho join nhiều encounter một lúc" —
+      // chặn nếu user ĐANG active ở 1 encounter KHÁC (channel khác).
+      const activeChanJoin = await getUserActiveEncounterChannel(message.author.id);
+      if (activeChanJoin && activeChanJoin !== encChannelId) {
+        message.reply(`⚠️ Bạn đang trong 1 encounter khác (channel <#${activeChanJoin}>) — không thể join 2 encounter cùng lúc. Kết thúc encounter đó trước đã.`);
+        return;
+      }
       try {
         await withLock(encounterKey(encChannelId), async () => {
           const encounter = await getEncounter(encChannelId);
@@ -2374,6 +2453,7 @@ if (message.content.startsWith("-gacha")) {
             throw new Error("Encounter đã bắt đầu (đã rollspeed) — không thể `-encounter join` lại để đổi trang bị/chỉ số giữa trận (tránh lạm dụng). Join lại chỉ được phép TRƯỚC khi GM chạy `-encounter rollspeed`.");
           }
           const { joined, wasJoined, equipNotes, startNotes, finalHp } = await buildJoinedCombatant(encounter, message.author.id, message.author.username, profileDataForDefaults, kv);
+          await setUserActiveEncounterChannel(message.author.id, encChannelId).catch(() => {});
           await saveEncounter(encChannelId, encounter);
           await message.reply({
             content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.name}** với ${finalHp} HP.` +
@@ -2410,7 +2490,7 @@ if (message.content.startsWith("-gacha")) {
           appendActionLog(encounter, `⏭️ ${label} bỏ qua lượt (pass).`);
           await saveEncounter(encChannelId, encounter);
           announceCurrentTurn(encChannelId, encounter).catch(() => {});
-          message.reply(`⏭️ ${label} đã bỏ qua lượt.${prescriptNotes.length > 0 ? "\n" + prescriptNotes.map(n => `> ${n}`).join("\n") : ""}${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : `\n> Tiếp theo: ${buildTurnOrderText(encounter)}`}`);
+          message.reply(`⏭️ ${label} đã bỏ qua lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : `\n> Tiếp theo: ${buildTurnOrderText(encounter)}`}`);
         });
       } catch (err) {
         message.reply(`❌ ${err.message}`);
@@ -2903,6 +2983,12 @@ if (message.content.startsWith("-gacha")) {
           color: 0x95a5a6,
         }));
         await message.channel.send({ embeds: logEmbeds }).catch(() => {});
+      }
+      // Task yêu cầu trực tiếp: "cấm không cho join nhiều encounter một lúc" —
+      // clear active-encounter-index cho TẤT CẢ player trước khi xoá, để họ
+      // join/tạo encounter mới được ngay.
+      for (const pid of Object.keys(encounter.players)) {
+        clearUserActiveEncounterChannel(pid).catch(() => {});
       }
       await deleteEncounter(encChannelId);
       message.reply(`✅ Đã kết thúc encounter **${encounter.name}**.${fullLog.length > 0 ? ` (Đã gửi lại toàn bộ ${fullLog.length} entry log ở trên trước khi xoá.)` : ""}`);

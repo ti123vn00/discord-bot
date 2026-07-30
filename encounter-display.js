@@ -201,6 +201,12 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
       const PRESCRIPT_ROLL_LABELS = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
       statusParts.push(`<:Prescript:1528452494945157281>Sắc lệnh #${combatant.prescriptRoll} (${PRESCRIPT_ROLL_LABELS[combatant.prescriptRoll] ?? "?"})`);
     }
+    if (combatant.prescriptTargetId) {
+      statusParts.push(`<:The_Prescripts_Target:1528452363159998525>Đã đánh dấu: **${combatant.prescriptTargetName ?? combatant.prescriptTargetId}**`);
+    }
+    if (combatant.markedByPrescriptTargetOf) {
+      statusParts.push(`<:The_Prescripts_Target:1528452363159998525>Bị đánh dấu bởi **${combatant.markedByPrescriptTargetOf}**`);
+    }
     if ((combatant.scorchPropellantRound ?? 0) > 0) statusParts.push(`<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round${combatant.scorchPropellantRound}`);
     if ((combatant.tigermarkRound ?? 0) > 0) statusParts.push(`<:Tigermark_Round:1528452815838777394>Tigermark Round${combatant.tigermarkRound}`);
     if ((combatant.savageTigermarkRound ?? 0) > 0) statusParts.push(`<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round${combatant.savageTigermarkRound}`);
@@ -259,7 +265,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     // phụ thuộc target đang đánh nên KHÔNG hiện ở đây, xem attacker-perk-context.js
     // để biết đầy đủ những gì có ĐIỀU KIỆN theo từng đòn cụ thể).
     const dmgEffectParts = [];
-    if ((combatant.karmicConsequence ?? 0) > 0) dmgEffectParts.push(`+${combatant.karmicConsequence}% Dmg Taken (Karmic Consequence)`);
+    if ((combatant.karmicConsequence ?? 0) > 0) dmgEffectParts.push(`<:Karmic_Consequence:1532503901687779338>+${combatant.karmicConsequence}% Dmg Taken (Karmic Consequence)`);
     if ((combatant.fragile ?? 0) > 0) dmgEffectParts.push(`+${combatant.fragile}% Dmg Taken (Fragile)`);
     if ((combatant.hemorrhage ?? 0) > 0) dmgEffectParts.push(`+${combatant.hemorrhage * 10}% Dmg Taken (Hemorrhage)`);
     // "Gaze[Awe]"/"Contempt" — GAP ĐÃ SỬA (xác nhận trực tiếp): "vẫn nên làm

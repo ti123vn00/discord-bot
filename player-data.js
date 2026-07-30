@@ -137,6 +137,24 @@ async function setActiveProfileSlot(userId, slot) {
   await withTimeout(redis.set(`profile:${userId}`, String(slot)));
 }
 
+// Task yêu cầu trực tiếp: "cấm không cho join nhiều encounter một lúc" + "đang
+// lúc giữa encounter thì không được đổi profile" — track channel encounter
+// ĐANG active của user (TTL 24h tự dọn nếu quên clear ở đâu đó — an toàn kép,
+// không phụ thuộc HOÀN TOÀN vào việc clear đúng chỗ mọi trường hợp kết thúc).
+function activeEncounterUserKey(userId) {
+  return `useractiveenc:${userId}`;
+}
+async function getUserActiveEncounterChannel(userId) {
+  const raw = await withTimeout(redis.get(activeEncounterUserKey(userId)));
+  return raw || null;
+}
+async function setUserActiveEncounterChannel(userId, channelId) {
+  await withTimeout(redis.set(activeEncounterUserKey(userId), channelId, { ex: 86400 }));
+}
+async function clearUserActiveEncounterChannel(userId) {
+  await withTimeout(redis.del(activeEncounterUserKey(userId)));
+}
+
 function playerKeyForSlot(userId, slot) {
   return slot === 1 ? `player:${userId}` : `player:${userId}:slot${slot}`;
 }
@@ -264,5 +282,6 @@ function formatNumber(n) {
     getActiveProfileSlot, setActiveProfileSlot, playerKeyForSlot, dailyKeyForSlot,
     getPlayerData, getPlayerDataWithSlot, savePlayerData, saveMultiplePlayerData,
     unwrapPipelineResults, formatNumber,
+    getUserActiveEncounterChannel, setUserActiveEncounterChannel, clearUserActiveEncounterChannel,
   };
 };

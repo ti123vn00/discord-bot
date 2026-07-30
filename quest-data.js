@@ -82,8 +82,7 @@ const QUEST_MOBS = {
     // thường (cần verify cơ chế tiêu hao thật lúc code enemy-ai.js/resolve logic
     // để đảm bảo "vĩnh viễn" đúng nghĩa, không bị consume sau 1 roll).
     permanentDiceUp: 3,
-    // "Borrowed Eyes" CHƯA có trong list — Fragaria sẽ gửi dice/light cost sau.
-    skills: ["Pistol Draw", "Thrust", "You're Too Slow", "Slash Series", "Sky Clearing Cut"],
+    skills: ["Pistol Draw", "Thrust", "You're Too Slow", "Slash Series", "Sky Clearing Cut", "Borrowed Eyes"],
   },
 };
 

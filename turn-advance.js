@@ -214,6 +214,7 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // turn") — đều là cờ 1 LẦN/turn, reset về false mỗi turn mới.
     combatant.followUpUsedThisTurn = false;
     combatant.usedItemThisTurn = false;
+    combatant.unlockUsedThisTurn = false;
     combatant.voracityUsedThisTurn = false;
     // Shin/Mang chỉ active TRONG TURN đã kích hoạt — hết turn thì tắt hẳn (phải dùng
     // lại -encounter shinmang, tốn thêm 25 Sanity, nếu muốn duy trì turn sau).

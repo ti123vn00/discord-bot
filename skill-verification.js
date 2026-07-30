@@ -157,6 +157,14 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       if (skillKey === "tactical suppression" && attacker.tacticalSuppressionActive) {
         throw new Error(`Skill "${skill.name}" đang hoạt động (còn ${attacker.tacticalSuppressionTurnsLeft} turn) — không thể dùng lại khi đang active.`);
       }
+      // Task yêu cầu trực tiếp: "page unlock bị bug không có CD trong khi đáng
+      // lẽ dù nó có là cd 0 turn nhưng có description là 1 turn chỉ dùng được 1
+      // lần" — CD=0 khiến existingCd check ở trên KHÔNG BAO GIỜ chặn được (0 > 0
+      // luôn false) — cần check RIÊNG, giống hệt pattern "tactical suppression"
+      // trên: 1 flag riêng, reset mỗi turn (xem turn-advance.js).
+      if (skillKey === "unlock" && attacker.unlockUsedThisTurn) {
+        throw new Error(`Skill "${skill.name}" đã dùng trong turn này rồi — chỉ được dùng 1 lần/turn (dù CD 0 Turn, vẫn giới hạn theo description).`);
+      }
       // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 4) — "Great
       // Split" (Mimicry Blade) yêu cầu ĐỦ 5 Imitation mới dùng được (đây là điều
       // kiện BẮT BUỘC để roll, không chỉ là hiệu ứng phụ — chặn NGAY trước khi
