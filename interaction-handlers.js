@@ -342,9 +342,21 @@ client.on("interactionCreate", async (interaction) => {
         await saveEncounter(channelId, encounter);
         // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
         // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
-        // thứ tự với reactive-defense.js's finalizeReactiveChoice).
+        // thứ tự với reactive-defense.js's finalizeReactiveChoice). GAP ĐÃ SỬA
+        // (rà soát sau bug report treo encounter) — nếu đã xoá, BỎ QUA gửi board
+        // embed (dòng 358-361 gốc) và announceCurrentTurn — cả 2 đều dùng
+        // `encounter` biến CŨ, đã hết tồn tại trong Redis, gửi ra là dữ liệu ảo.
         if (encounter._deleteAfterSave) {
-          await deleteEncounter(channelId).catch(() => {});
+          await deleteEncounter(channelId).catch((err) => log("error", "confirmall-deleteEncounter", interaction.user.id, err.message));
+          await interaction.update({
+            embeds: [{
+              title: isConfirm ? "✅ Đã xác nhận tất cả" : "❌ Đã reject tất cả",
+              description: (resultLines.join("\n") || "*(không có gì)*") + victoryNote,
+              color: isConfirm ? 0x2ecc71 : 0xe74c3c,
+            }],
+            components: [],
+          }).catch(() => {});
+          return;
         }
 
         await interaction.update({
@@ -1788,9 +1800,16 @@ client.on("interactionCreate", async (interaction) => {
         await saveEncounter(channelId, encounter);
         // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
         // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
-        // thứ tự với reactive-defense.js's finalizeReactiveChoice).
+        // thứ tự với reactive-defense.js's finalizeReactiveChoice). GAP ĐÃ SỬA
+        // (rà soát sau bug report treo encounter) — TRƯỚC ĐÂY vẫn gọi
+        // announceCurrentTurn(encounter) NGAY SAU dù đã xoá — dùng `encounter`
+        // biến CŨ (đã hết tồn tại trong Redis), gửi board/thông báo dựa trên dữ
+        // liệu lỗi thời — giờ return SỚM, bỏ qua hẳn bước đó khi đã kết thúc.
         if (encounter._deleteAfterSave) {
-          await deleteEncounter(channelId).catch(() => {});
+          await deleteEncounter(channelId).catch((err) => log("error", "critical-deleteEncounter", interaction.user.id, err.message));
+          return interaction.reply({
+            embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
+          }).catch(() => {});
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.reply({
@@ -1905,9 +1924,15 @@ client.on("interactionCreate", async (interaction) => {
         await saveEncounter(channelId, encounter);
         // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
         // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
-        // thứ tự với reactive-defense.js's finalizeReactiveChoice).
+        // thứ tự với reactive-defense.js's finalizeReactiveChoice). GAP ĐÃ SỬA
+        // (rà soát sau bug report treo encounter) — return SỚM, không gọi
+        // announceCurrentTurn với `encounter` đã hết tồn tại trong Redis.
         if (encounter._deleteAfterSave) {
-          await deleteEncounter(channelId).catch(() => {});
+          await deleteEncounter(channelId).catch((err) => log("error", "page-deleteEncounter", interaction.user.id, err.message));
+          return interaction.update({
+            embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
+            components: [],
+          }).catch(() => {});
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.update({

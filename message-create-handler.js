@@ -2054,7 +2054,7 @@ if (message.content.startsWith("-gacha")) {
         const { encounter, contract } = await startPartyBoard(channelId, message.author.id);
         message.reply(
           `⚔️ Contract **${contract.name}** bắt đầu! Đã tạo encounter **${encounter.name}** với ${Object.keys(encounter.enemies).length} mob.\n` +
-          `> Dùng \`-encounter status\` để xem board, GM Panel để điều khiển mob (AI tự động CHƯA sẵn sàng ở bản này — cần điều khiển thủ công tạm thời).`
+          `> Dùng \`-encounter status\` để xem board.`
         );
       } catch (err) {
         message.reply(`❌ ${err.message}`);

@@ -1346,7 +1346,7 @@ const SEVERE_INJURIES = ["Mất tay", "Mất Chân", "Vết thương lớn"];
 const { getParryClashPenalty, rollInjury } = require("./injury-system")({ SEVERE_INJURIES, MINOR_INJURIES }); // ĐÃ TÁCH sang file riêng (injury-system.js)
 const { advanceCombatantTurn } = require("./turn-advance")({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }); // ĐÃ TÁCH sang file riêng (turn-advance.js)
 
-const { encounterKey, getEncounter, saveEncounter, deleteEncounter } = require("./encounter-persistence")({ redis, withTimeout }); // ĐÃ TÁCH sang file riêng (encounter-persistence.js)
+const { encounterKey, getEncounter, saveEncounter, deleteEncounter } = require("./encounter-persistence")({ redis, withTimeout, log }); // ĐÃ TÁCH sang file riêng (encounter-persistence.js)
 
 /** resolveGmLinkedChannel — GM Control Panel (xác nhận trực tiếp): cho phép GM
  *  gõ TOÀN BỘ lệnh `-encounter ...` từ 1 kênh RIÊNG (không phải kênh encounter

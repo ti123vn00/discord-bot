@@ -39,7 +39,7 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
   // quan trọng: save trước để giữ lại state cuối cùng — HP/reward đã áp — rồi mới
   // xoá, tránh save-sau-xoá vô tình tạo lại encounter đã kết thúc).
   if (encounter._deleteAfterSave) {
-    await deleteEncounter(channelId).catch(() => {});
+    await deleteEncounter(channelId).catch((err) => log("error", "reactivedef-deleteEncounter", "system", err.message));
     return { resultText, stillWaitingFor };
   }
   // Stage 4 hook — nếu đòn VỪA resolve xong (allReacted) do 1 enemy aiControlled

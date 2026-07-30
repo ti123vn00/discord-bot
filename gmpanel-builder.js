@@ -43,7 +43,7 @@ module.exports = function ({ ADMIN_IDS, ActionRowBuilder, ButtonBuilder, ButtonS
       new ButtonBuilder().setCustomId(`encendturn:${channelId}:${encounter.gmId}`).setLabel("🔄 Kết thúc Turn").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`gmpanelstatus:${channelId}:${userId}`).setLabel("📊 Xem trạng thái").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`gmpaneladdenemy:${channelId}:${userId}`).setLabel("➕ Add Enemy").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`gmpanelquickstatus:${channelId}:${userId}`).setLabel("🎯 Set Status (chọn nhanh)").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`gmpanelquickstatus:${channelId}:${userId}`).setLabel("🎯 Set Status").setStyle(ButtonStyle.Secondary),
     ));
     // GAP MỚI (xác nhận trực tiếp: "hoàn toàn không có lệnh hay cách nào add
     // [skill riêng cho enemy] ở gmpanel cả") — trước đây CHỈ có lệnh text
