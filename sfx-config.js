@@ -21,4 +21,15 @@ function findSfx(skillKeyRaw) {
   return SFX_MAP[key] ?? null;
 }
 
-module.exports = { SFX_MAP, findSfx };
+/** pickRandomBgm — chọn ngẫu nhiên 1 trong 9 file BGM cố định (BGM1.mp3 —
+ *  BGM9.mp3, đặt trong /assets/audio/bgm/ trong repo thật, xem quy ước cùng
+ *  SFX_MAP ở trên). Gọi 1 LẦN DUY NHẤT lúc encounter START (KHÔNG gọi lại mỗi
+ *  lần xem status — theo yêu cầu trực tiếp: "chạy bgm... cho đến hết encounter"
+ *  nghĩa là 1 bài CỐ ĐỊNH suốt cả trận, không đổi bài giữa chừng) — kết quả
+ *  lưu vào encounter.currentBgm, dùng lại field đó mỗi lần hiện status. */
+function pickRandomBgm() {
+  const n = 1 + Math.floor(Math.random() * 9);
+  return `BGM${n}.mp3`;
+}
+
+module.exports = { SFX_MAP, findSfx, pickRandomBgm };

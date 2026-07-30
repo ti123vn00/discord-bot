@@ -1,0 +1,85 @@
+// quest-resolution.js
+// Stage 5 — check quest THẮNG/THUA (sau mỗi action resolve) + phát reward.
+//
+// Luật xác nhận trực tiếp:
+//   - THẮNG (hết enemy) — CẢ TEAM nhận thưởng (kể cả người đã chết giữa chừng),
+//     KHÔNG áp Death Penalty cho ai (dù có chết) — chỉ khi CẢ team chết mới áp.
+//   - THUA (cả team chết — wipe) — áp Death Penalty cho TỪNG người.
+//   - Giới hạn thưởng: 4 lần contract/NGÀY/NGƯỜI (không phân biệt loại contract),
+//     hết lượt thì không nhận thưởng (dù vẫn thắng trận).
+//
+// checkQuestOutcome — THUẦN detect (không side-effect), gọi từ resolve-pending-
+// action.js NGAY SAU khi resolve xong 1 action (đã biết HP mới nhất). Trả về
+// null nếu CHƯA kết thúc, {won, contract} nếu đã kết thúc.
+//
+// grantContractReward — có side-effect (ghi profile + Redis) — mirror ĐÚNG
+// pattern giới hạn theo ngày của processDailyClaimForUser (index.js) — key
+// Redis riêng "contractcount:<userId>:<slot>", reset tự nhiên khi qua ngày mới
+// (so sánh date field, không cần cron/job riêng).
+
+const { CONTRACTS } = require("./quest-data");
+
+module.exports = function ({
+  withLock, getPlayerDataWithSlot, savePlayerData, clampExpWithLunacy,
+  redis, withTimeout, getVNDateString, DAILY_KEY_TTL_SECONDS, markContractTaskDone,
+}) {
+  function contractCountKey(userId, slot) {
+    return `contractcount:${userId}:${slot}`;
+  }
+
+  /** checkQuestOutcome — encounter.isQuest bắt buộc true mới check. Trả về
+   *  null nếu vẫn còn ít nhất 1 enemy VÀ ít nhất 1 player còn sống (chưa kết
+   *  thúc) — {won: true, contract} nếu hết enemy — {won: false} nếu hết player
+   *  (wipe toàn team). */
+  function checkQuestOutcome(encounter) {
+    if (!encounter.isQuest) return null;
+    const aliveEnemies = Object.values(encounter.enemies).filter(e => e.currentHp > 0).length;
+    const alivePlayers = Object.values(encounter.players).filter(p => p.currentHp > 0).length;
+    if (aliveEnemies > 0 && alivePlayers > 0) return null;
+    if (aliveEnemies === 0) {
+      const contract = CONTRACTS[encounter.questMeta?.contractKey];
+      return { won: true, contract };
+    }
+    return { won: false };
+  }
+
+  /** grantContractReward — cộng EXP/Ahn cho 1 người, tôn trọng giới hạn 4
+   *  lần/ngày (tính chung TẤT CẢ loại contract, không phải riêng từng loại).
+   *  Trả về { granted, count } — granted=false nếu đã đủ 4/4 hôm nay. */
+  async function grantContractReward(userId, contract) {
+    const result = await withLock(userId, async () => {
+      const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
+      const today = getVNDateString();
+      const key = contractCountKey(userId, slot);
+      const raw = await withTimeout(redis.get(key));
+      const parsed = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+      const data = (parsed && parsed.date === today) ? parsed : { date: today, count: 0 };
+      if (data.count >= 4) {
+        return { granted: false, count: data.count };
+      }
+      data.count += 1;
+      profileData.exp = clampExpWithLunacy(profileData, (profileData.exp ?? 0) + contract.expReward);
+      profileData.ahn = (profileData.ahn ?? 0) + contract.ahnReward;
+      await withTimeout(redis.set(key, JSON.stringify(data), { ex: DAILY_KEY_TTL_SECONDS }));
+      await savePlayerData(userId, profileData, slot);
+      return { granted: true, count: data.count };
+    });
+    // Nhiệm vụ 2 của -daily ("hoàn thành 1 contract bất kỳ") — tính là ĐÃ HOÀN
+    // THÀNH ngay khi contract THẮNG (bất kể còn lượt reward 4/ngày hay không —
+    // đây là nhiệm vụ RIÊNG của hệ thống -daily, không phụ thuộc giới hạn contract
+    // reward). Gọi SAU KHI withLock(userId) ở trên đã release — markContractTaskDone
+    // TỰ lock lại userId này lần nữa, lồng vào lock CÒN ĐANG GIỮ sẽ treo/lỗi.
+    // dailyTaskNote — GAP THẬT phát hiện qua test: nếu việc này TRÚNG NGAY lúc đủ
+    // streak 7 ngày, thông báo "🏆 Hoàn thành streak..." trước đây bị fire-and-
+    // forget bỏ qua, KHÔNG ai thấy dù đã cộng đúng — giờ trả ra để resolve-
+    // pending-action.js hiện kèm trong resultLines.
+    let dailyTaskNote = null;
+    try {
+      const dailyResult = await markContractTaskDone(userId);
+      if (dailyResult?.weeklyBonusNote) dailyTaskNote = dailyResult.weeklyBonusNote;
+    } catch { /* không chặn reward chính nếu daily-quest lỗi */ }
+    return { ...result, dailyTaskNote };
+  }
+
+  return { checkQuestOutcome, grantContractReward };
+};

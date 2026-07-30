@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, processDailyClaimForUser, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -340,6 +340,12 @@ client.on("interactionCreate", async (interaction) => {
           encounter.victoryAnnounced = false;
         }
         await saveEncounter(channelId, encounter);
+        // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
+        // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
+        // thứ tự với reactive-defense.js's finalizeReactiveChoice).
+        if (encounter._deleteAfterSave) {
+          await deleteEncounter(channelId).catch(() => {});
+        }
 
         await interaction.update({
           embeds: [{
@@ -1780,6 +1786,12 @@ client.on("interactionCreate", async (interaction) => {
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
         await saveEncounter(channelId, encounter);
+        // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
+        // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
+        // thứ tự với reactive-defense.js's finalizeReactiveChoice).
+        if (encounter._deleteAfterSave) {
+          await deleteEncounter(channelId).catch(() => {});
+        }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.reply({
           embeds: [verify.skillRollEmbed, { description: `*(Critical này không có dice sát thương trực tiếp để tự tính dmg — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
@@ -1891,6 +1903,12 @@ client.on("interactionCreate", async (interaction) => {
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
         await saveEncounter(channelId, encounter);
+        // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
+        // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
+        // thứ tự với reactive-defense.js's finalizeReactiveChoice).
+        if (encounter._deleteAfterSave) {
+          await deleteEncounter(channelId).catch(() => {});
+        }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.update({
           embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
@@ -2953,12 +2971,34 @@ client.on("interactionCreate", async (interaction) => {
     if (await replyOnCooldown(interaction, 3000)) return;
     await interaction.deferReply();
     try {
-      const result = await processDailyClaimForUser(interaction.user.id);
-      if (result.alreadyClaimed) {
-        await interaction.editReply({ content: `${interaction.user}, bạn đã nhận daily hôm nay rồi.\nThời gian còn lại đến reset: **${result.hours}h ${result.minutes}m ${result.seconds}s**.` });
-      } else {
-        await interaction.editReply({ content: result.replyMsg.replace("{USER}", interaction.user.toString()) });
+      const result = await claimDailyLogin(interaction.user.id);
+      if (result.alreadyDone) {
+        const d = result.data;
+        const taskLines = [
+          `${d.loginDone ? "✅" : "⬜"} Login hôm nay (\`/daily\`)`,
+          `${d.contractDone ? "✅" : "⬜"} Hoàn thành 1 contract bất kỳ`,
+          d.task3Variant === "killmobs"
+            ? `${d.task3Done ? "✅" : "⬜"} Hạ 3 mob/boss bất kỳ (${Math.min(d.killCount ?? 0, 3)}/3)`
+            : `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên hôm nay: ${d.task3Variant === "ahn" ? "nhận Ahn" : "nhận sách"} (tự hoàn thành)`,
+        ];
+        await interaction.editReply({
+          content: `${interaction.user}, bạn đã điểm danh hôm nay rồi.\n${taskLines.join("\n")}\n` +
+            `🔥 Streak (đủ cả 3 nhiệm vụ liên tục): **${d.streak ?? 0}/7** ngày\n` +
+            `Thời gian còn lại đến reset: **${result.hours}h ${result.minutes}m ${result.seconds}s**.`,
+        });
+        return;
       }
+      const d = result.data;
+      const taskLines = [
+        `✅ Login hôm nay: +2 Exp`,
+        `${d.contractDone ? "✅" : "⬜"} Hoàn thành 1 contract bất kỳ: +2 Exp`,
+        d.task3Variant === "killmobs"
+          ? `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên: hạ **3 mob/boss bất kỳ** (${Math.min(d.killCount ?? 0, 3)}/3) — +2 Exp khi đủ`
+          : `✅ Nhiệm vụ ngẫu nhiên hôm nay (${result.task3AutoNote})`,
+      ];
+      let replyMsg = `🎉 ${interaction.user} đã điểm danh thành công!\n${taskLines.join("\n")}\n🔥 Streak (đủ cả 3 nhiệm vụ liên tục 7 ngày): **${d.streak ?? 0}/7** ngày`;
+      if (result.weeklyBonusNote) replyMsg += `\n\n${result.weeklyBonusNote}`;
+      await interaction.editReply({ content: replyMsg });
     } catch (err) {
       log("error", "/daily", interaction.user.id, err.message);
       await interaction.editReply({ content: `❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}` });

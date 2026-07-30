@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, withLock }) {
+module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -34,6 +34,23 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
     stillWaitingFor = allTargetIds.length - p.reactedTargetIds.length;
   }
   await saveEncounter(channelId, encounter);
+  // Stage 5 (quest system) — encounter._deleteAfterSave được resolveOnePendingAction
+  // đánh dấu khi quest vừa kết thúc (thắng/thua) — XOÁ NGAY SAU KHI save (thứ tự
+  // quan trọng: save trước để giữ lại state cuối cùng — HP/reward đã áp — rồi mới
+  // xoá, tránh save-sau-xoá vô tình tạo lại encounter đã kết thúc).
+  if (encounter._deleteAfterSave) {
+    await deleteEncounter(channelId).catch(() => {});
+    return { resultText, stillWaitingFor };
+  }
+  // Stage 4 hook — nếu đòn VỪA resolve xong (allReacted) do 1 enemy aiControlled
+  // TỰ tấn công (attackerType "enemy"), báo cho AI biết để tự cân nhắc hành động
+  // TIẾP THEO (skill/M1 khác) hay pass lượt — attemptOneMobAction chỉ thử ĐÚNG 1
+  // hành động mỗi lần gọi (xem comment đầy đủ ở enemy-ai.js's maybeRunAiTurn) vì
+  // phải đợi CHÍNH đòn này resolve xong (hasUnresolvedTargetPending) mới thử
+  // tiếp được — đây CHÍNH LÀ điểm "resolve xong" đó.
+  if (allReacted && p.attackerType === "enemy" && encounter.enemies[p.attackerId]?.aiControlled) {
+    aiHooks.maybeRunAiTurn(channelId).catch(() => {});
+  }
   return { resultText, stillWaitingFor };
 }
 
@@ -345,6 +362,15 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         continue;
       }
       const target = targetResolved.combatant;
+      // Stage 3 — Enemy AI (enemy-ai.js): mob đánh dấu aiControlled tự quyết
+      // định Guard/Evade/Parry/Không phòng thủ theo luật riêng, KHÔNG gửi UI
+      // Discord nào cả — resolveAiDefenseForTarget tự lock/loop/finalize toàn
+      // bộ nhóm hit còn lại cho target này trong 1 lần, độc lập với vòng lặp
+      // đang chạy ở đây (không cần đợi round-trip Discord như người thật).
+      if (target.aiControlled) {
+        aiHooks.resolveAiDefenseForTarget(channelId, pendingId, t.targetId).catch(() => {});
+        continue;
+      }
       const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
 
       // GAP ĐÃ SỬA (xác nhận trực tiếp: "Durandal crit có 3 hit... lúc hiện

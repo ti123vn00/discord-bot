@@ -11,7 +11,7 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, processDailyClaimForUser, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -382,15 +382,36 @@ client.on("messageCreate", async (message) => {
     }
     const userId = message.author.id;
     try {
-      const result = await processDailyClaimForUser(userId);
-      if (result.alreadyClaimed) {
+      const result = await claimDailyLogin(userId);
+      if (result.alreadyDone) {
+        const d = result.data;
+        const taskLines = [
+          `${d.loginDone ? "✅" : "⬜"} Login hôm nay (\`-daily\`)`,
+          `${d.contractDone ? "✅" : "⬜"} Hoàn thành 1 contract bất kỳ`,
+          d.task3Variant === "killmobs"
+            ? `${d.task3Done ? "✅" : "⬜"} Hạ 3 mob/boss bất kỳ (${Math.min(d.killCount ?? 0, 3)}/3)`
+            : `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên hôm nay: ${d.task3Variant === "ahn" ? "nhận Ahn" : "nhận sách"} (tự hoàn thành)`,
+        ];
         message.reply(
-          `${message.author}, bạn đã nhận daily hôm nay rồi.\n` +
+          `${message.author}, bạn đã điểm danh hôm nay rồi.\n> ${taskLines.join("\n> ")}\n` +
+          `🔥 Streak (đủ cả 3 nhiệm vụ liên tục): **${d.streak ?? 0}/7** ngày\n` +
           `Thời gian còn lại đến reset: **${result.hours}h ${result.minutes}m ${result.seconds}s**.`
         );
-      } else {
-        message.reply(result.replyMsg.replace("{USER}", message.author.toString()));
+        return;
       }
+      const d = result.data;
+      const taskLines = [
+        `✅ Login hôm nay: +${2} Exp`,
+        `${d.contractDone ? "✅" : "⬜"} Hoàn thành 1 contract bất kỳ: +2 Exp (dùng \`-contract\` để xem danh sách)`,
+        d.task3Variant === "killmobs"
+          ? `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên hôm nay: hạ **3 mob/boss bất kỳ** (${Math.min(d.killCount ?? 0, 3)}/3) — +2 Exp khi đủ`
+          : `✅ Nhiệm vụ ngẫu nhiên hôm nay (${result.task3AutoNote})`,
+      ];
+      let replyMsg =
+        `🎉 ${message.author} đã điểm danh thành công!\n> ${taskLines.join("\n> ")}\n` +
+        `🔥 Streak (đủ cả 3 nhiệm vụ liên tục 7 ngày): **${d.streak ?? 0}/7** ngày`;
+      if (result.weeklyBonusNote) replyMsg += `\n\n${result.weeklyBonusNote}`;
+      message.reply(replyMsg);
     } catch (err) {
       log("error", "daily", userId, err.message, { stack: err.stack });
       message.reply(`❌ ${err.message ?? "Có lỗi xảy ra, thử lại sau nhé."}`);
@@ -1922,6 +1943,129 @@ if (message.content.startsWith("-gacha")) {
     return;
   }
 
+  // ── -contract ── (Quest System — Stage 1+2: Party Board + auto-start encounter.
+  // CHƯA có AI enemy (Stage 3-4) — mob cần GM điều khiển thủ công sau khi begin,
+  // y hệt encounter thường, cho tới khi enemy-ai.js được nối vào.)
+  if (message.content.startsWith("-contract")) {
+    const argStr = message.content.replace(/^-contract/i, "").trim();
+    const subMatch = argStr.match(/^(\S+)\s*/);
+    const sub = (subMatch?.[1] ?? "").toLowerCase();
+    const rest = subMatch ? argStr.slice(subMatch[0].length).trim() : "";
+    const channelId = message.channel.id;
+
+    function formatBoardText(board, contract) {
+      const guestLines = board.guests.length > 0
+        ? board.guests.map(g => `<@${g.id}>`).join(", ")
+        : "*(chưa có ai)*";
+      return `📋 **Party Board** — Contract: **${contract.name}** (${contract.description})\n` +
+        `> 👑 Host: <@${board.hostId}>\n` +
+        `> 🧑‍🤝‍🧑 Guest (${board.guests.length}/${MAX_PARTY_SIZE - 1}): ${guestLines}\n` +
+        `> 🎁 Thưởng: ${contract.expReward} EXP, ${contract.ahnReward.toLocaleString("vi-VN")} Ahn (mỗi người, nếu còn lượt contract trong ngày)\n` +
+        `> Dùng \`-contract join\` để tham gia, \`-contract begin\` (host) để bắt đầu, \`-contract cancel\` (host) để huỷ.`;
+    }
+
+    if (!sub) {
+      const lines = Object.entries(CONTRACTS).map(([key, c]) =>
+        `> **${c.name}** (\`${key}\`) — ${c.description} — ${c.expReward} EXP, ${c.ahnReward.toLocaleString("vi-VN")} Ahn`
+      );
+      message.reply(
+        `📜 **Regular Contracts**\n${lines.join("\n")}\n\n` +
+        `Dùng \`-contract new key: <tên trong ngoặc>\` để tạo Party Board (bạn sẽ là host).`
+      );
+      return;
+    }
+
+    if (sub === "new") {
+      const kv = parseKeyValues(rest);
+      const contractKey = (kv["key"] ?? "").trim();
+      try {
+        const board = await createPartyBoard(channelId, message.author.id, message.author.username, contractKey);
+        const contract = CONTRACTS[board.contractKey];
+        message.reply(formatBoardText(board, contract));
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "join") {
+      try {
+        const board = await joinPartyBoard(channelId, message.author.id, message.author.username);
+        const contract = CONTRACTS[board.contractKey];
+        message.reply(`✅ <@${message.author.id}> đã tham gia party.\n${formatBoardText(board, contract)}`);
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "leave") {
+      try {
+        const { board, disbanded } = await leavePartyBoard(channelId, message.author.id);
+        if (disbanded) { message.reply("👋 Bạn đã rời party — party không còn ai nên đã tự giải tán."); return; }
+        const contract = CONTRACTS[board.contractKey];
+        message.reply(`👋 <@${message.author.id}> đã rời party.\n${formatBoardText(board, contract)}`);
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "kick") {
+      const kv = parseKeyValues(rest);
+      const targetId = (kv["target"] ?? "").replace(/[<@!>]/g, "").trim();
+      if (!targetId) { message.reply("⚠️ Cú pháp: `-contract kick target: <@user>`"); return; }
+      try {
+        const board = await kickFromPartyBoard(channelId, message.author.id, targetId);
+        const contract = CONTRACTS[board.contractKey];
+        message.reply(`✅ Đã kick <@${targetId}> khỏi party.\n${formatBoardText(board, contract)}`);
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "transferhost") {
+      const kv = parseKeyValues(rest);
+      const targetId = (kv["target"] ?? "").replace(/[<@!>]/g, "").trim();
+      if (!targetId) { message.reply("⚠️ Cú pháp: `-contract transferhost target: <@user>`"); return; }
+      try {
+        const board = await transferHost(channelId, message.author.id, targetId);
+        const contract = CONTRACTS[board.contractKey];
+        message.reply(`✅ Đã chuyển quyền host cho <@${targetId}>.\n${formatBoardText(board, contract)}`);
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "cancel") {
+      try {
+        await cancelPartyBoard(channelId, message.author.id);
+        message.reply("🗑️ Đã huỷ Party Board.");
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    if (sub === "begin") {
+      try {
+        const { encounter, contract } = await startPartyBoard(channelId, message.author.id);
+        message.reply(
+          `⚔️ Contract **${contract.name}** bắt đầu! Đã tạo encounter **${encounter.name}** với ${Object.keys(encounter.enemies).length} mob.\n` +
+          `> Dùng \`-encounter status\` để xem board, GM Panel để điều khiển mob (AI tự động CHƯA sẵn sàng ở bản này — cần điều khiển thủ công tạm thời).`
+        );
+      } catch (err) {
+        message.reply(`❌ ${err.message}`);
+      }
+      return;
+    }
+
+    message.reply(`⚠️ Không nhận diện được \`-contract ${sub}\` — dùng \`-contract\` (không tham số) để xem danh sách + hướng dẫn.`);
+    return;
+  }
+
   // ── -encounter ── (start / hit / status / end) — xem comment đầy đủ ở
   // buildEncounterBoardEmbed phía trên về lý do tách biệt hoàn toàn khỏi Profile.
   if (message.content.startsWith("-encounter")) {
@@ -1989,12 +2133,18 @@ if (message.content.startsWith("-gacha")) {
             // — pendingActions là hàng chờ TRƯỚC khi confirm, actionLog là log SAU
             // khi đã confirm/reject) — xem -encounter log để xem lại.
             turnNumber: 1, actionLog: [],
+            // currentBgm — chọn ngẫu nhiên 1 LẦN DUY NHẤT lúc tạo (yêu cầu trực
+            // tiếp: "chạy bgm... cho đến hết encounter" — 1 bài cố định suốt cả
+            // trận, không đổi giữa chừng) — hiện lại (đính kèm file) mỗi lần xem
+            // `-encounter status` (xem sub === "status" bên dưới).
+            currentBgm: pickRandomBgm(),
           };
           await saveEncounter(encChannelId, encounter);
           const boardPayload1 = buildEncounterBoardEmbed(encounter, encChannelId);
           await message.reply({
-            content: `✅ Đã tạo encounter **${name}**${permadeath ? " ⚠️**PERMADEATH** (chết = permanent death, không phải Death Penalty thường)" : ""}. Dùng nút bên dưới để mở Bảng điều khiển GM (thêm enemy, chỉnh sửa, điều khiển turn...).`,
+            content: `✅ Đã tạo encounter **${name}**${permadeath ? " ⚠️**PERMADEATH** (chết = permanent death, không phải Death Penalty thường)" : ""}. Dùng nút bên dưới để mở Bảng điều khiển GM (thêm enemy, chỉnh sửa, điều khiển turn...).\n> 🎵 BGM trận này: **${encounter.currentBgm}** (đính kèm dưới — xem lại bất cứ lúc nào qua \`-encounter status\`).`,
             embeds: [boardPayload1.embed],
+            files: [new AttachmentBuilder(`./assets/audio/bgm/${encounter.currentBgm}`)],
             components: [
               ...boardPayload1.components,
               new ActionRowBuilder().addComponents(
@@ -2199,225 +2349,32 @@ if (message.content.startsWith("-gacha")) {
 
     if (sub === "join") {
       const kv = parseKeyValues(rest);
-      const hp = parseInt(kv["hp"] ?? "", 10);
-      const stamina = parseInt(kv["stamina"] ?? "", 10);
-      const light = parseInt(kv["light"] ?? "", 10);
-      // Lấy profile TRƯỚC để biết Weapon/Outfit đã equip (nếu có) — làm GIÁ TRỊ MẶC
-      // ĐỊNH cho weapon:/res:/speedrange: khi KHÔNG gõ tay tham số đó. Gõ tay vẫn
-      // ĐÈ LÊN trang bị (linh hoạt cho trường hợp đặc biệt, không bắt buộc equip).
+      // Lấy profile TRƯỚC để check Permanent Death — TOÀN BỘ tính toán default
+      // (weapon/outfit/res/speedrange/Max HP+Light theo Grade/injury/HP reset
+      // 0h-12h VN...) giờ nằm trong buildJoinedCombatant (player-join-builder.js)
+      // — TÁCH RA để dùng chung với auto-join từ Party Board (quest system, xem
+      // party-board.js) thay vì copy lại logic đã nhiều lần sửa lỗi ở đây.
       const profileDataForDefaults = await getPlayerData(message.author.id);
       if (profileDataForDefaults.permanentlyDead) {
         message.reply("☠️ Nhân vật của bạn đang **Permanent Death** (chết vĩnh viễn từ 1 encounter permadeath trước đó) — không thể tham gia encounter nào cho tới khi được hồi sinh qua Rewound Time (`-rewoundtime` — GM/admin dùng giúp bạn).");
         return;
       }
-      const equippedWeaponObj = profileDataForDefaults.equippedWeapon ? findWeaponAnywhere(profileDataForDefaults.equippedWeapon) : null;
-      const equippedOutfitObj = profileDataForDefaults.equippedOutfit ? findOutfit(profileDataForDefaults.equippedOutfit) : null;
-      const weapon = normalizeWeaponWeight(kv["weapon"] ?? equippedWeaponObj?.weight ?? "medium");
-      const resRaw = kv["res"] ?? "";
-      // BUG ĐÃ SỬA (xác nhận trực tiếp: "khi player không có outfit trên người thì
-      // sẽ mặc định 3 loại kháng là 2x và speed range là 3~6, không có passive") —
-      // trước đây mặc định 1x khi KHÔNG có outfit — SAI, đúng phải là 2x (không mặc
-      // outfit = dễ bị tổn thương hơn, gấp đôi dmg nhận). Speed range 3~6 ĐÃ ĐÚNG
-      // sẵn (xem speedRangeMin/Max bên dưới, fallback 6/3 khi không có outfit).
-      // "Không có passive" tự động đúng — passive outfit (VD Iron Horus) check
-      // equippedOutfit KHỚP TÊN CỤ THỂ, tự nhiên false khi null, không cần sửa gì.
-      const res = equippedOutfitObj ? { ...equippedOutfitObj.resistance } : { B: 2, P: 2, S: 2 };
-      for (const m of resRaw.matchAll(/([\d.]+)(?:x)?([BPS])/gi)) res[m[2].toUpperCase()] = parseFloat(m[1]);
-      const speedRangeMatch = (kv["speedrange"] ?? "").match(/(\d+)\s*[~\-]\s*(\d+)/);
-      const speedRangeMin = speedRangeMatch ? parseInt(speedRangeMatch[1], 10) : (equippedOutfitObj?.speedRange?.min ?? 3);
-      const speedRangeMax = speedRangeMatch ? parseInt(speedRangeMatch[2], 10) : (equippedOutfitObj?.speedRange?.max ?? 6);
-      // Max Light MẶC ĐỊNH tính theo Grade hiện tại (luật: "4 Max Light ở grade
-      // 7/8/9, cứ cách 3 grade nhận thêm 1 (Max 6)") — GRADE_MIN=9 (thấp nhất),
-      // GRADE_MAX=1 (cao nhất), grade GIẢM khi lên cấp. Công thức:
-      // 4 + floor((GRADE_MIN - grade)/3), cap 6. Gõ tay light: vẫn ĐÈ lên được.
-      const { grade: playerGrade } = calcGrade(profileDataForDefaults.exp ?? 0);
-      const gradeBasedMaxLight = Math.min(6, 4 + Math.floor((GRADE_MIN - playerGrade) / 3));
-      // Max HP MẶC ĐỊNH tính theo Grade (luật: "mỗi 1 grade... +20 Max HP", GM xác
-      // nhận trực tiếp HP ở grade 9 (thấp nhất) = 140) — công thức: 140 + 20×(số
-      // grade đã lên TỪ grade 9). Gõ tay hp: vẫn ĐÈ lên được (linh hoạt — đặc biệt
-      // cần cho enemy/stat-block tuỳ ý không theo Grade).
-      const gradeBasedMaxHp = 140 + 20 * (GRADE_MIN - playerGrade);
-      // Chấn thương PERSIST qua encounter (luật xác nhận trực tiếp) — Gãy Xương/Vết
-      // thương lớn trừ Max HP VĨNH VIỄN cho tới khi được chữa (bằng Ahn ngoài
-      // encounter qua -healinjuryahn, HOẶC bằng K-Corp Ampule trong encounter — xem
-      // -encounter useitem). Max HP THẬT = Grade-based TRỪ tổng penalty từ injuries
-      // đang mang, floor tại 1 (không bao giờ về 0/âm).
-      const persistedInjuries = profileDataForDefaults.injuries ?? [];
-      const injuryMaxHpPenalty = calcInjuryMaxHpPenalty(persistedInjuries);
-      const effectiveGradeMaxHp = Math.max(1, gradeBasedMaxHp - injuryMaxHpPenalty);
-      // HP mặc định khi KHÔNG gõ tay hp: — dùng HP THẬT còn lại từ encounter trước
-      // (persist qua profile.currentHp), áp auto-reset nếu đã qua mốc 0h/12h giờ
-      // VN kể từ lần cập nhật gần nhất (xem getEffectiveCurrentHp). Nếu auto-reset
-      // xảy ra ngay lúc này, lưu lại NGAY để lần check sau không reset lại lần nữa
-      // trước mốc kế tiếp.
-      const effectiveHp = getEffectiveCurrentHp(profileDataForDefaults, effectiveGradeMaxHp);
-      if (effectiveHp.didReset) {
-        profileDataForDefaults.currentHp = effectiveHp.hp;
-        profileDataForDefaults.hpLastResetCheck = Date.now();
-        const { slot: hpSlot } = await getPlayerDataWithSlot(message.author.id);
-        await savePlayerData(message.author.id, profileDataForDefaults, hpSlot);
-      }
-      const finalHp = Number.isFinite(hp) && hp > 0 ? hp : effectiveHp.hp;
       try {
         await withLock(encounterKey(encChannelId), async () => {
           const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
-          const wasJoined = !!encounter.players[message.author.id];
+          const wasJoinedBefore = !!encounter.players[message.author.id];
           // GAP MỚI (xác nhận trực tiếp): "chặn -encounter join đối với những
           // người đã join rồi sau khi encounter đã bắt đầu thôi, những người
           // join muộn hoặc trễ vẫn được" — CHỈ chặn RE-JOIN (đổi đồ giữa trận,
           // dễ lạm dụng/phát sinh bug) SAU KHI đã rollspeed lần đầu — join LẦN
           // ĐẦU (chưa từng có trong encounter.players) vẫn luôn được phép bất
           // kể encounter đã bắt đầu hay chưa.
-          if (wasJoined && hasEncounterStarted(encounter)) {
+          if (wasJoinedBefore && hasEncounterStarted(encounter)) {
             throw new Error("Encounter đã bắt đầu (đã rollspeed) — không thể `-encounter join` lại để đổi trang bị/chỉ số giữa trận (tránh lạm dụng). Join lại chỉ được phép TRƯỚC khi GM chạy `-encounter rollspeed`.");
           }
-          encounter.players[message.author.id] = createCombatant({
-            name: message.author.username, maxHp: finalHp,
-            maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
-            maxLight: Number.isFinite(light) && light > 0 ? light : gradeBasedMaxLight,
-            weaponWeight: weapon,
-            weaponBaseDamage: equippedWeaponObj?.baseDamage ?? null,
-            weaponType: equippedWeaponObj?.type ?? null,
-            weaponName: equippedWeaponObj?.name ?? null,
-            weaponCriticalKey: equippedWeaponObj ? (equippedWeaponObj.criticalSkillKey ?? equippedWeaponObj.name) : null,
-            // GAP NGHIÊM TRỌNG ĐÃ SỬA — combatant.equippedOutfit CHƯA TỪNG được
-            // lưu lúc join (chỉ có weaponName, không có tương đương cho outfit)
-            // — khiến MỌI check "attacker.combatant.equippedOutfit === ..."
-            // trước đây (Dark Cloud/Kurokumo Wakashu, Thumb Capo IIII...) LUÔN
-            // false (undefined), phát hiện qua test join THẬT (không phải gán
-            // tay state trực tiếp).
-            equippedOutfit: profileDataForDefaults.equippedOutfit ?? null,
-            resistance: res, speedRangeMin, speedRangeMax,
-          });
-          // Copy Skill Tree đã mở khóa TỪ PROFILE (vĩnh viễn) vào combatant của
-          // encounter này — snapshot lúc join, giống cách HP/Stamina/vũ khí cũng
-          // được "chốt" lúc join (không tự đồng bộ real-time nếu admin unlock thêm
-          // GIỮA lúc encounter đang chạy — phải join lại để cập nhật, y hệt nguyên
-          // tắc đang áp dụng cho mọi field khác). Dùng LẠI profileDataForDefaults
-          // đã fetch ở trên (tránh gọi Redis 2 lần + tránh race condition).
-          const profileData = profileDataForDefaults;
-          const joined = encounter.players[message.author.id];
-          // GAP ĐÃ SỬA (phát hiện qua rà soát): join GIỮA 1 round (đã rollspeed)
-          // trước đây khiến player này KHÔNG BAO GIỜ được hành động cho tới hết
-          // GAP SỬA LẠI (xác nhận trực tiếp): "join muộn... chỉ có turn (speed)
-          // khi turn order đã kết thúc" — TRƯỚC ĐÂY tự động chèn NGAY vào giữa
-          // vòng hiện tại (insertIntoTurnOrderMidRound) — SAI với ý muốn, join
-          // muộn không nên hành động được ngay trong vòng đang chạy dở. Giờ
-          // KHÔNG chèn gì cả — determineTurnOrder (chạy lại MỖI round qua
-          // `-encounter endturn`) tự động quét TOÀN BỘ encounter.players hiện
-          // có, nên người join muộn tự nhiên được đưa vào turnOrder ngay khi
-          // vòng hiện tại kết thúc, không cần thêm cờ theo dõi riêng nào.
-          joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
-          // Injuries PERSIST qua encounter (xác nhận trực tiếp từ GM) — snapshot
-          // TRỰC TIẾP từ profile (KHÔNG reset về rỗng như trước đây). maxHp đã tính
-          // TRỪ injuryMaxHpPenalty ở effectiveGradeMaxHp phía trên rồi, nên ở đây chỉ
-          // cần copy danh sách injuries (không cần trừ maxHp lần 2).
-          joined.injuries = [...persistedInjuries];
-          // Snapshot 5 Page + 5 E.G.O Page đã equip trên profile — dùng để build
-          // dropdown hành động (xem buildEncounterActionPanel) — CHỐT lúc join, y
-          // hệt nguyên tắc đang áp dụng cho unlockedPerks/HP/Stamina/... (đổi loadout
-          // giữa trận thì phải join lại để cập nhật).
-          joined.unlockedPagesSnapshot = (profileData.equippedPages ?? []).filter(Boolean);
-          joined.unlockedEgoPagesSnapshot = (profileData.equippedEgoPages ?? []).filter(Boolean);
-          // Snapshot 3 Accessory đã equip — dùng để check perk ĐẶC BIỆT gắn liền 1
-          // accessory cụ thể (VD Dimension Pocket của Găng Tay Câm Lặng cho phép đổi
-          // vũ khí giữa trận — xem -encounter swapweapon) — CHỐT lúc join, cùng
-          // nguyên tắc snapshot như Page ở trên.
-          joined.equippedAccessoriesSnapshot = (profileData.equippedAccessories ?? []).filter(Boolean);
-          // Cờ passive GẮN LIỀN 1 outfit/weapon CỤ THỂ (tự động hoá theo yêu cầu trực
-          // tiếp) — snapshot lúc join, cùng nguyên tắc như trên (đổi trang bị giữa
-          // trận cần join lại để cập nhật).
-          // Iron Horus (Abydos's Uniform - Lazy Style): Block tốn 40 Sta (thay vì 10)
-          // nhưng giảm sát thương TOÀN BỘ đòn (100%, thay vì 90%/99% mặc định) — xem
-          // performGuardEvade.
-          joined.hasIronHorus = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "") === "abydos's uniform - lazy style";
-          // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — theo ĐÚNG
-          // pattern hasIronHorus ở trên: mỗi outfit-specific mechanic tự set 1
-          // boolean flag riêng lúc join (combatant không có field chung "outfit
-          // name" nào). "Reverberation Ensemble": 40% Dmg Reduction cố định.
-          const equippedOutfitNameNormalized = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "");
-          joined.hasReverberationEnsemble = equippedOutfitNameNormalized === "reverberation ensemble";
-          // "Ambitious Fixer": "Khi vào Encounter bạn nhận được 3 Haste" — áp
-          // dụng NGAY lúc join (chỉ lần join ĐẦU, không phải update lại giữa
-          // chừng — khớp nguyên tắc "trang bị chốt lúc join" đã áp dụng chung).
-          if (!wasJoined && equippedOutfitNameNormalized === "ambitious fixer") {
-            joined.haste = (joined.haste ?? 0) + 3;
-          }
-          joined.hasAmbitiousFixer = equippedOutfitNameNormalized === "ambitious fixer";
-          // "Thumb Soldato": "Các vũ khí/skill/page sử dụng đạn sẽ được tăng
-          // thêm 15% Dmg gây ra" + "Mỗi đòn đánh thường thứ 4 nhận 1 đạn".
-          joined.hasThumbSoldato = equippedOutfitNameNormalized === "thumb soldato";
-          // "WARP Corp. Cleaner": "Gia tăng 1.5x hiệu quả nhận Charge của bản thân".
-          joined.hasWarpCorpCleaner = equippedOutfitNameNormalized === "warp corp. cleaner";
-          // "Seven Association": "Gia tăng 1.5x hiệu quả áp Rupture của bạn".
-          joined.hasSevenAssociation = equippedOutfitNameNormalized === "seven association";
-          // "Liu Association": "Nhận được thêm 2 Dice Up khi bạn ở trong Emotion
-          // Level" + "Mỗi khi gây Burn cho kẻ địch, bạn giảm 5 Stamina của chúng".
-          joined.hasLiuAssociation = equippedOutfitNameNormalized === "liu association";
-          // "Cinq Association": "7% Crit Rate mỗi 2 Haste (max 25%)" + "2 Haste
-          // mỗi 20 Stamina tiêu qua M1".
-          joined.hasCinqAssociation = equippedOutfitNameNormalized === "cinq association";
-          // "Dieci Association": Shield HP system + Sinking application.
-          joined.hasDieciAssociation = equippedOutfitNameNormalized === "dieci association";
-          // "Zwei Association": Tremor khi đỡ thành công + Critical áp Tremor
-          // theo 1/2 bản thân + tiêu Defense Up để chống Guard Break.
-          joined.hasZweiAssociation = equippedOutfitNameNormalized === "zwei association";
-          // "Hana Association": "+1 Dice Up mỗi 10 HP mất trong turn".
-          joined.hasHanaAssociation = equippedOutfitNameNormalized === "hana association";
-          // BUG NGHIÊM TRỌNG ĐÃ SỬA — validateAndRerollPrescript (combat-utils.js)
-          // check "c.equippedOutfit" (combatant-level) nhưng field này KHÔNG
-          // BAO GIỜ tồn tại trên combatant thật (chỉ có trên profileData) —
-          // nghĩa là Index Proselyte's roll dice CHƯA BAO GIỜ hoạt động đúng
-          // trong thực tế từ trước tới giờ, dù test sandbox trước đó "pass" (vì
-          // tự set field lên combatant trực tiếp, bypass flow join thật). Thêm
-          // flag đúng pattern (giống hasZweiAssociation...) để sửa tận gốc.
-          joined.hasIndexProselyte = equippedOutfitNameNormalized === "index proselyte";
-          // GAP ĐÃ SỬA (xác nhận trực tiếp: "Index Proselyte outfit cũng chưa
-          // tự động hóa phần roll dice 1-7 để lấy prescript") — player join
-          // GIỮA encounter (sau khi rollspeed đã chạy) trước đây KHÔNG BAO GIỜ
-          // được khởi tạo prescriptRoll. Đặt Ở ĐÂY (không phải ngay sau
-          // insertIntoTurnOrderMidRound) vì cần hasIndexProselyte đã set XONG
-          // trước đó — thứ tự sai lúc đầu khiến flag chưa tồn tại lúc gọi hàm.
-          if (!wasJoined && hasEncounterStarted(encounter)) {
-            validateAndRerollPrescript(encounter, null, { id: message.author.id, type: "player" });
-          }
-          // Perk "đầu encounter" — áp dụng 1 LẦN ngay lúc join (KHÔNG áp lại nếu join
-          // lại để cập nhật stat — chỉ áp khi THỰC SỰ là lần tham gia đầu, tránh free
-          // refill Light/Poise/Sanity mỗi lần gõ lại join).
-          const startNotes = [];
-          if (!wasJoined) {
-            if (hasPerk(joined, "Here We Go Again")) { joined.currentLight = Math.min(joined.maxLight, 3); startNotes.push("+3 Light (Here We Go Again)"); }
-            if (hasPerk(joined, "Adrenaline Rush")) { joined.poise = Math.min(POISE_MAX, 10); startNotes.push("+10 Poise (Adrenaline Rush)"); }
-            if (hasPerk(joined, "No Mind To Cure")) { joined.currentSanity = -25; startNotes.push("-25 Sanity (No Mind To Cure)"); }
-            // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 5) —
-            // "Udjat" (outfit): "Khi start encounter bạn nhận được 10 Protection"
-            // — áp dụng 1 LẦN lúc join thật đầu tiên, cùng nguyên tắc các perk
-            // "đầu encounter" khác ở trên (không phải hasPerk vì đây là OUTFIT,
-            // không phải Skill Tree).
-            if ((equippedOutfitObj?.name ?? "").toLowerCase() === "udjat") {
-              joined.protection = Math.min(20, (joined.protection ?? 0) + 10);
-              // BUG ĐÃ SỬA (xác nhận trực tiếp: "Protection sẽ biến mất sau 2 turn
-              // kể từ lúc nhận, cái này có tính chưa") — quên set protectionTurnsLeft
-              // = 2 (Duration riêng, xem turn-advance.js's decay logic + comment
-              // gốc ở combatant-factory.js) — nếu không, Protection sẽ đứng yên
-              // mãi mãi (không bao giờ hết hạn tự nhiên qua decay thông thường).
-              joined.protectionTurnsLeft = 2;
-              startNotes.push("+10 Protection (Udjat, hết sau 2 turn)");
-            }
-          }
+          const { joined, wasJoined, equipNotes, startNotes, finalHp } = await buildJoinedCombatant(encounter, message.author.id, message.author.username, profileDataForDefaults, kv);
           await saveEncounter(encChannelId, encounter);
-          const equipNotes = [];
-          if (equippedWeaponObj && !kv["weapon"]) equipNotes.push(`Vũ khí: ${equippedWeaponObj.name} (${equippedWeaponObj.weight})`);
-          if (equippedOutfitObj && !kv["res"]) equipNotes.push(`Outfit: ${equippedOutfitObj.name} (Res ${res.B}xB ${res.P}xP ${res.S}xS)`);
-          if (!Number.isFinite(light) || light <= 0) equipNotes.push(`Max Light: ${gradeBasedMaxLight} (theo Grade ${playerGrade})`);
-          if (!Number.isFinite(hp) || hp <= 0) {
-            equipNotes.push(
-              effectiveHp.hp < gradeBasedMaxHp
-                ? `HP: ${effectiveHp.hp}/${gradeBasedMaxHp} (còn lại từ trước — chưa qua mốc reset 0h/12h giờ VN)`
-                : `Max HP: ${gradeBasedMaxHp} (theo Grade ${playerGrade})`
-            );
-          }
           await message.reply({
             content: `✅ ${wasJoined ? "Đã cập nhật lại" : "Đã tham gia"} encounter **${encounter.name}** với ${finalHp} HP.` +
               (equipNotes.length > 0 ? `\n> 🎒 Tự lấy từ trang bị: ${equipNotes.join(", ")}` : "") +
@@ -2458,6 +2415,10 @@ if (message.content.startsWith("-gacha")) {
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
+      // Hook AI (Stage 4) — NGOÀI withLock ở trên (tránh reentrant lock — AI có
+      // thể tự gọi doEnemyAttack, tự lock lại đúng encounterKey này). An toàn gọi
+      // vô điều kiện — maybeRunAiTurn tự kiểm tra có phải lượt AI-enemy không.
+      maybeRunAiTurn(encChannelId).catch(() => {});
       return;
     }
 
@@ -2504,6 +2465,7 @@ if (message.content.startsWith("-gacha")) {
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
+      maybeRunAiTurn(encChannelId).catch(() => {});
       return;
     }
 
@@ -2593,7 +2555,17 @@ if (message.content.startsWith("-gacha")) {
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào. Dùng `-encounter start` để tạo."); return; }
       const boardPayload4 = buildEncounterBoardEmbed(encounter, encChannelId);
       const actionPanelRows = buildEncounterActionPanel(encChannelId, encounter.players[message.author.id], message.author.id) ?? [];
-      message.reply({ embeds: [boardPayload4.embed], components: [...actionPanelRows, ...boardPayload4.components] });
+      // BGM — đính kèm LẠI file đã chọn ngẫu nhiên lúc start (encounter.currentBgm
+      // cố định suốt trận, KHÔNG re-roll mỗi lần xem status — xem comment ở
+      // sub === "start"). Encounter tạo TRƯỚC KHI tính năng này tồn tại sẽ không
+      // có field này (currentBgm undefined) — bỏ qua đính kèm, không lỗi gì.
+      const bgmFiles = encounter.currentBgm ? [new AttachmentBuilder(`./assets/audio/bgm/${encounter.currentBgm}`)] : [];
+      message.reply({
+        content: encounter.currentBgm ? `🎵 BGM trận này: **${encounter.currentBgm}**` : undefined,
+        embeds: [boardPayload4.embed],
+        components: [...actionPanelRows, ...boardPayload4.components],
+        files: bgmFiles,
+      });
       return;
     }
 
@@ -2952,6 +2924,7 @@ if (message.content.startsWith("-gacha")) {
       } catch (err) {
         message.reply(`❌ ${err.message}`);
       }
+      maybeRunAiTurn(encChannelId).catch(() => {});
       return;
     }
 

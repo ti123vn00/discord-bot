@@ -10,7 +10,7 @@
 // qua PHÂN TÍCH AST CHÍNH XÁC (acorn) — không dựa vào suy đoán thủ công, để
 // tránh sai sót ở 1 hàm lớn và phức tạp như thế này.
 
-module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, combatantResStr, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
+module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, checkQuestOutcome, combatantResStr, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, grantContractReward, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -690,6 +690,12 @@ async function resolveOnePendingAction(encounter, p) {
               if (justDied) {
                 if (targetResolved.type === "enemy" && attacker.type === "player") {
                   applyEmotionDelta(attacker.combatant, 3);
+                  // Stage 5 (cuối) — nhiệm vụ 3 của -daily, biến thể "killmobs"
+                  // ("hạ 3 mob/boss bất kỳ") — tăng đếm mỗi khi player hạ 1 enemy
+                  // (bất kỳ encounter nào, quest hay GM thường — "mob/boss bất kỳ"
+                  // không giới hạn phạm vi). Fire-and-forget — không chặn action
+                  // chính nếu lỗi (giống pattern applyEmotionDelta/HP sync ở trên).
+                  incrementKillTaskProgress(p.attackerId).catch(() => {});
                 } else if (targetResolved.type === "player") {
                   for (const otherPid of Object.keys(encounter.players)) {
                     if (otherPid === t.targetId) continue;
@@ -701,9 +707,25 @@ async function resolveOnePendingAction(encounter, p) {
               // đúng lúc HP chuyển từ >0 sang ≤0 (không trừ lại nếu ĐÃ chết từ trước
               // mà ăn thêm dmg). Logic THẬT nằm ở applyDeathPenalty (dùng CHUNG với
               // K-Corp Ampule dùng 2 lần liên tiếp — xem -encounter useitem).
+              //
+              // Stage 5 (quest system) — GIỮ NGUYÊN hành vi CŨ cho encounter GM
+              // thường (áp NGAY như trước) — nhưng encounter.isQuest thì KHÔNG áp
+              // ngay ở đây (xác nhận trực tiếp: "nếu còn người sống và thắng thì
+              // cả team vẫn nhận thưởng, người chết rồi KHÔNG phải nhận Death
+              // Penalty, chỉ khi cả team chết mới áp") — chỉ TRACK lại ai đã chết,
+              // xử lý THẬT SỰ ở checkQuestOutcome cuối hàm (biết được thắng/thua
+              // trước khi quyết định có áp Death Penalty hay không).
               let deathNote = "";
               if (justDied && targetResolved.type === "player") {
-                deathNote = await applyDeathPenalty(encounter, t.targetId);
+                if (encounter.isQuest) {
+                  encounter.questMeta = encounter.questMeta ?? {};
+                  encounter.questMeta.deadPlayerIds = encounter.questMeta.deadPlayerIds ?? [];
+                  if (!encounter.questMeta.deadPlayerIds.includes(t.targetId)) {
+                    encounter.questMeta.deadPlayerIds.push(t.targetId);
+                  }
+                } else {
+                  deathNote = await applyDeathPenalty(encounter, t.targetId);
+                }
               }
               // 5 status "trên người địch" — áp vào TARGET (bên bị tấn công).
               // QUAN TRỌNG (BUG ĐÃ SỬA): TOÀN BỘ status/Stamina/Charge effect dưới
@@ -1656,6 +1678,45 @@ async function resolveOnePendingAction(encounter, p) {
             // cho tất cả (sau khi damage đã áp dụng thành công).
             if (attacker.type === "player") attacker.combatant.prescriptAttacked = true;
             resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${eyeOfHorusRepeatLightNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
+
+  // Stage 5 (quest system) — check THẮNG/THUA NGAY SAU KHI resolve xong action
+  // này (đã biết HP mới nhất của MỌI enemy/player). checkQuestOutcome THUẦN
+  // detect (không side-effect) — chỉ encounter.isQuest mới check (encounter GM
+  // thường trả về null luôn, không ảnh hưởng hành vi cũ).
+  const questOutcome = checkQuestOutcome(encounter);
+  if (questOutcome) {
+    if (questOutcome.won && questOutcome.contract) {
+      const contract = questOutcome.contract;
+      for (const pid of encounter.questMeta?.memberIds ?? []) {
+        const rewardResult = await grantContractReward(pid, contract);
+        resultLines.push(
+          rewardResult.granted
+            ? `🎁 <@${pid}> nhận ${contract.expReward} EXP + ${contract.ahnReward.toLocaleString("vi-VN")} Ahn (contract hôm nay: ${rewardResult.count}/4)`
+            : `⚠️ <@${pid}> đã dùng hết 4 lượt contract hôm nay — không nhận thưởng lần này (dù trận đã thắng).`
+        );
+        // GAP THẬT phát hiện qua test — nếu việc thắng contract này ĐÚNG LÚC hoàn
+        // thành luôn streak 7 ngày (đủ cả 3 nhiệm vụ -daily hôm nay), thông báo
+        // trước đây bị bỏ qua âm thầm (fire-and-forget) dù vẫn cộng đúng số —
+        // giờ hiện ra cho người chơi thấy.
+        if (rewardResult.dailyTaskNote) resultLines.push(`<@${pid}> ${rewardResult.dailyTaskNote}`);
+      }
+      resultLines.push(`🎉 **Contract "${contract.name}" HOÀN THÀNH!** Encounter kết thúc.`);
+    } else {
+      // THUA (wipe cả team) — GIỜ mới thật sự áp Death Penalty cho TỪNG người
+      // (đã track ở deathPlayerIds phía trên — cả team chết = TẤT CẢ memberIds
+      // đều nằm trong danh sách này, vì alivePlayers === 0 mới vào nhánh này).
+      for (const pid of encounter.questMeta?.memberIds ?? []) {
+        const note = await applyDeathPenalty(encounter, pid);
+        if (note) resultLines.push(note);
+      }
+      resultLines.push(`💀 **Cả team đã gục ngã — Contract thất bại.** Encounter kết thúc.`);
+    }
+    // Đánh dấu để caller (reactive-defense.js/interaction-handlers.js — nơi gọi
+    // resolveOnePendingAction) tự deleteEncounter SAU KHI saveEncounter xong (thứ
+    // tự quan trọng — xem comment ở các điểm gọi) — KHÔNG tự xoá ở đây vì hàm
+    // này không có quyền truy cập deleteEncounter/channelId.
+    encounter._deleteAfterSave = true;
+  }
 
   return resultLines;
 }
