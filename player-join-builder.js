@@ -50,10 +50,22 @@ module.exports = function ({
       await savePlayerData(userId, profileDataForDefaults, hpSlot);
     }
     const finalHp = Number.isFinite(hp) && hp > 0 ? hp : effectiveHp.hp;
+    // BUG THẬT phát hiện qua báo cáo trực tiếp kèm ảnh chụp (Fragaria: "Grade 1
+    // đáng lẽ 300 HP nhưng chỉ có 242, và số có phần thập phân lạ") — TRƯỚC ĐÂY
+    // maxHp truyền cho createCombatant là `finalHp` (HP CARRY-OVER còn lại từ
+    // trước, VD 242.2 dở dang) — nhưng createCombatant tự set currentHp=maxHp,
+    // nên Max HP THẬT bị "co lại" vĩnh viễn thành đúng số carry-over đó thay vì
+    // giữ nguyên gradeBasedMaxHp (300) — sai tích luỹ qua nhiều session join dở
+    // dang. equipNotes bên dưới (dòng ~108) ĐÃ tính đúng ý định gốc là hiển thị
+    // "HP: X/Y" (current/max riêng biệt) — chỉ có bước tạo combatant thật là
+    // dùng sai giá trị. Sửa: maxHp LUÔN là effectiveGradeMaxHp thật (trừ khi gõ
+    // tay hp: — giữ nguyên linh hoạt cho trường hợp đặc biệt), currentHp gán
+    // riêng = finalHp nếu thấp hơn max.
+    const finalMaxHp = Number.isFinite(hp) && hp > 0 ? hp : effectiveGradeMaxHp;
 
     const wasJoined = !!encounter.players[userId];
     encounter.players[userId] = createCombatant({
-      name: displayName, maxHp: finalHp,
+      name: displayName, maxHp: finalMaxHp,
       maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
       maxLight: Number.isFinite(light) && light > 0 ? light : gradeBasedMaxLight,
       weaponWeight: weapon,
@@ -66,6 +78,13 @@ module.exports = function ({
     });
     const profileData = profileDataForDefaults;
     const joined = encounter.players[userId];
+    // GAP THẬT ĐÃ SỬA (cùng bug ở trên) — createCombatant mặc định currentHp =
+    // maxHp (full máu), cần ghi đè lại ĐÚNG bằng finalHp (carry-over thật) nếu
+    // nó THẤP HƠN max — chỉ áp dụng lúc join LẦN ĐẦU (wasJoined=false); join
+    // LẠI (đổi trang bị giữa trận) không nên reset lại currentHp đang có.
+    if (!wasJoined && finalHp < finalMaxHp) {
+      joined.currentHp = finalHp;
+    }
     joined.unlockedPerks = [...(profileData.unlockedSkillTree ?? [])];
     joined.injuries = [...persistedInjuries];
     joined.unlockedPagesSnapshot = (profileData.equippedPages ?? []).filter(Boolean);
@@ -106,10 +125,14 @@ module.exports = function ({
     if (equippedOutfitObj && !kv["res"]) equipNotes.push(`Outfit: ${equippedOutfitObj.name} (Res ${res.B}xB ${res.P}xP ${res.S}xS)`);
     if (!Number.isFinite(light) || light <= 0) equipNotes.push(`Max Light: ${gradeBasedMaxLight} (theo Grade ${playerGrade})`);
     if (!Number.isFinite(hp) || hp <= 0) {
+      // GAP ĐÃ SỬA (cùng đợt fix bug HP ở trên) — dùng effectiveGradeMaxHp (SAU
+      // khi trừ injury) thay vì gradeBasedMaxHp (TRƯỚC injury) — khớp ĐÚNG với
+      // maxHp THẬT combatant nhận được (line finalMaxHp phía trên), tránh hiện
+      // sai số cho người đang mang chấn thương (VD Gãy Xương -30 Max HP).
       equipNotes.push(
-        effectiveHp.hp < gradeBasedMaxHp
-          ? `HP: ${effectiveHp.hp}/${gradeBasedMaxHp} (còn lại từ trước — chưa qua mốc reset 0h/12h giờ VN)`
-          : `Max HP: ${gradeBasedMaxHp} (theo Grade ${playerGrade})`
+        effectiveHp.hp < effectiveGradeMaxHp
+          ? `HP: ${effectiveHp.hp}/${effectiveGradeMaxHp} (còn lại từ trước — chưa qua mốc reset 0h/12h giờ VN)`
+          : `Max HP: ${effectiveGradeMaxHp} (theo Grade ${playerGrade})`
       );
     }
     return { joined, wasJoined, equipNotes, startNotes, finalHp, gradeBasedMaxHp, gradeBasedMaxLight, playerGrade };
