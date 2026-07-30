@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -601,6 +601,11 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.reply({ content: "⚠️ Chỉ GM/admin mới được kết thúc turn.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       const { encounter, shroudedNotes, prescriptNotes } = await performEndTurn(channelId, interaction.user.id, isAdmin);
+      // BUG THẬT phát hiện qua báo cáo trực tiếp (Fragaria: "encounter bị treo
+      // cứng, mob không hành động tiếp") — đây là NÚT BẤM (khác lệnh text
+      // `-encounter endturn` đã có hook từ trước) — thiếu trigger AI cho round
+      // MỚI nếu người đi ĐẦU turnOrder mới là enemy aiControlled.
+      maybeRunAiTurn(channelId).catch(() => {});
       await interaction.update({
         content: null,
         embeds: [{
@@ -774,7 +779,9 @@ client.on("interactionCreate", async (interaction) => {
         }).catch(() => {});
         {
           const encAfterYourShield = await getEncounter(channelId);
-          if (encAfterYourShield) announceCurrentTurn(channelId, encAfterYourShield, true).catch(() => {});
+          if (encAfterYourShield && !(p.attackerType === "enemy" && encAfterYourShield.enemies[p.attackerId]?.aiControlled)) {
+            announceCurrentTurn(channelId, encAfterYourShield, true).catch(() => {});
+          }
         }
       } catch (err) {
         log("error", "yourShield", interaction.user.id, err.message);
@@ -1017,7 +1024,17 @@ client.on("interactionCreate", async (interaction) => {
       // TRƯỚC ĐÂY HOÀN TOÀN THIẾU resend này (chỉ nhánh Clash bên dưới có) —
       // gửi lại dropdown turn NGAY sau khi phản hồi xong, để nó luôn ở CUỐI
       // kênh (dễ thấy nhất), không bị "Đã xử lý"/board embed mới hơn che khuất.
-      if (!stillWaitingFor) {
+      //
+      // BUG THẬT MỚI phát hiện (Fragaria báo trực tiếp kèm ảnh chụp: "liên tiếp
+      // hiện 2 dropdown") — nếu attacker của pendingAction này là enemy
+      // aiControlled, hệ thống AI (enemy-ai.js's maybeRunAiTurn, trigger từ hook
+      // TRONG chính finalizeReactiveChoice ở trên) ĐÃ TỰ announce đúng turn mới
+      // rồi (qua passMobTurn) — resend THỦ CÔNG ở đây thành TRÙNG LẶP (2 dropdown
+      // giống hệt nhau cho CÙNG 1 turn). Bỏ qua bước này cho đúng trường hợp đó —
+      // giữ nguyên resend cho trường hợp GỐC (attacker là player, hoặc enemy
+      // KHÔNG aiControlled — GM điều khiển thủ công, turn KHÔNG tự advance, vẫn
+      // cần resend để tránh bị che như bug gốc).
+      if (!stillWaitingFor && !(p.attackerType === "enemy" && encounter.enemies[p.attackerId]?.aiControlled)) {
         const encAfterMainReactive = await getEncounter(channelId);
         if (encAfterMainReactive) announceCurrentTurn(channelId, encAfterMainReactive, true).catch(() => {});
       }
@@ -1178,9 +1195,16 @@ client.on("interactionCreate", async (interaction) => {
     // khiến khó mà lần theo" — gửi lại (resend) dropdown turn hiện tại NGAY
     // sau khi phản hồi xong, để nó luôn nằm Ở CUỐI kênh (dễ thấy nhất), không
     // bị các tin nhắn reactive defense/kết quả mới hơn che khuất lên trên.
+    //
+    // BUG THẬT MỚI (cùng nguyên nhân với nhánh Guard/Evade/Parry/Không phòng
+    // thủ chính — xem comment đầy đủ ở đó) — nếu attacker là enemy aiControlled,
+    // hệ thống AI đã TỰ announce đúng turn mới rồi (qua finalizeReactiveChoice's
+    // hook trong reactive-defense.js) — resend ở đây thành TRÙNG LẶP.
     {
       const encAfterReactive = await getEncounter(channelId);
-      if (encAfterReactive) announceCurrentTurn(channelId, encAfterReactive, true).catch(() => {});
+      if (encAfterReactive && !(p.attackerType === "enemy" && encAfterReactive.enemies[p.attackerId]?.aiControlled)) {
+        announceCurrentTurn(channelId, encAfterReactive, true).catch(() => {});
+      }
     }
   } catch (err) {
     interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -2023,8 +2047,15 @@ client.on("interactionCreate", async (interaction) => {
         appendActionLog(encounter, `🏁 <@${interaction.user.id}> đã kết thúc lượt.`);
         await saveEncounter(channelId, encounter);
         announceCurrentTurn(channelId, encounter).catch(() => {});
+        // BUG THẬT phát hiện qua báo cáo trực tiếp (Fragaria: "bấm nút kết thúc
+        // lượt trong dropdown rồi mob tiếp theo không hành động, encounter bị
+        // treo") — ĐÂY LÀ ĐƯỜNG DROPDOWN (khác lệnh text `-encounter pass` đã có
+        // hook từ trước) — thiếu trigger AI cho turn holder MỚI nếu là enemy
+        // aiControlled. Đặt NGOÀI withLock (bên dưới, sau khối này) để tránh
+        // reentrant lock.
         resultText = `🏁 Bạn đã kết thúc lượt.${prescriptNotes.length > 0 ? "\n" + prescriptNotes.map(n => `> ${n}`).join("\n") : ""}${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
       });
+      maybeRunAiTurn(channelId).catch(() => {});
       await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
       return;
     }
@@ -2209,6 +2240,10 @@ client.on("interactionCreate", async (interaction) => {
         announceCurrentTurn(channelId, encounter).catch(() => {});
         resultText = `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.${prescriptNotes.length > 0 ? "\n" + prescriptNotes.map(n => `> ${n}`).join("\n") : ""}${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
       });
+      // Cùng bug với player endmyturn ở trên — thiếu trigger AI cho turn holder
+      // MỚI (nếu GM bấm hộ 1 enemy KHÔNG aiControlled kết thúc lượt, người kế
+      // tiếp trong turnOrder có thể LÀ 1 enemy aiControlled khác).
+      maybeRunAiTurn(channelId).catch(() => {});
       await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
       return;
     }
