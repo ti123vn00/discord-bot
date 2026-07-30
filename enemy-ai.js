@@ -236,7 +236,7 @@ module.exports = function ({
         if (stillValid) {
           for (const t of availableTargets) {
             try {
-              await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { tags: tagsStr, coin: String(rolled.totalEmotionDelta ?? 0) });
+              await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { tags: tagsStr, coin: String(rolled.totalEmotionDelta ?? 0), isAiCall: true });
               // Narrative — doEnemyAttack ở trên chỉ nhận dmgStr THUẦN SỐ (đã tự
               // build qua autoBuildDmgStrFromSkillRoll, KHÔNG dùng skill:/
               // customskill: để tránh roll đôi — xem comment phía trên) nên
@@ -258,16 +258,39 @@ module.exports = function ({
       // buff) — rơi xuống thử M1 thay vì bỏ cuộc hẳn turn này.
     }
 
-    // 2) M1 — dừng nếu ĐÃ đủ 20 Stamina dùng turn này (banked ≥1 Light cuối
-    // turn) HOẶC hit tiếp theo sẽ khiến tự Stagger.
+    // 2) M1 — theo yêu cầu trực tiếp (Fragaria báo trực tiếp: "AI chỉ đánh 1
+    // hit khiến reactive defense phải lặp quá nhiều lần — vũ khí light nên
+    // đánh gộp 4 hit, medium 2, heavy 1 mỗi lần khai báo"). TRƯỚC ĐÂY mỗi lần
+    // chỉ khai báo 1 hit đơn (dmgStr "4P") → weapon light cần 4 lần
+    // attemptOneMobAction (4 lần doEnemyAttack, 4 lần reactive defense riêng)
+    // mới đủ 20 Stamina/1 Light. GIỜ dồn NGAY SỐ HIT = WEAPON_DEFENSE_HITS[vũ
+    // khí] (4/2/1 cho light/medium/heavy — ĐÚNG BẰNG số hit cần để đủ 20
+    // Stamina, không phải trùng hợp) vào 1 dmgStr multi-hit DUY NHẤT (cú pháp
+    // "<base>x<soHit><LOẠI>", VD "4x4P" = 4 hit x 4 dmg Pierce) — reactive
+    // defense sẽ tự gộp thành ĐÚNG 1 hit-group (hitsPerCharge = WEAPON_DEFENSE_
+    // HITS CHÍNH nó) cho target, chỉ cần 1 lần phòng thủ thay vì N lần. Đồng
+    // thời giảm hẳn số lần doEnemyAttack/announceCurrentTurn mỗi turn → cũng
+    // giảm tần suất status board cập nhật (vấn đề "hiện liên tục" Fragaria báo).
     const weaponWeight = mob.weaponWeight ?? "medium";
     const staCostPerHit = WEAPON_STAMINA_COST[weaponWeight] ?? 10;
+    const hitsPerBurst = WEAPON_DEFENSE_HITS[weaponWeight] ?? 1;
     if ((mob.staminaUsedThisTurn ?? 0) >= 20) return false;
-    if (mob.currentStamina - staCostPerHit <= 0) return false;
+    // Số hit AN TOÀN tối đa trong burst này — không vượt hitsPerBurst, và PHẢI
+    // giữ currentStamina > 0 SAU khi trừ (không tự Stagger — checkStaggerPanic
+    // kích hoạt khi currentStamina <= 0, không phải < 0).
+    let safeHits = 0;
+    for (let i = 1; i <= hitsPerBurst; i++) {
+      if (mob.currentStamina - i * staCostPerHit <= 0) break;
+      safeHits = i;
+    }
+    if (safeHits === 0) return false; // không đủ Stamina dù chỉ 1 hit an toàn
     for (const t of availableTargets) {
-      const dmgStr = pickM1DmgStr(mob, t.p);
+      const singleHitDmgStr = pickM1DmgStr(mob, t.p);
+      const dmgMatch = singleHitDmgStr.match(/^([\d.]+)([BPS])$/i);
+      const dmgStr = dmgMatch ? `${dmgMatch[1]}x${safeHits}${dmgMatch[2]}` : singleHitDmgStr;
+      const totalStaCost = staCostPerHit * safeHits;
       try {
-        await doEnemyAttack(channelId, encounter.gmId, mobKey, dmgStr, `<@${t.pid}>`, { ism1: "yes" });
+        await doEnemyAttack(channelId, encounter.gmId, mobKey, dmgStr, `<@${t.pid}>`, { ism1: "yes", isAiCall: true });
         // GAP THẬT phát hiện qua test — doEnemyAttack's nhánh ism1 TRỪ
         // currentStamina nhưng KHÔNG cập nhật staminaUsedThisTurn (field này
         // trước giờ chỉ có player M1 dùng qua doPlayerAttack — enemy chưa từng
@@ -281,7 +304,7 @@ module.exports = function ({
           const enc3 = await getEncounter(channelId);
           const mob3 = enc3?.enemies?.[mobKey];
           if (!mob3) return;
-          mob3.staminaUsedThisTurn = (mob3.staminaUsedThisTurn ?? 0) + staCostPerHit;
+          mob3.staminaUsedThisTurn = (mob3.staminaUsedThisTurn ?? 0) + totalStaCost;
           await saveEncounter(channelId, enc3);
         });
         return true;
