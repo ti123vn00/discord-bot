@@ -1883,7 +1883,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
  *  doPlayerAttack/doPlayerHit nhưng đảo chiều self/enemy (enemy là người tấn công →
  *  Poise/Charge từ enemy; player(s) là target → 5 status kia từ TỪNG player riêng). */
 async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, verifyOpts = {}) {
-  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, customskill: customSkillNameRaw } = verifyOpts;
+  const { skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, customskill: customSkillNameRaw, isAiCall } = verifyOpts;
   if (!customSkillNameRaw && (!dmgStr || !dmgStr.trim())) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`), hoặc dùng `customskill:` nếu enemy này có skill riêng.");
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
@@ -1898,6 +1898,17 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
     const ekey = normalizeEnemyKey(enemyKey);
     const enemy = encounter.enemies[ekey];
     if (!enemy) throw new Error(`Không tìm thấy enemy "${enemyKey}" — dùng \`-encounter status\` để xem danh sách.`);
+    // BUG THẬT phát hiện qua test thật (Fragaria báo kèm ảnh chụp màn hình) —
+    // announceCurrentTurn đã sửa để không GỬI panel điều khiển thủ công cho
+    // enemy aiControlled nữa, nhưng NẾU vẫn còn cách nào đó gọi được hàm này
+    // thủ công (VD panel cũ còn tồn tại từ trước lúc fix, hoặc đường gọi khác
+    // trong tương lai) — chặn THẬT SỰ ở đây (không chỉ ẩn UI) để tránh xung đột
+    // với AI (2 nguồn cùng hành động 1 turn, sai staminaUsedThisTurn...). AI
+    // system TỰ gọi hàm này với isAiCall: true (xem enemy-ai.js) nên KHÔNG bị
+    // chặn bởi chính check này.
+    if (enemy.aiControlled && !isAiCall) {
+      throw new Error(`**${enemy.name}** đang được AI tự động điều khiển (quest system) — không thể can thiệp thủ công.`);
+    }
     // customskill: — GAP MỚI (xác nhận trực tiếp): "có hẳn 1 page riêng chỉ
     // boss đó xài... cần 1 field hiện tên, dice roll, narrate hiệu ứng" — tự
     // build dmgStr + tags từ skillDef đã lưu qua -encounter addenemyskill,
