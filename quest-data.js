@@ -60,8 +60,8 @@ const QUEST_MOBS = {
   amonsyndicate: {
     name: "Amon Syndicate Member",
     maxHp: 560, maxStamina: 400, maxLight: 5, maxSanity: 0,
-    // Không ghi rõ weight trong data gốc — mặc định "medium" (GIẢ ĐỊNH, đã báo Fragaria).
-    weaponWeight: "medium",
+    // Xác nhận trực tiếp: "Amon xài light weapon".
+    weaponWeight: "light",
     resistance: { B: 0.8, P: 1.3, S: 0.8 },
     // "Có thể đổi Dmg M1 qua Dmg Pierce tùy thích" — 2 công thức, AI tự chọn cái
     // gây dmg cao hơn dựa theo Res thật của target đang nhắm (xem enemy-ai.js).
@@ -75,7 +75,7 @@ const QUEST_MOBS = {
   eyegouger: {
     name: "Eye Gouger",
     maxHp: 600, maxStamina: 450, maxLight: 6, maxSanity: 0,
-    weaponWeight: "medium", // không ghi rõ weight — mặc định (GIẢ ĐỊNH, đã báo Fragaria)
+    weaponWeight: "light", // xác nhận trực tiếp: "Eyegouger... xài light weapon"
     resistance: { B: 0.8, P: 1.3, S: 1 },
     m1DmgStr: "6P",
     // "+3 Dice Up vĩnh viễn" — set diceUp: 3 lúc tạo, KHÔNG tiêu hao như diceUp
