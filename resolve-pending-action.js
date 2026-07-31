@@ -501,15 +501,36 @@ async function resolveOnePendingAction(encounter, p) {
                     });
                   }
                   // Task yêu cầu trực tiếp: "page light attack khi trúng không
-                  // hồi light" — GAP THẬT: mô tả trong skills.js ("hồi 2 Light
-                  // sau khi trúng") CHƯA TỪNG được tự động hoá thành code thật —
-                  // giờ áp đúng, GATE bởi !evadedCompletely (né hoàn toàn = không
-                  // trúng gì cả, không hồi).
-                  if (p.skillKey.toLowerCase() === "light attack" && !evadedCompletely) {
-                    const beforeLight = attacker.combatant.currentLight ?? 0;
-                    attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 6, beforeLight + 2);
-                    const lightGained = attacker.combatant.currentLight - beforeLight;
-                    if (lightGained > 0) defenseNote += ` <:Light:1513786082502770719>+${lightGained} Light (Light Attack)`;
+                  // hồi light" (fix cũ hardcode riêng 1 skill, Fragaria test lại
+                  // vẫn báo không hồi) + "extract fuel không hồi hp, hồi light
+                  // vào turn sau thay vì lúc dùng" — GAP THẬT rộng hơn dự kiến:
+                  // ít nhất 15 skill khác trong skills.js có mô tả "hồi HP/Light"
+                  // tương tự nhưng CHƯA code hoá. Thay vì tiếp tục hardcode TỪNG
+                  // skill (dễ sót, dễ lỗi), giờ dùng field CẤU TRÚC chung
+                  // (selfLightRestore/selfHealByBaseDmg — xem skills.js) — áp
+                  // dụng NGAY LÚC TRÚNG (không phải turn sau), GATE bởi
+                  // !evadedCompletely (né hoàn toàn = không trúng gì, không hồi).
+                  if (diceEffectSkill && !evadedCompletely) {
+                    if (diceEffectSkill.selfLightRestore) {
+                      const beforeLight = attacker.combatant.currentLight ?? 0;
+                      attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 6, beforeLight + diceEffectSkill.selfLightRestore);
+                      const lightGained = attacker.combatant.currentLight - beforeLight;
+                      if (lightGained > 0) defenseNote += ` <:Light:1513786082502770719>+${lightGained} Light (${diceEffectSkill.name})`;
+                    }
+                    if (diceEffectSkill.selfHealByBaseDmg) {
+                      // Base dmg value CHÍNH LÀ dice roll gốc (roll() dùng d1 làm
+                      // damage TRỰC TIẾP, không nhân/cộng gì thêm cho case này) —
+                      // parse lại từ p.dmgStr (số ĐẦU TIÊN trước ký tự loại dmg).
+                      const baseDmgMatch = (p.dmgStr ?? "").match(/^([\d.]+)/);
+                      const baseDmgVal = baseDmgMatch ? parseFloat(baseDmgMatch[1]) : 0;
+                      const healAmount = diceEffectSkill.selfHealByBaseDmg(baseDmgVal);
+                      if (healAmount > 0) {
+                        const beforeHp = attacker.combatant.currentHp ?? 0;
+                        attacker.combatant.currentHp = Math.min(attacker.combatant.maxHp ?? beforeHp, beforeHp + healAmount);
+                        const hpHealed = attacker.combatant.currentHp - beforeHp;
+                        if (hpHealed > 0) defenseNote += ` ❤️+${hpHealed.toFixed(1)} HP (${diceEffectSkill.name})`;
+                      }
+                    }
                   }
                 }
                 // "Blade Lineage" (outfit) — GAP MỚI (xác nhận trực tiếp):
