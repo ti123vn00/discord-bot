@@ -2191,7 +2191,7 @@ const { CONTRACTS, QUEST_MOBS } = require("./quest-data"); // module MỚI — d
 // an toàn vì party-board.js chỉ ĐỌC aiHooks.maybeRunAiTurn lúc RUNTIME (khi
 // startPartyBoard thật sự được gọi), không phải lúc require.
 const aiHooks = {};
-const { MAX_PARTY_SIZE, createPartyBoard, joinPartyBoard, kickFromPartyBoard, transferHost, cancelPartyBoard, leavePartyBoard, startPartyBoard } = require("./party-board")({ redis, withTimeout, withLock, withDoubleLock, getEncounter, saveEncounter, createCombatant, getPlayerData, buildJoinedCombatant, determineTurnOrder, validateAndRerollPrescript, appendActionLog, hasPerk, ADMIN_IDS, aiHooks, pickRandomBgm, setUserActiveEncounterChannel }); // module MỚI — Party Board (Quest System) — đặt SAU buildJoinedCombatant (const, TDZ)
+const { MAX_PARTY_SIZE, createPartyBoard, joinPartyBoard, kickFromPartyBoard, transferHost, cancelPartyBoard, leavePartyBoard, startPartyBoard } = require("./party-board")({ redis, withTimeout, withLock, withDoubleLock, getEncounter, saveEncounter, createCombatant, getPlayerData, buildJoinedCombatant, determineTurnOrder, validateAndRerollPrescript, appendActionLog, hasPerk, ADMIN_IDS, aiHooks, pickRandomBgm, setUserActiveEncounterChannel, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp }); // module MỚI — Party Board (Quest System) — đặt SAU buildJoinedCombatant (const, TDZ)
 
 /** isEgoSkill — check skill.tags có chứa "EGO"/"E.G.O" không (case-insensitive,
  *  bỏ qua dấu chấm/khoảng trắng) — dùng để phân biệt Page thường vs E.G.O Page lúc
