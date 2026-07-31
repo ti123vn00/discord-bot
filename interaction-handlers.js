@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -279,6 +279,71 @@ client.on("interactionCreate", async (interaction) => {
 
   // (Nút action panel cũ "encact:" đã bỏ — thay bằng dropdown "encmenu:", xem
   // listener riêng "SELECT MENU INTERACTIONS (encounter)" phía dưới.)
+
+  // "partyjoin:"/"partyleave:"/"partybegin:"/"partycancel:" — Task yêu cầu
+  // trực tiếp: "nút join leave party thì nằm ở chỗ party board luôn" — thay
+  // thế hoàn toàn cho `-contract join/leave/begin/cancel` (text, đã gỡ).
+  function formatBoardTextInline(board, contract) {
+    const guestLines = board.guests.length > 0 ? board.guests.map(g => `<@${g.id}>`).join(", ") : "*(chưa có ai)*";
+    return `📋 **Party Board** — Contract: **${contract.name}** (${contract.description})\n` +
+      `> 👑 Host: <@${board.hostId}>\n` +
+      `> 🧑‍🤝‍🧑 Guest: ${guestLines}\n` +
+      `> 🎁 Thưởng: ${contract.expReward} EXP, ${contract.ahnReward.toLocaleString("vi-VN")} Ahn (mỗi người, nếu còn lượt contract trong ngày)`;
+  }
+  function buildPartyBoardComponentsInline(channelId) {
+    return [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`partyjoin:${channelId}`).setLabel("🎒 Tham gia").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`partyleave:${channelId}`).setLabel("👋 Rời party").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`partybegin:${channelId}`).setLabel("▶️ Bắt đầu (host)").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`partycancel:${channelId}`).setLabel("❌ Huỷ (host)").setStyle(ButtonStyle.Danger),
+    )];
+  }
+  if (interaction.customId.startsWith("partyjoin:")) {
+    const [, channelId] = interaction.customId.split(":");
+    try {
+      const activeChan = await getUserActiveEncounterChannel(interaction.user.id);
+      if (activeChan) throw new Error(`Bạn đang trong 1 encounter khác (channel <#${activeChan}>) — không thể join party mới cho tới khi kết thúc encounter đó.`);
+      const board = await joinPartyBoard(channelId, interaction.user.id, interaction.user.username);
+      const contract = CONTRACTS[board.contractKey];
+      await interaction.update({ content: `✅ <@${interaction.user.id}> đã tham gia party.\n${formatBoardTextInline(board, contract)}`, components: buildPartyBoardComponentsInline(channelId) }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+  if (interaction.customId.startsWith("partyleave:")) {
+    const [, channelId] = interaction.customId.split(":");
+    try {
+      const { board, disbanded } = await leavePartyBoard(channelId, interaction.user.id);
+      if (disbanded) { await interaction.update({ content: "👋 Đã rời party — party không còn ai nên đã tự giải tán.", components: [] }).catch(() => {}); return; }
+      const contract = CONTRACTS[board.contractKey];
+      await interaction.update({ content: `👋 <@${interaction.user.id}> đã rời party.\n${formatBoardTextInline(board, contract)}`, components: buildPartyBoardComponentsInline(channelId) }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+  if (interaction.customId.startsWith("partybegin:")) {
+    const [, channelId] = interaction.customId.split(":");
+    try {
+      await startPartyBoard(channelId, interaction.user.id);
+      await interaction.update({ content: "▶️ Contract đã bắt đầu! Encounter đã được tạo — xem bên dưới.", components: [] }).catch(() => {});
+      maybeRunAiTurn(channelId).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+  if (interaction.customId.startsWith("partycancel:")) {
+    const [, channelId] = interaction.customId.split(":");
+    try {
+      await cancelPartyBoard(channelId, interaction.user.id);
+      await interaction.update({ content: "❌ Đã huỷ party board.", components: [] }).catch(() => {});
+    } catch (err) {
+      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
 
 
   if (interaction.customId.startsWith("encconfirmall:") || interaction.customId.startsWith("encrejectall:")) {
@@ -1130,6 +1195,27 @@ client.on("interactionCreate", async (interaction) => {
         const myDelta = clasher.currentSanity - myBefore;
         const oppDelta = attackerResolved.combatant.currentSanity - oppBefore;
         choiceNote = `🏆 ${clasherLabel} THẮNG Clash! **${chosenSkill.name}** (${myEffectiveDice} vs ${oppEffectiveDice}) — ngắt toàn bộ đòn nhắm vào ${targetResolved.label}, ${myDelta >= 0 ? "+" : ""}${myDelta} Sanity +2 Coin cho ${clasherLabel}, đối thủ ${oppDelta >= 0 ? "+" : ""}${oppDelta} Sanity -1 Coin.`;
+        // Task yêu cầu trực tiếp: "chuyển hết qua encclashselect rồi xóa text đi"
+        // — port 3 perk từ "-encounter clash" (lệnh text CŨ, đã xoá) sang đây,
+        // áp dụng NGUYÊN VẸN cho CLASHER khi thắng (không đổi logic gốc).
+        // Voracity (Desire, [30 Points]): thắng Clash +2 Light, chỉ 1 lần/turn.
+        if (hasPerk(clasher, "Voracity") && !clasher.voracityUsedThisTurn) {
+          clasher.currentLight = Math.min(clasher.maxLight, clasher.currentLight + 2);
+          clasher.voracityUsedThisTurn = true;
+          choiceNote += ` ✨+2 Light (Voracity) cho ${clasherLabel}.`;
+        }
+        // Pressure Point (Pride, [15 Points]): thắng Clash +5 Poise.
+        if (hasPerk(clasher, "Pressure Point")) {
+          clasher.poise = Math.min(99, (clasher.poise ?? 0) + 5);
+          choiceNote += ` 💪+5 Poise (Pressure Point) cho ${clasherLabel}.`;
+        }
+        // Thorns (Gluttony, [30 Points]): người THẮNG có Thorns → áp Rupture LÊN
+        // người THUA (attackerResolved — kẻ tấn công ban đầu, đã thua Clash).
+        if (hasPerk(clasher, "Thorns")) {
+          const thornsRupture = clasher.hasSevenAssociation ? Math.round(7 * 1.5) : 7;
+          attackerResolved.combatant.rupture = Math.min(99, (attackerResolved.combatant.rupture ?? 0) + thornsRupture);
+          choiceNote += ` 🌵+${thornsRupture} Rupture (Thorns) lên ${attackerResolved.label}.`;
+        }
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "các page counter vẫn có thể dùng để
         // clash được đó... trong trường hợp clash thắng thì sẽ tiến hành bước
         // gây dmg và hiệu ứng của page counter luôn") — nếu skill vừa dùng để
