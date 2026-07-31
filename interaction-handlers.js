@@ -879,7 +879,7 @@ client.on("interactionCreate", async (interaction) => {
           if (opts.guard.cost > 0 && (target.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("giày wan mk3")) {
             target.currentStamina = Math.min(target.maxStamina, target.currentStamina + opts.guard.cost / 4);
           }
-          target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
+          target.guardCharges = (target.guardCharges ?? 0) + opts.guard.chargesNeededNet;
           target.guardHitSelections = target.guardHitSelections ?? [];
           target.guardHitSelections.push(...realHitIndices);
           if (target.hasIronHorus) target.ironHorusGuardActiveThisTurn = true;
@@ -917,7 +917,7 @@ client.on("interactionCreate", async (interaction) => {
           // vốn đã được chia vừa đúng 1 charge từ đầu (nhân đôi hitsPerCharge ở
           // computeDefenseOptions không có tác dụng gì, đã thử và xác nhận qua
           // test thật nên bỏ đi).
-          target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
+          target.evadeCharges = (target.evadeCharges ?? 0) + opts.evade.chargesNeededNet;
           target.evadeHitSelections = target.evadeHitSelections ?? [];
           target.evadeHitSelections.push(...realHitIndices);
           if (opts.evade.cost === 0 && (target.lightDashFreeEvadeCharges ?? 0) > 0) target.lightDashFreeEvadeCharges -= 1;
