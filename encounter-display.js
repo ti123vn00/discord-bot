@@ -86,13 +86,13 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
   /** Render 1 dòng trạng thái cho 1 combatant (enemy hoặc player) — dùng chung để
    *  không lặp code giữa phần hiện enemy và phần hiện từng player. */
   function formatCombatantBlock(combatant, label) {
-    const hpPct = combatant.maxHp > 0 ? Math.max(0, combatant.currentHp / combatant.maxHp) : 0;
+    const hpPct = combatant.maxHp > 0 ? Math.min(1, Math.max(0, combatant.currentHp / combatant.maxHp)) : 0;
     const filled = Math.round(hpPct * 10);
     const hpBar = "🟥".repeat(filled) + "⬛".repeat(10 - filled);
     // GAP MỚI (xác nhận trực tiếp): Stamina nên có bar giống HP — 10 ô vuông
     // MÀU VÀNG (khác HP đỏ), mỗi ô = 10% Max Stamina — CÙNG công thức
     // Math.round(pct * 10) với HP để nhất quán cách làm tròn.
-    const staminaPct = combatant.maxStamina > 0 ? Math.max(0, combatant.currentStamina / combatant.maxStamina) : 0;
+    const staminaPct = combatant.maxStamina > 0 ? Math.min(1, Math.max(0, combatant.currentStamina / combatant.maxStamina)) : 0;
     const staminaFilled = Math.round(staminaPct * 10);
     const staminaBar = "🟨".repeat(staminaFilled) + "⬛".repeat(10 - staminaFilled);
     const r = combatant.resistance;
