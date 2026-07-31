@@ -468,10 +468,15 @@ async function resolveOnePendingAction(encounter, p) {
                   const avgMult = perHitMult.reduce((s, m) => s + m, 0) / totalHits;
                   finalDmg *= avgMult;
                 }
-                // evadedCompletely CHỈ true nếu TOÀN BỘ hit đều = 0 — vì Guard KHÔNG
-                // BAO GIỜ đạt 0 (tối đa giảm 99%), nên nếu true thì chắc chắn do
-                // Evade/Parry-thành-công che hết, không lẫn Guard.
-                evadedCompletely = totalHits > 0 && perHitMult.every((m) => m === 0);
+                // Task yêu cầu trực tiếp (xác nhận lại, đảm bảo đúng ngữ nghĩa
+                // rõ ràng thay vì suy luận gián tiếp): "parry thành công cũng
+                // tính là không trúng như né" — evadedCompletely giờ dùng TRỰC
+                // TIẾP hitEvadedOrParried (field CHUYÊN DỤNG, set bởi CẢ Evade
+                // LẪN Parry thành công, KHÔNG BAO GIỜ bởi Guard — xem chỗ khai
+                // báo) thay vì suy luận gián tiếp qua perHitMult===0 (dù về mặt
+                // số học 2 cách cho cùng kết quả vì Guard không bao giờ đạt đúng
+                // 0%, dùng field chuyên dụng rõ ràng và chắc chắn hơn).
+                evadedCompletely = totalHits > 0 && hitEvadedOrParried.every(Boolean);
                 const bypassNote = [bypass.blockEvade && "Undodgeable", bypass.blockGuard && "Unblockable", bypass.blockParry && "Unparriable"].filter(Boolean);
                 defenseNote = noteParts.length > 0 ? " " + noteParts.join(" + ") : "";
                 if (bypassNote.length > 0 && hitIdx < totalHits) defenseNote += ` *(${bypassNote.join(", ")} — phần hit còn lại không thể chặn)*`;
