@@ -2431,6 +2431,21 @@ if (message.content.startsWith("-gacha")) {
         message.reply("☠️ Nhân vật của bạn đang **Permanent Death** (chết vĩnh viễn từ 1 encounter permadeath trước đó) — không thể tham gia encounter nào cho tới khi được hồi sinh qua Rewound Time (`-rewoundtime` — GM/admin dùng giúp bạn).");
         return;
       }
+      // Bug thật phát hiện qua báo cáo trực tiếp: "khi player còn 0 HP sau
+      // encounter thì họ vẫn join contract mới được... dẫn tới bị kẹt encounter
+      // nếu họ cố chấp" — join với 0 HP khiến alivePlayers/checkQuestOutcome
+      // hiểu sai trạng thái, encounter không tự kết thúc đúng. Chặn TRƯỚC khi
+      // join — dùng getEffectiveCurrentHp (tôn trọng đúng mốc reset 0h/12h VN,
+      // KHÔNG chặn nhầm người ĐÃ qua mốc reset dù field cũ còn ghi 0).
+      {
+        const { grade: gradeForHpCheck } = calcGrade(profileDataForDefaults.exp ?? 0);
+        const gradeMaxHpForCheck = Math.max(1, 140 + 20 * (GRADE_MIN - gradeForHpCheck) - calcInjuryMaxHpPenalty(profileDataForDefaults.injuries ?? []));
+        const effHpForCheck = getEffectiveCurrentHp(profileDataForDefaults, gradeMaxHpForCheck);
+        if (effHpForCheck.hp <= 0) {
+          message.reply("💤 Bạn đang có **0 HP** (chưa hồi từ encounter trước) — cần hồi trước khi tham gia encounter mới. Dùng `-heal hp: <ahn>` hoặc đợi qua mốc reset 0h/12h giờ VN.");
+          return;
+        }
+      }
       // Task yêu cầu trực tiếp: "cấm không cho join nhiều encounter một lúc" —
       // chặn nếu user ĐANG active ở 1 encounter KHÁC (channel khác).
       const activeChanJoin = await getUserActiveEncounterChannel(message.author.id);
