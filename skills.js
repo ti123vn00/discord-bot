@@ -142,7 +142,15 @@ const SKILLS = {
     },
   },
   "extract fuel": {
-    name: "Extract Fuel",
+    name: "Extract Fuel", selfLightRestore: 2,
+    // Task yêu cầu trực tiếp: "extract fuel không hồi hp khi dùng, hồi light
+    // vào turn sau thay vì lúc dùng" — GAP THẬT: CẢ 2 hiệu ứng (hồi Light VÀ
+    // hồi HP, mô tả rõ trong text) CHƯA TỪNG được code hoá. Light dùng field
+    // cấu trúc selfLightRestore (giống pattern chung, xem resolve-pending-
+    // action.js) — HP heal PHỤ THUỘC dice roll (7→10, 12→20, giữa→15), KHÔNG
+    // cố định nên cần hàm riêng nhận base dmg value (parse lại từ dmgStr lúc
+    // resolve — CHÍNH LÀ d1 vì roll() dùng d1 làm damage TRỰC TIẾP).
+    selfHealByBaseDmg: (d1) => (d1 <= 7 ? 10 : d1 >= 12 ? 20 : 15),
     cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,12);
@@ -223,7 +231,7 @@ const SKILLS = {
     },
   },
   "light attack": {
-    name: "Light Attack",
+    name: "Light Attack", selfLightRestore: 2,
     cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8);
