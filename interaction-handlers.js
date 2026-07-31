@@ -1411,7 +1411,7 @@ client.on("interactionCreate", async (interaction) => {
         const encounter = await getEncounter(channelId);
         const combatant = encounter?.players?.[interaction.user.id];
         if (!combatant || !Number.isFinite(combatant.weaponBaseDamage) || !combatant.weaponType) {
-          throw new Error("Không tìm thấy dữ liệu vũ khí — dùng `-encounter attack target: ... dmg: ...` (lệnh text) thay vào đó.");
+          throw new Error("Không tìm thấy dữ liệu vũ khí — báo GM/admin kiểm tra lại (bình thường mọi người join đều tự có ít nhất Brawler mặc định).");
         }
         // GAP SỬA LẦN 2 (xác nhận trực tiếp): "Firing passive là biến base dmg
         // 12 Slash thành 16 Pierce chứ không phải +4 flat, nó khác nhau nhé
@@ -2143,7 +2143,7 @@ client.on("interactionCreate", async (interaction) => {
         // hook từ trước) — thiếu trigger AI cho turn holder MỚI nếu là enemy
         // aiControlled. Đặt NGOÀI withLock (bên dưới, sau khối này) để tránh
         // reentrant lock.
-        resultText = `🏁 Bạn đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
+        resultText = `🏁 Bạn đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — GM dùng nút **🔄 Kết thúc Turn** trong GM Panel để bắt đầu turn mới." : ""}`;
       });
       maybeRunAiTurn(channelId).catch(() => {});
       await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
@@ -2328,7 +2328,7 @@ client.on("interactionCreate", async (interaction) => {
         appendActionLog(encounter, `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.`);
         await saveEncounter(channelId, encounter);
         announceCurrentTurn(channelId, encounter).catch(() => {});
-        resultText = `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — dùng `-encounter endturn` để bắt đầu turn mới." : ""}`;
+        resultText = `🏁 **${encounter.enemies[enemyKey]?.name ?? enemyKey}** đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — GM dùng nút **🔄 Kết thúc Turn** trong GM Panel để bắt đầu turn mới." : ""}`;
       });
       // Cùng bug với player endmyturn ở trên — thiếu trigger AI cho turn holder
       // MỚI (nếu GM bấm hộ 1 enemy KHÔNG aiControlled kết thúc lượt, người kế

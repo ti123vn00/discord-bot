@@ -1473,7 +1473,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const ammoTypeNormalized = (ammoTypeRaw ?? "").trim().toLowerCase();
     if (ammoTypeNormalized === "frost" || ammoTypeNormalized === "incendiary") {
       const field = ammoTypeNormalized === "frost" ? "frostAmmo" : "incendiaryAmmo";
-      if ((player[field] ?? 0) < 1) throw new Error(`Không đủ ${ammoTypeNormalized === "frost" ? "Frost Ammo" : "Incendiary Ammo"} (0) trong Encounter — dùng \`-encounter reload type: ${ammoTypeNormalized}\` trước.`);
+      if ((player[field] ?? 0) < 1) throw new Error(`Không đủ ${ammoTypeNormalized === "frost" ? "Frost Ammo" : "Incendiary Ammo"} (0) trong Encounter — dùng nút **🔫 Reload** trong dropdown **✨ Special** trước.`);
       player[field] -= 1;
       player.lastAmmoTypeUsed = ammoTypeNormalized;
       effectiveAmmoType = ammoTypeNormalized;
