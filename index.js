@@ -1257,16 +1257,35 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
   // nhiều volley (kể cả từ repeat ammo) vẫn cần TƯƠNG ỨNG số charge (1
   // charge/volley, không phải 1 charge cho TẤT CẢ volley).
   const hitsPerCharge = isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeaponWeight] ?? 1) : 1);
-  const chargesNeeded = target.hasIronHorus ? 1 : Math.ceil(hitCount / hitsPerCharge);
+
+  // Task yêu cầu trực tiếp: "sau khi né/guard m1 light 2 hit thì còn 0,5 charge
+  // guard/evade lần sau bấm để né 2 hit light thì không tiêu sta" — TRƯỚC ĐÂY
+  // Math.ceil(hitCount/hitsPerCharge) LUÔN làm tròn LÊN nguyên 1 charge dù chỉ
+  // dùng 1 phần (VD 2/4 hit vẫn tính đủ 1 charge, phần dư 2 hit "lãng phí" thay
+  // vì dồn lại cho lần sau) — hệ quả PHỤ nghiêm trọng: player có thể EXPLOIT
+  // bằng cách bấm M1 1-hit LIÊN TỤC (thay vì 1 lần multi-hit) để ép AI trả phí
+  // ĐẦY ĐỦ 1 charge cho MỖI hit riêng lẻ, "bait" cạn Stamina AI nhanh hơn nhiều
+  // so với gộp — giờ dùng bankedGuardHits/bankedEvadeHits (số hit CÒN ĐƯỢC che
+  // MIỄN PHÍ từ charge trước đã mua nhưng chưa dùng hết) để trừ vào hitCount
+  // TRƯỚC khi tính chargesNeeded MỚI — công bằng cho CẢ AI lẫn player, và tự
+  // triệt tiêu luôn kiểu exploit "chia nhỏ đòn" vì tổng phí cuối cùng KHÔNG đổi
+  // dù chia nhỏ hay gộp lại (dồn banked qua từng lần).
+  const bankedGuardHits = Math.max(0, target.bankedGuardHits ?? 0);
+  const bankedEvadeHits = Math.max(0, target.bankedEvadeHits ?? 0);
+  const hitsNeedingNewGuardCharge = Math.max(0, hitCount - bankedGuardHits);
+  const hitsNeedingNewEvadeCharge = Math.max(0, hitCount - bankedEvadeHits);
+  const chargesNeeded = target.hasIronHorus ? 1 : Math.ceil(hitCount / hitsPerCharge); // giữ nguyên cho hasIronHorus/hiển thị chung, cost thật tính riêng bên dưới
+  const guardChargesNeededNet = target.hasIronHorus ? (bankedGuardHits >= hitCount ? 0 : 1) : Math.ceil(hitsNeedingNewGuardCharge / hitsPerCharge);
+  const evadeChargesNeededNet = target.hasIronHorus ? (bankedEvadeHits >= hitCount ? 0 : 1) : Math.ceil(hitsNeedingNewEvadeCharge / hitsPerCharge);
 
   const guardCostPerCharge = target.hasIronHorus ? 40 : 10;
-  const guardCost = chargesNeeded * guardCostPerCharge;
+  const guardCost = guardChargesNeededNet * guardCostPerCharge;
   const guardAvailable = !bypass.blockGuard && target.currentStamina >= guardCost;
   // maxAffordableGuardCharges — GAP ĐÃ SỬA (xác nhận trực tiếp: "hệ thống tùy
   // chọn né theo từng hit... nhận hit 1 và 2 nhưng né/guard hit 3") — reactive
   // prompt cần biết TỐI ĐA bao nhiêu hit có thể chọn (dropdown "Chọn hit") dựa
   // trên Stamina hiện có, KHÔNG PHẢI chargesNeeded (số cần để che HẾT).
-  const maxAffordableGuardCharges = Math.min(hitCount, Math.floor(target.currentStamina / guardCostPerCharge));
+  const maxAffordableGuardCharges = Math.min(hitCount, bankedGuardHits + Math.floor(target.currentStamina / guardCostPerCharge) * hitsPerCharge);
 
   const evadeBlocked = (target.injuries ?? []).includes("Mất Chân");
   const evadeCostPerCharge = 20 * ((target.injuries ?? []).includes("Gãy chân") ? 2 : 1);
@@ -1276,9 +1295,9 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
   // (field riêng lightDashFreeEvadeCharges, tiêu thụ ƯU TIÊN trước charge mua
   // bằng Stamina bình thường).
   const hasLightDashFreeEvade = !bypass.blockEvade && (target.lightDashFreeEvadeCharges ?? 0) > 0;
-  const evadeCost = hasLightDashFreeEvade ? 0 : chargesNeeded * evadeCostPerCharge;
+  const evadeCost = hasLightDashFreeEvade ? 0 : evadeChargesNeededNet * evadeCostPerCharge;
   const evadeAvailable = !bypass.blockEvade && !evadeBlocked && (hasLightDashFreeEvade || target.currentStamina >= evadeCost);
-  const maxAffordableEvadeCharges = evadeBlocked ? 0 : Math.min(hitCount, Math.floor(target.currentStamina / evadeCostPerCharge));
+  const maxAffordableEvadeCharges = evadeBlocked ? 0 : Math.min(hitCount, bankedEvadeHits + Math.floor(target.currentStamina / evadeCostPerCharge) * hitsPerCharge);
 
   // Parry: 0 Stamina lúc "kích hoạt" — nhưng CÓ THỂ tốn Sta SAU NẾU roll thua
   // (40/30 tùy perk, x2 nếu Gãy tay) — không chặn hiển thị option theo Sta hiện
@@ -1287,8 +1306,8 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
 
   return {
     chargesNeeded, hitsPerCharge, maxAffordableGuardCharges, maxAffordableEvadeCharges,
-    guard: { available: guardAvailable, cost: guardCost, costPerCharge: guardCostPerCharge },
-    evade: { available: evadeAvailable, cost: evadeCost, blockedReason: evadeBlocked ? "Mất Chân" : null, costPerCharge: evadeCostPerCharge },
+    guard: { available: guardAvailable, cost: guardCost, costPerCharge: guardCostPerCharge, chargesNeededNet: guardChargesNeededNet, hitsPerCharge },
+    evade: { available: evadeAvailable, cost: evadeCost, blockedReason: evadeBlocked ? "Mất Chân" : null, costPerCharge: evadeCostPerCharge, chargesNeededNet: evadeChargesNeededNet, hitsPerCharge },
     parry: { available: parryAvailable },
   };
 }
