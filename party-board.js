@@ -28,7 +28,7 @@ module.exports = function ({
   redis, withTimeout, withLock, withDoubleLock, getEncounter, saveEncounter, createCombatant,
   getPlayerData, buildJoinedCombatant, determineTurnOrder,
   validateAndRerollPrescript, appendActionLog, hasPerk, ADMIN_IDS, aiHooks, pickRandomBgm,
-  setUserActiveEncounterChannel,
+  setUserActiveEncounterChannel, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp,
 }) {
   const MAX_PARTY_SIZE = 3;
 
@@ -180,6 +180,12 @@ module.exports = function ({
       for (const id of memberIds) {
         const p = await getPlayerData(id);
         if (p.permanentlyDead) throw new Error(`<@${id}> đang **Permanent Death** — không thể bắt đầu contract cho tới khi được hồi sinh qua Rewound Time.`);
+        // Cùng bug fix với "-encounter join" — chặn 0 HP TRƯỚC khi tạo encounter,
+        // tránh kẹt (xem comment đầy đủ ở message-create-handler.js's -encounter join).
+        const { grade: gradeForHpCheck } = calcGrade(p.exp ?? 0);
+        const gradeMaxHpForCheck = Math.max(1, 140 + 20 * (GRADE_MIN - gradeForHpCheck) - calcInjuryMaxHpPenalty(p.injuries ?? []));
+        const effHpForCheck = getEffectiveCurrentHp(p, gradeMaxHpForCheck);
+        if (effHpForCheck.hp <= 0) throw new Error(`<@${id}> đang có **0 HP** (chưa hồi từ encounter trước) — cần hồi trước (dùng \`-heal hp: <ahn>\` hoặc đợi qua mốc reset) mới bắt đầu contract được.`);
         profiles[id] = p;
       }
 
