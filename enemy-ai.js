@@ -389,7 +389,15 @@ module.exports = function ({
       const { wrapped } = advanceToNextTurnHolder(encounter);
       appendActionLog(encounter, `⏭️ ${label} (🤖 AI) bỏ qua lượt.`);
       await saveEncounter(channelId, encounter);
-      if (!wrapped) aiHooks.announceCurrentTurn(channelId, encounter).catch(() => {});
+      // BUG THẬT phát hiện qua test tích hợp dài (nhiều vòng turnOrder) —
+      // xác nhận trực tiếp: "-contract bị kẹt, không tự end turnorder" — TRƯỚC
+      // ĐÂY chỉ gọi announceCurrentTurn khi "!wrapped" — nhưng CHÍNH LÚC
+      // wrapped=true (hết 1 vòng turnOrder, entry tiếp theo undefined) MỚI LÀ
+      // lúc auto-end-turn-order logic (nằm BÊN TRONG announceCurrentTurn, check
+      // "if (!entry)") cần chạy nhất! Bỏ điều kiện !wrapped — LUÔN gọi
+      // announceCurrentTurn để logic auto-end tự kiểm tra và xử lý đúng, dù
+      // wrapped hay không.
+      aiHooks.announceCurrentTurn(channelId, encounter).catch(() => {});
     });
     // BUG THẬT phát hiện qua test tích hợp (3 mob) — sau khi mob NÀY pass, nếu
     // combatant KẾ TIẾP trong turnOrder CŨNG là 1 AI-enemy KHÁC, không có gì tự
