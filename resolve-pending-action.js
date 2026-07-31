@@ -273,18 +273,29 @@ async function resolveOnePendingAction(encounter, p) {
                 const instanceResults = t.preview.instanceResults ?? [];
                 const totalHits = instanceResults.length || hitCount;
                 const perHitMult = new Array(totalHits).fill(1);
-                // GAP ĐÃ SỬA (xác nhận trực tiếp: "khi né hoặc parry thành công
-                // thì sẽ không dính đòn nên sẽ không dính hiệu ứng, còn nếu
-                // guard thì vẫn dính hiệu ứng") — perHitMult=0 KHÔNG đủ để biết
-                // "có dính hiệu ứng hay không", vì Guard cũng CÓ THỂ đạt đúng 0
-                // (guardReductionPct = Math.min(1,...) có thể = 1 nếu Defense Up
-                // rất cao) — trong trường hợp đó Guard vẫn phải tính là "dính",
-                // chỉ Evade/Parry mới thực sự "không dính". Array riêng này CHỈ
-                // được set true bởi Evade/Parry thành công, không bao giờ bởi Guard.
                 const hitEvadedOrParried = new Array(totalHits).fill(false);
                 let hitIdx = 0;
                 const noteParts = [];
 
+                // Task yêu cầu trực tiếp: "sau khi né/guard m1 light 2 hit thì còn
+                // 0,5 charge guard/evade lần sau bấm để né 2 hit light thì không
+                // tiêu sta" — tiêu thụ banked hits (dư từ lần TRƯỚC, MIỄN PHÍ hoàn
+                // toàn — không trừ Stamina/charge gì cả) TRƯỚC KHI vào các nhánh
+                // Evade/Guard bằng charge/Stamina bình thường bên dưới. Track riêng
+                // hitsCoveredByBank để tính lại phần dư MỚI sau khi resolve xong
+                // (không lẫn với phần charge MỚI mua — xem cuối khối Guard/Evade).
+                let evadeHitsCoveredByBank = 0;
+                if (!(t.perHitBypass?.[hitIdx] ?? bypass).blockEvade && (target.bankedEvadeHits ?? 0) > 0 && hitIdx < totalHits) {
+                  const coverStart = hitIdx;
+                  while ((target.bankedEvadeHits ?? 0) > 0 && hitIdx < totalHits && !(t.perHitBypass?.[hitIdx] ?? bypass).blockEvade) {
+                    target.bankedEvadeHits -= 1;
+                    perHitMult[hitIdx] = 0; hitEvadedOrParried[hitIdx] = true;
+                    hitIdx++; evadeHitsCoveredByBank++;
+                  }
+                  if (evadeHitsCoveredByBank > 0) noteParts.push(`💨**Evade (dư charge từ trước, miễn phí)** — né hit ${coverStart + 1}-${hitIdx}`);
+                }
+
+                let evadeChargesConsumedThisCall = 0;
                 if (!(t.perHitBypass?.[hitIdx] ?? bypass).blockEvade && (target.evadeCharges ?? 0) > 0 && ((target.evadeHitSelections ?? []).length > 0 || hitIdx < totalHits)) {
                   const coverStart = hitIdx;
                   let used = 0;
@@ -297,16 +308,24 @@ async function resolveOnePendingAction(encounter, p) {
                     for (const h of validSelected) { perHitMult[h - 1] = 0; hitEvadedOrParried[h - 1] = true; }
                     used = Math.min(target.evadeCharges, Math.ceil(validSelected.length / hitsPerCharge));
                     target.evadeCharges -= used;
+                    evadeChargesConsumedThisCall += used;
                     target.evadeHitSelections = target.evadeHitSelections.filter(h => !(h >= 1 && h <= totalHits));
                     hitIdx = Math.max(hitIdx, ...validSelected, 0);
                     noteParts.push(`💨**Evade** (${used} charge — né hit ${validSelected.join(", ")})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
                   } else {
                     while (target.evadeCharges > 0 && hitIdx < totalHits) {
-                      target.evadeCharges -= 1; used += 1;
+                      target.evadeCharges -= 1; used += 1; evadeChargesConsumedThisCall += 1;
                       for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) { perHitMult[hitIdx] = 0; hitEvadedOrParried[hitIdx] = true; }
                     }
                     noteParts.push(`💨**Evade** (${used} charge — né hit ${coverStart + 1}-${hitIdx})${applyEvadeSuccessPerks(target, attacker.combatant)}`);
                   }
+                  // Cùng cơ chế banked-leftover với Guard ở dưới — xem comment đầy
+                  // đủ ở khối Guard.
+                  const capacityFromNewEvadeCharges = evadeChargesConsumedThisCall * hitsPerCharge;
+                  const totalEvadedThisCall = hitEvadedOrParried.filter(Boolean).length;
+                  const hitsCoveredByNewEvadeCharges = Math.max(0, totalEvadedThisCall - evadeHitsCoveredByBank);
+                  const leftoverEvade = Math.max(0, capacityFromNewEvadeCharges - hitsCoveredByNewEvadeCharges);
+                  if (leftoverEvade > 0) target.bankedEvadeHits = (target.bankedEvadeHits ?? 0) + leftoverEvade;
                 }
                 if (!(t.perHitBypass?.[hitIdx] ?? bypass).blockParry && (target.parryHitSelections ?? []).length > 0) {
                   // GAP ĐÃ SỬA (đối xứng với evadeHitSelections/guardHitSelections
@@ -353,9 +372,22 @@ async function resolveOnePendingAction(encounter, p) {
                 const canAttemptGuard = (target.guardHitSelections ?? []).length > 0
                   ? target.guardHitSelections.some(h => !(t.perHitBypass?.[h - 1] ?? bypass).blockGuard)
                   : !(t.perHitBypass?.[hitIdx] ?? bypass).blockGuard;
+                // Cùng cơ chế banked hits với Evade ở trên — MIỄN PHÍ, tiêu thụ
+                // TRƯỚC khi vào nhánh Guard bằng charge/Stamina bình thường.
+                let guardHitsCoveredByBank = 0;
+                if (canAttemptGuard && (target.bankedGuardHits ?? 0) > 0 && hitIdx < totalHits && !target.hasIronHorus) {
+                  const coverStart = hitIdx;
+                  while ((target.bankedGuardHits ?? 0) > 0 && hitIdx < totalHits && !(t.perHitBypass?.[hitIdx] ?? bypass).blockGuard) {
+                    target.bankedGuardHits -= 1;
+                    perHitMult[hitIdx] = 1 - guardReductionPct;
+                    hitIdx++; guardHitsCoveredByBank++;
+                  }
+                  if (guardHitsCoveredByBank > 0) noteParts.push(`🛡️**Guard (dư charge từ trước, miễn phí)** — giảm ${Math.round(guardReductionPct * 100)}% hit ${coverStart + 1}-${hitIdx}`);
+                }
                 if (canAttemptGuard && (target.guardCharges ?? 0) > 0 && ((target.guardHitSelections ?? []).length > 0 || hitIdx < totalHits)) {
                   const coverStart = hitIdx;
                   let guardedHitIndices = []; // GAP ĐÃ SỬA — track ĐÚNG index (0-based) các hit ĐÃ thực sự được Guard trong nhánh này, để kiểm tra guardBreak cho ĐÚNG hit (không phải coverStart cố định, sai khi dùng guardHitSelections không tuần tự).
+                  let guardChargesConsumedThisCall = 0;
                   // Iron Horus (Abydos's Uniform passive) — BUG ĐÃ SỬA (xác nhận
                   // trực tiếp từ GM, đang gây ăn dmg thật trên production): "1 lần
                   // guard tốn 40 Sta nhưng CẢ TURN sẽ guard TOÀN BỘ đòn, 1 charge
@@ -381,13 +413,14 @@ async function resolveOnePendingAction(encounter, p) {
                     for (const h of validSelected) { perHitMult[h - 1] = 1 - guardReductionPct; guardedHitIndices.push(h - 1); }
                     const chargesUsed = Math.min(target.guardCharges, Math.ceil(validSelected.length / hitsPerCharge));
                     target.guardCharges = Math.max(0, target.guardCharges - chargesUsed);
+                    guardChargesConsumedThisCall += chargesUsed;
                     target.guardHitSelections = target.guardHitSelections.filter(h => !(h >= 1 && h <= totalHits));
                     hitIdx = totalHits; // đã xử lý xong khối Guard này (dù không tuần tự) — không loại khác che tiếp lên các hit CHƯA được chỉ định
                     noteParts.push(`🛡️**Guard (chọn riêng)** (${chargesUsed} charge, giảm ${Math.round(guardReductionPct * 100)}% — hit ${validSelected.join(",")})`);
                   } else {
                     let used = 0;
                     while (target.guardCharges > 0 && hitIdx < totalHits) {
-                      target.guardCharges -= 1; used += 1;
+                      target.guardCharges -= 1; used += 1; guardChargesConsumedThisCall += 1;
                       for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) { perHitMult[hitIdx] = 1 - guardReductionPct; guardedHitIndices.push(hitIdx); }
                     }
                     noteParts.push(`🛡️**Guard** (${used} charge, giảm ${Math.round(guardReductionPct * 100)}% — hit ${coverStart + 1}-${hitIdx})`);
@@ -409,6 +442,20 @@ async function resolveOnePendingAction(encounter, p) {
                       forceStagger(target);
                       noteParts.push(`💥**Guard Break** — bị Stagger ngay (Res 2x từ giờ)`);
                     }
+                  }
+                  // Task yêu cầu trực tiếp: tính lại banked hits MỚI cho lần sau —
+                  // capacity từ charge MỚI mua turn này (guardChargesConsumedThisCall
+                  // * hitsPerCharge) trừ đi số hit ĐÃ DÙNG bởi charge MỚI (KHÔNG tính
+                  // phần đã dùng từ bank cũ — guardHitsCoveredByBank riêng) = phần dư
+                  // MỚI, CỘNG DỒN vào bankedGuardHits (đã tự trừ đúng phần tiêu thụ ở
+                  // bước banked-consumption phía trên rồi, không ghi đè mất). BỎ QUA
+                  // Iron Horus — charge của nó không bao giờ tụt nên không có khái
+                  // niệm "dư" theo nghĩa thường.
+                  if (!target.hasIronHorus) {
+                    const capacityFromNewGuardCharges = guardChargesConsumedThisCall * hitsPerCharge;
+                    const hitsCoveredByNewGuardCharges = Math.max(0, guardedHitIndices.length - guardHitsCoveredByBank);
+                    const leftoverGuard = Math.max(0, capacityFromNewGuardCharges - hitsCoveredByNewGuardCharges);
+                    if (leftoverGuard > 0) target.bankedGuardHits = (target.bankedGuardHits ?? 0) + leftoverGuard;
                   }
                 }
 
