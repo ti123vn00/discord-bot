@@ -295,7 +295,6 @@ module.exports = function ({
     // giảm tần suất status board cập nhật (vấn đề "hiện liên tục" Fragaria báo).
     const weaponWeight = mob.weaponWeight ?? "medium";
     const staCostPerHit = WEAPON_STAMINA_COST[weaponWeight] ?? 10;
-    const hitsPerBurst = WEAPON_DEFENSE_HITS[weaponWeight] ?? 1;
     // Task yêu cầu trực tiếp (xác nhận: "tần suất m1 của các AI boss cũng không
     // nhiều khiến player khá tiện về mặt phòng thủ") — TRƯỚC ĐÂY dừng CỨNG ngay
     // khi đủ 20 Stamina (1 Light) — quá thụ động, và LÃNG PHÍ cơ chế Light vốn
@@ -324,11 +323,21 @@ module.exports = function ({
     }
     const reservePct = mob.thisTurnStaminaReservePct ?? 0.25;
     const minStaminaReserve = Math.ceil((mob.maxStamina ?? 100) * reservePct);
-    // Số hit AN TOÀN tối đa trong burst này — không vượt hitsPerBurst, PHẢI giữ
-    // currentStamina > 0 SAU khi trừ (không tự Stagger) VÀ không tụt dưới
-    // minStaminaReserve (dự trữ phòng thủ cho các turn sau, tỉ lệ random).
+    // BUG THẬT phát hiện qua báo cáo trực tiếp kèm giải thích chi tiết: "cứ
+    // guard xong là đánh thêm 1 hit như thế gây waste guard của player... nên
+    // cho AI group hết toàn bộ số m1 vào 1 instance để player reactive defense
+    // dễ hơn" — TRƯỚC ĐÂY mỗi lần gọi hàm này CHỈ burst tối đa hitsPerBurst
+    // (WEAPON_DEFENSE_HITS — VD 4 cho light) rồi DỪNG, để chu kỳ maybeRunAiTurn
+    // tự lặp lại gọi THÊM 1 lần nữa cho phần Stamina còn lại — mỗi lần gọi lại
+    // là 1 pendingAction MỚI, buộc player phải Guard/Evade/Parry RIÊNG cho
+    // TỪNG lần, làm hao phí Guard charge của họ qua nhiều instance nhỏ thay vì
+    // 1 instance lớn duy nhất. Giờ tính TOÀN BỘ số hit AN TOÀN cho CẢ TURN
+    // (không giới hạn ở hitsPerBurst nữa — hitsPerCharge vẫn do reactive-
+    // defense.js tự chia nhóm phòng thủ dựa trên tổng số hit này, KHÔNG cần
+    // giới hạn số hit MỖI LẦN GỌI HÀM) rồi khai báo NGAY 1 LẦN DUY NHẤT.
+    const maxPossibleHits = Math.ceil((mob.currentStamina ?? 0) / staCostPerHit) + 1;
     let safeHits = 0;
-    for (let i = 1; i <= hitsPerBurst; i++) {
+    for (let i = 1; i <= maxPossibleHits; i++) {
       if (mob.currentStamina - i * staCostPerHit < minStaminaReserve) break;
       safeHits = i;
     }
