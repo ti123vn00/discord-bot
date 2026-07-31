@@ -27,7 +27,13 @@ module.exports = function ({
     const hp = parseInt(kv["hp"] ?? "", 10);
     const stamina = parseInt(kv["stamina"] ?? "", 10);
     const light = parseInt(kv["light"] ?? "", 10);
-    const equippedWeaponObj = profileDataForDefaults.equippedWeapon ? findWeaponAnywhere(profileDataForDefaults.equippedWeapon) : null;
+    // Task yêu cầu trực tiếp (phát hiện qua ảnh chụp thật: player chưa equip vũ
+    // khí có thể gõ tay dmg TÙY Ý, VD "4000x2P" — bug thật vì hoàn toàn không
+    // giới hạn) — "nếu player không chọn vũ khí thì hãy để họ tự động sử dụng
+    // Brawler" — mặc định Brawler (light, Blunt, baseDamage 5) thay vì null khi
+    // chưa equip gì, để modal M1 luôn rơi vào nhánh "auto" (tự tính từ vũ khí),
+    // không còn rơi vào nhánh "gõ tay tùy ý" nữa.
+    const equippedWeaponObj = profileDataForDefaults.equippedWeapon ? findWeaponAnywhere(profileDataForDefaults.equippedWeapon) : findWeaponAnywhere("Brawler");
     const equippedOutfitObj = profileDataForDefaults.equippedOutfit ? findOutfit(profileDataForDefaults.equippedOutfit) : null;
     const weapon = normalizeWeaponWeight(kv["weapon"] ?? equippedWeaponObj?.weight ?? "medium");
     const resRaw = kv["res"] ?? "";
