@@ -90,14 +90,14 @@ module.exports = function ({
   function applyDefenseChoiceToTarget(choice, target, opts, realHitIndices) {
     if (choice === "guard") {
       target.currentStamina -= opts.guard.cost;
-      target.guardCharges = (target.guardCharges ?? 0) + opts.chargesNeeded;
+      target.guardCharges = (target.guardCharges ?? 0) + opts.guard.chargesNeededNet;
       target.guardHitSelections = target.guardHitSelections ?? [];
       target.guardHitSelections.push(...realHitIndices);
       return `🛡️ Guard (-${opts.guard.cost} Sta)`;
     }
     if (choice === "evade") {
       target.currentStamina -= opts.evade.cost;
-      target.evadeCharges = (target.evadeCharges ?? 0) + opts.chargesNeeded;
+      target.evadeCharges = (target.evadeCharges ?? 0) + opts.evade.chargesNeededNet;
       target.evadeHitSelections = target.evadeHitSelections ?? [];
       target.evadeHitSelections.push(...realHitIndices);
       return `💨 Evade (-${opts.evade.cost} Sta)`;
