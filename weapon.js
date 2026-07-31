@@ -34,7 +34,7 @@ const WEAPONS = {
     type: "Slash",
     baseDamage: 14,
     passives: [
-      { name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" },
+      { name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." },
     ],
     // Critical "Durandal" ĐÃ CÓ trong skills.js (key "durandal", weaponOf:
     // "Durandal") — roll qua `-skill durandal`, KHÔNG lặp lại roll() ở đây.
@@ -97,14 +97,12 @@ const WEAPONS = {
           "Trong 1 turn khi tấn công 1 đối tượng, nếu đánh thường: 1 lần → bắn thêm 1 Repeat Ammo, gây sát thương chuẩn. " +
           "Dưới hoặc bằng 3 lần → +50% sát thương. Dưới hoặc bằng 6 lần → Base dmg nâng lên 4x9. " +
           "Mỗi lần đánh thường: gắn 2 Tremor + 2 Charge lên bản thân. " +
-          "[KHÔNG TỰ ĐỘNG HOÁ — leo thang theo SỐ LẦN đánh thường TRONG 1 TURN lên CÙNG 1 đối tượng, hệ thống hiện không track " +
-          "counter dạng này; GM/player tự cộng % dmg + đổi base dmg + gắn Tremor/Charge bằng tay theo đúng mốc.]",
+          "",
       },
       {
         name: "Ammo: 8",
         desc:
-          "[KHÔNG TỰ ĐỘNG HOÁ — không có hệ thống \"đạn\"/reload trong bot, tương tự Light/Stamina/Sanity/Charge. " +
-          "GM/player tự đếm 8 lượt bắn rồi tự narrate hết đạn/reload theo ý đồ riêng của bàn chơi.]",
+          "",
       },
     ],
     // Critical "Tactical Suppression" — có trong skills.js (key "tactical
@@ -119,95 +117,95 @@ const WEAPONS = {
   // swap qua lúc nào" để miễn CD lần đầu — GM/player tự áp dụng bằng tay).
   "mook workshop": {
     name: "Mook Workshop", weight: "medium", type: "Slash", baseDamage: 13,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }],
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }],
     criticalSkillKey: "mook workshop",
   },
   "crystal atelier": {
     name: "Crystal Atelier", weight: "medium", type: "Slash", baseDamage: 15,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }],
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }],
     criticalSkillKey: "crystal atelier",
   },
   "zelkova workshop": {
     name: "Zelkova Workshop", weight: "heavy", type: "Blunt", baseDamage: 27,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }],
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }],
     criticalSkillKey: "zelkova workshop",
   },
   "old boys workshop": {
     name: "Old Boys Workshop", weight: "light", type: "Blunt", baseDamage: 6,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }],
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }],
     criticalSkillKey: "old boys workshop",
   },
   "allas workshop": {
     name: "Allas Workshop", weight: "medium", type: "Pierce", baseDamage: 15,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }],
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }],
     criticalSkillKey: "allas workshop",
   },
   "ranga workshop": {
     name: "Ranga Workshop", weight: "light", type: "Pierce", baseDamage: 6,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }],
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }],
     criticalSkillKey: "ranga workshop",
   },
   "fused blade of ruined mirror worlds": {
     name: "Fused Blade of Ruined Mirror Worlds", weight: "heavy", type: "Slash", baseDamage: 28,
     passives: [{
       name: "Dullahan",
-      desc: "Parry của bạn khi sử dụng sẽ khiến bạn đánh thường lên người kẻ địch. Vào turn kế sau khi bạn Parry bạn sẽ nhận được 1 Stack Dullahan và giảm bản thân 15 Sanity. Khi có Dullahan bạn nhận được 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end bạn sẽ mất (15 - số Coffin hiện tại trên bản thân) Sanity. Khi dưới -15 Sanity, mỗi turn end bạn sẽ nhận được thêm 1 Stack Dullahan. [KHÔNG TỰ ĐỘNG HOÁ — cơ chế Dullahan/Coffin quá đặc thù, GM/player tự quản lý.]",
+      desc: "Parry của bạn khi sử dụng sẽ khiến bạn đánh thường lên người kẻ địch. Vào turn kế sau khi bạn Parry bạn sẽ nhận được 1 Stack Dullahan và giảm bản thân 15 Sanity. Khi có Dullahan bạn nhận được 30% Dmg gây ra và giảm 15% Dmg Reduction; đồng thời mỗi turn end bạn sẽ mất (15 - số Coffin hiện tại trên bản thân) Sanity. Khi dưới -15 Sanity, mỗi turn end bạn sẽ nhận được thêm 1 Stack Dullahan.",
     }],
     criticalSkillKey: "requiem",
   },
   "zweihander": {
     name: "Zweihander", weight: "heavy", type: "Slash", baseDamage: 25,
-    passives: [{ name: "Your Shield", desc: "Bạn sẽ có khả năng block đòn thay cho một đồng đội duy nhất trong turn. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Your Shield", desc: "Bạn sẽ có khả năng block đòn thay cho một đồng đội duy nhất trong turn." }],
     criticalSkillKey: "patrolling",
   },
   "mimicry blade": {
     name: "Mimicry Blade", weight: "medium", type: "Slash", baseDamage: 14,
-    passives: [{ name: "The Imitation", mechanicId: "mimicry_imitation", desc: "Mỗi 1 Imitation đã tiêu thụ sẽ gia tăng cho bạn 5% Dmg Bonus [Max: 50%]. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "The Imitation", mechanicId: "mimicry_imitation", desc: "Mỗi 1 Imitation đã tiêu thụ sẽ gia tăng cho bạn 5% Dmg Bonus [Max: 50%]." }],
     criticalSkillKey: "upstanding slash",
   },
   "augury spear": {
     name: "Augury Spear", weight: "light", type: "Pierce", baseDamage: 6,
-    passives: [{ name: "Rotate Trigram", desc: "Vào đầu mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam -> Ri -> lặp lại. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Rotate Trigram", desc: "Vào đầu mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam -> Ri -> lặp lại." }],
     criticalSkillKey: "unyielding strike",
   },
   "kurokumo katana": {
     name: "Kurokumo Katana", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Dark Cloud", desc: "Page của Kurokumo Syndicate gây thêm +2 Bleed. [KHÔNG TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Dark Cloud", desc: "Page của Kurokumo Syndicate gây thêm +2 Bleed." }],
     criticalSkillKey: "thundercleaver",
   },
   "shi association katana": {
     name: "Shi Association Katana", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Shi", mechanicId: "shi_poise", desc: "4 đòn đánh thường sẽ nhận 4 Poise. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Shi", mechanicId: "shi_poise", desc: "4 đòn đánh thường sẽ nhận 4 Poise." }],
     criticalSkillKey: "overbreath",
   },
   "liu martial arts": {
     name: "Liu Martial Arts", weight: "light", type: "Pierce", baseDamage: 5.5,
-    passives: [{ name: "Fire", mechanicId: "fire_burn", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Fire", mechanicId: "fire_burn", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù." }],
     criticalSkillKey: "violent flame",
   },
   "liu guan dao": {
     name: "Liu Guan Dao", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Fire", mechanicId: "fire_burn", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Fire", mechanicId: "fire_burn", desc: "2 đòn đánh thường sẽ gắn 1 Burn lên kẻ thù." }],
     criticalSkillKey: "forming storm",
   },
   "dieci association kata": {
     name: "Dieci Association Kata", weight: "light", type: "Blunt", baseDamage: 5,
-    passives: [{ name: "Knowledge", mechanicId: "knowledge_sanity", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Knowledge", mechanicId: "knowledge_sanity", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity." }],
     criticalSkillKey: "excruciating study",
   },
   "dieci association key": {
     name: "Dieci Association Key", weight: "medium", type: "Blunt", baseDamage: 11,
-    passives: [{ name: "Knowledge", mechanicId: "knowledge_sanity", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Knowledge", mechanicId: "knowledge_sanity", desc: "Mỗi lần sử dụng Critical sẽ hồi cho bản thân 5 Sanity." }],
     criticalSkillKey: "unveil",
   },
   "soldato rifle": {
     name: "Soldato Rifle", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Firing", desc: "Có thể tiêu stack đạn có trong người để đòn đánh thường chuyển qua dmg Pierce và +4 Base Dmg. Vũ khí này có max 8 viên đạn một lượt. [KHÔNG TỰ ĐỘNG HOÁ — hệ thống Ammo không được track.]" }],
+    passives: [{ name: "Firing", desc: "Có thể tiêu stack đạn có trong người để đòn đánh thường chuyển qua dmg Pierce và +4 Base Dmg. Vũ khí này có max 8 viên đạn một lượt." }],
     criticalSkillKey: "bayonet combat",
   },
   "atelier logic": {
     name: "Atelier Logic", weight: "heavy", type: "Blunt", baseDamage: 26,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }, {
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }, {
       name: "2 dạng vũ khí",
       desc: "Vũ khí có 2 form: Shotgun (Heavy/Blunt/26, metadata mặc định ở đây) và Pistols (Light/Pierce/6.5) — GM/player tự chọn form đang dùng khi tính M1, hệ thống chỉ lưu 1 baseDamage cố định (form Shotgun). Critical Pistols: roll qua `-skill atelier logic pistols` riêng.",
     }],
@@ -215,79 +213,79 @@ const WEAPONS = {
   },
   "wheel's industry": {
     name: "Wheel's Industry", weight: "heavy", type: "Blunt", baseDamage: 30,
-    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua. [ĐÃ TỰ ĐỘNG HOÁ — xem orlandoFuriosoBypass trong combatant.]" }],
+    passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }],
     criticalSkillKey: "wheels industry",
   },
   "chains of loyalty": {
     name: "Chains of Loyalty", weight: "light", type: "Blunt", baseDamage: 5,
-    passives: [{ name: "Payback", mechanicId: "payback_reflect", desc: "Mỗi 1 Turn, đòn tấn công đầu tiên bạn chịu từ kẻ thù sẽ phản 1/2 Dmg về cho chúng với Dmg Type là Blunt. Đồng thời gây cho chúng 5 Fragile và 1 Vengeance Mark. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Payback", mechanicId: "payback_reflect", desc: "Mỗi 1 Turn, đòn tấn công đầu tiên bạn chịu từ kẻ thù sẽ phản 1/2 Dmg về cho chúng với Dmg Type là Blunt. Đồng thời gây cho chúng 5 Fragile và 1 Vengeance Mark." }],
     criticalSkillKey: "promised suffering",
   },
   "seven association longsword": {
     name: "Seven Association Longsword", weight: "medium", type: "Slash", baseDamage: 12,
-    passives: [{ name: "Grasping Vulnerabilities", mechanicId: "grasping_vulnerabilities", desc: "Mỗi 2 đòn đánh thường của bạn sẽ gây 1 Rupture lên người kẻ địch. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Grasping Vulnerabilities", mechanicId: "grasping_vulnerabilities", desc: "Mỗi 2 đòn đánh thường của bạn sẽ gây 1 Rupture lên người kẻ địch." }],
     criticalSkillKey: "moulinet",
   },
   "udjat khopesh": {
     name: "Udjat Khopesh", weight: "medium", type: "Slash", baseDamage: 13,
-    passives: [{ name: "The Udjat", desc: "Mỗi 1 Protection bạn có trên người, gia tăng 1% Dmg Bonus. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "The Udjat", desc: "Mỗi 1 Protection bạn có trên người, gia tăng 1% Dmg Bonus." }],
     criticalSkillKey: "the udjat",
   },
   "warp corp. dagger": {
     name: "WARP Corp. Dagger", weight: "light", type: "Pierce", baseDamage: 6,
-    passives: [{ name: "Charging", mechanicId: "warp_charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Charging", mechanicId: "warp_charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge." }],
     criticalSkillKey: "dimensional rift dagger",
   },
   "warp corp. gauntlets": {
     name: "WARP Corp. Gauntlets", weight: "light", type: "Blunt", baseDamage: 6.5,
-    passives: [{ name: "Charging", mechanicId: "warp_charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Charging", mechanicId: "warp_charging", desc: "Mỗi 4 đòn đánh thường bạn sẽ nhận được 1 Charge." }],
     criticalSkillKey: "dimensional rift gauntlets",
   },
   "l'heure du loup": {
     name: "L'Heure du Loup", weight: "light", type: "Blunt", baseDamage: 5,
-    passives: [{ name: "Blue Reverberation Ensemble", mechanicId: "blue_reverberation", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Blue Reverberation Ensemble", mechanicId: "blue_reverberation", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor." }],
     criticalSkillKey: "beatdown",
   },
   "yesterday's promise": {
     name: "Yesterday's Promise", weight: "light", type: "Pierce", baseDamage: 5,
-    passives: [{ name: "Blue Reverberation Ensemble", mechanicId: "blue_reverberation", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Blue Reverberation Ensemble", mechanicId: "blue_reverberation", desc: "4 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor." }],
     criticalSkillKey: "magic impact",
   },
   "reverberation scythe": {
     name: "Reverberation Scythe", weight: "medium", type: "Slash", baseDamage: 10,
-    passives: [{ name: "Blue Reverberation Ensemble Leader", mechanicId: "blue_reverberation_leader", desc: "Mỗi lần sử dụng Critical sẽ nhận 5 Sanity đồng thời 3 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Blue Reverberation Ensemble Leader", mechanicId: "blue_reverberation_leader", desc: "Mỗi lần sử dụng Critical sẽ nhận 5 Sanity đồng thời 3 đòn đánh thường sẽ gắn lên kẻ thù 1 Tremor." }],
     criticalSkillKey: "resonate",
   },
   "the crying children": {
     name: "The Crying Children", weight: "medium", type: "Blunt", baseDamage: 14,
-    passives: [{ name: "Philip", desc: "Khi bản thân đạt được Emotional Level 1 sẽ nhận được 2 Dice Up, nếu Emotional Level 2 sẽ nhận được 4 Dice Up. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Philip", desc: "Khi bản thân đạt được Emotional Level 1 sẽ nhận được 2 Dice Up, nếu Emotional Level 2 sẽ nhận được 4 Dice Up." }],
     criticalSkillKey: "scorching desperation",
   },
   "viriscent pyrojade ring": {
     name: "Viriscent Pyrojade Ring", weight: "light", type: "Pierce", baseDamage: 5,
-    passives: [{ name: "Speed", mechanicId: "warp_speed_haste", desc: "4 đòn đánh thường sẽ nhận 1 Haste. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Speed", mechanicId: "warp_speed_haste", desc: "4 đòn đánh thường sẽ nhận 1 Haste." }],
     criticalSkillKey: "viriscent pyrojade violet",
   },
   "cinq rapier": {
     name: "Cinq Rapier", weight: "light", type: "Pierce", baseDamage: 5,
-    passives: [{ name: "Speed", mechanicId: "warp_speed_haste", desc: "4 đòn đánh thường sẽ nhận 1 Haste. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Speed", mechanicId: "warp_speed_haste", desc: "4 đòn đánh thường sẽ nhận 1 Haste." }],
     criticalSkillKey: "murche defensive",
   },
   "index cleaver": {
     name: "Index Cleaver", weight: "heavy", type: "Slash", baseDamage: 20,
-    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng <:The_Prescripts_Target:1528452363159998525>The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng <:The_Prescripts_Target:1528452363159998525>The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó." }],
     criticalSkillKey: "decapitation",
   },
   "index longsword": {
     name: "Index Longsword", weight: "medium", type: "Slash", baseDamage: 10,
-    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng <:The_Prescripts_Target:1528452363159998525>The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó. [ĐÃ TỰ ĐỘNG HOÁ.]" }],
+    passives: [{ name: "Will of Prescript", desc: "Vào đầu mỗi turn bạn sẽ gắn random 1 kẻ địch trên sân hiệu ứng <:The_Prescripts_Target:1528452363159998525>The Prescript Target's - The Index. Ứng với mỗi 1 Grace of the Prescript của bản thân thì bạn sẽ tăng thêm 5% Dmg lên kẻ địch có hiệu ứng đó." }],
     criticalSkillKey: "eliminate",
   },
   // Pointillist Brush — cũng ĐÃ có Critical "Sanguine Pointilism" sẵn trong
   // skills.js (chỉ thiếu metadata, giống toàn bộ 25 vũ khí phía trên).
   "pointillist brush": {
     name: "Pointillist Brush", weight: "medium", type: "Pierce", baseDamage: 11,
-    passives: [{ name: "Art", desc: "Với mỗi 5 Bleed lên kẻ thù khi sử dụng Critical sẽ tăng 20% Reuse [tối đa Reuse 2 lần] [Mặc định có 40% Reuse]. [KHÔNG TỰ ĐỘNG HOÁ — % Reuse ngẫu nhiên cần GM/player tự roll.]" }],
+    passives: [{ name: "Art", desc: "Với mỗi 5 Bleed lên kẻ thù khi sử dụng Critical sẽ tăng 20% Reuse [tối đa Reuse 2 lần] [Mặc định có 40% Reuse]." }],
     criticalSkillKey: "sanguine pointilism",
   },
 };
