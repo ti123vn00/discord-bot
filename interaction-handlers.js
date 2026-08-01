@@ -2034,11 +2034,43 @@ client.on("interactionCreate", async (interaction) => {
       // quan tới roll) — giờ ÁP DỤNG Y HỆT fix đã làm cho Critical: roll NGAY lúc
       // chọn dropdown, lưu autoDmgStr server-side, Modal (nếu cần) không còn field
       // dmgStr gõ tay nữa.
-      const pageName = value.slice(4);
+      // Fragaria yêu cầu trực tiếp: "nên thêm nút để chọn biến thể".
+      // Format value: "hit:<Tên Page>" HOẶC "hit:<Tên Page>|<variantKey>" khi đã
+      // chọn biến thể. Dùng "|" (KHÔNG phải ":") vì customId/value đã dùng ":"
+      // làm dấu phân cách chính — thêm 1 dấu ":" nữa sẽ phá destructuring.
+      const rawPageValue = value.slice(4);
+      const pipeIdx = rawPageValue.indexOf("|");
+      const pageName = pipeIdx >= 0 ? rawPageValue.slice(0, pipeIdx) : rawPageValue;
+      const chosenVariantKey = pipeIdx >= 0 ? rawPageValue.slice(pipeIdx + 1) : null;
       const encounter = await getEncounter(channelId);
       const combatant = encounter?.players?.[interaction.user.id];
       if (!combatant) {
         return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      // Skill có nhiều biến thể LOẠI TRỪ nhau (VD Extreme Edge: Mặt đất / Trên
+      // không / Dưới 33% HP — mỗi cái dải dice + tag khác hẳn) — hỏi TRƯỚC khi
+      // roll. Dùng LẠI customId "encmenumoves:" nên rơi vào đúng handler này ở
+      // lần chọn sau, không cần handler riêng.
+      const variantSkill = findSkill(pageName);
+      if (!chosenVariantKey && Array.isArray(variantSkill?.variants) && variantSkill.variants.length > 0) {
+        return interaction.update({
+          embeds: [{
+            title: `🔀 ${variantSkill.name} — chọn tình huống`,
+            description: "Page này có nhiều biến thể loại trừ nhau (dải dice và tag khác nhau). Chọn đúng tình huống hiện tại của bạn:",
+            color: 0x9b59b6,
+          }],
+          components: [new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`encmenumoves:${channelId}:${interaction.user.id}`)
+              .setPlaceholder("Chọn biến thể...")
+              .addOptions(
+                new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"),
+                ...variantSkill.variants.slice(0, 24).map(v => new StringSelectMenuOptionBuilder()
+                  .setLabel(`${v.emoji ?? "▪"} ${v.label}`)
+                  .setValue(`hit:${pageName}|${v.key}`)),
+              ),
+          )],
+        }).catch(() => {});
       }
       if (!hasEncounterStarted(encounter)) {
         return interaction.reply({ content: "⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước.", flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -2048,7 +2080,7 @@ client.on("interactionCreate", async (interaction) => {
       }
       let verify;
       try {
-        verify = await resolveSkillVerification(channelId, combatant, pageName, null, false);
+        verify = await resolveSkillVerification(channelId, combatant, pageName, null, false, chosenVariantKey);
       } catch (err) {
         return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
       }

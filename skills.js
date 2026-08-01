@@ -459,9 +459,20 @@ const SKILLS = {
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 2 <:Tremor:1513762737388257380>Tremor`,
         `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture`,
         `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `${D6} **${d6}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 4 <:Fragile:1513763336167100536>Fragile, <:TremorBurst:1513802464632246352>Tremor Burst`,
+        // "50% Slash / 50% Blunt" — xác nhận trực tiếp từ Fragaria: KHÔNG phải
+        // random chọn 1 loại, mà CHIA ĐÔI thành 2 HIT ("dice ra 20 thì thành 2
+        // Hit: 10 Slash và 10 Blunt"). TRƯỚC ĐÂY dòng này không có tag loại dmg
+        // hợp lệ nào ([50% Slash/50% Blunt] không khớp regex) nên bị parser bỏ
+        // qua HOÀN TOÀN — Dice 6 và Dice 8 rơi khỏi dmgStr, mất trắng damage.
+        // Giờ tách thành 2 dòng, mỗi dòng nửa giá trị (giữ TỔNG chính xác kể cả
+        // số lẻ — 23 → 11.5 + 11.5, damage-calc.js nhận số thập phân).
+        // QUAN TRỌNG: status phụ (4 Fragile, Tremor Burst) CHỈ ghi ở 1 dòng —
+        // để cả 2 sẽ bị áp GẤP ĐÔI.
+        `${D6} **${half(d6)}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Slash của Dice 6)* gây 4 <:Fragile:1513763336167100536>Fragile, <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D6} **${half(d6)}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Blunt của Dice 6)*`,
         `${D7} **${d7}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 <:Tremor:1513762737388257380>Tremor`,
-        `${D8} **${d8}** [50% <:Slash:1513768633434640517>Slash/50% <:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
+        `${D8} **${half(d8)}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Slash của Dice 8)*`,
+        `${D8} **${half(d8)}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Blunt của Dice 8)*`,
         `${D9} **${d9}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture *trước* khi gây Dmg`,
       ];
     },
@@ -685,13 +696,38 @@ const SKILLS = {
   // ── <:Poise:1513762945715142736>Poise / <:Bleed:1513762688226955285>Bleed mixed ──
   "extreme edge": {
     name: "Extreme Edge", cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
-    roll() {
-      const normal=r(7,8), air=r(4,7), low=r(17,30);
+    // variants — Fragaria yêu cầu trực tiếp: "nên thêm nút để chọn biến thể".
+    // 3 tình huống LOẠI TRỪ nhau, mỗi cái 1 dải dice + tag khác hẳn. Trước đây
+    // roll() in cả 3 dòng nên parser hoặc lấy nhầm cả 3 (thành 3 hit) hoặc bỏ
+    // qua — không cách nào đúng. Giờ player chọn ĐÚNG 1 qua nút, roll() chỉ trả
+    // dòng của biến thể đó.
+    // Cấu trúc chung (dùng lại được cho mọi skill kiểu "tuỳ tình huống"):
+    //   variants: [{ key, label, emoji }]  — key phải KHÔNG chứa ":" hay "|"
+    //   roll(variantKey)                   — mặc định = variants[0].key
+    variants: [
+      { key: "ground", label: "Mặt đất", emoji: "🦶" },
+      { key: "air", label: "Trên không", emoji: "🕊️" },
+      { key: "low", label: "Dưới 33% HP", emoji: "🩸" },
+    ],
+    roll(variantKey = "ground") {
+      if (variantKey === "air") {
+        const air = r(4, 7);
+        return [
+          `*Biến thể: 🕊️ **Trên không***`,
+          `<:Dice1:1508173590078558369> **${air}** [<:Slash:1513768633434640517>Slash] — gây 5 <:DefenseDown:1513767463337066576>Defense Down`,
+        ];
+      }
+      if (variantKey === "low") {
+        const low = r(17, 30);
+        return [
+          `*Biến thể: 🩸 **Dưới 33% HP***`,
+          `<:Dice1:1508173590078558369> **${low}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285>Bleed và 5 <:DefenseDown:1513767463337066576>Defense Down`,
+        ];
+      }
+      const normal = r(7, 8);
       return [
-        `<:Dice1:1508173590078558369> **${normal}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Knockback] *(Mặt đất — mặc định)* — gây 5 <:Bleed:1513762688226955285>Bleed và 2 <:DefenseDown:1513767463337066576>Defense Down`,
-        `*Biến thể **Trên không**: **${air}** [<:Slash:1513768633434640517>Slash] — gây 5 <:DefenseDown:1513767463337066576>Defense Down*`,
-        `*Biến thể **Dưới 33% HP**: **${low}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285>Bleed và 5 <:DefenseDown:1513767463337066576>Defense Down*`,
-        `*⚠️ 3 biến thể LOẠI TRỪ nhau — dmgStr tự dựng theo **Mặt đất**; nếu đang Trên không / dưới 33% HP thì sửa tay số dice trước khi confirm.*`,
+        `*Biến thể: 🦶 **Mặt đất***`,
+        `<:Dice1:1508173590078558369> **${normal}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Knockback] — gây 5 <:Bleed:1513762688226955285>Bleed và 2 <:DefenseDown:1513767463337066576>Defense Down`,
       ];
     },
   },
@@ -4812,6 +4848,15 @@ function findSkill(raw) {
 // ─── findByKeyword — dùng cho lệnh `-skill list <keyword>` ──────────────────
 // Tìm tất cả skill có keyword xuất hiện trong: name, tags, keywords[], passive,
 // hoặc trong nội dung roll() (emoji name được strip để match text thuần).
+// half — chia đôi giá trị 1 dice thành 2 hit (dùng cho dice kiểu "50% loại A /
+// 50% loại B", xác nhận trực tiếp: "dice ra 20 → 2 Hit: 10 Slash + 10 Blunt").
+// Giữ TỔNG chính xác với số lẻ (23 → 11.5 mỗi bên) — damage-calc.js parse được
+// số thập phân. Bỏ ".0" thừa cho số chẵn để hiển thị gọn.
+function half(v) {
+  const h = v / 2;
+  return Number.isInteger(h) ? String(h) : h.toFixed(1);
+}
+
 function findByKeyword(keyword) {
   const kw = keyword.toLowerCase().trim();
   const results = [];

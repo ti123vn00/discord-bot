@@ -352,13 +352,86 @@ module.exports = function ({
     return (res[altType] ?? 1) > (res[baseType] ?? 1) ? mob.m1DmgStrAlt : mob.m1DmgStr;
   }
 
-  /** pickLivingTargetsSortedByHpPct — mob "thông minh" nhắm người HP% thấp
-   *  nhất trước (GIẢ ĐỊNH đã báo Fragaria — luật gốc không chỉ định targeting). */
-  function pickLivingTargetsSortedByHpPct(encounter) {
-    return Object.entries(encounter.players)
+  /** pickAiTargets — BUG ĐÃ SỬA (Fragaria báo trực tiếp: "AI chỉ đánh mỗi người
+   *  host, tôi nghĩ nên cho AI đánh random hoặc một thuật toán aim 1 ai đó").
+   *
+   *  NGUYÊN NHÂN GỐC: bản cũ (pickLivingTargetsSortedByHpPct) sort THUẦN theo
+   *  hpPct tăng dần, rồi caller LUÔN lấy phần tử đầu tiên khả dụng. Khi cả team
+   *  còn full HP thì hpPct BẰNG NHAU hết → Array.sort ổn định (spec ES2019) giữ
+   *  nguyên thứ tự Object.entries(players) = thứ tự JOIN = host luôn đứng đầu.
+   *  Kết quả: mob đánh host mọi lượt, tới khi host tụt HP đủ thấp mới... vẫn
+   *  đánh host (vì giờ hpPct thấp nhất thật). Không bao giờ đổi mục tiêu.
+   *
+   *  THUẬT TOÁN MỚI — 2 lớp:
+   *  1. AGGRO LOCK (phần "aim 1 ai đó"): mob khoá mục tiêu trong AI_AGGRO_TURNS
+   *     turn. Đánh dai một người thay vì nhảy lung tung mỗi hit — vừa giống hành
+   *     vi boss thật, vừa cho party cơ hội xoay tank/heal có ý nghĩa.
+   *  2. WEIGHTED RANDOM (phần "random") khi cần chọn mục tiêu MỚI: trọng số
+   *     = 1 + (1 - hpPct) × 2. Người HP thấp bị nhắm nhiều hơn (giữ tinh thần
+   *     "mob thông minh" của bản cũ) nhưng KHÔNG tuyệt đối — full HP vẫn có
+   *     trọng số 1, người sắp chết có 3 → cao gấp 3, không phải 100%.
+   *
+   *  Trả về mảng ĐÃ SẮP theo độ ưu tiên (mục tiêu khoá đứng đầu) — caller vẫn
+   *  giữ nguyên cách dùng cũ (lặp từ đầu, ai khả dụng thì đánh). */
+  const AI_AGGRO_TURNS = 2;
+  function pickAiTargets(encounter, mob) {
+    const living = Object.entries(encounter.players)
       .filter(([, p]) => p.currentHp > 0)
-      .map(([pid, p]) => ({ pid, p, hpPct: p.maxHp > 0 ? p.currentHp / p.maxHp : 0 }))
-      .sort((a, b) => a.hpPct - b.hpPct);
+      .map(([pid, p]) => ({ pid, p, hpPct: p.maxHp > 0 ? p.currentHp / p.maxHp : 0 }));
+    if (living.length <= 1) return living;
+
+    const turnNow = encounter.turnNumber ?? 1;
+    // Mục tiêu đang khoá còn hiệu lực? (còn sống + chưa hết hạn aggro)
+    const lockedStillValid = mob?.aiTargetId
+      && living.some(t => t.pid === mob.aiTargetId)
+      && (turnNow - (mob.aiTargetSetOnTurn ?? 0)) < AI_AGGRO_TURNS;
+
+    // Weighted random shuffle — rút lần lượt không hoàn lại, nên TOÀN BỘ mảng
+    // được xáo (không chỉ phần tử đầu). Quan trọng: nếu mục tiêu ưu tiên đang
+    // bận (hasUnresolvedTargetPending ở caller), phần tử kế cũng phải ngẫu
+    // nhiên chứ không quay về "host đầu danh sách" như bug cũ.
+    const pool = [...living];
+    const shuffled = [];
+    while (pool.length > 0) {
+      const weights = pool.map(t => 1 + (1 - t.hpPct) * 2);
+      const total = weights.reduce((a, b) => a + b, 0);
+      let roll = Math.random() * total;
+      let idx = pool.length - 1;
+      for (let i = 0; i < pool.length; i++) {
+        roll -= weights[i];
+        if (roll <= 0) { idx = i; break; }
+      }
+      shuffled.push(pool.splice(idx, 1)[0]);
+    }
+
+    if (lockedStillValid) {
+      const locked = shuffled.find(t => t.pid === mob.aiTargetId);
+      return [locked, ...shuffled.filter(t => t.pid !== mob.aiTargetId)];
+    }
+    return shuffled;
+  }
+
+  /** rememberAggroTarget — ghi mục tiêu vừa đánh vào state mob (aggro lock).
+   *  CẢNH BÁO (bài học HANDOFF Sai Lầm #1 — "tính trên object A nhưng lưu qua
+   *  object B tách biệt"): mọi nhánh trong attemptOneMobAction đều fetch LẠI
+   *  encounter trong withLock riêng để lưu, nên KHÔNG được gán aiTargetId lên
+   *  biến `mob` ngoài lock rồi tưởng nó tự được lưu — phải ghi vào ĐÚNG object
+   *  vừa fetch trong lock. Hàm này tự lo trọn vẹn fetch → gán → save.
+   *  Chỉ ghi khi mục tiêu THAY ĐỔI hoặc aggro đã hết hạn — tránh reset đồng hồ
+   *  aggro mỗi hit (mob light weapon đánh 4 hit/turn sẽ khoá vĩnh viễn 1 người). */
+  async function rememberAggroTarget(channelId, mobKey, targetPid) {
+    await withLock(encounterKey(channelId), async () => {
+      const enc = await getEncounter(channelId);
+      const m = enc?.enemies?.[mobKey];
+      if (!m) return;
+      const turnNow = enc.turnNumber ?? 1;
+      const stillLocked = m.aiTargetId === targetPid
+        && (turnNow - (m.aiTargetSetOnTurn ?? 0)) < AI_AGGRO_TURNS;
+      if (stillLocked) return; // giữ nguyên đồng hồ aggro đang chạy
+      m.aiTargetId = targetPid;
+      m.aiTargetSetOnTurn = turnNow;
+      await saveEncounter(channelId, enc);
+    });
   }
 
   /** attemptOneMobAction — thử thực hiện ĐÚNG 1 hành động (1 skill HOẶC 1 M1)
@@ -370,7 +443,7 @@ module.exports = function ({
     if (!encounter) return false;
     const mob = encounter.enemies[mobKey];
     if (!mob || mob.currentHp <= 0) return false;
-    const sortedTargets = pickLivingTargetsSortedByHpPct(encounter);
+    const sortedTargets = pickAiTargets(encounter, mob);
     if (sortedTargets.length === 0) return false;
     const availableTargets = sortedTargets.filter(t => !hasUnresolvedTargetPending(encounter, t.pid));
     if (availableTargets.length === 0) return false; // mọi target đều đang chờ phản hồi đòn trước — đợi hook resolve gọi lại
@@ -412,6 +485,7 @@ module.exports = function ({
                 appendActionLog(enc4, `📖 **${mob.name}** dùng skill **${chosen.skill.name}**.`);
                 await saveEncounter(channelId, enc4);
               });
+              await rememberAggroTarget(channelId, mobKey, t.pid); // aggro lock — xem pickAiTargets
               return true;
             } catch { /* target vừa dính unresolved pending khác (race) — thử target kế */ }
           }
@@ -512,6 +586,7 @@ module.exports = function ({
           mob3.thisTurnStaminaReservePct = mob.thisTurnStaminaReservePct;
           await saveEncounter(channelId, enc3);
         });
+        await rememberAggroTarget(channelId, mobKey, t.pid); // aggro lock — xem pickAiTargets
         return true;
       } catch { /* thử target kế */ }
     }
@@ -574,5 +649,8 @@ module.exports = function ({
     }
   }
 
-  return { decideDefenseChoice, applyDefenseChoiceToTarget, resolveAiDefenseForTarget, maybeRunAiTurn };
+  // pickAiTargets export ra để TEST gọi được HÀM THẬT (không phải bản tái dựng
+  // trong file test — bản tái dựng có thể lệch khỏi code thật mà không ai biết).
+  // index.js KHÔNG cần destructure field này.
+  return { decideDefenseChoice, applyDefenseChoiceToTarget, resolveAiDefenseForTarget, maybeRunAiTurn, pickAiTargets };
 };

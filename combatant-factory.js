@@ -218,6 +218,10 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // Eliminate chain sang Castigation). TRƯỚC ĐÂY page Unlock random stage
       // nên state này không tồn tại — xem comment ở skills.js's "unlock".
       unlockBladeStage: 0,
+      // aiTargetId / aiTargetSetOnTurn — aggro lock của enemy AI (xem
+      // pickAiTargets trong enemy-ai.js). Mob bám 1 mục tiêu vài turn thay vì
+      // chọn lại mỗi hit. null = chưa khoá ai.
+      aiTargetId: null, aiTargetSetOnTurn: 0,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã

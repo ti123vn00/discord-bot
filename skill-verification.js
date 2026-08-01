@@ -121,7 +121,10 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     }
   }
   
-  async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false) {
+  /** @param variantKey — biến thể của skill có field `variants` (VD Extreme Edge:
+   *  "ground"/"air"/"low"). null = dùng biến thể ĐẦU TIÊN (mặc định). Skill không
+   *  có variants thì tham số này bị bỏ qua hoàn toàn. */
+  async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false, variantKey = null) {
     let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [];
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
@@ -271,7 +274,17 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       const unlockRollArgs = skillKey === "unlock"
         ? [Math.min(3, (attacker.unlockBladeStage ?? 0) + 1)]
         : [];
-      const autoResult = autoBuildDmgStrFromSkillRoll(skill, { forceMinDice: hasParalyze, diceModifier, rollArgs: unlockRollArgs });
+      // Skill có `variants` (VD Extreme Edge) — truyền biến thể player đã chọn.
+      // Validate: key lạ → rơi về biến thể đầu tiên thay vì để roll() nhận rác.
+      let variantRollArgs = [];
+      if (Array.isArray(skill.variants) && skill.variants.length > 0) {
+        const valid = skill.variants.some(v => v.key === variantKey);
+        variantRollArgs = [valid ? variantKey : skill.variants[0].key];
+      }
+      const autoResult = autoBuildDmgStrFromSkillRoll(skill, {
+        forceMinDice: hasParalyze, diceModifier,
+        rollArgs: unlockRollArgs.length ? unlockRollArgs : variantRollArgs,
+      });
       autoDmgStr = autoResult.dmgStr;
       autoWarnings = autoResult.warnings;
       const header = skill.weaponOf
