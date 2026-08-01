@@ -27,7 +27,63 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 // Map<token, session> — token sống NGẮN (chỉ vài chục giây) nên dùng RAM, không cần
 // Upstash: nếu bot restart giữa lúc user đang làm bài thì coi như hỏng phiên, chấp
 // nhận được vì tỉ lệ xảy ra cực thấp và đây chỉ là minigame, không phải economy.
-const webParrySessions = new Map();
+// ── BUG NGHIÊM TRỌNG ĐÃ SỬA (Fragaria báo trực tiếp: rtparry "bấm xong không
+// thấy kết quả về Discord") ─────────────────────────────────────────────────
+// NGUYÊN NHÂN GỐC: session TRƯỚC ĐÂY nằm HOÀN TOÀN trong RAM (`new Map()`).
+// Comment cũ ở đây lập luận "token sống ngắn nên RAM là đủ, bot restart giữa
+// chừng thì hỏng phiên, tỉ lệ cực thấp" — lập luận đó SAI trên Render:
+//   1. Render free/starter tier NGỦ sau một khoảng không có request. Chính cú
+//      click mở link rtparry là request ĐÁNH THỨC dyno → process MỚI, Map RỖNG.
+//   2. Cold start mất hàng chục giây, ăn gần hết TTL 90s.
+//   3. Mọi lần deploy/restart đều xoá sạch session đang treo.
+// Hệ quả đúng như báo cáo: trang web mở được (hoặc 404), user bấm, POST tới
+// route → `webParrySessions.get(token)` trả undefined → route return sớm →
+// KHÔNG có gì gửi về Discord, cũng không báo lỗi gì. Đây CHÍNH LÀ lý do test
+// backend gọi thẳng route handler thì đúng 100% (cùng 1 process, Map còn
+// nguyên) nhưng production thì im lặng.
+//
+// SỬA: lưu session xuống Redis (Upstash — đã có sẵn, cùng chỗ lưu encounter),
+// Map giữ lại làm cache trong-process cho nhanh. Sống qua restart/sleep/nhiều
+// instance. API đổi từ Map đồng bộ sang async get/set/delete — MỌI call site
+// phải `await` (đã sửa: express-routes.js, interaction-handlers.js, rtparry.js).
+const _memSessions = new Map();
+let _redis = null;
+let _withTimeout = (p) => p;
+const RTPARRY_REDIS_PREFIX = "rtparry:";
+/** setRtparryRedis — index.js gọi ĐÚNG 1 LẦN sau khi redis/withTimeout sẵn sàng.
+ *  Nếu KHÔNG gọi (VD môi trường test), tự động fallback về Map thuần như cũ —
+ *  không crash, chỉ mất tính bền vững qua restart. */
+function setRtparryRedis({ redis, withTimeout }) {
+  _redis = redis ?? null;
+  if (typeof withTimeout === "function") _withTimeout = withTimeout;
+}
+const webParrySessions = {
+  async get(token) {
+    const cached = _memSessions.get(token);
+    if (cached) return cached;
+    if (!_redis) return undefined;
+    try {
+      const raw = await _withTimeout(_redis.get(RTPARRY_REDIS_PREFIX + token));
+      if (!raw) return undefined;
+      const session = typeof raw === "string" ? JSON.parse(raw) : raw;
+      _memSessions.set(token, session); // cache lại cho lần đọc kế trong cùng process
+      return session;
+    } catch { return undefined; }
+  },
+  async set(token, session) {
+    _memSessions.set(token, session);
+    if (_redis) {
+      // TTL Redis = TTL session + 30s đệm (để route còn kịp trả lỗi "hết hạn"
+      // tử tế thay vì 404 vô nghĩa nếu user bấm trễ vài giây).
+      try { await _withTimeout(_redis.set(RTPARRY_REDIS_PREFIX + token, JSON.stringify(session), { ex: Math.ceil(WEB_PARRY_TTL_MS / 1000) + 30 })); } catch { /* Redis lỗi — vẫn còn Map, không chặn luồng */ }
+    }
+    return session;
+  },
+  async delete(token) {
+    _memSessions.delete(token);
+    if (_redis) { try { await _withTimeout(_redis.del(RTPARRY_REDIS_PREFIX + token)); } catch { /* bỏ qua */ } }
+  },
+};
 const WEB_PARRY_TTL_MS = 90_000; // đủ thời gian user mở tab, đọc hướng dẫn, rồi mới bấm
 // Cửa sổ parry (ms) — quá mốc này coi như "bỏ lỡ". Đặt thành const chung 1 chỗ thay vì
 // hardcode rải rác (help text, route POST, v.v.) — tránh lệch số như đã từng gặp khi
@@ -39,8 +95,9 @@ const RTPARRY_WINDOW_MS = 400;
 const RTPARRY_MIN_HUMAN_MS = 0;
 const webParrySessionCleanupTimer = setInterval(() => {
   const now = Date.now();
-  for (const [token, s] of webParrySessions)
-    if (s.expiresAt < now) webParrySessions.delete(token);
+  // CHỈ dọn cache trong-process. Bản Redis tự hết hạn bằng TTL, không cần quét.
+  for (const [token, s] of _memSessions)
+    if (s.expiresAt < now) _memSessions.delete(token);
 }, 30_000);
 
 /** Lấy base URL public của bot — Render tự set RENDER_EXTERNAL_URL, fallback PUBLIC_URL
@@ -112,12 +169,12 @@ function randomYellowMs(speedTier) {
  *   nên giữ hành vi đơn giản/cố định như cũ, chỉ thêm màn vàng cho đồng bộ UI 3 màu).
  * @returns {{ url: string, token: string } | null} null nếu thiếu baseUrl
  */
-function createRtparryToken({ userId, channelId, messageId, skill = null }) {
+async function createRtparryToken({ userId, channelId, messageId, skill = null }) {
   const baseUrl = getPublicBaseUrl();
   if (!baseUrl) return null;
   const token = crypto.randomBytes(16).toString("hex");
   const speedTier = skill ? inferPageSpeed(skill) : "normal";
-  webParrySessions.set(token, {
+  await webParrySessions.set(token, {
     userId,
     channelId,
     messageId,
@@ -129,6 +186,19 @@ function createRtparryToken({ userId, channelId, messageId, skill = null }) {
   return { url: `${baseUrl}/rtparry/${token}`, token };
 }
 
+/** attachCounterContext — gắn context page-counter vào session RỒI GHI LẠI.
+ *  BUG TIỀM ẨN ĐÃ TRÁNH: code cũ làm `session.counterContext = {...}` trên object
+ *  lấy từ Map — sửa tại chỗ nên "tự nhiên" có hiệu lực. Với backend Redis thì
+ *  KHÔNG: phải set lại tường minh, nếu không mutation chỉ tồn tại trong RAM của
+ *  process hiện tại và mất sạch khi restart — đúng cái bug vừa sửa ở trên. */
+async function attachCounterContext(token, counterContext) {
+  const session = await webParrySessions.get(token);
+  if (!session) return false;
+  session.counterContext = counterContext;
+  await webParrySessions.set(token, session);
+  return true;
+}
+
 function buildRtparryLinkButton(url) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setLabel("🔗 Mở Parry Real Time").setStyle(ButtonStyle.Link).setURL(url)
@@ -138,6 +208,8 @@ function buildRtparryLinkButton(url) {
 
 module.exports = {
   webParrySessions,
+  setRtparryRedis,
+  attachCounterContext,
   WEB_PARRY_TTL_MS,
   RTPARRY_WINDOW_MS,
   RTPARRY_MIN_HUMAN_MS,

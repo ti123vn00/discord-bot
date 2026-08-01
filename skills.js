@@ -336,6 +336,13 @@ const SKILLS = {
   },
   "light dash": {
     name: "Light Dash", tags: "Light",
+    // reactiveOnly — Task yêu cầu trực tiếp: "light dash/fleetfoot steps sử dụng
+    // tùy ý được ở moves (nên xóa ra ở moves), đáng lẽ phải chỉ được dùng ở
+    // reactive defense". Page này KHÔNG gây dmg, tác dụng duy nhất là né 1 đòn —
+    // dùng chủ động lúc tới lượt mình là vô nghĩa (không có đòn nào để né).
+    // buildMovesOptions (encounter-panels.js) lọc bỏ mọi skill có cờ này; nút
+    // thật nằm ở prompt Reactive Defense (reactive-defense.js).
+    reactiveOnly: true,
     cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "—",
     roll() {
       return [
@@ -681,9 +688,10 @@ const SKILLS = {
     roll() {
       const normal=r(7,8), air=r(4,7), low=r(17,30);
       return [
-        `**Mặt đất:** **${normal}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Knockback] — gây 5 <:Bleed:1513762688226955285>Bleed và 2 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
-        `**Trên không:** **${air}** [<:Slash:1513768633434640517>Slash] — gây 5 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
-        `**Dưới 33% HP:** **${low}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285>Bleed và 5 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
+        `<:Dice1:1508173590078558369> **${normal}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Knockback] *(Mặt đất — mặc định)* — gây 5 <:Bleed:1513762688226955285>Bleed và 2 <:DefenseDown:1513767463337066576>Defense Down`,
+        `*Biến thể **Trên không**: **${air}** [<:Slash:1513768633434640517>Slash] — gây 5 <:DefenseDown:1513767463337066576>Defense Down*`,
+        `*Biến thể **Dưới 33% HP**: **${low}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285>Bleed và 5 <:DefenseDown:1513767463337066576>Defense Down*`,
+        `*⚠️ 3 biến thể LOẠI TRỪ nhau — dmgStr tự dựng theo **Mặt đất**; nếu đang Trên không / dưới 33% HP thì sửa tay số dice trước khi confirm.*`,
       ];
     },
   },
@@ -761,6 +769,12 @@ const SKILLS = {
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1513769425063514173>Imitation`,
       ];
     },
+    // GAP ĐÃ SỬA (Fragaria báo trực tiếp: "spear/level slash không cho imitation")
+    // — TRƯỚC ĐÂY chỉ "upstanding slash" được code hoá ở resolve-pending-action.js,
+    // 2 page này ghi "nhận 1 Imitation" trong text nhưng KHÔNG có logic nào cả.
+    // Dùng diceEffects (cơ chế CÓ SẴN, gate bằng hitEvadedOrParried[i] — chỉ cộng
+    // khi dice đó THẬT SỰ trúng, không cộng khi bị né/parry).
+    diceEffects: [{ imitation: 1 }, { imitation: 1 }],
   },
   "spear": {
     name: "Spear", cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
@@ -772,6 +786,9 @@ const SKILLS = {
         `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 1 <:Imitation:1513769425063514173>Imitation`,
       ];
     },
+    // Xem comment ở "level slash". LƯU Ý: Dice 2 KHÔNG cho Imitation (đọc kỹ text
+    // gốc — chỉ Dice 1 và Dice 3 có), nên phần tử giữa là null.
+    diceEffects: [{ imitation: 1 }, null, { imitation: 1 }],
   },
   "focus spirit": {
     name: "Focus Spirit", cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
@@ -963,7 +980,7 @@ const SKILLS = {
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 1 Protection`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 1 Protection`,
         `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — nhận 1 Protection; nếu có ≥5 Protection dùng tiếp Dice 4`,
-        `<:Dice4:1508176464367845600> **${d4}** [Guard Break]`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Slash:1513768633434640517>Slash] [Guard Break]`,
       ];
     },
   },
@@ -976,7 +993,7 @@ const SKILLS = {
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Tremor:1513762737388257380>Tremor`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Tremor:1513762737388257380>Tremor`,
         `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — nhận 1 Protection và gây 1 <:Tremor:1513762737388257380>Tremor`,
-        `<:Dice4:1508176464367845600> **${d4}** [Guard Break]`,
+        `<:Dice4:1508176464367845600> **${d4}** [<:Slash:1513768633434640517>Slash] [Guard Break]`,
       ];
     },
   },
@@ -1235,7 +1252,7 @@ const SKILLS = {
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash]`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce]`,
-        `<:Dice3:1508173643518050395> **${d3}** — đạp địch ra xa, gây 5 <:Rupture:1513762812722155682>Rupture`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — đạp địch ra xa, gây 5 <:Rupture:1513762812722155682>Rupture`,
       ];
     },
   },
@@ -1282,8 +1299,17 @@ const SKILLS = {
   "unlock": {
     name: "Unlock",
     cost: "0 <:Light:1513786082502770719>Light", cd: "0 Turn", diceMul: "1x",
-    roll() {
-      const stage = Math.floor(Math.random() * 3) + 1;
+    // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "unlock và castigation hoạt động không
+    // đúng"). TRƯỚC ĐÂY stage được chọn NGẪU NHIÊN (`Math.random()*3+1`) — hoàn
+    // toàn trái mô tả của chính page: Unlock-2 ghi rõ "(cần Unlock Blade - 1)",
+    // Unlock-3 ghi "(cần Unlock Blade - 2)". Nghĩa là đây là chuỗi TÍCH LUỸ
+    // 1→2→3, không phải xổ số: dùng lần đầu phải ra Unlock-1, và có thể nhảy
+    // thẳng ra Unlock-3 ngay lần dùng đầu tiên (sai hoàn toàn về sức mạnh).
+    // Giờ stage do CALLER truyền vào từ state thật trên combatant
+    // (`unlockBladeStage`, xem skill-verification.js + resolve-pending-action.js).
+    // Mặc định 1 để `-skill unlock` xem trước ngoài encounter vẫn chạy được.
+    roll(stage = 1) {
+      stage = Math.min(3, Math.max(1, parseInt(stage, 10) || 1));
       if (stage === 1) {
         const d1 = r(2,4);
         return [
@@ -2655,9 +2681,16 @@ roll(v = "no") {
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Lao lên chém kẻ địch, gây 2 <:Rupture:1513762812722155682>Rupture`,
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Lướt quanh chém liên tục`,
         `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Kết thúc bằng một đòn chém ngang`,
-        `${D4} **${d4}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Gây thêm bonus dmg = Dice x6, sau đó xóa stack **Unlocked Blade**`,
+        `${D4} **${d4 * 7}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — *(Dice ${d4} + bonus Dice×6)* sau đó xóa stack **Unlocked Blade**`,
       ];
     },
+    // BUG ĐÃ SỬA (Fragaria: "castigation hoạt động không đúng") — dòng Dice 4 ghi
+    // "Gây thêm bonus dmg = Dice x6" nhưng dmgStr tự dựng CHỈ lấy đúng con số
+    // dice gốc, phần bonus ×6 KHÔNG BAO GIỜ được cộng (parser chỉ đọc `**N**`).
+    // Sửa ngay tại nguồn: in ra con số ĐÃ GỒM bonus (d4 + d4×6 = d4×7) nên
+    // dmgStr tự khớp, không cần luật riêng ở nơi khác. Số dice gốc vẫn hiện
+    // trong ngoặc để người chơi kiểm chứng được.
+    clearsUnlockedBlade: true,
   },
   "decapitation": {
     name: "Decapitation", weaponOf: "Index Cleaver", tags: "Weapon",
@@ -2899,7 +2932,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,11);
       return [
-        `${D1} **${d1}** — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -2909,8 +2942,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,6), d2 = r(4,10);
       return [
-        `${D1} **${d1}** — Gây 2 <:Sinking:1513762793436741652>Sinking`,
-        `${D2} **${d2}** — Gây 3 <:Sinking:1513762793436741652>Sinking`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -2920,10 +2953,10 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,10), d2 = r(10,13), d3 = r(13,16), d4 = r(13,16);
       return [
-        `${D1} **${d1}** — Gây 1 <:Sinking:1513762793436741652>Sinking`,
-        `${D2} **${d2}** — Gây 1 <:Sinking:1513762793436741652>Sinking`,
-        `${D3} **${d3}** — Gây 1 <:Sinking:1513762793436741652>Sinking`,
-        `${D4} **${d4}** — Gây 3 <:Sinking:1513762793436741652>Sinking. Nếu địch ≥10 <:Sinking:1513762793436741652>Sinking: tiêu hết và +3 <:DiceUp:1513767795681398894>Dice Up cho bản thân turn này và sau`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Gây 1 <:Sinking:1513762793436741652>Sinking`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Sinking:1513762793436741652>Sinking. Nếu địch ≥10 <:Sinking:1513762793436741652>Sinking: tiêu hết và +3 <:DiceUp:1513767795681398894>Dice Up cho bản thân turn này và sau`,
       ];
     },
   },
@@ -3532,6 +3565,8 @@ roll(v = "no") {
   "fleet footsteps": {
     name: "Fleet Footsteps",
     tags: "Haste",
+    reactiveOnly: true, // xem comment ở "light dash" — cùng lý do (né 1 đòn + 2 Haste)
+
     cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,10);
@@ -4154,7 +4189,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(14,26);
       return [
-        `${D1} **${d1}** — Gây 8 <:Bleed:1513762688226955285>Bleed và hồi HP bằng 50% Damage gây ra`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Gây 8 <:Bleed:1513762688226955285>Bleed và hồi HP bằng 50% Damage gây ra`,
         `*[After Use] E.G.O Passive **Immoderate Passion**: mỗi khi tấn công kẻ địch có <:Bleed:1513762688226955285>Bleed, hồi 3 HP*`,
         `*__Gallop on, Rocinante! Justice shall prevail!__*`,
       ];
@@ -4194,7 +4229,7 @@ Object.assign(SKILLS, {
       return [
         `${D1} **${d1}** — Tung combo đấm liên tiếp vào bụng và ngực đối thủ, gây 12 <:Tremor:1513762737388257380>Tremor [<:Blunt:1513768529718022254>Blunt]`,
         `${D2} **${d2}** — Kết thúc bằng cú quật mạnh xuống đất, gây 10 <:Fragile:1513763336167100536>Fragile [<:Blunt:1513768529718022254>Blunt]`,
-        `*Nếu Heat Gauge ≥4: thêm ${D3} **${d3}** — gây <:TremorBurst:1513802464632246352>Tremor Burst (đối thủ không thể tấn công trong 1 turn kế)*`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — *(chỉ khi Heat Gauge ≥4)* gây <:TremorBurst:1513802464632246352>Tremor Burst (đối thủ không thể tấn công trong 1 turn kế)`,
       ];
     },
   },
@@ -4399,9 +4434,9 @@ Object.assign(SKILLS, {
       const d1 = r(8, 10), d2 = r(10, 12), d3 = r(12, 14);
       return [
         `*3 Dice của đòn này được tăng thêm 0.7x Crit Mul*`,
-        `${D1} **${d1}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
-        `${D2} **${d2}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
-        `${D3} **${d3}** — Nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Nhận 2 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Nhận 2 <:Poise:1513762945715142736>Poise`,
       ];
     },
   },
@@ -4833,11 +4868,99 @@ function findByKeyword(keyword) {
 //   là range gốc — warnings sẽ nhắc GM tự kiểm tra nếu skill có ghi chú dạng này.
 //
 // @returns { dmgStr: string|null, warnings: string[], skillRollEmbed }
-function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifier = 0 } = {}) {
+// ══════════════════════════════════════════════════════════════════════════
+// autoExtractDiceSideEffects — GAP HỆ THỐNG RỘNG ĐÃ SỬA (Fragaria yêu cầu trực
+// tiếp: "có thể còn rất nhiều page vẫn chưa gây debuff hoặc nhận buff đúng nữa
+// nên check lại 1 lượt và làm hết").
+//
+// VẤN ĐỀ: quét toàn bộ 324 skill cho thấy ~130 skill mô tả hiệu ứng phụ trong
+// text roll() (Dice Up, Fragile, Paralyze, Bind, Haste, Protection, Defense Up,
+// Nails, Smoke, Imitation, Hemorrhage, Freeble...) nhưng KHÔNG có logic nào áp
+// dụng. Trước đây mỗi cái phải hardcode riêng từng skill trong
+// resolve-pending-action.js — sót là chuyện đương nhiên (Level Slash/Spear là
+// ví dụ Fragaria bắt được, còn hàng chục cái khác chưa ai để ý).
+//
+// GIẢI PHÁP: parse TỰ ĐỘNG từ chính text mô tả, sinh ra mảng diceEffects giống
+// hệt định dạng viết tay — resolve-pending-action.js áp dụng y như nhau (gate
+// bằng hitEvadedOrParried: dice bị né/parry thì KHÔNG dính hiệu ứng).
+//
+// KHÔNG bao gồm 7 status đã đi qua dmgStr (Bleed/Burn/Rupture/Sinking/Tremor/
+// Poise/Charge) — chúng được calcMathCore xử lý rồi, thêm ở đây là ÁP 2 LẦN.
+//
+// XÁC ĐỊNH HƯỚNG (self hay target) theo thứ tự ưu tiên:
+//   1. Có dấu hiệu TARGET rõ ràng ngay trước số ("gây", "gắn", "địch nhận",
+//      "kẻ địch/kẻ thù/chúng/mục tiêu ... nhận") → áp lên TARGET
+//   2. Có "nhận"/"hồi"/"tự" → áp lên BẢN THÂN
+//   3. Không rõ → theo bản chất status (debuff→target, buff→self)
+// Skill viết tay diceEffects thì GIỮ NGUYÊN bản viết tay, không đụng tới.
+const DICE_SIDE_EFFECT_MAP = {
+  // key hiển thị trong text → { field, defaultSide }
+  "Dice Up":        { field: "diceUp", side: "self" },
+  "DiceUp":         { field: "diceUp", side: "self" },
+  "Dice Down":      { field: "diceDown", side: "target" },
+  "DiceDown":       { field: "diceDown", side: "target" },
+  "Fragile":        { field: "fragile", side: "target" },
+  "Paralyze":       { field: "paralyze", side: "target" },
+  "Bind":           { field: "bind", side: "target" },
+  "Nails":          { field: "nails", side: "target" },
+  "Smoke":          { field: "smoke", side: "target" },
+  "Freeble":        { field: "freeble", side: "target" },
+  "Hemorrhage":     { field: "hemorrhage", side: "target" },
+  "Defense Down":   { field: "defenseDown", side: "target" },
+  "DefenseDown":    { field: "defenseDown", side: "target" },
+  "Haste":          { field: "haste", side: "self" },
+  "Protection":     { field: "protection", side: "self" },
+  "Defense Up":     { field: "defenseUp", side: "self" },
+  "DefenseUp":      { field: "defenseUp", side: "self" },
+  "Imitation":      { field: "imitation", side: "self" },
+  "Regen":          { field: "regen", side: "self" },
+};
+// Đặt tên DÀI trước tên NGẮN cùng tiền tố ("Defense Down" trước "Defense Up"
+// không quan trọng, nhưng "DiceUp" vs "Dice Up" thì có) — sort theo độ dài giảm.
+const DICE_SIDE_EFFECT_NAMES = Object.keys(DICE_SIDE_EFFECT_MAP).sort((a, b) => b.length - a.length);
+
+function autoExtractDiceSideEffects(lines) {
+  const effects = [];
+  for (const line of lines) {
+    if (!/^<:Dice\d+:/.test(line)) continue;
+    if (!/\[<:(?:Slash|Blunt|Pierce):\d+>(?:Slash|Blunt|Pierce)\]/.test(line)) continue;
+    if (!/\*\*(-?[\d.]+)\*\*/.test(line)) continue;
+    const eff = {};
+    for (const name of DICE_SIDE_EFFECT_NAMES) {
+      const { field, side } = DICE_SIDE_EFFECT_MAP[name];
+      if (eff[field] !== undefined || eff[field + "__t"] !== undefined) continue;
+      const namePat = name.replace(/\s+/g, "\\s*");
+      // Bắt "N <:Emoji:id>Tên" HOẶC "N Tên" (một số dòng không kèm emoji)
+      const re = new RegExp(`(\\d+)\\s*(?:<:[^:>]+:\\d+>)?\\s*${namePat}(?![A-Za-z])`, "i");
+      const m = line.match(re);
+      if (!m) continue;
+      const amount = parseInt(m[1], 10);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      // Ngữ cảnh 40 ký tự trước con số — đủ để bắt động từ/chủ ngữ.
+      const ctx = line.slice(Math.max(0, m.index - 40), m.index).toLowerCase();
+      let resolvedSide;
+      if (/(gây|gắn|áp)\s*$|(?:địch|kẻ thù|kẻ địch|chúng|mục tiêu)[^.]*$/.test(ctx)) resolvedSide = "target";
+      else if (/(nhận|hồi|tự)[^.]*$/.test(ctx)) resolvedSide = "self";
+      else resolvedSide = side;
+      // "giảm/trừ/tiêu/mất" = chiều ÂM — KHÔNG tự áp (hướng không chắc chắn,
+      // để GM tự chỉnh, giống nguyên tắc đã dùng cho Poise/Charge consume).
+      if (/(giảm|trừ|tiêu|mất|xoá|xóa)[^.]*$/.test(ctx)) continue;
+      if (resolvedSide === "target") eff[field + "__t"] = amount;
+      else eff[field] = amount;
+    }
+    effects.push(Object.keys(eff).length > 0 ? eff : null);
+  }
+  return effects.some(Boolean) ? effects : null;
+}
+
+function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifier = 0, rollArgs = [] } = {}) {
   startEmotionTracking();
   if (forceMinDice) startForceMinDice();
   if (diceModifier !== 0) setDiceModifier(diceModifier);
-  const lines = skill.roll();
+  // rollArgs — cho skill CÓ TRẠNG THÁI cần đọc từ combatant (VD Unlock: stage
+  // 1/2/3 theo số stack Unlock Blade đang có). Mặc định rỗng → roll() dùng giá
+  // trị mặc định của chính nó, mọi skill cũ không đổi hành vi.
+  const lines = skill.roll(...rollArgs);
   if (forceMinDice) stopForceMinDice();
   if (diceModifier !== 0) clearDiceModifier();
   const tracked = stopEmotionTracking();
@@ -4871,14 +4994,30 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
     { name: "Sinking", tag: "Sinking", needsCount: true },
     { name: "Bleed", tag: "Bleed", needsCount: true },
     { name: "Burn", tag: "Burn", needsCount: true },
+    // GAP ĐÃ SỬA (quét toàn bộ 324 skill: Poise xuất hiện ở 23 skill, Charge ở
+    // 6 — CHƯA BAO GIỜ vào dmgStr). damage-calc.js ĐÃ hỗ trợ sẵn cú pháp
+    // "+NPoise"/"+NCharge" (xem damageRegex + sumSignedTag) và resolve-pending-
+    // action.js ĐÃ ghi ngược finalPoiseStacks/finalCharge về attacker — nghĩa là
+    // chỉ thiếu đúng khâu tự gắn tag này.
+    // gainOnly=true: BẮT BUỘC có động từ "nhận/hồi" ngay trước số. Lý do: Poise/
+    // Charge là status CỦA BẢN THÂN và text có CẢ chiều tiêu thụ ("tiêu 5 Poise",
+    // "giảm 1 nửa Charge") — match mù sẽ CỘNG nhầm đúng chỗ đáng lẽ phải TRỪ.
+    // Chiều tiêu thụ vẫn để GM tự gõ "-NPoise" (đã hỗ trợ sẵn), an toàn hơn đoán.
+    { name: "Poise", tag: "Poise", needsCount: true, gainOnly: true },
+    { name: "Charge", tag: "Charge", needsCount: true, gainOnly: true },
   ];
   function extractAutoStatusTags(line) {
     let remaining = line;
     let suffix = "";
-    for (const { name, tag, needsCount } of AUTO_STATUS_TAGS) {
-      const re = needsCount
-        ? new RegExp(`(\\d+)\\s*<:[^:>]+:\\d+>${name.replace(/\s/g, "\\s*")}`, "i")
-        : new RegExp(`<:[^:>]+:\\d+>${name.replace(/\s/g, "\\s*")}`, "i");
+    for (const { name, tag, needsCount, gainOnly } of AUTO_STATUS_TAGS) {
+      const namePat = name.replace(/\s/g, "\\s*");
+      // gainOnly → động từ "nhận"/"hồi" phải nằm NGAY trước số (cho phép đệm
+      // "nhận thêm"). KHÔNG dùng lookbehind — đưa động từ vào chính pattern.
+      const re = gainOnly
+        ? new RegExp(`(?:nhận|hồi)(?:\\s+thêm)?\\s+(\\d+)\\s*<:[^:>]+:\\d+>${namePat}`, "i")
+        : needsCount
+          ? new RegExp(`(\\d+)\\s*<:[^:>]+:\\d+>${namePat}`, "i")
+          : new RegExp(`<:[^:>]+:\\d+>${namePat}`, "i");
       const m = remaining.match(re);
       if (m) {
         suffix += needsCount ? `+${m[1]}${tag}` : `+${tag}`;
@@ -4887,27 +5026,29 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
     }
     return suffix;
   }
-  let trackedIdx = 0;
+  // BUG LỚP (ĐÃ SỬA TRIỆT ĐỂ — thay cho fix trackedIdx cũ): cách căn index cũ
+  // (`tracked[trackedIdx]`, chỉ tăng khi có typeMatch) VỠ ở 32 skill. Nguyên
+  // nhân: MỌI dòng dice gọi r() đều tiêu thụ 1 phần tử tracked[], nhưng dòng
+  // KHÔNG có tag type (VD Somber Procuration Dice3, Today's Expression Dice1
+  // "chỉ giảm Stamina", Dragon Choke Impact Dice3 điều kiện) bị `continue` bỏ
+  // qua mà KHÔNG tăng trackedIdx → mọi dice SAU đó đọc NHẦM sang giá trị của
+  // dice trước → dmg sai hoàn toàn (hoặc rỗng nếu vượt length).
+  //
+  // Cách mới KHÔNG dùng tracked[] để lấy giá trị nữa: đọc THẲNG con số đã IN RA
+  // trong chính dòng đó (`**N**`). Con số này do r() trả về và đã bao gồm SẴN
+  // mọi modifier (forceMinDice/diceModifier — xem r()), nên tương đương hoàn
+  // toàn tracked[i].result mà MIỄN NHIỄM với lệch index: dòng thiếu tag/dòng
+  // điều kiện/dòng in 2 giá trị đều không thể làm hỏng các dòng khác.
+  // tracked[] giờ CHỈ còn dùng cho emotion delta (không liên quan dmg).
   for (const line of lines) {
     // Chỉ những dòng BẮT ĐẦU bằng emoji DiceN mới là 1 dice THẬT — các dòng khác
-    // (ghi chú điều kiện, mô tả hiệu ứng phụ...) không tính.
+    // (ghi chú điều kiện, mô tả hiệu ứng phụ, biến thể loại trừ...) không tính.
     if (!/^<:Dice\d+:/.test(line)) continue;
     const typeMatch = line.match(/\[<:(?:Slash|Blunt|Pierce):\d+>(Slash|Blunt|Pierce)\]/);
-    // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua báo cáo thực tế: "Waltz In Black
-    // chưa tự động hóa dmg") — TRƯỚC ĐÂY trackedIdx++ chạy cho MỌI dòng bắt đầu
-    // bằng "<:DiceN:", kể cả dòng ĐIỀU KIỆN/MÔ TẢ không gọi r() nào (VD "Nếu
-    // turn trước địch dính Waltz In White..." — dùng CÙNG nhãn ${D1} như dòng
-    // damage thật ngay sau, nhưng bản thân nó không tiêu thụ 1 phần tử tracked[]
-    // nào). Hệ quả: MỌI dòng damage thật SAU dòng điều kiện đó bị lệch index,
-    // đọc NHẦM sang tracked[trackedIdx] sai (hoặc undefined nếu vượt quá length)
-    // → dmgStr rỗng hoàn toàn. Giờ CHỈ tăng trackedIdx khi dòng THẬT SỰ tương
-    // ứng 1 lần gọi r() (có typeMatch — tức có tag [Slash/Blunt/Pierce]).
-    if (typeMatch) {
-      if (tracked[trackedIdx]) {
-        diceTypeByLine.push({ result: tracked[trackedIdx].result, type: TYPE_MAP[typeMatch[1]], statusTags: extractAutoStatusTags(line) });
-      }
-      trackedIdx++;
-    }
+    if (!typeMatch) continue; // dice KHÔNG gây dmg (VD "chỉ giảm Stamina, không gây dmg") — bỏ qua AN TOÀN
+    const valueMatch = line.match(/\*\*(-?[\d.]+)\*\*/); // giá trị ĐẦU TIÊN in ra trên dòng
+    if (!valueMatch) continue; // dòng dice thuần mô tả, không có số
+    diceTypeByLine.push({ result: parseFloat(valueMatch[1]), type: TYPE_MAP[typeMatch[1]], statusTags: extractAutoStatusTags(line) });
   }
 
   // Tag phòng thủ/hiệu ứng phụ — CHỈ liệt kê để GM tự thêm tay, KHÔNG tự áp (xem
@@ -4932,4 +5073,4 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
   return { dmgStr, warnings, tracked, totalEmotionDelta, lines };
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };

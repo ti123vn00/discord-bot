@@ -22,6 +22,7 @@ const { CONTRACTS } = require("./quest-data");
 module.exports = function ({
   withLock, getPlayerDataWithSlot, savePlayerData, clampExpWithLunacy,
   redis, withTimeout, getVNDateString, DAILY_KEY_TTL_SECONDS, markContractTaskDone,
+  applyDeathPenalty, clearUserActiveEncounterChannel,
 }) {
   function contractCountKey(userId, slot) {
     return `contractcount:${userId}:${slot}`;
@@ -81,5 +82,62 @@ module.exports = function ({
     return { ...result, dailyTaskNote };
   }
 
-  return { checkQuestOutcome, grantContractReward };
+  /** finalizeQuestOutcome — TÁCH RA DÙNG CHUNG (BUG ĐÃ SỬA, Fragaria báo trực
+   *  tiếp: "sau khi gm dùng turn end order thì contract không thể tự động end
+   *  encounter được").
+   *
+   *  NGUYÊN NHÂN GỐC: toàn bộ khối "check thắng/thua + phát thưởng + đánh dấu
+   *  xoá encounter" TRƯỚC ĐÂY nằm INLINE bên trong resolveOnePendingAction
+   *  (resolve-pending-action.js) — nghĩa là quest CHỈ có thể kết thúc khi có 1
+   *  pendingAction vừa resolve. Mọi đường KHÁC đều không bao giờ check:
+   *    - GM bấm "Kết thúc Turn" thủ công (performEndTurn)
+   *    - Enemy/player cuối cùng chết vì DoT (Bleed/Burn/Rupture tick trong
+   *      advanceCombatantTurn ở performEndTurn) chứ không phải vì 1 đòn đánh
+   *    - Encounter bị treo rồi GM end tay để gỡ (chính xác kịch bản đã báo)
+   *  → trận đã xong về mặt logic nhưng encounter vẫn nằm đó, không ai nhận
+   *  thưởng, không ai được giải phóng active-encounter-index.
+   *
+   *  Giờ resolveOnePendingAction VÀ performEndTurn cùng gọi hàm này.
+   *  KHÔNG tự xoá encounter ở đây (không có channelId/deleteEncounter) — chỉ
+   *  set encounter._deleteAfterSave, caller tự xoá SAU khi saveEncounter (thứ
+   *  tự bắt buộc: save giữ state cuối rồi mới xoá).
+   *
+   *  @returns string[] — các dòng thông báo (rỗng nếu quest CHƯA kết thúc). */
+  async function finalizeQuestOutcome(encounter) {
+    const resultLines = [];
+    const questOutcome = checkQuestOutcome(encounter);
+    if (!questOutcome) return resultLines;
+    // Chặn chạy 2 lần cho CÙNG 1 encounter (VD resolveOnePendingAction vừa kết
+    // thúc quest, rồi performEndTurn chạy ngay sau đó trên object đã đánh dấu) —
+    // nếu không sẽ phát thưởng LẶP.
+    if (encounter._questFinalized) return resultLines;
+    encounter._questFinalized = true;
+
+    if (questOutcome.won && questOutcome.contract) {
+      const contract = questOutcome.contract;
+      for (const pid of encounter.questMeta?.memberIds ?? []) {
+        const rewardResult = await grantContractReward(pid, contract);
+        resultLines.push(
+          rewardResult.granted
+            ? `🎁 <@${pid}> nhận ${contract.expReward} EXP + ${contract.ahnReward.toLocaleString("vi-VN")} Ahn (contract hôm nay: ${rewardResult.count}/4)`
+            : `⚠️ <@${pid}> đã dùng hết 4 lượt contract hôm nay — không nhận thưởng lần này (dù trận đã thắng).`
+        );
+        if (rewardResult.dailyTaskNote) resultLines.push(`<@${pid}> ${rewardResult.dailyTaskNote}`);
+      }
+      resultLines.push(`🎉 **Contract "${contract.name}" HOÀN THÀNH!** Encounter kết thúc.`);
+    } else {
+      for (const pid of encounter.questMeta?.memberIds ?? []) {
+        const note = await applyDeathPenalty(encounter, pid);
+        if (note) resultLines.push(note);
+      }
+      resultLines.push(`💀 **Cả team đã gục ngã — Contract thất bại.** Encounter kết thúc.`);
+    }
+    for (const pid of encounter.questMeta?.memberIds ?? []) {
+      clearUserActiveEncounterChannel(pid).catch(() => {});
+    }
+    encounter._deleteAfterSave = true;
+    return resultLines;
+  }
+
+  return { checkQuestOutcome, grantContractReward, finalizeQuestOutcome };
 };

@@ -72,14 +72,30 @@ module.exports = function ({ findSkill, hasPerk }) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: Shock Round (tiêu 5 đạn, còn ${combatant.bulletStack})`).setValue("critical:Shock Round"));
     }
     const addedPageNames = new Set();
+    // GAP ĐÃ SỬA (Fragaria báo trực tiếp: "counter page và light dash/fleetfoot
+    // steps sử dụng tùy ý được ở moves — nên xóa ra ở moves, đáng lẽ phải chỉ
+    // được dùng ở reactive defense"). TRƯỚC ĐÂY dropdown Moves đổ THẲNG toàn bộ
+    // unlockedPagesSnapshot/unlockedEgoPagesSnapshot, không lọc gì — nên page
+    // PHẢN ỨNG (counter page dùng qua minigame rtparry khi BỊ đánh; Light Dash/
+    // Fleet Footsteps chỉ để né 1 đòn) vẫn bấm chủ động được lúc tới lượt mình,
+    // vô nghĩa về luật và cho phép "đốt" CD/Light miễn phí.
+    // 2 tiêu chí lọc:
+    //   - skill.counterEffect  → page-counter (đã có nút riêng ở prompt Reactive
+    //                            Defense, xem reactive-defense.js)
+    //   - skill.reactiveOnly   → cờ tường minh (Light Dash / Fleet Footsteps)
+    function isReactiveOnlyPage(pageName) {
+      const sk = findSkill(pageName);
+      if (!sk) return false;
+      return !!(sk.counterEffect || sk.reactiveOnly);
+    }
     for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
-      if (pageName && !addedPageNames.has(pageName)) {
+      if (pageName && !addedPageNames.has(pageName) && !isReactiveOnlyPage(pageName)) {
         addedPageNames.add(pageName);
         options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${pageName}`).setValue(`hit:${pageName}`));
       }
     }
     for (const pageName of combatant.unlockedEgoPagesSnapshot ?? []) {
-      if (pageName && !addedPageNames.has(pageName)) {
+      if (pageName && !addedPageNames.has(pageName) && !isReactiveOnlyPage(pageName)) {
         addedPageNames.add(pageName);
         options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
       }
@@ -95,7 +111,7 @@ module.exports = function ({ findSkill, hasPerk }) {
       { name: "Ignite Weaponry", condition: outfit === "Liu Association" && offices.includes("Liu Association") },
     ];
     for (const { name, condition } of SPECIAL_NO_SLOT_PAGES) {
-      if (condition && !addedPageNames.has(name)) {
+      if (condition && !addedPageNames.has(name) && !isReactiveOnlyPage(name)) {
         addedPageNames.add(name);
         options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${name}`).setValue(`hit:${name}`));
       }

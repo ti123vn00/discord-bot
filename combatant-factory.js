@@ -213,6 +213,11 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // TỔNG đã tiêu (không bao giờ giảm, dùng để tính % Dmg Bonus vĩnh viễn).
       imitation: 0,
       imitationConsumedTotal: 0,
+      // unlockBladeStage — chuỗi "Unlock" (Index Proselyte): 0 = chưa có gì,
+      // 1 = Unlock Blade - 1, 2 = Unlock Blade - 2, 3 = Unlocked Blade (đủ để
+      // Eliminate chain sang Castigation). TRƯỚC ĐÂY page Unlock random stage
+      // nên state này không tồn tại — xem comment ở skills.js's "unlock".
+      unlockBladeStage: 0,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã

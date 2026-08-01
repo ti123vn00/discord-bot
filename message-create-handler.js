@@ -335,7 +335,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const linkInfo = createRtparryToken({ userId: message.author.id, channelId: message.channel.id, messageId: sentMsg.id, skill: targetSkill });
+    const linkInfo = await createRtparryToken({ userId: message.author.id, channelId: message.channel.id, messageId: sentMsg.id, skill: targetSkill });
     if (!linkInfo) {
       await sentMsg.edit({
         embeds: [{

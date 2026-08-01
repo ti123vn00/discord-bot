@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, withLock }) {
+module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -126,9 +126,29 @@ async function performEndTurn(channelId, userId, isAdmin) {
     const accumulatedPrescriptNotes = encounter.pendingPrescriptNotes ?? [];
     encounter.pendingPrescriptNotes = [];
     prescriptNotes = [...accumulatedPrescriptNotes, ...prescriptNotes];
+    // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "sau khi gm dùng turn end order thì
+    // contract không thể tự động end encounter được") — check thắng/thua CHỈ
+    // từng chạy bên trong resolveOnePendingAction, nên mọi đường kết thúc KHÁC
+    // đều bị bỏ sót: GM bấm kết thúc turn thủ công, hoặc mob/player cuối cùng
+    // chết vì DoT tick (Bleed/Burn/Rupture) trong advanceCombatantTurn NGAY Ở
+    // TRÊN — chứ không phải vì một đòn đánh. Giờ check ở đây luôn, dùng CHUNG
+    // hàm finalizeQuestOutcome với resolveOnePendingAction (không copy logic).
+    // Đặt SAU advanceCombatantTurn/determineTurnOrder để đọc đúng HP sau DoT.
+    const questEndLines = await finalizeQuestOutcome(encounter);
     await saveEncounter(channelId, encounter);
+    if (encounter._deleteAfterSave) {
+      // Thứ tự BẮT BUỘC: save trước (giữ state cuối — HP/reward đã áp) rồi mới
+      // xoá, tránh save-sau-xoá vô tình tạo lại encounter đã kết thúc.
+      const endChannel = await client.channels.fetch(channelId).catch(() => null);
+      if (endChannel && questEndLines.length > 0) {
+        await endChannel.send({ embeds: [{ title: "🏁 Contract kết thúc", description: questEndLines.join("\n"), color: 0xf1c40f }] }).catch(() => {});
+      }
+      await deleteEncounter(channelId).catch((err) => log("error", "endturn-deleteEncounter", "system", err.message));
+      resultInfo = { encounter, shroudedNotes, prescriptNotes, questEndLines, questEnded: true };
+      return;
+    }
     announceCurrentTurn(channelId, encounter, true).catch(() => {});
-    resultInfo = { encounter, shroudedNotes, prescriptNotes };
+    resultInfo = { encounter, shroudedNotes, prescriptNotes, questEndLines, questEnded: false };
   });
   return resultInfo;
 }
@@ -502,6 +522,33 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
           }
         }
       }
+      // GAP ĐÃ SỬA (Fragaria báo trực tiếp: "light dash và fleetfoot steps vẫn
+      // chưa thấy nút bấm ở reactive defense"). 2 page này CHỈ có nghĩa khi ĐANG
+      // BỊ ĐÁNH (tác dụng là "né 1 đòn"), nhưng trước đây chỉ bấm được ở dropdown
+      // Moves lúc tới lượt mình — tức đúng lúc KHÔNG có đòn nào để né. Giờ đã bị
+      // gỡ khỏi Moves (cờ reactiveOnly, xem encounter-panels.js) và xuất hiện ở
+      // ĐÂY thay thế.
+      // Điều kiện y hệt counter page: đã mở khoá + không cooldown + đủ Light.
+      // Thêm: KHÔNG hiện nếu nhóm hit này Undodgeable (đúng mô tả gốc của cả 2
+      // page: "không thể né Undodgeable") — hiện nút rồi báo lỗi khi bấm thì tệ.
+      const availableDashPages = [];
+      if (isFirstUndecidedGroup && !thisGroupBypass.blockEvade) {
+        const REACTIVE_DASH_KEYS = ["light dash", "fleet footsteps"];
+        const ownedLower = new Set([
+          ...(target.unlockedPagesSnapshot ?? []),
+          ...(target.unlockedEgoPagesSnapshot ?? []),
+        ].filter(Boolean).map(n => n.trim().toLowerCase()));
+        for (const dashKey of REACTIVE_DASH_KEYS) {
+          if (!ownedLower.has(dashKey)) continue;
+          const dashSkill = findSkill(dashKey);
+          if (!dashSkill) continue;
+          if ((target.skillCooldowns?.[dashKey] ?? 0) > 0) continue;
+          const dCost = parseSkillCost(dashSkill.cost);
+          if ((target.currentLight ?? 0) < (dCost.light ?? 0)) continue;
+          availableDashPages.push({ key: dashKey, name: dashSkill.name, lightCost: dCost.light ?? 0 });
+        }
+      }
+
       const canClash = isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable
         && (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
       const canClashGeneral = isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable;
@@ -551,6 +598,17 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
             .setStyle(ButtonStyle.Success)),
         ));
       }
+      if (availableDashPages.length > 0) {
+        // customId có THÊM 1 segment thứ 7 (skillKey) so với format cũ — handler
+        // encreactivedef đã đọc được (xem interaction-handlers.js). groupIdx vẫn
+        // ở đúng vị trí 6 như mọi choice khác, không phá format cũ.
+        counterRows.push(new ActionRowBuilder().addComponents(
+          ...availableDashPages.slice(0, 5).map(dp => new ButtonBuilder()
+            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:dash:${currentGroupIdx}:${dp.key}`)
+            .setLabel(`💨 ${dp.name} (né free${dp.lightCost > 0 ? `, -${dp.lightCost} Light` : ""})`)
+            .setStyle(ButtonStyle.Success)),
+        ));
+      }
       if (canClash) {
         counterRows.push(new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -592,7 +650,33 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       await saveEncounter(channelId, encounter);
       const resultChannel = await client.channels.fetch(channelId).catch(() => null);
       if (resultChannel) {
-        await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không gây dmg)", description: lines.join("\n"), color: 0x95a5a6 }] }).catch(() => {});
+        await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không cần phòng thủ)", description: lines.join("\n"), color: 0x95a5a6 }] }).catch(() => {});
+      }
+      // BUG NGHIÊM TRỌNG ĐÃ SỬA (Fragaria báo trực tiếp: "sau khi có một player
+      // bất kỳ bị stagger, AI không thể act tiếp được, hành động bị treo nhiều
+      // khiến encounter bị đơ và GM phải dùng gmpanel để end turn order").
+      //
+      // NGUYÊN NHÂN GỐC: nhánh này là đường auto-resolve khi MỌI target đều bị
+      // bỏ qua không gửi prompt — 3 trường hợp: (a) đòn không gây dmg, (b) target
+      // ĐANG STAGGER (không được phòng thủ, ăn đủ dmg), (c) Iron Horus đã Guard
+      // sẵn. Trường hợp (b) là cái Fragaria gặp.
+      // finalizeReactiveChoice (đường BÌNH THƯỜNG, khi người thật bấm nút) có
+      // hook `aiHooks.maybeRunAiTurn` ở cuối để báo AI "đòn vừa resolve xong, cân
+      // nhắc hành động tiếp" — nhưng nhánh NÀY thì KHÔNG. Mob AI đang đứng đợi
+      // đúng callback đó (attemptOneMobAction chỉ thử 1 hành động/lần, phải đợi
+      // đòn hiện tại resolve mới thử tiếp — xem hasUnresolvedTargetPending) →
+      // không ai gọi lại → mob treo vĩnh viễn giữa lượt. announceCurrentTurn bên
+      // dưới KHÔNG cứu được vì gặp enemy aiControlled là `return` ngay.
+      //
+      // Cũng thiếu luôn xử lý `_deleteAfterSave` (finalizeReactiveChoice CÓ) —
+      // nếu chính đòn này giết nốt người cuối/mob cuối thì quest đã kết thúc
+      // nhưng encounter không bao giờ bị xoá.
+      if (encounter._deleteAfterSave) {
+        await deleteEncounter(channelId).catch((err) => log("error", "autoresolve-deleteEncounter", "system", err.message));
+        return;
+      }
+      if (p.attackerType === "enemy" && encounter.enemies?.[p.attackerId]?.aiControlled) {
+        aiHooks.maybeRunAiTurn(channelId).catch(() => {});
       }
       const encAfterZeroDmg = await getEncounter(channelId);
       if (encAfterZeroDmg) announceCurrentTurn(channelId, encAfterZeroDmg, true).catch(() => {});

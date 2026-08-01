@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -694,7 +694,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId.startsWith("encreactivedef:")) {
-    const [, channelId, pendingId, targetId, choice, counterSkillKeyOrHitIdx] = interaction.customId.split(":");
+    const [, channelId, pendingId, targetId, choice, counterSkillKeyOrHitIdx, dashSkillKey] = interaction.customId.split(":");
     const counterSkillKey = counterSkillKeyOrHitIdx; // dùng khi choice === "counter"
     // "Counter" (page-counter) — KHÁC HOÀN TOÀN guard/evade/parry/none: KHÔNG
     // resolve ngay (phải chờ kết quả minigame rtparry trước), nên tách riêng
@@ -716,7 +716,7 @@ client.on("interactionCreate", async (interaction) => {
           flags: MessageFlags.Ephemeral,
         });
         const sentMsg = await interaction.fetchReply();
-        const linkInfo = createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id, skill: counterSkill });
+        const linkInfo = await createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id, skill: counterSkill });
         if (!linkInfo) {
           await interaction.followUp({ content: "⚠️ Bot chưa biết URL public (thiếu RENDER_EXTERNAL_URL/PUBLIC_URL).", flags: MessageFlags.Ephemeral }).catch(() => {});
           return;
@@ -724,10 +724,9 @@ client.on("interactionCreate", async (interaction) => {
         // Gắn thêm context ĐỂ route /rtparry/:token/result biết đây LÀ 1 page
         // counter đang chờ áp dụng, không phải rtparry thường (chỉ hiển thị
         // AMAZING/GREAT không ảnh hưởng gameplay) — xem comment đầy đủ ở route đó.
-        const session = webParrySessions.get(linkInfo.token);
-        if (session) {
-          session.counterContext = { encChannelId: channelId, pendingId, targetId, counterSkillKey };
-        }
+        // attachCounterContext — GHI LẠI xuống Redis (không chỉ sửa object trong
+        // RAM như trước) — xem comment ở rtparry.js.
+        await attachCounterContext(linkInfo.token, { encChannelId: channelId, pendingId, targetId, counterSkillKey });
         await interaction.followUp({
           embeds: [{ title: `⚔️ ${counterSkill.name}`, description: "Bấm nút dưới để mở Parry Real Time.", color: 0xf39c12 }],
           components: [buildRtparryLinkButton(linkInfo.url)],
@@ -1017,6 +1016,58 @@ client.on("interactionCreate", async (interaction) => {
             }
           }
           choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}${chainDashesNote}`;
+        } else if (choice === "dash") {
+          // GAP ĐÃ SỬA (Fragaria: "light dash và fleetfoot steps vẫn chưa thấy
+          // nút bấm ở reactive defense"). Về mặt cơ chế đây là 1 lần NÉ MIỄN PHÍ
+          // (0 Stamina, 0 charge phải mua) kèm hiệu ứng riêng của page:
+          //   - Light Dash      : +2 Light
+          //   - Fleet Footsteps : +2 Haste (page này CÓ dice dmg riêng khi dùng
+          //     chủ động, nhưng ở luồng PHẢN ỨNG chỉ dùng phần né — không gây
+          //     dmg ngược, tránh chế thêm luật không có trong mô tả gốc)
+          // Trừ Light + set cooldown THẬT ở đây (khác Guard/Evade thường vốn
+          // không tốn Light/không có CD).
+          const dashSkill = findSkill(dashSkillKey ?? "");
+          if (!dashSkill) throw new Error("Không tìm thấy page né này.");
+          if (thisGroupBypass.blockEvade) throw new Error(`Nhóm hit này có tag Undodgeable — ${dashSkill.name} không né được.`);
+          const dashKeyNorm = (dashSkillKey ?? "").trim().toLowerCase();
+          const ownedDash = new Set([
+            ...(target.unlockedPagesSnapshot ?? []),
+            ...(target.unlockedEgoPagesSnapshot ?? []),
+          ].filter(Boolean).map(n => n.trim().toLowerCase()));
+          if (!ownedDash.has(dashKeyNorm)) throw new Error(`Bạn chưa mở khoá page "${dashSkill.name}".`);
+          if ((target.skillCooldowns?.[dashKeyNorm] ?? 0) > 0) {
+            throw new Error(`"${dashSkill.name}" đang cooldown — còn ${target.skillCooldowns[dashKeyNorm]} turn.`);
+          }
+          const dashCost = parseSkillCost(dashSkill.cost);
+          if ((target.currentLight ?? 0) < (dashCost.light ?? 0)) {
+            throw new Error(`Không đủ Light để dùng "${dashSkill.name}" (cần ${dashCost.light}, hiện có ${target.currentLight ?? 0}).`);
+          }
+          target.currentLight = (target.currentLight ?? 0) - (dashCost.light ?? 0);
+          const dashCd = parseSkillCooldownTurns(dashSkill.cd);
+          if (dashCd > 0) {
+            target.skillCooldowns = target.skillCooldowns ?? {};
+            target.skillCooldowns[dashKeyNorm] = dashCd;
+          }
+          // Né THẬT cho nhóm hit này — cùng field với nhánh "evade" (evadeCharges
+          // + evadeHitSelections) để resolveOnePendingAction xử lý y hệt, KHÔNG
+          // trừ Stamina và KHÔNG tiêu lightDashFreeEvadeCharges (charge đó dành
+          // cho lần né THƯỜNG sau khi dùng page chủ động — cơ chế riêng, không
+          // gộp vào đây kẻo tiêu 2 lần cho 1 lần dùng).
+          target.evadeCharges = (target.evadeCharges ?? 0) + 1;
+          target.evadeHitSelections = target.evadeHitSelections ?? [];
+          target.evadeHitSelections.push(...realHitIndices);
+          if (targetResolved.type === "player") target.prescriptEvaded = true;
+          if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
+          let dashEffectNote = "";
+          if (dashKeyNorm === "light dash") {
+            const beforeL = target.currentLight ?? 0;
+            target.currentLight = Math.min(target.maxLight ?? beforeL, beforeL + 2);
+            dashEffectNote = ` [+${target.currentLight - beforeL} Light]`;
+          } else if (dashKeyNorm === "fleet footsteps") {
+            target.haste = (target.haste ?? 0) + 2;
+            dashEffectNote = ` [+2 Haste → ${target.haste}]`;
+          }
+          choiceNote = `💨 ${dashSkill.name} — né miễn phí (0 Sta${dashCost.light ? `, -${dashCost.light} Light` : ""})${dashEffectNote}`;
         } else if (choice === "parry") {
           if (!opts.parry.available) throw new Error("Parry bị khoá cho nhóm này (Unparriable).");
           target.parryRolls = target.parryRolls ?? [];
@@ -2981,7 +3032,7 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    const linkInfo = createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id, skill: targetSkill });
+    const linkInfo = await createRtparryToken({ userId: interaction.user.id, channelId: interaction.channelId, messageId: sentMsg.id, skill: targetSkill });
     if (!linkInfo) {
       await interaction.followUp({
         embeds: [{

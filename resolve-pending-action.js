@@ -10,7 +10,7 @@
 // qua PHÂN TÍCH AST CHÍNH XÁC (acorn) — không dựa vào suy đoán thủ công, để
 // tránh sai sót ở 1 hàm lớn và phức tạp như thế này.
 
-module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, checkStaggerPanic, checkQuestOutcome, clearUserActiveEncounterChannel, combatantResStr, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, grantContractReward, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
+module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -145,6 +145,13 @@ async function resolveOnePendingAction(encounter, p) {
             // cộng dồn cho M1 (thiết kế có chủ ý cho Battle Ignition), không dùng
             // lại được — cần biến RIÊNG, cộng dồn KHÔNG điều kiện isM1Type.
             let totalHitsThisActionAny = 0;
+            // anyHitLandedThisAction — BẮT BUỘC khai báo Ở ĐÂY (ngoài vòng lặp
+            // target). `evadedCompletely` là `let` khai báo BÊN TRONG vòng lặp
+            // nên KHÔNG đọc được ở khối commit phía sau vòng lặp — đọc bừa sẽ
+            // ReferenceError lúc runtime mà `node --check` KHÔNG bắt được (đúng
+            // loại lỗi scope đã dính nhiều lần, xem HANDOFF mục Sai Lầm).
+            // Ý nghĩa: có ÍT NHẤT 1 target ăn đòn thật (không né/parry sạch).
+            let anyHitLandedThisAction = false;
             // Eye Of Horus — tích luỹ riêng (KHÔNG gán trực tiếp attacker.combatant.
             // charge trong vòng lặp) — BUG ĐÃ SỬA: trước đây gán trực tiếp TRONG vòng
             // lặp targets, nhưng dòng "attacker.combatant.charge = firstPreview.
@@ -492,16 +499,78 @@ async function resolveOnePendingAction(encounter, p) {
                 // (Eye of Horus-style) KHÔNG áp dụng ở đây, cần thiết kế riêng.
                 if (p.skillKey && attacker.type === "player") {
                   const diceEffectSkill = findSkill(p.skillKey);
-                  if (diceEffectSkill?.diceEffects && diceEffectSkill.diceEffects.length === totalHits) {
-                    diceEffectSkill.diceEffects.forEach((effect, i) => {
+                  // GAP HỆ THỐNG ĐÃ SỬA (Fragaria: "còn rất nhiều page vẫn chưa
+                  // gây debuff hoặc nhận buff đúng nên check lại 1 lượt và làm
+                  // hết") — ƯU TIÊN diceEffects VIẾT TAY (chính xác tuyệt đối,
+                  // dùng cho case đặc biệt), FALLBACK sang bản tự parse từ text
+                  // mô tả (autoExtractDiceSideEffects, xem skills.js) cho ~130
+                  // skill chưa ai code hoá thủ công.
+                  const autoDiceEffects = diceEffectSkill && !diceEffectSkill.diceEffects
+                    // LƯU Ý (bài học HANDOFF #1 — KHÔNG đoán tên field): pendingAction
+                    // KHÔNG có field `skillRollLines`; text roll() được lưu trong
+                    // `skillRollEmbed.description` (các dòng nối bằng "\n", xem
+                    // skill-verification.js). annotateLinesWithEmotion chỉ APPEND
+                    // emoji vào CUỐI dòng nên phần đầu "<:DiceN:... [Slash] ..."
+                    // còn nguyên vẹn — parser đọc được bình thường. Dòng header
+                    // "[cost] [CD] [Dice Mul]" tự bị loại vì không bắt đầu bằng
+                    // "<:DiceN:".
+                    ? autoExtractDiceSideEffects((p.skillRollEmbed?.description ?? "").split("\n"))
+                    : null;
+                  const effectiveDiceEffects = diceEffectSkill?.diceEffects ?? autoDiceEffects;
+                  if (effectiveDiceEffects && effectiveDiceEffects.length === totalHits) {
+                    // MỞ RỘNG (GAP ĐÃ SỬA — Fragaria báo trực tiếp: "spear/level
+                    // slash không cho imitation"): TRƯỚC ĐÂY diceEffects CHỈ hiểu
+                    // đúng 1 khoá `diceUp`, nên mọi hiệu ứng-phụ-theo-dice khác
+                    // đều phải hardcode riêng từng skill ở dưới (dễ sót — đó
+                    // chính là lý do Level Slash/Spear ghi "nhận 1 Imitation"
+                    // trong text mà không có logic nào). Giờ bảng ánh xạ chung:
+                    // khoá trong diceEffects → field THẬT trên combatant.
+                    // CHỈ gồm status KHÔNG biểu diễn được bằng dmgStr (Poise/
+                    // Charge/Bleed/Burn/Rupture/Sinking/Tremor đã đi qua
+                    // autoBuildDmgStrFromSkillRoll — KHÔNG đưa vào đây kẻo áp 2 lần).
+                    const DICE_EFFECT_SELF_FIELDS = {
+                      diceUp: "diceUp", imitation: "imitation", haste: "haste",
+                      protection: "protection", defenseUp: "defenseUp",
+                      attackPowerUp: "attackPowerUp", regen: "regen", smoke: "smoke",
+                    };
+                    const DICE_EFFECT_TARGET_FIELDS = {
+                      paralyze: "paralyze", fragile: "fragile", bind: "bind",
+                      diceDown: "diceDown", nails: "nails", freeble: "freeble",
+                      defenseDown: "defenseDown", attackPowerDown: "attackPowerDown",
+                    };
+                    effectiveDiceEffects.forEach((effect, i) => {
                       if (!effect) return;
                       if (hitEvadedOrParried[i]) return; // GAP ĐÃ SỬA: chỉ Evade/Parry THÀNH CÔNG mới không dính hiệu ứng — Guard (kể cả 100% reduction) vẫn tính là "dính"
-                      if (effect.diceUp) {
-                        attacker.combatant.diceUp = (attacker.combatant.diceUp ?? 0) + effect.diceUp;
+                      for (const [key, field] of Object.entries(DICE_EFFECT_SELF_FIELDS)) {
+                        const amount = effect[key];
+                        if (!amount) continue;
+                        attacker.combatant[field] = (attacker.combatant[field] ?? 0) + amount;
                         // BUG ĐÃ SỬA: verifyNote CHƯA tồn tại ở scope này (khai
                         // báo sau, gây TDZ error "Cannot access before
                         // initialization") — dùng defenseNote (đã tồn tại sẵn).
-                        defenseNote += ` 🎲[Dice ${i + 1} +${effect.diceUp} Dice Up]`;
+                        defenseNote += ` 🎲[Dice ${i + 1} +${amount} ${key}]`;
+                      }
+                      // Hiệu ứng lên TARGET của chính dice đó (dice này trúng ai
+                      // thì áp lên người đó — dùng targetResolved của vòng lặp
+                      // target đang chạy, KHÔNG phải p.targets[0]).
+                      for (const [key, field] of Object.entries(DICE_EFFECT_TARGET_FIELDS)) {
+                        const amount = effect[key];
+                        if (!amount) continue;
+                        targetResolved.combatant[field] = (targetResolved.combatant[field] ?? 0) + amount;
+                        defenseNote += ` 🎯[Dice ${i + 1} địch +${amount} ${key}]`;
+                      }
+                      // Hậu tố "__t" — do autoExtractDiceSideEffects sinh ra khi
+                      // parser xác định hiệu ứng nhắm vào TARGET (VD "địch nhận 2
+                      // Dice Down"). Cho phép CÙNG 1 field xuất hiện ở cả 2 chiều
+                      // trong 1 dice mà không đè nhau (VD tự +Protection đồng thời
+                      // gây +Fragile cho địch).
+                      for (const [rawKey, amount] of Object.entries(effect)) {
+                        if (!rawKey.endsWith("__t") || !amount) continue;
+                        const baseKey = rawKey.slice(0, -3);
+                        const field = DICE_EFFECT_TARGET_FIELDS[baseKey] ?? DICE_EFFECT_SELF_FIELDS[baseKey];
+                        if (!field) continue;
+                        targetResolved.combatant[field] = (targetResolved.combatant[field] ?? 0) + amount;
+                        defenseNote += ` 🎯[Dice ${i + 1} địch +${amount} ${baseKey}]`;
                       }
                     });
                   }
@@ -1066,6 +1135,7 @@ async function resolveOnePendingAction(encounter, p) {
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
               targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              if (!evadedCompletely) anyHitLandedThisAction = true; // gom kết quả từng target ra scope ngoài (xem khai báo)
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
             // mỗi target preview tính crit ĐỘC LẬP nên finalPoiseStacks/finalCharge
@@ -1460,6 +1530,31 @@ async function resolveOnePendingAction(encounter, p) {
             // "Great Split" tiêu ĐÚNG 5 Imitation (đã check đủ ở lúc roll), cộng
             // vào imitationConsumedTotal (vĩnh viễn, không giảm — dùng tính %
             // Dmg Bonus ở computeAttackerPerkContext).
+            // ── Chuỗi Unlock → Unlocked Blade → Eliminate → Castigation ──
+            // BUG ĐÃ SỬA (Fragaria: "unlock và castigation hoạt động không
+            // đúng"). Trước đây KHÔNG có 1 dòng logic nào cho chuỗi này: Unlock
+            // random stage rồi thôi (stack chỉ tồn tại trong TEXT), Eliminate
+            // không biết chain, Castigation không cần điều kiện và không xoá gì.
+            // Chỉ tăng stage khi đòn THẬT SỰ TRÚNG (evadedCompletely=false) —
+            // đúng mô tả "trúng: nhận Unlock Blade - 1".
+            if (p.skillKey === "unlock" && anyHitLandedThisAction) {
+              const beforeStage = attacker.combatant.unlockBladeStage ?? 0;
+              attacker.combatant.unlockBladeStage = Math.min(3, beforeStage + 1);
+              const st = attacker.combatant.unlockBladeStage;
+              verifyNote += ` 🗝️[${st >= 3 ? "**Unlocked Blade** — Eliminate giờ chain sang Castigation" : `Unlock Blade - ${st}`}]`;
+            }
+            // Eliminate — báo cho người chơi biết đã đủ điều kiện chain (KHÔNG tự
+            // động bắn Castigation hộ: nó là 1 action riêng có target/phòng thủ
+            // riêng, tự động hoá sẽ bỏ qua bước reactive defense của đối thủ).
+            if (p.skillKey === "eliminate" && anyHitLandedThisAction && (attacker.combatant.unlockBladeStage ?? 0) >= 3) {
+              verifyNote += ` ⚔️[Có **Unlocked Blade** → dùng tiếp **Castigation** ngay được]`;
+            }
+            // Castigation — tiêu stack sau khi dùng (dù trúng hay trượt: page đã
+            // được phóng ra, đúng câu "sau đó xóa stack Unlocked Blade").
+            if (p.skillKey === "castigation") {
+              attacker.combatant.unlockBladeStage = 0;
+              verifyNote += ` 🗝️[Đã tiêu **Unlocked Blade** — chuỗi Unlock reset về 0]`;
+            }
             if (p.skillKey === "upstanding slash" && attacker.type === "player") {
               attacker.combatant.imitation = (attacker.combatant.imitation ?? 0) + totalHitsThisActionAny;
               verifyNote += ` 🗡️[+${totalHitsThisActionAny} Imitation, tổng ${attacker.combatant.imitation}]`;
@@ -1771,49 +1866,13 @@ async function resolveOnePendingAction(encounter, p) {
             resultLines.push(`${attacker.label}${staminaNote}${verifyNote}${eyeOfHorusRepeatLightNote}${bleedSelfNote} → ${targetDmgLines.join(", ")} (\`${p.dmgStr}\`)`);
 
   // Stage 5 (quest system) — check THẮNG/THUA NGAY SAU KHI resolve xong action
-  // này (đã biết HP mới nhất của MỌI enemy/player). checkQuestOutcome THUẦN
-  // detect (không side-effect) — chỉ encounter.isQuest mới check (encounter GM
-  // thường trả về null luôn, không ảnh hưởng hành vi cũ).
-  const questOutcome = checkQuestOutcome(encounter);
-  if (questOutcome) {
-    if (questOutcome.won && questOutcome.contract) {
-      const contract = questOutcome.contract;
-      for (const pid of encounter.questMeta?.memberIds ?? []) {
-        const rewardResult = await grantContractReward(pid, contract);
-        resultLines.push(
-          rewardResult.granted
-            ? `🎁 <@${pid}> nhận ${contract.expReward} EXP + ${contract.ahnReward.toLocaleString("vi-VN")} Ahn (contract hôm nay: ${rewardResult.count}/4)`
-            : `⚠️ <@${pid}> đã dùng hết 4 lượt contract hôm nay — không nhận thưởng lần này (dù trận đã thắng).`
-        );
-        // GAP THẬT phát hiện qua test — nếu việc thắng contract này ĐÚNG LÚC hoàn
-        // thành luôn streak 7 ngày (đủ cả 3 nhiệm vụ -daily hôm nay), thông báo
-        // trước đây bị bỏ qua âm thầm (fire-and-forget) dù vẫn cộng đúng số —
-        // giờ hiện ra cho người chơi thấy.
-        if (rewardResult.dailyTaskNote) resultLines.push(`<@${pid}> ${rewardResult.dailyTaskNote}`);
-      }
-      resultLines.push(`🎉 **Contract "${contract.name}" HOÀN THÀNH!** Encounter kết thúc.`);
-    } else {
-      // THUA (wipe cả team) — GIỜ mới thật sự áp Death Penalty cho TỪNG người
-      // (đã track ở deathPlayerIds phía trên — cả team chết = TẤT CẢ memberIds
-      // đều nằm trong danh sách này, vì alivePlayers === 0 mới vào nhánh này).
-      for (const pid of encounter.questMeta?.memberIds ?? []) {
-        const note = await applyDeathPenalty(encounter, pid);
-        if (note) resultLines.push(note);
-      }
-      resultLines.push(`💀 **Cả team đã gục ngã — Contract thất bại.** Encounter kết thúc.`);
-    }
-    // Task yêu cầu trực tiếp: "cấm không cho join nhiều encounter một lúc" —
-    // clear NGAY active-encounter-index cho TẤT CẢ member khi quest kết thúc
-    // (thắng/thua), để họ join/tạo contract mới được ngay.
-    for (const pid of encounter.questMeta?.memberIds ?? []) {
-      clearUserActiveEncounterChannel(pid).catch(() => {});
-    }
-    // Đánh dấu để caller (reactive-defense.js/interaction-handlers.js — nơi gọi
-    // resolveOnePendingAction) tự deleteEncounter SAU KHI saveEncounter xong (thứ
-    // tự quan trọng — xem comment ở các điểm gọi) — KHÔNG tự xoá ở đây vì hàm
-    // này không có quyền truy cập deleteEncounter/channelId.
-    encounter._deleteAfterSave = true;
-  }
+  // này (đã biết HP mới nhất của MỌI enemy/player).
+  // ĐÃ TÁCH sang quest-resolution.js's finalizeQuestOutcome — TRƯỚC ĐÂY toàn bộ
+  // khối này nằm inline ở đây, nghĩa là quest CHỈ kết thúc được qua đường
+  // "resolve 1 pendingAction". performEndTurn (GM bấm kết thúc turn, hoặc enemy
+  // cuối chết vì DoT tick) KHÔNG bao giờ chạy qua đây → contract không tự end.
+  // Xem comment đầy đủ ở finalizeQuestOutcome.
+  resultLines.push(...(await finalizeQuestOutcome(encounter)));
 
   return resultLines;
 }

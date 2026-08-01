@@ -162,6 +162,14 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // lần" — CD=0 khiến existingCd check ở trên KHÔNG BAO GIỜ chặn được (0 > 0
       // luôn false) — cần check RIÊNG, giống hệt pattern "tactical suppression"
       // trên: 1 flag riêng, reset mỗi turn (xem turn-advance.js).
+      // Castigation (Index Longsword) — BUG ĐÃ SỬA: page này chỉ được dùng khi
+      // ĐANG có **Unlocked Blade** (Eliminate ghi rõ "Nếu có Unlocked Blade:
+      // dùng tiếp Castigation"), nhưng trước đây KHÔNG có điều kiện nào cả —
+      // bấm lúc nào cũng được, và cũng chẳng xoá stack sau khi dùng. Chặn ở đây
+      // cùng pattern với Great Split (cần đủ 5 Imitation).
+      if (skillKey === "castigation" && (attacker.unlockBladeStage ?? 0) < 3) {
+        throw new Error(`Skill "${skill.name}" cần **Unlocked Blade** mới dùng được — hãy dùng Unlock đủ 3 lần (hiện đang ở stage ${attacker.unlockBladeStage ?? 0}/3).`);
+      }
       if (skillKey === "unlock" && attacker.unlockUsedThisTurn) {
         throw new Error(`Skill "${skill.name}" đã dùng trong turn này rồi — chỉ được dùng 1 lần/turn (dù CD 0 Turn, vẫn giới hạn theo description).`);
       }
@@ -257,7 +265,13 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // dùng thay cho input gõ tay. blackSilenceCritBonus vẫn CHỈ áp dụng khi
       // isCritical=true (đây là cơ chế game thật — +4 Dice riêng cho vũ khí
       // Critical — tách biệt khỏi việc "có tin được roll hay không").
-      const autoResult = autoBuildDmgStrFromSkillRoll(skill, { forceMinDice: hasParalyze, diceModifier });
+      // Unlock (Index Proselyte) — stage LẤY TỪ STATE THẬT, không random nữa
+      // (xem comment đầy đủ ở skills.js). Lần dùng kế = stage hiện tại + 1, tối
+      // đa 3. Đang ở 3 (Unlocked Blade) thì dùng lại vẫn ra 3 (không tụt về 1).
+      const unlockRollArgs = skillKey === "unlock"
+        ? [Math.min(3, (attacker.unlockBladeStage ?? 0) + 1)]
+        : [];
+      const autoResult = autoBuildDmgStrFromSkillRoll(skill, { forceMinDice: hasParalyze, diceModifier, rollArgs: unlockRollArgs });
       autoDmgStr = autoResult.dmgStr;
       autoWarnings = autoResult.warnings;
       const header = skill.weaponOf

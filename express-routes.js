@@ -18,8 +18,9 @@ module.exports = function ({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, aut
 app.get("/", (req, res) => getBotReady() ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
 
 // GET /rtparry/:token — serve trang test phản xạ (chỉ nếu token còn hợp lệ).
-app.get("/rtparry/:token", (req, res) => {
-  const session = webParrySessions.get(req.params.token);
+app.get("/rtparry/:token", async (req, res) => {
+  // async — webParrySessions giờ đọc từ Redis (xem rtparry.js)
+  const session = await webParrySessions.get(req.params.token);
   if (!session || session.expiresAt < Date.now()) {
     return res.status(404).send(
       "<!DOCTYPE html><html><body style='font-family:sans-serif;text-align:center;padding:40px;background:#2c2f33;color:#fff'>" +
@@ -34,11 +35,11 @@ app.get("/rtparry/:token", (req, res) => {
 // xong reactionMs bằng performance.now() phía client), rồi edit lại message Discord
 // gốc với kết quả thật, không lẫn latency.
 app.post("/rtparry/:token/result", async (req, res) => {
-  const session = webParrySessions.get(req.params.token);
+  const session = await webParrySessions.get(req.params.token);
   if (!session || session.expiresAt < Date.now()) {
     return res.status(404).json({ ok: false, error: "Link đã hết hạn hoặc đã được dùng." });
   }
-  webParrySessions.delete(req.params.token); // single-use — dùng 1 lần là xoá ngay
+  await webParrySessions.delete(req.params.token); // single-use — dùng 1 lần là xoá ngay
 
   const { reactionMs, resultType } = req.body ?? {};
   // Validate input — đây là endpoint public, ai có token cũ (đã hết hạn nhưng đoán

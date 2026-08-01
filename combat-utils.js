@@ -261,12 +261,34 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     const order = encounter.turnOrder ?? [];
     if (order.length === 0) return "Chưa roll Speed — dùng `-encounter rollspeed`.";
     const curIdx = encounter.currentTurnIndex ?? 0;
-    return order.map((e, i) => {
+    // GAP ĐÃ SỬA (Fragaria báo trực tiếp: "những người đã chết trong encounter
+    // thì nên bị clear ra khỏi thứ tự turn display"). TRƯỚC ĐÂY map NGUYÊN
+    // turnOrder, kể cả combatant đã 0 HP — advanceToNextTurnHolder VỐN ĐÃ tự bỏ
+    // qua họ khi chạy lượt, nên bảng hiển thị lệch hẳn với hành vi thật (người
+    // xem tưởng xác chết vẫn còn lượt, và số thứ tự #N đếm cả người chết).
+    // KHÔNG xoá khỏi encounter.turnOrder thật — chỉ ẩn ở khâu HIỂN THỊ: currentTurnIndex
+    // là index vào MẢNG GỐC, xoá phần tử sẽ làm lệch con trỏ lượt của cả hệ thống.
+    // Vì vậy: lọc trước, nhưng so sánh 👉 bằng index GỐC (idx), còn số #N đánh lại
+    // theo danh sách người còn sống.
+    const alive = order
+      .map((e, idx) => ({ e, idx }))
+      .filter(({ e }) => {
+        const c = e.type === "enemy" ? encounter.enemies[e.id] : encounter.players[e.id];
+        return c && c.currentHp > 0;
+      });
+    if (alive.length === 0) return "Không còn ai sống trong turn order.";
+    const hiddenCount = order.length - alive.length;
+    const lines = alive.map(({ e, idx }, i) => {
       const label = e.type === "enemy" ? `**${encounter.enemies[e.id]?.name ?? e.id}**` : `<@${e.id}>`;
       const tieNote = e.tiedWith.length > 0 ? ` ⚖️ *(hoà Speed với ${e.tiedWith.length} người khác — thứ tự đã random tự động)*` : "";
-      const turnMarker = i === curIdx ? " 👉 **(đang tới lượt)**" : "";
-      return `**#${i + 1}** ${label} — Speed **${e.speed}**${tieNote}${turnMarker}`;
-    }).join("\n");
+      const turnMarker = idx === curIdx ? " 👉 **(đang tới lượt)**" : "";
+      // Stagger: vẫn HIỆN (khác người chết — họ còn trong trận, chỉ mất lượt này)
+      // nhưng đánh dấu rõ để không ai thắc mắc "sao bị bỏ lượt".
+      const staggerNote = (e.type === "enemy" ? encounter.enemies[e.id] : encounter.players[e.id])?.staggered ? " 💫 *(Stagger — bỏ lượt)*" : "";
+      return `**#${i + 1}** ${label} — Speed **${e.speed}**${tieNote}${staggerNote}${turnMarker}`;
+    });
+    if (hiddenCount > 0) lines.push(`*(đã ẩn ${hiddenCount} người/enemy đã gục)*`);
+    return lines.join("\n");
   }
   
   /** Đổi { B, P, S } resistance object thành resStr cho calcMathCore — Stagger thì
