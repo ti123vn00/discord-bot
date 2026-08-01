@@ -1440,7 +1440,7 @@ roll(v = "no") {
   // ── Book of The Keter ──
   "fervent beats": {
     name: "Fervent Beats",
-    tags: "Abnormalities <:The_Library:1474374220023857192>",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
     cost: "0 <:Light:1513786082502770719>Light", cd: "??? Turn", diceMul: "1x",
     roll() {
       return [
@@ -2267,10 +2267,10 @@ roll(v = "no") {
     },
   },
 
-  // ── Frost Splinter (no tier tag) ──
+  // ── Frost Splinter (HE Tier — xác nhận trực tiếp) ──
   "frost splinter": {
     name: "Frost Splinter",
-    tags: "Abnormalities <:The_Library:1474374220023857192>",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
     cost: "6 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,12), d2 = r(8,13);

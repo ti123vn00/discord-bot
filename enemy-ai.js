@@ -39,11 +39,144 @@ module.exports = function ({
   doEnemyAttack, findSkill, parseSkillCost, parseSkillCooldownTurns,
   autoBuildDmgStrFromSkillRoll, extractDefenseBypassTags,
   hasUnresolvedTargetPending, isCurrentTurnHolder, advanceToNextTurnHolder,
-  appendActionLog,
+  appendActionLog, buildSkillRollResult, applySanityGain, applyEmotionDelta,
+  applyClashLossSanity, checkStaggerPanic, hasPerk, combatantResStr, calcMathCore,
 }) {
   /** decideDefenseChoice — thuần logic quyết định (không side-effect), nhận vào
    *  target combatant + options đã tính (opts) + dmg lớn nhất trong nhóm hit
    *  này (maxHitDmgInGroup) — trả về 1 trong "guard"/"evade"/"parry"/"none". */
+  // Task yêu cầu trực tiếp: "cho AI có khả năng clash với skill của player" +
+  // "AI có sử dụng được các page counter không" — CẢ 2 đều là quyết định "toàn
+  // bộ pendingAction" (thắng = huỷ TOÀN BỘ đòn, không phải từng nhóm hit như
+  // Guard/Evade/Parry) — nên xử lý RIÊNG, TRƯỚC vòng lặp per-group bên dưới.
+
+  // pickClashSkill — tìm skill CÓ THỂ dùng để Clash: có Dice, không promptArg
+  // (cần input đặc biệt, không tự động hoá được), đủ Light, không cooldown.
+  // Ưu tiên Light cost CAO NHẤT (giống pickOffensiveSkill — giả định skill tốn
+  // nhiều Light hơn thường mạnh/đáng tin hơn để đặt cược Clash).
+  function pickClashSkill(target) {
+    const candidates = [];
+    for (const skillName of target.unlockedPagesSnapshot ?? []) {
+      const skill = findSkill(skillName);
+      if (!skill || skill.promptArg) continue;
+      const cost = parseSkillCost(skill.cost);
+      if ((cost.light ?? 0) > (target.currentLight ?? 0)) continue;
+      const cdLeft = target.skillCooldowns?.[skillName.toLowerCase()] ?? 0;
+      if (cdLeft > 0) continue;
+      const rolled = buildSkillRollResult({ skill });
+      if (rolled.error || rolled.firstDiceValue === null) continue; // không có Dice thì không Clash được
+      candidates.push({ skillKey: skillName.toLowerCase(), skill, lightCost: cost.light ?? 0, rolled });
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.lightCost - a.lightCost);
+    return candidates[0];
+  }
+
+  // pickCounterSkill — tìm page-counter (counterEffect) khả dụng, tương tự nhưng
+  // KHÔNG cần Dice bắt buộc (nhiều counter page "noDirectDamage": true).
+  function pickCounterSkill(target) {
+    const candidates = [];
+    for (const skillName of target.unlockedPagesSnapshot ?? []) {
+      const skill = findSkill(skillName);
+      if (!skill || !skill.counterEffect) continue;
+      const cost = parseSkillCost(skill.cost);
+      if ((cost.light ?? 0) > (target.currentLight ?? 0)) continue;
+      const cdLeft = target.skillCooldowns?.[skillName.toLowerCase()] ?? 0;
+      if (cdLeft > 0) continue;
+      candidates.push({ skillKey: skillName.toLowerCase(), skill, lightCost: cost.light ?? 0 });
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.lightCost - a.lightCost);
+    return candidates[0];
+  }
+
+  /** attemptAiClashOrCounter — thử Clash trước (nếu có skill), rồi Counter (nếu
+   *  Clash không khả dụng hoặc thua) — CHỈ 1 TRONG 2, ưu tiên Clash vì Clash có
+   *  thêm hiệu ứng phụ (Voracity/Pressure Point/Thorns) đa dạng hơn Counter.
+   *  Trả về true nếu đã XỬ LÝ XONG toàn bộ pendingAction (thắng, huỷ hết đòn)
+   *  — caller (resolveAiDefenseForTarget) SKIP vòng lặp per-group nếu true. */
+  async function attemptAiClashOrCounter(channelId, encounter, p, target, targetId, attackerResolved) {
+    const attackerFirstDiceMatch = (p.dmgStr ?? "").match(/^([\d.]+)/);
+    const attackerFirstDiceValue = attackerFirstDiceMatch ? parseFloat(attackerFirstDiceMatch[1]) : null;
+    if (attackerFirstDiceValue === null) return false; // đòn không có Dice thì Clash vô nghĩa
+
+    const clashPick = pickClashSkill(target);
+    if (clashPick) {
+      const cost = parseSkillCost(clashPick.skill.cost);
+      target.currentLight = Math.max(0, (target.currentLight ?? 0) - (cost.light ?? 0));
+      const cdTurns = parseSkillCooldownTurns(clashPick.skill.cd);
+      target.skillCooldowns = target.skillCooldowns ?? {};
+      target.skillCooldowns[clashPick.skillKey] = cdTurns + 1;
+      const myPenalty = getParryClashPenalty(target);
+      const oppPenalty = getParryClashPenalty(attackerResolved.combatant);
+      const myEffectiveDice = clashPick.rolled.firstDiceValue - myPenalty + (target.clashAttackBoost ?? 0);
+      const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0);
+      if (myEffectiveDice > oppEffectiveDice) {
+        const hitCount = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
+        target.evadeCharges = (target.evadeCharges ?? 0) + hitCount;
+        applySanityGain(target, 10);
+        applyEmotionDelta(target, 2);
+        applyClashLossSanity(attackerResolved.combatant);
+        applyEmotionDelta(attackerResolved.combatant, -1);
+        checkStaggerPanic(target); checkStaggerPanic(attackerResolved.combatant);
+        let note = `⚔️🏆 **${target.name}** THẮNG Clash bằng **${clashPick.skill.name}** (${myEffectiveDice} vs ${oppEffectiveDice}) — huỷ toàn bộ đòn!`;
+        if (hasPerk(target, "Voracity") && !target.voracityUsedThisTurn) {
+          target.currentLight = Math.min(target.maxLight, target.currentLight + 2);
+          target.voracityUsedThisTurn = true;
+          note += ` ✨+2 Light (Voracity).`;
+        }
+        if (hasPerk(target, "Pressure Point")) {
+          target.poise = Math.min(99, (target.poise ?? 0) + 5);
+          note += ` 💪+5 Poise (Pressure Point).`;
+        }
+        if (hasPerk(target, "Thorns")) {
+          const thornsRupture = target.hasSevenAssociation ? Math.round(7 * 1.5) : 7;
+          attackerResolved.combatant.rupture = Math.min(99, (attackerResolved.combatant.rupture ?? 0) + thornsRupture);
+          note += ` 🌵+${thornsRupture} Rupture (Thorns) lên attacker.`;
+        }
+        const finalized = await aiHooks.finalizeReactiveChoice(channelId, encounter, p, targetId, note, `🤖 **${target.name}**`);
+        return { handled: true, resultText: finalized.resultText };
+      }
+      // Thua Clash — TIẾP TỤC thử Counter nếu có (không waste toàn bộ lượt phòng thủ chỉ vì thua Clash).
+    }
+
+    const counterPick = pickCounterSkill(target);
+    if (counterPick) {
+      const cost = parseSkillCost(counterPick.skill.cost);
+      const effect = counterPick.skill.counterEffect ?? {};
+      // Task yêu cầu trực tiếp: AI không thể chơi minigame real-time (rtparry)
+      // như người thật — dùng xác suất cố định hợp lý thay thế (75% thành công,
+      // tương đương phản xạ khá tốt của người chơi thật trung bình).
+      const isSuccess = Math.random() < 0.75;
+      if (isSuccess || effect.alwaysUnlocks) {
+        target.currentLight = Math.max(0, (target.currentLight ?? 0) - (cost.light ?? 0));
+        const cdTurns = parseSkillCooldownTurns(counterPick.skill.cd);
+        target.skillCooldowns = target.skillCooldowns ?? {};
+        target.skillCooldowns[counterPick.skillKey] = cdTurns + 1;
+        if (effect.light) target.currentLight = Math.min(target.maxLight, (target.currentLight ?? 0) + effect.light);
+        if (effect.protection) target.protection = (target.protection ?? 0) + effect.protection;
+        if (effect.defenseUp) target.defenseUp = (target.defenseUp ?? 0) + effect.defenseUp;
+        if (effect.unlocksSkillKey) target.unlockedFollowUpSkillKey = effect.unlocksSkillKey;
+      }
+      if (!isSuccess) return false; // thất bại — rơi về Guard/Evade/Parry bình thường
+      let note = `🛡️✅ **${target.name}** Counter thành công bằng **${counterPick.skill.name}**!`;
+      if (!effect.noDirectDamage) {
+        const built = autoBuildDmgStrFromSkillRoll(counterPick.skill);
+        if (built.dmgStr) {
+          const counterResStr = combatantResStr(attackerResolved.combatant);
+          const counterPreview = calcMathCore({ dmgStr: built.dmgStr, resStr: counterResStr, poiseInit: target.poise, chargeInit: target.charge });
+          attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - counterPreview.totalDmg);
+          note += ` Phản công gây -${counterPreview.totalDmg.toFixed(3)} HP.`;
+        }
+      }
+      const hitCount2 = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
+      target.evadeCharges = (target.evadeCharges ?? 0) + hitCount2;
+      const finalized = await aiHooks.finalizeReactiveChoice(channelId, encounter, p, targetId, note, `🤖 **${target.name}**`);
+      return { handled: true, resultText: finalized.resultText };
+    }
+    return false;
+  }
+
   function decideDefenseChoice(target, opts, maxHitDmgInGroup, hasGuardBreak = false) {
     const hpPct = target.maxHp > 0 ? target.currentHp / target.maxHp : 0;
     const bigHit = maxHitDmgInGroup > target.maxHp * 0.10;
@@ -141,6 +274,14 @@ module.exports = function ({
         t.perHitChoices = t.perHitChoices ?? new Array(groupCount).fill(null);
 
         const decisionNotes = [];
+        // Task yêu cầu trực tiếp: thử Clash/Counter TRƯỚC (quyết định 1 lần cho
+        // TOÀN BỘ pendingAction, không phải per-group) — nếu thắng, huỷ hết đòn
+        // và SKIP hẳn vòng lặp Guard/Evade/Parry per-group bên dưới.
+        const clashOrCounterResult = await attemptAiClashOrCounter(channelId, encounter, p, target, targetId, attackerResolved);
+        if (clashOrCounterResult && clashOrCounterResult.handled) {
+          postLockInfo = { resultText: clashOrCounterResult.resultText, channelId, isEnemyTarget: true };
+          return;
+        }
         // Loop TOÀN BỘ nhóm còn lại (khác người thật — không cần round-trip
         // Discord, quyết định hết trong 1 lần khoá).
         let groupIdx;
