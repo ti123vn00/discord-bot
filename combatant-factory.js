@@ -222,6 +222,16 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // pickAiTargets trong enemy-ai.js). Mob bám 1 mục tiêu vài turn thay vì
       // chọn lại mỗi hit. null = chưa khoá ai.
       aiTargetId: null, aiTargetSetOnTurn: 0,
+      // atelierLogicForm — form đang dùng của "Atelier Logic" ("shotgun" mặc
+      // định / "pistols"). Lật mỗi khi dùng Critical tương ứng — xem
+      // encounter-panels.js + resolve-pending-action.js.
+      atelierLogicForm: "shotgun",
+      // realizationStacks — "A Prayer For Loving Sorrow" (Găng Tay Câm Lặng):
+      // "Mỗi lần đổi vũ khí Black Silence bằng Dimension Pocket VÀ sử dụng
+      // Critical của chúng bạn nhận được 1 Realization [mỗi vũ khí 1 lần]".
+      // realizationWeapons — danh sách vũ khí ĐÃ tính (chống farm 1 vũ khí nhiều
+      // lần). Đủ 9 → lần đổi vũ khí kế tiếp bắn Furioso (Orlando Furioso).
+      realizationStacks: 0, realizationWeapons: [],
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã

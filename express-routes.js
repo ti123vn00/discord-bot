@@ -142,14 +142,52 @@ app.post("/rtparry/:token/result", async (req, res) => {
           const attackerWeapon = attackerResolved.combatant.weaponWeight ?? "medium";
           const hitCount = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
           const hitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : 1);
-          const chargesNeeded = isM1Type ? Math.ceil(hitCount / hitsPerCharge) : 1;
+          // BUG KÉP ĐÃ SỬA — code cũ (`isM1Type ? Math.ceil(hitCount/hitsPerCharge) : 1`)
+          // SAI CẢ HAI NHÁNH, theo đúng 2 báo cáo của Fragaria:
+          //
+          //  (a) Nhánh M1 quá MẠNH — "counter hiện tại đang counter né sạch cả
+          //      rất nhiều group m1 thay vì theo 1 group hit. 1 page counter chỉ
+          //      né được 1 group 4 hit của light weapon m1 thôi, medium thì 2
+          //      còn heavy thì 1". Math.ceil(hitCount/hitsPerCharge) trả về SỐ
+          //      GROUP (VD M1 light 12 hit = 3 group → 3 charge) nên 1 lần
+          //      counter xoá sạch cả loạt. Đúng luật: 1 counter = ĐÚNG 1 group,
+          //      tức 1 charge (charge đó tự phủ hitsPerCharge hit theo weapon
+          //      weight — light 4 / medium 2 / heavy 1, xem WEAPON_DEFENSE_HITS).
+          //
+          //  (b) Nhánh SKILL quá YẾU — "sau khi xài you're too slow counter
+          //      thành công bị dính 7 sinking từ stylish sweep mặc dù counter sẽ
+          //      triệt tiêu đòn kẻ địch". Skill có hitsPerCharge = 1, mà chỉ cộng
+          //      1 charge → né đúng 1 hit; các hit còn lại vẫn trúng nên
+          //      `evadedCompletely` (resolve-pending-action.js) = false → toàn bộ
+          //      status (Sinking/Rupture/Bleed...) vẫn bị áp. Counter NGẮT HẲN
+          //      đòn skill nên phải phủ TẤT CẢ hit của skill đó.
+          //
+          // → M1: đúng 1 charge (1 group). Skill: đủ charge phủ hết hit.
+          const chargesNeeded = isM1Type ? 1 : Math.ceil(hitCount / hitsPerCharge);
           target.evadeCharges = (target.evadeCharges ?? 0) + chargesNeeded;
 
           // Gây dmg phản công NGAY (nếu skill này tự gây dmg — noDirectDamage
           // = false/undefined) — dùng chính công thức dice roll() của
           // counterSkill, TỰ tính riêng (không qua p/resolveOnePendingAction
           // của đòn đang chờ, vì đây là 1 hành động MỚI hoàn toàn — phản công).
-          if (!effect.noDirectDamage) {
+          // "You're Too Slow" — LUỒNG RIÊNG (Fragaria yêu cầu trực tiếp: "sau khi
+          // dùng để counter thành công sẽ đánh dấu kẻ địch bị counter rồi hiện
+          // tiếp option ở moves để tấn công kẻ địch gây dmg sau đó skill sẽ bắt
+          // đầu cd").
+          // KHÁC hoàn toàn counter page thường (gây dmg phản công NGAY tại đây):
+          //   1. Counter thành công → CHỈ ngắt đòn + đánh dấu địch, KHÔNG dmg.
+          //   2. Người chơi thấy option "⚡ You're Too Slow — Đâm <địch>" trong
+          //      dropdown Moves, tự bấm khi muốn → lúc đó mới roll dice + gây dmg.
+          //   3. CD chỉ bắt đầu SAU đòn đâm đó (xem huỷ CD ngay bên dưới +
+          //      interaction-handlers.js's nhánh "ytsfollowup").
+          // Cách cũ (tự bắn lại ở turn sau qua youreTooSlowPending) đã bỏ — nó
+          // không cho người chơi chọn thời điểm và cũng không khớp mô tả.
+          if (counterSkillKey === "you're too slow") {
+            // Huỷ CD vừa set ở khối trên — CD chỉ tính sau khi đâm xong.
+            delete target.skillCooldowns[counterSkillKey];
+            target.youreTooSlowMark = { markedTargetId: p.attackerId, markedLabel: attackerResolved.label };
+            choiceNote = `⚡ **You're Too Slow** — né sạch đòn và ĐÁNH DẤU ${attackerResolved.label}! Mở dropdown **Moves** để tung đòn đâm (skill chỉ vào cooldown sau khi đâm).`;
+          } else if (!effect.noDirectDamage) {
             const built = autoBuildDmgStrFromSkillRoll(counterSkill);
             if (built.dmgStr) {
               let counterDmgStr = built.dmgStr;
@@ -167,13 +205,6 @@ app.post("/rtparry/:token/result", async (req, res) => {
                 attackerResolved.combatant.paralyze = (attackerResolved.combatant.paralyze ?? 0) + effect.paralyzeAfter;
               }
               choiceNote = `⚔️ Counter thành công! **${counterSkill.name}** phản công ${attackerResolved.label} -${counterPreview.totalDmg.toFixed(3)} HP`;
-              // GAP ĐÃ SỬA — "You're Too Slow": "turn sau kích hoạt lại 1 lần"
-              // — lưu lại target đã đánh dấu + dmgStr đã roll, TỰ ĐỘNG kích
-              // hoạt lại (không cần rtparry lần 2) ở advanceCombatantTurn khi
-              // tới lượt kế tiếp của người dùng counter này (turn-advance.js).
-              if (counterSkillKey === "you're too slow") {
-                target.youreTooSlowPending = { markedTargetId: p.attackerId, dmgStr: counterDmgStr };
-              }
             } else {
               choiceNote = `⚔️ Counter thành công! **${counterSkill.name}**`;
             }

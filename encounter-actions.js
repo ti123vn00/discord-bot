@@ -15,7 +15,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
+module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
 
   async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
     let result;
@@ -177,7 +177,9 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       if (!encounter) throw new Error("Channel này chưa có encounter nào.");
       const player = encounter.players[userId];
       if (!player) throw new Error("Bạn chưa tham gia encounter này.");
-      if (!hasPerk(player, "Shin")) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin` nếu thực sự có sở hữu).");
+      // Cùng điều kiện với dropdown Special (encounter-panels.js) — nếu 2 nơi
+      // lệch nhau thì nút hiện ra rồi bấm lại báo lỗi.
+      if (!hasShinAccess(player)) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin`).");
       if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
       // Decimate Mind (Shin, [20 Points]): cho phép hi sinh vượt mốc -10 (xuống tới
       // -35) để kích hoạt Shin/Mang — KHÔNG có perk thì mốc giới hạn vẫn là -10 như

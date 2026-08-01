@@ -22,6 +22,7 @@ module.exports = function ({
   calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp,
   getPlayerDataWithSlot, savePlayerData, hasEncounterStarted,
   validateAndRerollPrescript, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA,
+  ENCOUNTER_SANITY_MAX,
 }) {
   async function buildJoinedCombatant(encounter, userId, displayName, profileDataForDefaults, kv = {}) {
     const hp = parseInt(kv["hp"] ?? "", 10);
@@ -96,6 +97,28 @@ module.exports = function ({
     joined.unlockedPagesSnapshot = (profileData.equippedPages ?? []).filter(Boolean);
     joined.unlockedEgoPagesSnapshot = (profileData.equippedEgoPages ?? []).filter(Boolean);
     joined.equippedAccessoriesSnapshot = (profileData.equippedAccessories ?? []).filter(Boolean);
+    // ── ACCESSORY passive lúc VÀO TRẬN (GAP ĐÃ SỬA — Fragaria: "toàn bộ
+    // accessory ở trong accessory.js đều chưa được implement"). Audit lại thì
+    // Giày Wan MK3 (Resourceful/Chain-Dashes/Quickstep) và Composition Tool
+    // (Shimmering) ĐÃ có; còn thiếu Perfect Cube (cả 3), Composition Tool
+    // (Reactive/Energetic) và Realization của Găng Tay Câm Lặng — bổ sung ở đây.
+    // `wasJoined` guard: chỉ áp 1 lần lúc join thật, KHÔNG áp lại khi refresh
+    // snapshot (nếu không sẽ cộng Light/Sanity vô hạn).
+    const accessoriesLower = joined.equippedAccessoriesSnapshot.map(a => String(a).toLowerCase());
+    if (!wasJoined && accessoriesLower.includes("perfect cube")) {
+      // "Perfect Start": start encounter với 50% Max Light hiện tại.
+      joined.currentLight = Math.min(joined.maxLight, (joined.currentLight ?? 0) + Math.floor((joined.maxLight ?? 0) / 2));
+      // "Perfect Mind": start encounter với +30 Sanity.
+      joined.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, (joined.currentSanity ?? 0) + 30);
+    }
+    // "Perfect Body" (+10 HP mỗi turn end) và "Reactive" (kháng Stagger 2 lần/
+    // encounter) cần state riêng — đọc ở turn-advance.js / checkStaggerPanic.
+    joined.hasPerfectCube = accessoriesLower.includes("perfect cube");
+    if (!wasJoined && accessoriesLower.includes("composition tool")) {
+      joined.reactiveStaggerResistLeft = 2;
+    }
+    joined.hasCompositionTool = accessoriesLower.includes("composition tool");
+    joined.hasGangTayCamLang = accessoriesLower.includes("gang tay cam lang") || accessoriesLower.includes("găng tay câm lặng");
     joined.hasIronHorus = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "") === "abydos's uniform - lazy style";
     const equippedOutfitNameNormalized = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "");
     joined.hasReverberationEnsemble = equippedOutfitNameNormalized === "reverberation ensemble";

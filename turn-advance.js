@@ -93,6 +93,24 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       // động được", hồi đầy 1 LẦN lúc hết stagger (đã xử lý ở trên).
     } else {
       combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + ENCOUNTER_STAMINA_REGEN_PER_TURN);
+      // "Airborne" (GAP ĐÃ SỬA — Fragaria: "Airborne cũng chưa được implement"):
+      // "kẻ địch bị hất tung nhận 10 Dmg vào End Turn. Biến mất sau End Turn
+      // hoặc sau bị dính đòn có condition Airborne".
+      // Dmg 10 là CỐ ĐỊNH, KHÔNG qua resistance/DR (luật ghi thẳng "nhận 10
+      // Dmg", không nói giảm trừ gì) — đây là dmg do rơi xuống đất, không phải
+      // đòn đánh. Áp TRƯỚC Perfect Body để "hồi 10 HP" không che mất sát thương.
+      if (combatant.airborne) {
+        combatant.currentHp = Math.max(0, (combatant.currentHp ?? 0) - 10);
+        combatant.airborne = false;
+        combatant.airborneEndTurnDmgApplied = 10; // caller đọc để ghi log/thông báo
+      } else {
+        combatant.airborneEndTurnDmgApplied = 0;
+      }
+      // "Perfect Body" (Perfect Cube) — GAP ĐÃ SỬA: "Mỗi turn end được hồi 10 HP".
+      // Chỉ hồi cho người CÒN SỐNG (0 HP là đã gục — hồi sẽ tự hồi sinh, sai luật).
+      if (combatant.hasPerfectCube && combatant.currentHp > 0) {
+        combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + 10);
+      }
     }
     // Haou Tremor (xác nhận trực tiếp): "Khi end turn sẽ tự động kích Tremor
     // Burst trên người kẻ địch [chính mình], ứng với mỗi 1 stack thì giảm kẻ địch

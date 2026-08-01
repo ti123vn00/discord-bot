@@ -15,7 +15,7 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ findSkill, hasPerk }) {
+module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
 
   // buildEncounterActionPanel — TOP-LEVEL dropdown, GAP REDESIGN (xác nhận
   // trực tiếp, spec chi tiết từ user): thay vì 1 dropdown DÀI gộp hết mọi hành
@@ -60,7 +60,19 @@ module.exports = function ({ findSkill, hasPerk }) {
   // buildMovesPanel dùng để build sub-menu thật — tránh tính 2 lần logic.
   function buildMovesOptions(combatant) {
     const options = [];
-    const criticalSkill = combatant.weaponCriticalKey ? findSkill(combatant.weaponCriticalKey) : null;
+    // "Atelier Logic" — GAP ĐÃ SỬA (Fragaria: "Atelier Logic chưa hoạt động, cụ
+    // thể là critical xong không đổi qua lại giữa dạng shotgun và pistol").
+    // Vũ khí có 2 FORM, mỗi form là 1 Critical riêng, và mô tả roll() của cả 2
+    // đều ghi rõ "sau đó đổi qua dạng <form kia>". Nhưng weaponCriticalKey là
+    // giá trị TĨNH lấy từ weapon.js lúc join ("atelier logic shotgun") nên nút
+    // Critical VĨNH VIỄN là Shotgun — không có state nào theo dõi form cả.
+    // Giờ form lưu ở `atelierLogicForm` ("shotgun"/"pistols"), panel đọc field
+    // này để dựng nút, resolve-pending-action.js lật form sau khi dùng.
+    const isAtelierLogic = combatant.weaponName === "Atelier Logic";
+    const criticalKeyEffective = isAtelierLogic
+      ? `atelier logic ${combatant.atelierLogicForm ?? "shotgun"}`
+      : combatant.weaponCriticalKey;
+    const criticalSkill = criticalKeyEffective ? findSkill(criticalKeyEffective) : null;
     if (criticalSkill) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`critical:${criticalSkill.name}`));
     }
@@ -70,6 +82,15 @@ module.exports = function ({ findSkill, hasPerk }) {
     // duy nhất) — chỉ hiện khi cầm Soldato Rifle VÀ đủ 5 viên đạn trong súng.
     if (combatant.weaponName === "Soldato Rifle" && (combatant.bulletStack ?? 0) >= 5) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: Shock Round (tiêu 5 đạn, còn ${combatant.bulletStack})`).setValue("critical:Shock Round"));
+    }
+    // "You're Too Slow" — option đòn đâm sau khi counter thành công (Fragaria yêu
+    // cầu: "đánh dấu kẻ địch bị counter rồi hiện tiếp option ở moves để tấn công
+    // kẻ địch gây dmg sau đó skill sẽ bắt đầu cd"). Đặt ĐẦU danh sách cho dễ thấy
+    // — đây là hành động có thời hạn (mất khi mục tiêu gục).
+    if (combatant.youreTooSlowMark?.markedTargetId) {
+      options.push(new StringSelectMenuOptionBuilder()
+        .setLabel(`⚡ You're Too Slow — Đâm ${combatant.youreTooSlowMark.markedLabel ?? "mục tiêu đã đánh dấu"}`.slice(0, 100))
+        .setValue("ytsfollowup"));
     }
     const addedPageNames = new Set();
     // GAP ĐÃ SỬA (Fragaria báo trực tiếp: "counter page và light dash/fleetfoot
@@ -125,7 +146,10 @@ module.exports = function ({ findSkill, hasPerk }) {
   // buildSpecialOptions — tương tự buildMovesOptions, cho nhóm "Special".
   function buildSpecialOptions(combatant) {
     const options = [];
-    if (hasPerk(combatant, "Shin")) {
+    // BUG ĐÃ SỬA — dùng hasShinAccess thay hasPerk("Shin") trần: perk "Shin"
+    // TRƯỚC ĐÂY không tồn tại trong PERK_POINT_COSTS/PERK_BRANCH nên không ai
+    // cấp được, và người đã có perk NHÁNH shin vẫn bị chặn. Xem skill-tree.js.
+    if (hasShinAccess(combatant)) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1528452250861699215", name: "Shin" }));
     }
     if ((combatant.emotionLevel ?? 0) >= 1) {

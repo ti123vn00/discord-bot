@@ -68,7 +68,13 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
     "Charge Up": 5, "Convert Physical Trauma": 10, "Blessed by the Sparks": 15,
     "Electrifying Vendetta": 30, "Short Circuit Trip": 35, "Kinetic Energy": 40,
     "Overflowing Guard": 45, "Overcharged Vessel": 50,
-    // Shin
+    // Shin — "Shin" là KỸ NĂNG GỐC, cost 0 (xác nhận trực tiếp từ Fragaria: "Shin
+    // là một kỹ năng khi unlock thì sẽ mở được Shin Skill tree nhưng không cần
+    // nâng nhánh Shin thì vẫn sử dụng được Shin, nhánh chỉ là bổ trợ thêm").
+    // TRƯỚC ĐÂY "Shin" KHÔNG hề có trong bảng này lẫn PERK_BRANCH — nên nó không
+    // xuất hiện ở đâu để GM biết mà cấp, dù `hasPerk(combatant, "Shin")` là điều
+    // kiện DUY NHẤT để hiện Shin/Mang ở dropdown Special.
+    "Shin": 0,
     "Shin Follow Up": 5, "Defensive Light": 10, "Decimate Mind": 20, "Regain Mind": 30,
     "Overwhelming Power": 50,
     // Light (chỉ thủ thư thư viện) — LƯU Ý: "Light Dash" ở đây là PERK (mỗi turn
@@ -122,6 +128,7 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
     "Electrifying Vendetta": "envy", "Short Circuit Trip": "envy", "Kinetic Energy": "envy",
     "Overflowing Guard": "envy", "Overcharged Vessel": "envy",
     // Shin
+    "Shin": "shin",
     "Shin Follow Up": "shin", "Defensive Light": "shin", "Decimate Mind": "shin", "Regain Mind": "shin",
     "Overwhelming Power": "shin",
     // Light
@@ -168,6 +175,21 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
   function hasPerk(combatant, perkName) {
     return (combatant.unlockedPerks ?? []).includes(perkName);
   }
+
+  /** hasShinAccess — BUG ĐÃ SỬA (Fragaria: "Shin không hoạt động, không thấy ở
+   *  dropdown của special").
+   *  Luật (xác nhận trực tiếp): "Shin" là kỹ năng GỐC — unlock nó thì mở được
+   *  Shin Skill tree, nhưng KHÔNG cần nâng nhánh vẫn dùng Shin được; nhánh chỉ
+   *  bổ trợ cho mạnh hơn.
+   *  Vì vậy điều kiện dùng Shin/Mang là: có perk "Shin", HOẶC đã có bất kỳ perk
+   *  nào thuộc nhánh shin (không thể có perk nhánh mà chưa mở Shin — nên đây là
+   *  suy ra hợp lệ, đồng thời cứu các profile cũ đã được cấp perk nhánh nhưng
+   *  chưa từng được cấp "Shin" trần vì trước đây nó không tồn tại trong bảng). */
+  function hasShinAccess(combatant) {
+    const perks = combatant.unlockedPerks ?? [];
+    if (perks.includes("Shin")) return true;
+    return perks.some(p => PERK_BRANCH[p] === "shin");
+  }
   
   // ── SKILL TREE PERK ENGINE ───────────────────────────────────────────────────
   // Chỉ tự động hoá perk dựa trên hệ thống ĐÃ CÓ (HP%/Sanity/Stamina/Poise/Charge/
@@ -192,6 +214,7 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
 
   return {
     hasPerk,
+    hasShinAccess,
     findExclusiveConflict,
     calcSkillTreePointsEarned,
     calcBranchPointsAllocated,

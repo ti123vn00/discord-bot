@@ -275,7 +275,7 @@ const SKILLS = {
   },
   "will of the city": {
     name: "Will of The City",
-    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,10);
       return [
@@ -289,7 +289,7 @@ const SKILLS = {
   },
   "dodge and strike": {
     name: "Dodge and Strike",
-    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,16);
       return [
@@ -912,7 +912,7 @@ const SKILLS = {
     },
   },
   "yield my flesh": {
-    name: "Yield My Flesh", cost: "2 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
+    name: "Yield My Flesh", cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1=r(3,6),d2=r(6,12);
       return [
@@ -998,7 +998,7 @@ const SKILLS = {
   },
   "furusiyya": {
     name: "Furūsiyya",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,10);
       return [
@@ -1085,7 +1085,7 @@ const SKILLS = {
   },
   "law and order": {
     name: "Law and Order",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,5), d2 = r(5,9), d3 = r(8,14);
       return [
@@ -1749,7 +1749,7 @@ roll(v = "no") {
   },
   "loss of senses": {
     name: "Loss of Senses",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,11);
       return [
@@ -1786,7 +1786,7 @@ roll(v = "no") {
   "you're too slow": {
     name: "You're Too Slow",
     tags: "Bleed",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(14,23);
       return [
@@ -3651,7 +3651,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(3,8);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đá kẻ địch lên trời gây **[Airborne]**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — đá kẻ địch lên trời gây 1 **[Airborne]**`,
       ];
     },
   },
@@ -4396,7 +4396,7 @@ Object.assign(SKILLS, {
       const d1 = r(10, 14);
       return [
         `*Kích hoạt sau đòn đánh thứ 4 mỗi turn — Không thể tồn tại chung với **Pounce***`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây [Airborne]`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 **[Airborne]**`,
       ];
     },
   },
@@ -4585,7 +4585,7 @@ Object.assign(SKILLS, {
   "tanglecleaver reload": {
     name: "Tanglecleaver Reload",
     weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
-    cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,10);
       return [
@@ -4952,6 +4952,14 @@ const DICE_SIDE_EFFECT_MAP = {
   "Freeble":        { field: "freeble", side: "target" },
   "Hemorrhage":     { field: "hemorrhage", side: "target" },
   "Defense Down":   { field: "defenseDown", side: "target" },
+  // Airborne (GAP ĐÃ SỬA — Fragaria: "Airborne cũng chưa được implement"):
+  // "hất tung — kẻ địch bị hất tung nhận 10 Dmg vào End Turn. Biến mất sau End
+  // Turn hoặc sau bị dính đòn có condition Airborne". Field `airborne` đã tồn
+  // tại sẵn trong combatant-factory.js và đã hiện ở encounter-display.js, nhưng
+  // KHÔNG có logic nào gán/tiêu thụ nó — chỉ là text mô tả suông.
+  // Dùng số (1) thay boolean để đi chung cơ chế diceEffects; xử lý ở
+  // resolve-pending-action.js (ép về true) và turn-advance.js (gây 10 dmg + xoá).
+  "Airborne":       { field: "airborne", side: "target" },
   "DefenseDown":    { field: "defenseDown", side: "target" },
   "Haste":          { field: "haste", side: "self" },
   "Protection":     { field: "protection", side: "self" },
@@ -4976,7 +4984,10 @@ function autoExtractDiceSideEffects(lines) {
       if (eff[field] !== undefined || eff[field + "__t"] !== undefined) continue;
       const namePat = name.replace(/\s+/g, "\\s*");
       // Bắt "N <:Emoji:id>Tên" HOẶC "N Tên" (một số dòng không kèm emoji)
-      const re = new RegExp(`(\\d+)\\s*(?:<:[^:>]+:\\d+>)?\\s*${namePat}(?![A-Za-z])`, "i");
+      // `[*\[\]]*` — cho phép markdown/ngoặc chen giữa số và tên status (VD
+      // "gây 1 **[Airborne]**", "nhận 2 **Poise**") — trước đây pattern chỉ chấp
+      // nhận khoảng trắng + emoji nên mọi status viết đậm/đóng ngoặc đều trượt.
+      const re = new RegExp(`(\\d+)\\s*[*\\[\\]]*\\s*(?:<:[^:>]+:\\d+>)?\\s*[*\\[\\]]*\\s*${namePat}(?![A-Za-z])`, "i");
       const m = line.match(re);
       if (!m) continue;
       const amount = parseInt(m[1], 10);

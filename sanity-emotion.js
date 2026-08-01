@@ -40,6 +40,11 @@ module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, E
   function applyEmotionDelta(combatant, delta) {
     const notes = [];
     if (!delta) return notes;
+    // "Energetic" (Composition Tool) — GAP ĐÃ SỬA (Fragaria: "toàn bộ accessory
+    // trong accessory.js đều chưa được implement"): "Gia tăng x2 hiệu quả nhận
+    // Emotion Coin". CHỈ nhân chiều DƯƠNG (nhận coin) — chiều âm là chi phí
+    // (VD Shin/Mang tốn coin), nhân đôi chi phí là phản tác dụng hoàn toàn.
+    if (delta > 0 && combatant.hasCompositionTool) delta *= 2;
     // BUG ĐÃ SỬA (xác nhận trực tiếp: "emotion level thì không cho âm coin, dù có
     // trừ thì tới 0 là dừng") — trước đây cộng delta trực tiếp KHÔNG clamp, coin
     // có thể âm vô hạn (VD Shin/Mang tốn 1 Coin nhiều lần liên tiếp).

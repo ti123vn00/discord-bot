@@ -2869,6 +2869,19 @@ if (message.content.startsWith("-gacha")) {
     if (sub === "end") {
       const encounter = await getEncounter(encChannelId);
       if (!encounter) { message.reply("⚠️ Channel này chưa có encounter nào."); return; }
+      // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "player được encounter end thoải mái
+      // khiến họ abuse điều này"). NGUYÊN NHÂN GỐC: encounter từ Party Board đặt
+      // `gmId: board.hostId` (party-board.js) — tức host contract TRỞ THÀNH "GM"
+      // của encounter đó, nên pass được đúng check GM ngay bên dưới và tự
+      // `-encounter end` bất cứ lúc nào. Hệ quả: sắp thua thì end trận, không
+      // mất gì (không Death Penalty, không tốn lượt contract) rồi làm lại.
+      // Contract PHẢI tự kết thúc qua finalizeQuestOutcome (thắng đủ kill / cả
+      // team gục) — không có đường thoát thủ công. Chỉ admin mới force-end được
+      // (để gỡ encounter hỏng).
+      if (encounter.isQuest && !isAdmin) {
+        message.reply("⚠️ Encounter Contract không thể tự kết thúc — trận chỉ kết thúc khi hoàn thành mục tiêu hoặc cả team gục ngã. Nếu encounter bị lỗi/treo, nhờ admin xử lý.");
+        return;
+      }
       if (!isAdmin && message.author.id !== encounter.gmId) { message.reply("⚠️ Chỉ GM tạo encounter này (hoặc admin khác) mới được kết thúc."); return; }
       // BUG ĐÃ SỬA: trước đây xoá actionLog VĨNH VIỄN ngay khi end, không có cách
       // nào lấy lại lịch sử trận đấu sau đó — giờ tự động gửi TOÀN BỘ actionLog

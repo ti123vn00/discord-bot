@@ -1178,7 +1178,7 @@ function getMaxEmotionLevel(combatant) {
 }
 // Các cặp perk LOẠI TRỪ NHAU theo skill tree (không ai có cả 2 cùng lúc) — check
 // lúc -unlockskilltree, KHÔNG cho mở cái thứ 2 nếu đã có cái đầu trong cặp.
-const { hasPerk, findExclusiveConflict, calcSkillTreePointsEarned, calcBranchPointsAllocated, applyStatusMultiplierToDmgStr, PERK_POINT_COSTS, PERK_BRANCH, BRANCH_KEYS, UNIVERSALLY_KNOWN_WEAPONS, MIDDLE_SYNDICATE_SKILLS, MUTUALLY_EXCLUSIVE_PERKS } = require("./skill-tree")({ calcGrade, GRADE_MIN }); // ĐÃ TÁCH sang file riêng (skill-tree.js)
+const { hasPerk, hasShinAccess, findExclusiveConflict, calcSkillTreePointsEarned, calcBranchPointsAllocated, applyStatusMultiplierToDmgStr, PERK_POINT_COSTS, PERK_BRANCH, BRANCH_KEYS, UNIVERSALLY_KNOWN_WEAPONS, MIDDLE_SYNDICATE_SKILLS, MUTUALLY_EXCLUSIVE_PERKS } = require("./skill-tree")({ calcGrade, GRADE_MIN }); // ĐÃ TÁCH sang file riêng (skill-tree.js)
 
 const { BOOK_GRANTS, getBookTopLevelChoices, getBookGroupChoices, isValidBookChoice, buildBookChoiceComponents, executeReadBookChoose } = require("./book-system")({ findBook, getPlayerDataWithSlot, savePlayerData }); // ĐÃ TÁCH sang file riêng (book-system.js)
 
@@ -1282,8 +1282,34 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
   const guardChargesNeededNet = target.hasIronHorus ? (bankedGuardHits >= hitCount ? 0 : 1) : Math.ceil(hitsNeedingNewGuardCharge / hitsPerCharge);
   const evadeChargesNeededNet = target.hasIronHorus ? (bankedEvadeHits >= hitCount ? 0 : 1) : Math.ceil(hitsNeedingNewEvadeCharge / hitsPerCharge);
 
+  // ── PERK PHÒNG THỦ (BUG NGHIÊM TRỌNG ĐÃ SỬA) ──────────────────────────────
+  // Fragaria báo trực tiếp: "skill tree close call wind của wrath không hoạt
+  // động, có thể là còn rất nhiều perk skill tree nữa cũng không hoạt động".
+  // NGUYÊN NHÂN GỐC: toàn bộ perk ảnh hưởng chi phí phòng thủ CHỈ được cài trong
+  // `performGuardEvade` (encounter-actions.js) — đó là đường LỆNH TEXT
+  // `-encounter guard/evade` đã bị XOÁ trong đợt chuyển sang button/dropdown.
+  // Đường nút bấm dùng computeDefenseOptions + handler encreactivedef, và ở đây
+  // TRƯỚC GIỜ KHÔNG có một dòng hasPerk nào — nên MỌI perk sau đây chết lặng
+  // (không lỗi, chỉ đơn giản không có tác dụng):
+  //   • Close Call Wind (Wrath 10) — dưới 50% HP → Evade rẻ hơn 5 Sta
+  //   • Overflowing Guard (Envy 45) — ≥7 Charge → Guard nửa giá, tiêu 1 Charge
+  //   • Fleeting Steps (Sloth 10) — cứ lần né thứ 4 thì MIỄN PHÍ
+  // (Resourceful của Giày Wan MK3 KHÔNG nằm ở đây — nó là ACCESSORY và đã được
+  // implement dạng "refund sau khi trừ" trong interaction-handlers.js; thêm ở
+  // đây nữa sẽ giảm giá 2 lần.)
+  // Tính TẠI ĐÂY để cả hiển thị (nút hiện giá đúng) lẫn lúc trừ Stamina (handler
+  // dùng chính opts.guard.cost/opts.evade.cost) đều nhất quán — không còn 2
+  // nguồn sự thật như trước.
+  // LƯU Ý: Fleeting Steps ĐẾM SỐ LẦN NÉ nên KHÔNG tăng bộ đếm ở đây (hàm này bị
+  // gọi nhiều lần chỉ để dựng UI). Bộ đếm tăng ở handler lúc THẬT SỰ né — hàm
+  // này chỉ ĐỌC để báo trước "lần này free".
   const guardCostPerCharge = target.hasIronHorus ? 40 : 10;
-  const guardCost = guardChargesNeededNet * guardCostPerCharge;
+  let guardCost = guardChargesNeededNet * guardCostPerCharge;
+  const perkNotes = [];
+  if (hasPerk(target, "Overflowing Guard") && (target.charge ?? 0) >= 7) {
+    guardCost = Math.ceil(guardCost / 2);
+    perkNotes.push("Overflowing Guard");
+  }
   const guardAvailable = !bypass.blockGuard && target.currentStamina >= guardCost;
   // maxAffordableGuardCharges — GAP ĐÃ SỬA (xác nhận trực tiếp: "hệ thống tùy
   // chọn né theo từng hit... nhận hit 1 và 2 nhưng né/guard hit 3") — reactive
@@ -1299,7 +1325,17 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
   // (field riêng lightDashFreeEvadeCharges, tiêu thụ ƯU TIÊN trước charge mua
   // bằng Stamina bình thường).
   const hasLightDashFreeEvade = !bypass.blockEvade && (target.lightDashFreeEvadeCharges ?? 0) > 0;
-  const evadeCost = hasLightDashFreeEvade ? 0 : evadeChargesNeededNet * evadeCostPerCharge;
+  let evadeCostRaw = evadeChargesNeededNet * evadeCostPerCharge;
+  if (hasPerk(target, "Close Call Wind") && target.currentHp < target.maxHp * 0.5) {
+    evadeCostRaw = Math.max(0, evadeCostRaw - 5);
+    perkNotes.push("Close Call Wind");
+  }
+  // Fleeting Steps — lần né thứ 4/8/12... miễn phí. Đọc bộ đếm HIỆN TẠI + 1
+  // (lần né sắp tới) mà KHÔNG ghi lại (xem lưu ý ở trên).
+  const fleetingStepsFree = hasPerk(target, "Fleeting Steps")
+    && (((target.evadeCountForFleetingSteps ?? 0) + 1) % 4 === 0);
+  if (fleetingStepsFree) { evadeCostRaw = 0; perkNotes.push("Fleeting Steps (né free)"); }
+  const evadeCost = hasLightDashFreeEvade ? 0 : evadeCostRaw;
   const evadeAvailable = !bypass.blockEvade && !evadeBlocked && (hasLightDashFreeEvade || target.currentStamina >= evadeCost);
   const maxAffordableEvadeCharges = evadeBlocked ? 0 : Math.min(hitCount, bankedEvadeHits + Math.floor(target.currentStamina / evadeCostPerCharge) * hitsPerCharge);
 
@@ -1310,6 +1346,7 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
 
   return {
     chargesNeeded, hitsPerCharge, maxAffordableGuardCharges, maxAffordableEvadeCharges,
+    perkNotes, fleetingStepsFree,
     guard: { available: guardAvailable, cost: guardCost, costPerCharge: guardCostPerCharge, chargesNeededNet: guardChargesNeededNet, hitsPerCharge },
     evade: { available: evadeAvailable, cost: evadeCost, blockedReason: evadeBlocked ? "Mất Chân" : null, costPerCharge: evadeCostPerCharge, chargesNeededNet: evadeChargesNeededNet, hitsPerCharge },
     parry: { available: parryAvailable },
@@ -2148,8 +2185,8 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
 const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll } = require("./skills");
-const { buildEncounterActionPanel, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildBossActionPanel } = require("./encounter-panels")({ findSkill, hasPerk }); // ĐÃ TÁCH sang file riêng (encounter-panels.js) — đặt SAU import skills.js để tránh TDZ (findSkill là const)
-const { performGuardEvade, performParry, performShinMang, performManifestEgo, performOvercharge, performFollowUp, performUseItem } = require("./encounter-actions")({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
+const { buildEncounterActionPanel, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildBossActionPanel } = require("./encounter-panels")({ findSkill, hasPerk, hasShinAccess }); // ĐÃ TÁCH sang file riêng (encounter-panels.js) — đặt SAU import skills.js để tránh TDZ (findSkill là const)
+const { performGuardEvade, performParry, performShinMang, performManifestEgo, performOvercharge, performFollowUp, performUseItem } = require("./encounter-actions")({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES, hasShinAccess }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
 const { findWeapon } = require("./weapon");
 
 /**
@@ -2185,7 +2222,7 @@ const { findOutfit } = require("./outfit");
 const { findAccessory } = require("./accessory");
 const { findSfx, pickRandomBgm } = require("./sfx-config");
 const { buildBalanceEmbed } = require("./balance-display")({ getPlayerData, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }); // ĐÃ TÁCH sang file riêng (balance-display.js) — đặt SAU findOutfit/findAccessory (const, TDZ)
-const { buildJoinedCombatant } = require("./player-join-builder")({ createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA }); // module MỚI — TÁCH logic "-encounter join" để dùng chung với auto-join từ Party Board (quest system) — đặt SAU findOutfit (const, TDZ)
+const { buildJoinedCombatant } = require("./player-join-builder")({ createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_SANITY_MAX }); // module MỚI — TÁCH logic "-encounter join" để dùng chung với auto-join từ Party Board (quest system) — đặt SAU findOutfit (const, TDZ)
 const { CONTRACTS, QUEST_MOBS } = require("./quest-data"); // module MỚI — data tĩnh Quest System (contract list + mob stat block)
 // aiHooks — object MUTABLE khai báo SỚM ở đây (rỗng lúc này) để truyền được vào
 // CẢ party-board.js (cần gọi maybeRunAiTurn sau khi startPartyBoard tự roll turn

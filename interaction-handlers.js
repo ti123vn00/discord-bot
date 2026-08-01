@@ -326,8 +326,30 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.customId.startsWith("partybegin:")) {
     const [, channelId] = interaction.customId.split(":");
     try {
-      await startPartyBoard(channelId, interaction.user.id);
-      await interaction.update({ content: "▶️ Contract đã bắt đầu! Encounter đã được tạo — xem bên dưới.", components: [] }).catch(() => {});
+      const { encounter: startedEnc, contract: startedContract, prescriptNotesInit } = await startPartyBoard(channelId, interaction.user.id);
+      await interaction.update({ content: `▶️ Contract **${startedContract.name}** đã bắt đầu!`, components: [] }).catch(() => {});
+      // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "sau khi contract bắt đầu thì không
+      // tự hiện encounter board mà phải tự gõ encounter status mới hiện").
+      // NGUYÊN NHÂN GỐC: nút này chỉ update message party board thành dòng chữ
+      // "xem bên dưới" — nhưng KHÔNG có gì được gửi bên dưới cả. startPartyBoard
+      // trả về encounter nhưng giá trị bị bỏ đi hoàn toàn (`await` trần).
+      // Giờ gửi board + panel hành động y như `-encounter status`.
+      const startChannel = await client.channels.fetch(channelId).catch(() => null);
+      if (startChannel) {
+        await startChannel.send({
+          embeds: [buildEncounterBoardEmbed(startedEnc)],
+          content: (prescriptNotesInit ?? []).length > 0 ? prescriptNotesInit.map(n => `> ${n}`).join("\n") : undefined,
+        }).catch(() => {});
+        // Panel hành động RIÊNG cho từng thành viên (dropdown gắn userId — mỗi
+        // người chỉ bấm được dropdown của mình, xem check ownerId ở encmenu).
+        for (const pid of Object.keys(startedEnc.players ?? {})) {
+          await startChannel.send({
+            content: `<@${pid}> — bảng hành động của bạn:`,
+            components: buildEncounterActionPanel(channelId, startedEnc.players[pid], pid),
+          }).catch(() => {});
+        }
+      }
+      announceCurrentTurn(channelId, startedEnc, true).catch(() => {});
       maybeRunAiTurn(channelId).catch(() => {});
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -1281,7 +1303,13 @@ client.on("interactionCreate", async (interaction) => {
           if (clashCounterEffect.protection) clasher.protection = (clasher.protection ?? 0) + clashCounterEffect.protection;
           if (clashCounterEffect.defenseUp) clasher.defenseUp = (clasher.defenseUp ?? 0) + clashCounterEffect.defenseUp;
           if (clashCounterEffect.unlocksSkillKey) clasher.unlockedFollowUpSkillKey = clashCounterEffect.unlocksSkillKey;
-          if (!clashCounterEffect.noDirectDamage) {
+          // "You're Too Slow" thắng Clash — cùng luồng MỚI với counter qua rtparry
+          // (đánh dấu → option ở Moves → đâm → mới vào CD). Xem express-routes.js.
+          if (chosenKey === "you're too slow") {
+            delete clasher.skillCooldowns?.[chosenKey];
+            clasher.youreTooSlowMark = { markedTargetId: p.attackerId, markedLabel: attackerResolved.label };
+            choiceNote += ` ⚡ **You're Too Slow** đánh dấu ${attackerResolved.label} — mở **Moves** để tung đòn đâm (CD chỉ bắt đầu sau khi đâm).`;
+          } else if (!clashCounterEffect.noDirectDamage) {
             const built = autoBuildDmgStrFromSkillRoll(chosenSkill);
             if (built.dmgStr) {
               let counterDmgStr = built.dmgStr;
@@ -1297,9 +1325,6 @@ client.on("interactionCreate", async (interaction) => {
               }
               if (clashCounterEffect.paralyzeAfter) {
                 attackerResolved.combatant.paralyze = (attackerResolved.combatant.paralyze ?? 0) + clashCounterEffect.paralyzeAfter;
-              }
-              if (chosenKey === "you're too slow") {
-                clasher.youreTooSlowPending = { markedTargetId: p.attackerId, dmgStr: counterDmgStr };
               }
               choiceNote += ` Đồng thời phản công gây ${attackerResolved.label} -${counterPreview.totalDmg.toFixed(3)} HP (hiệu ứng page-counter).`;
             }
@@ -2025,6 +2050,54 @@ client.on("interactionCreate", async (interaction) => {
         )],
       }).catch(() => {});
       return;
+    }
+    if (value === "ytsfollowup") {
+      // Đòn đâm của "You're Too Slow" — bước 2 của luồng counter (xem
+      // express-routes.js). CD chỉ set SAU đòn này, đúng yêu cầu "sau đó skill
+      // sẽ bắt đầu cd".
+      const encYts = await getEncounter(channelId);
+      const meYts = encYts?.players?.[interaction.user.id];
+      if (!meYts) return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      if (!meYts.youreTooSlowMark?.markedTargetId) {
+        return interaction.reply({ content: "⚠️ Bạn không có mục tiêu nào đang bị **You're Too Slow** đánh dấu.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      if (!isCurrentTurnHolder(encYts, interaction.user.id)) {
+        return interaction.reply({ content: "⚠️ Chưa tới lượt bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      let ytsText = "";
+      await withLock(encounterKey(channelId), async () => {
+        const enc = await getEncounter(channelId);
+        const me = enc?.players?.[interaction.user.id];
+        if (!me?.youreTooSlowMark?.markedTargetId) { ytsText = "⚠️ Dấu đã mất hiệu lực."; return; }
+        const markedResolved = resolveCombatant(enc, me.youreTooSlowMark.markedTargetId);
+        if (!markedResolved || markedResolved.combatant.currentHp <= 0) {
+          me.youreTooSlowMark = null;
+          ytsText = "⚠️ Mục tiêu đã bị đánh dấu không còn sống — dấu bị huỷ.";
+          await saveEncounter(channelId, enc);
+          return;
+        }
+        const ytsSkill = findSkill("you're too slow");
+        const built = autoBuildDmgStrFromSkillRoll(ytsSkill);
+        const preview = calcMathCore({
+          dmgStr: built.dmgStr, resStr: combatantResStr(markedResolved.combatant),
+          poiseInit: me.poise, chargeInit: me.charge,
+        });
+        markedResolved.combatant.currentHp = Math.max(0, markedResolved.combatant.currentHp - preview.totalDmg);
+        // Status từ dmgStr (3 Bleed) — đòn này KHÔNG đi qua reactive defense
+        // (địch đang bị đánh dấu, không được phòng thủ), nên áp thẳng.
+        markedResolved.combatant.bleed = preview.bleedStacksAfter ?? markedResolved.combatant.bleed;
+        checkStaggerPanic(markedResolved.combatant);
+        // CD bắt đầu TỪ ĐÂY (không phải lúc counter).
+        me.skillCooldowns = me.skillCooldowns ?? {};
+        me.skillCooldowns["you're too slow"] = parseSkillCooldownTurns(ytsSkill.cd) + 1;
+        me.youreTooSlowMark = null;
+        ytsText = `⚡ **You're Too Slow** — đâm ${markedResolved.label} **-${preview.totalDmg.toFixed(3)} HP** (còn ${markedResolved.combatant.currentHp.toFixed(1)}). Skill vào cooldown ${parseSkillCooldownTurns(ytsSkill.cd)} turn.`;
+        appendActionLog(enc, ytsText);
+        await saveEncounter(channelId, enc);
+      });
+      const encAfterYts = await getEncounter(channelId);
+      if (encAfterYts) announceCurrentTurn(channelId, encAfterYts, true).catch(() => {});
+      return interaction.update({ embeds: [{ title: "⚡ You're Too Slow", description: ytsText, color: 0x1abc9c }], components: [] }).catch(() => {});
     }
     if (value.startsWith("hit:")) {
       // LỖ HỔNG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "dù Blade

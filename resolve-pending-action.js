@@ -567,6 +567,22 @@ async function resolveOnePendingAction(encounter, p) {
                       for (const [rawKey, amount] of Object.entries(effect)) {
                         if (!rawKey.endsWith("__t") || !amount) continue;
                         const baseKey = rawKey.slice(0, -3);
+                        // "Airborne" là CỜ boolean (không stack) — xem
+                        // combatant-factory.js. Parser sinh ra số 1 để đi chung
+                        // cơ chế diceEffects, ép về true ở đây thay vì cộng dồn.
+                        if (baseKey === "airborne") {
+                          // "Biến mất sau bị dính đòn có condition Airborne" —
+                          // target ĐANG Airborne mà lại ăn thêm đòn Airborne thì
+                          // cờ bị TIÊU THỤ (rơi xuống) chứ không gia hạn.
+                          if (targetResolved.combatant.airborne) {
+                            targetResolved.combatant.airborne = false;
+                            defenseNote += ` 🪁[Dice ${i + 1} địch rơi xuống — **Airborne** bị tiêu]`;
+                            continue;
+                          }
+                          targetResolved.combatant.airborne = true;
+                          defenseNote += ` 🪁[Dice ${i + 1} địch bị **Airborne**]`;
+                          continue;
+                        }
                         const field = DICE_EFFECT_TARGET_FIELDS[baseKey] ?? DICE_EFFECT_SELF_FIELDS[baseKey];
                         if (!field) continue;
                         targetResolved.combatant[field] = (targetResolved.combatant[field] ?? 0) + amount;
@@ -1551,6 +1567,34 @@ async function resolveOnePendingAction(encounter, p) {
             }
             // Castigation — tiêu stack sau khi dùng (dù trúng hay trượt: page đã
             // được phóng ra, đúng câu "sau đó xóa stack Unlocked Blade").
+            // "Atelier Logic" — lật form sau khi dùng Critical (mô tả roll() của
+            // cả 2 form đều ghi "sau đó đổi qua dạng <form kia>"). Lật DÙ trúng
+            // hay trượt: cò đã bóp, súng đã chuyển cơ cấu — không phụ thuộc việc
+            // đòn có vào target hay không.
+            // "A Prayer For Loving Sorrow" (Găng Tay Câm Lặng) — GAP ĐÃ SỬA:
+            // dùng Critical của 1 vũ khí Black Silence → +1 Realization, MỖI VŨ
+            // KHÍ CHỈ 1 LẦN (nên track danh sách tên vũ khí, không đếm trần).
+            // Đủ 9 → Orlando Furioso: lần đổi vũ khí kế tiếp bắn Furioso thay vì
+            // đổi (cờ orlandoFuriosoReady, tiêu ở lệnh đổi vũ khí).
+            if (attacker.combatant.hasGangTayCamLang && attacker.type === "player"
+                && attacker.combatant.weaponCriticalKey === p.skillKey && attacker.combatant.weaponName) {
+              const wName = attacker.combatant.weaponName;
+              attacker.combatant.realizationWeapons = attacker.combatant.realizationWeapons ?? [];
+              if (!attacker.combatant.realizationWeapons.includes(wName)) {
+                attacker.combatant.realizationWeapons.push(wName);
+                attacker.combatant.realizationStacks = attacker.combatant.realizationWeapons.length;
+                verifyNote += ` 🧤[+1 Realization (${attacker.combatant.realizationStacks}/9)]`;
+                if (attacker.combatant.realizationStacks >= 9 && !attacker.combatant.orlandoFuriosoReady) {
+                  attacker.combatant.orlandoFuriosoReady = true;
+                  verifyNote += ` ✨[**Orlando Furioso** sẵn sàng — lần đổi vũ khí kế tiếp sẽ tung **Furioso**]`;
+                }
+              }
+            }
+            if (p.skillKey === "atelier logic shotgun" || p.skillKey === "atelier logic pistols") {
+              const nextForm = p.skillKey === "atelier logic shotgun" ? "pistols" : "shotgun";
+              attacker.combatant.atelierLogicForm = nextForm;
+              verifyNote += ` 🔫[Atelier Logic đổi sang dạng **${nextForm === "pistols" ? "Pistols" : "Shotgun"}**]`;
+            }
             if (p.skillKey === "castigation") {
               attacker.combatant.unlockBladeStage = 0;
               verifyNote += ` 🗝️[Đã tiêu **Unlocked Blade** — chuỗi Unlock reset về 0]`;

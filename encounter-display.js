@@ -282,7 +282,10 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.contemptOfTheGaze) dmgEffectParts.push(`-70% Dmg Bonus (Contempt of the Gaze)`);
     if ((combatant.unopposedAttackBoost ?? 0) > 0) dmgEffectParts.push(`+15% Dmg Bonus (Unopposed Attack Boost)`);
     if ((combatant.imitationConsumedTotal ?? 0) > 0) dmgEffectParts.push(`+${Math.min(50, combatant.imitationConsumedTotal * 5)}% Dmg Bonus (The Imitation)`);
-    if (dmgEffectParts.length > 0) lines.push(`> 📊 ${dmgEffectParts.join(" | ")}`);
+    // Fragaria yêu cầu trực tiếp: "xóa emoji chart kế bên karmic consequence"
+    // — 📊 đứng đầu dòng nằm SÁT emoji Karmic Consequence nên trông như 2 icon
+    // dính nhau. Bỏ hẳn, các emoji riêng của từng status đã đủ nhận diện.
+    if (dmgEffectParts.length > 0) lines.push(`> ${dmgEffectParts.join(" | ")}`);
     if (combatant.staggered) lines.push(`> 💫 **STAGGER** — còn ${combatant.staggerTurnsLeft} turn`);
     if (combatant.panic) lines.push(`> 😱 **PANIC** — còn ${combatant.panicTurnsLeft} turn`);
     if ((combatant.buffs ?? []).length > 0) lines.push(`> 🟢 Buff: ${combatant.buffs.map(b => b.text).join(" | ")}`);

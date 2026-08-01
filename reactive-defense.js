@@ -94,18 +94,16 @@ async function performEndTurn(channelId, userId, isAdmin) {
     }
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
-    // "You're Too Slow": "turn sau kích hoạt lại 1 lần" — TỰ ĐỘNG gây lại dmg
-    // (không cần rtparry lần 2) lên target đã đánh dấu từ round trước, nếu
-    // target đó vẫn còn sống trong encounter.
+    // "You're Too Slow" — ĐỔI LUỒNG (Fragaria yêu cầu: đánh dấu → hiện option ở
+    // Moves → tự bấm để đâm → LÚC ĐÓ mới vào CD). Bản cũ tự bắn lại ở turn kế
+    // (youreTooSlowPending) đã bỏ — xem express-routes.js.
+    // Dấu (youreTooSlowMark) KHÔNG tự xoá theo turn: người chơi giữ quyền chọn
+    // thời điểm đâm. Chỉ xoá khi đâm xong, hoặc khi mục tiêu đã gục (dọn ở đây
+    // để dropdown Moves không hiện option trỏ vào xác chết).
     for (const c of [...Object.values(encounter.enemies), ...Object.values(encounter.players)]) {
-      if (!c.youreTooSlowPending) continue;
-      const markedResolved = resolveCombatant(encounter, c.youreTooSlowPending.markedTargetId);
-      if (markedResolved && markedResolved.combatant.currentHp > 0) {
-        const resStr = combatantResStr(markedResolved.combatant);
-        const preview = calcMathCore({ dmgStr: c.youreTooSlowPending.dmgStr, resStr, poiseInit: c.poise, chargeInit: c.charge });
-        markedResolved.combatant.currentHp = Math.max(0, markedResolved.combatant.currentHp - preview.totalDmg);
-      }
-      c.youreTooSlowPending = null;
+      if (!c.youreTooSlowMark) continue;
+      const markedResolved = resolveCombatant(encounter, c.youreTooSlowMark.markedTargetId);
+      if (!markedResolved || markedResolved.combatant.currentHp <= 0) c.youreTooSlowMark = null;
     }
     encounter.turnNumber = (encounter.turnNumber ?? 1) + 1;
     let prescriptNotes = [];
@@ -489,12 +487,20 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       const hitsInThisGroup = Math.min(hitsPerCharge, hitCount - currentGroupIdx * hitsPerCharge);
       const opts = computeDefenseOptions(target, attackerWeapon, hitsInThisGroup, isM1Type, thisGroupBypass, p.isEyeOfHorusFixedBurst ?? false);
 
-      // Counter/Clash — CHỈ hiện ở nhóm ĐẦU TIÊN chưa quyết định (ảnh hưởng
-      // TOÀN BỘ đòn, không phải riêng 1 nhóm — cho phép chọn ở nhóm giữa chừng
-      // sẽ mâu thuẫn với các nhóm đã quyết định trước đó).
+      // isFirstUndecidedGroup — CHỈ còn dùng cho CLASH.
+      // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "light dash và fleet footstep, page
+      // counter bị biến mất sau khi qua group hit mới, group hit đầu vẫn thấy
+      // nhưng sau khi qua group hit mới của cùng 1 instance thì biến mất").
+      // NGUYÊN NHÂN GỐC: cờ này = false ngay khi BẤT KỲ nhóm nào đã chọn xong,
+      // và nó gate CẢ 3 thứ (Counter / Dash / Clash). Nhưng chỉ CLASH mới thật
+      // sự phải quyết định trước toàn bộ đòn (so dice TRƯỚC khi đòn diễn ra —
+      // clash ở nhóm giữa chừng thì mâu thuẫn với nhóm đã Guard xong).
+      // Counter (ngắt đòn) và Light Dash / Fleet Footsteps (né 1 nhóm hit) hoàn
+      // toàn hợp lệ ở nhóm bất kỳ — người chơi Guard nhóm 1 rồi Counter nhóm 2
+      // là chiến thuật bình thường, không mâu thuẫn gì.
       const isFirstUndecidedGroup = !t.perHitChoices.some(c => c !== null);
       const availableCounterPages = [];
-      if (isFirstUndecidedGroup) {
+      {
         const addedCounterKeys = new Set();
         for (const pageName of (target.unlockedPagesSnapshot ?? [])) {
           const pageSkill = findSkill(pageName);
@@ -532,7 +538,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       // Thêm: KHÔNG hiện nếu nhóm hit này Undodgeable (đúng mô tả gốc của cả 2
       // page: "không thể né Undodgeable") — hiện nút rồi báo lỗi khi bấm thì tệ.
       const availableDashPages = [];
-      if (isFirstUndecidedGroup && !thisGroupBypass.blockEvade) {
+      if (!thisGroupBypass.blockEvade) {
         const REACTIVE_DASH_KEYS = ["light dash", "fleet footsteps"];
         const ownedLower = new Set([
           ...(target.unlockedPagesSnapshot ?? []),

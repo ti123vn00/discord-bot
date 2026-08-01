@@ -490,6 +490,17 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
   
   function checkStaggerPanic(combatant) {
     if (combatant.currentStamina <= 0 && !combatant.staggered) {
+      // "Reactive" (Composition Tool) — GAP ĐÃ SỬA: "Cho khả năng kháng Stagger
+      // hai lần mỗi encounter". Chặn TRƯỚC khi set staggered, và hồi 1 điểm
+      // Stamina để không rơi lại vào đúng điều kiện này ngay lần check kế tiếp
+      // (Stamina vẫn ≤0 thì mọi checkStaggerPanic sau đều tiêu tiếp 1 lượt kháng
+      // — hết sạch trong cùng 1 đòn, vô nghĩa).
+      if ((combatant.reactiveStaggerResistLeft ?? 0) > 0) {
+        combatant.reactiveStaggerResistLeft -= 1;
+        combatant.currentStamina = Math.max(1, combatant.currentStamina);
+        combatant.reactiveStaggerResistedNote = `🧩 Reactive (Composition Tool) chặn Stagger — còn ${combatant.reactiveStaggerResistLeft} lần trong encounter này.`;
+        return;
+      }
       combatant.staggered = true;
       // Choáng (luật xác nhận trực tiếp từ GM: "game không có status Choáng riêng,
       // chỉ có Stagger" — Choáng KHÔNG PHẢI 1 chấn thương random độc lập như Gãy tay/
