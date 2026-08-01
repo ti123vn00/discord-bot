@@ -217,13 +217,24 @@ module.exports = function ({
         },
       };
 
+      const memberStartNotes = [];
       // Auto-join từng member — CHUNG logic với "-encounter join" (kv rỗng, 100%
       // lấy theo profile — party board không hỗ trợ override tay hp/stamina/...).
       for (const id of memberIds) {
         const memberName = id === board.hostId
           ? (board.hostName ?? "Host")
           : (board.guests.find(g => g.id === id)?.name ?? "Player");
-        await buildJoinedCombatant(encounter, id, memberName, profiles[id], {});
+        // GAP ĐÃ SỬA (truy từ báo cáo "Perfect Cube có hoạt động đâu?") — đường
+        // Party Board VỨT BỎ hoàn toàn `startNotes` mà buildJoinedCombatant trả
+        // về, trong khi `-encounter join` có hiện. Nghĩa là bonus khởi điểm
+        // (Perfect Cube, Udjat, Here We Go Again, Adrenaline Rush...) vẫn ĐƯỢC
+        // ÁP nhưng KHÔNG BÁO GÌ — người chơi vào contract không có cách nào biết
+        // accessory/perk của mình có chạy hay không. Gom lại trả cho caller hiển
+        // thị (interaction-handlers.js gửi kèm board).
+        const joinResult = await buildJoinedCombatant(encounter, id, memberName, profiles[id], {});
+        if ((joinResult?.startNotes ?? []).length > 0) {
+          memberStartNotes.push(`<@${id}>: ${joinResult.startNotes.join(", ")}`);
+        }
         await setUserActiveEncounterChannel(id, channelId).catch(() => {});
       }
 
@@ -275,7 +286,7 @@ module.exports = function ({
 
       await saveEncounter(channelId, encounter);
       await deletePartyBoard(channelId);
-      return { encounter, contract, prescriptNotesInit };
+      return { encounter, contract, prescriptNotesInit, memberStartNotes };
     }).then((result) => {
       // Hook AI (Stage 4) — NGOÀI withDoubleLock ở trên (tránh reentrant lock —
       // AI có thể tự gọi doEnemyAttack, tự lock lại encounterKey này). Trường

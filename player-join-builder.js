@@ -102,19 +102,25 @@ module.exports = function ({
     // Giày Wan MK3 (Resourceful/Chain-Dashes/Quickstep) và Composition Tool
     // (Shimmering) ĐÃ có; còn thiếu Perfect Cube (cả 3), Composition Tool
     // (Reactive/Energetic) và Realization của Găng Tay Câm Lặng — bổ sung ở đây.
-    // `wasJoined` guard: chỉ áp 1 lần lúc join thật, KHÔNG áp lại khi refresh
-    // snapshot (nếu không sẽ cộng Light/Sanity vô hạn).
+    // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "Perfect Cube có hoạt động đâu?") —
+    // lỗi do CHÍNH bản fix trước của tôi. TRƯỚC ĐÓ tôi đặt guard `!wasJoined` vì
+    // sợ "join lại nhiều lần sẽ cộng Light/Sanity vô hạn". Giả định đó SAI:
+    // `encounter.players[userId] = createCombatant({...})` ngay đầu hàm này TẠO
+    // OBJECT MỚI HOÀN TOÀN mỗi lần gọi — currentLight/currentSanity đã bị reset
+    // về mặc định rồi, nên KHÔNG hề có chuyện cộng dồn.
+    // Hệ quả của guard sai: player join → nhớ ra chưa đeo Perfect Cube → equip →
+    // `-encounter join` lại (HỢP LỆ, được phép trước khi rollspeed) → combatant
+    // bị reset nhưng bonus KHÔNG được cấp lại → Light 0, Sanity 0. Đúng kịch bản
+    // Fragaria gặp: "đeo Perfect Cube mà chẳng thấy gì".
+    // Giờ áp dụng LUÔN LUÔN — đúng ngữ nghĩa "chỉ số khởi điểm khi vào trận".
     const accessoriesLower = joined.equippedAccessoriesSnapshot.map(a => String(a).toLowerCase());
-    if (!wasJoined && accessoriesLower.includes("perfect cube")) {
-      // "Perfect Start": start encounter với 50% Max Light hiện tại.
-      joined.currentLight = Math.min(joined.maxLight, (joined.currentLight ?? 0) + Math.floor((joined.maxLight ?? 0) / 2));
-      // "Perfect Mind": start encounter với +30 Sanity.
-      joined.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, (joined.currentSanity ?? 0) + 30);
-    }
+    // (Perfect Start / Perfect Mind áp ở khối startNotes bên dưới — xem lý do ở đó.)
     // "Perfect Body" (+10 HP mỗi turn end) và "Reactive" (kháng Stagger 2 lần/
     // encounter) cần state riêng — đọc ở turn-advance.js / checkStaggerPanic.
     joined.hasPerfectCube = accessoriesLower.includes("perfect cube");
-    if (!wasJoined && accessoriesLower.includes("composition tool")) {
+    // "Reactive" — cùng lý do trên: đây là số lượt kháng KHỞI ĐIỂM của encounter,
+    // createCombatant không có field này nên rejoin để lại `undefined` (mất sạch).
+    if (accessoriesLower.includes("composition tool")) {
       joined.reactiveStaggerResistLeft = 2;
     }
     joined.hasCompositionTool = accessoriesLower.includes("composition tool");
@@ -122,7 +128,10 @@ module.exports = function ({
     joined.hasIronHorus = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "") === "abydos's uniform - lazy style";
     const equippedOutfitNameNormalized = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "");
     joined.hasReverberationEnsemble = equippedOutfitNameNormalized === "reverberation ensemble";
-    if (!wasJoined && equippedOutfitNameNormalized === "ambitious fixer") {
+    // Ambitious Fixer +3 Haste — BUG CÙNG LOẠI (có SẴN từ trước, không phải do
+    // đợt này): createCombatant đặt `haste: 0`, guard `!wasJoined` khiến rejoin
+    // mất luôn 3 Haste khởi điểm. Bỏ guard theo cùng lý do.
+    if (equippedOutfitNameNormalized === "ambitious fixer") {
       joined.haste = (joined.haste ?? 0) + 3;
     }
     joined.hasAmbitiousFixer = equippedOutfitNameNormalized === "ambitious fixer";
@@ -144,16 +153,48 @@ module.exports = function ({
     if (!wasJoined && hasEncounterStarted(encounter)) {
       validateAndRerollPrescript(encounter, null, { id: userId, type: "player" });
     }
+    // BUG CÙNG LOẠI ĐÃ SỬA (có SẴN từ trước, lộ ra khi truy bug "Perfect Cube
+    // không hoạt động"): guard `!wasJoined` ở đây khiến MỌI bonus khởi điểm biến
+    // mất khi player `-encounter join` LẠI để đổi trang bị (thao tác HỢP LỆ,
+    // được phép trước rollspeed). Lý do: `createCombatant` đầu hàm tạo object
+    // MỚI HOÀN TOÀN — currentLight/poise/currentSanity/protection đã reset về
+    // mặc định, rồi guard lại chặn không cấp lại. Không hề có nguy cơ "cộng dồn
+    // vô hạn" như guard này giả định.
+    // → Bỏ guard: đây là "chỉ số KHỞI ĐIỂM khi vào trận", tính lại mỗi lần dựng
+    // combatant là đúng ngữ nghĩa.
     const startNotes = [];
-    if (!wasJoined) {
-      if (hasPerk(joined, "Here We Go Again")) { joined.currentLight = Math.min(joined.maxLight, 3); startNotes.push("+3 Light (Here We Go Again)"); }
-      if (hasPerk(joined, "Adrenaline Rush")) { joined.poise = Math.min(POISE_MAX, 10); startNotes.push("+10 Poise (Adrenaline Rush)"); }
-      if (hasPerk(joined, "No Mind To Cure")) { joined.currentSanity = -25; startNotes.push("-25 Sanity (No Mind To Cure)"); }
-      if ((equippedOutfitObj?.name ?? "").toLowerCase() === "udjat") {
-        joined.protection = Math.min(20, (joined.protection ?? 0) + 10);
-        joined.protectionTurnsLeft = 2;
-        startNotes.push("+10 Protection (Udjat, hết sau 2 turn)");
-      }
+    if (hasPerk(joined, "Here We Go Again")) { joined.currentLight = Math.min(joined.maxLight, 3); startNotes.push("+3 Light (Here We Go Again)"); }
+    if (hasPerk(joined, "Adrenaline Rush")) { joined.poise = Math.min(POISE_MAX, 10); startNotes.push("+10 Poise (Adrenaline Rush)"); }
+    // No Mind To Cure áp Ở CUỐI (sau accessory) — xem comment ở khối accessory.
+    if ((equippedOutfitObj?.name ?? "").toLowerCase() === "udjat") {
+      joined.protection = Math.min(20, (joined.protection ?? 0) + 10);
+      joined.protectionTurnsLeft = 2;
+      startNotes.push("+10 Protection (Udjat, hết sau 2 turn)");
+    }
+    // ── ACCESSORY (Fragaria: "Perfect Cube có hoạt động đâu?") ────────────────
+    // startNotes hiện ra trong reply của `-encounter join` — TRƯỚC ĐÂY accessory
+    // áp âm thầm không báo gì, nên dù có chạy cũng không ai thấy.
+    if (accessoriesLower.includes("perfect cube")) {
+      const lightGain = Math.floor((joined.maxLight ?? 0) / 2);
+      joined.currentLight = Math.min(joined.maxLight, (joined.currentLight ?? 0) + lightGain);
+      joined.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, (joined.currentSanity ?? 0) + 30);
+      startNotes.push(`+${lightGain} Light & +30 Sanity (Perfect Cube: Perfect Start + Perfect Mind)`);
+    }
+    if (accessoriesLower.includes("composition tool")) {
+      startNotes.push("Kháng Stagger 2 lần (Composition Tool: Reactive)");
+    }
+    if (accessoriesLower.includes("giày wan mk3")) {
+      startNotes.push("Phòng thủ hoàn 1/4 Sta, cứ 2 lần né thì lần 3 né 2 nhóm hit (Giày Wan MK3)");
+    }
+    // "No Mind To Cure" — ÁP CUỐI CÙNG, GHI ĐÈ tuyệt đối (xác nhận trực tiếp từ
+    // Fragaria: "No Mind To Cure có ưu tiên cao hơn nên sau cùng player sẽ thành
+    // -25 sanity thay vì 30 khi encounter start").
+    // Nghĩa là perk này THẮNG mọi nguồn cộng Sanity khởi điểm khác — kể cả
+    // Perfect Mind (+30) của Perfect Cube. Vì vậy phải chạy SAU accessory, không
+    // phải trước (bản trước cho ra -25+30 = 5, SAI).
+    if (hasPerk(joined, "No Mind To Cure")) {
+      joined.currentSanity = -25;
+      startNotes.push("-25 Sanity (No Mind To Cure — ghi đè mọi bonus Sanity khởi điểm)");
     }
     const equipNotes = [];
     if (equippedWeaponObj && !kv["weapon"]) equipNotes.push(`Vũ khí: ${equippedWeaponObj.name} (${equippedWeaponObj.weight})`);

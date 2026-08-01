@@ -10,6 +10,12 @@
 // qua PHÂN TÍCH AST CHÍNH XÁC (acorn) — không dựa vào suy đoán thủ công, để
 // tránh sai sót ở 1 hàm lớn và phức tạp như thế này.
 
+// SPEED_HASTE_WEAPONS — vũ khí có passive "Speed" (mechanicId `warp_speed_haste`
+// trong weapon.js): "4 đòn đánh thường sẽ nhận 1 Haste". Liệt kê tường minh ở
+// đây thay vì require weapon.js (tránh thêm dependency mới vào file này) — NHỚ
+// cập nhật nếu weapon.js thêm vũ khí có cùng mechanicId.
+const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
+
 module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
 
 async function resolveOnePendingAction(encounter, p) {
@@ -85,6 +91,22 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.cinqAssociationAccumulator -= hasteGainCount * 20;
                   attacker.combatant.haste = (attacker.combatant.haste ?? 0) + hasteGainCount * 2;
                   staminaNote += ` 🐎+${hasteGainCount * 2} Haste (Cinq Association)`;
+                }
+              }
+              // "Speed" (Viriscent Pyrojade Ring / Cinq Rapier) — GAP ĐÃ SỬA
+              // (phát hiện qua audit mechanicId `warp_speed_haste`: có trong
+              // weapon.js nhưng KHÔNG một dòng code nào đọc tới). Luật: "4 đòn
+              // đánh thường sẽ nhận 1 Haste".
+              // Đếm theo LẦN BẤM M1 (không phải số hit) — 1 lần M1 nhiều hit vẫn
+              // là 1 "đòn đánh thường", đúng cách các passive M1 khác đang hiểu.
+              // Bộ đếm tích luỹ xuyên turn, giữ phần dư sau mỗi lần đủ 4.
+              if (p.isM1 && SPEED_HASTE_WEAPONS.has(attacker.combatant.weaponName)) {
+                attacker.combatant.speedHasteM1Count = (attacker.combatant.speedHasteM1Count ?? 0) + 1;
+                const speedHasteGain = Math.floor(attacker.combatant.speedHasteM1Count / 4);
+                if (speedHasteGain > 0) {
+                  attacker.combatant.speedHasteM1Count -= speedHasteGain * 4;
+                  attacker.combatant.haste = Math.min(20, (attacker.combatant.haste ?? 0) + speedHasteGain);
+                  staminaNote += ` 🐎+${speedHasteGain} Haste (Speed — ${attacker.combatant.weaponName})`;
                 }
               }
               // "Dieci Association": "Mỗi 20 Stamina tiêu thụ qua đòn đánh thường

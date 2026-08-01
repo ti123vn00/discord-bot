@@ -1306,7 +1306,27 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
   const guardCostPerCharge = target.hasIronHorus ? 40 : 10;
   let guardCost = guardChargesNeededNet * guardCostPerCharge;
   const perkNotes = [];
-  if (hasPerk(target, "Overflowing Guard") && (target.charge ?? 0) >= 7) {
+  // "Defense Up dư → giảm Stamina Block" (50-Status Nhóm 2): "Nếu block đạt 100%
+  // giảm sát thương sẽ đổi qua với mỗi 3 Defense Up giảm 1 Stamina cho Block."
+  // GAP CÙNG LOẠI ĐÃ SỬA — logic này CŨNG chỉ tồn tại ở `performGuardEvade`
+  // (đường lệnh text đã xoá), không phải perk nhưng chết y hệt. KHÔNG áp cho
+  // Iron Horus (đã set cứng 100% + cost 40 riêng, không cộng dồn).
+  let defenseUpStaminaDiscount = 0;
+  if (!target.hasIronHorus) {
+    const baseGuardPctForCost = hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9;
+    const defenseUpDownPctForCost = ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
+    const rawGuardPct = baseGuardPctForCost + defenseUpDownPctForCost;
+    if (rawGuardPct > 1) {
+      defenseUpStaminaDiscount = Math.floor((rawGuardPct - 1) * 100 / 3);
+      guardCost = Math.max(0, guardCost - defenseUpStaminaDiscount);
+      perkNotes.push(`Defense Up dư (-${defenseUpStaminaDiscount} Sta)`);
+    }
+  }
+  // Overflowing Guard — giảm nửa giá. Việc TIÊU 1 Charge nằm ở handler (nơi thật
+  // sự commit lựa chọn), KHÔNG ở đây: hàm này bị gọi nhiều lần chỉ để dựng UI,
+  // trừ Charge tại đây sẽ rút cạn Charge của người chơi mà họ chưa bấm gì.
+  const overflowingGuardApplies = hasPerk(target, "Overflowing Guard") && (target.charge ?? 0) >= 7;
+  if (overflowingGuardApplies) {
     guardCost = Math.ceil(guardCost / 2);
     perkNotes.push("Overflowing Guard");
   }
@@ -1346,7 +1366,7 @@ function computeDefenseOptions(target, attackerWeaponWeight, hitCount, isM1Type,
 
   return {
     chargesNeeded, hitsPerCharge, maxAffordableGuardCharges, maxAffordableEvadeCharges,
-    perkNotes, fleetingStepsFree,
+    perkNotes, fleetingStepsFree, overflowingGuardApplies, defenseUpStaminaDiscount,
     guard: { available: guardAvailable, cost: guardCost, costPerCharge: guardCostPerCharge, chargesNeededNet: guardChargesNeededNet, hitsPerCharge },
     evade: { available: evadeAvailable, cost: evadeCost, blockedReason: evadeBlocked ? "Mất Chân" : null, costPerCharge: evadeCostPerCharge, chargesNeededNet: evadeChargesNeededNet, hitsPerCharge },
     parry: { available: parryAvailable },

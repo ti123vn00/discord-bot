@@ -232,6 +232,11 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // realizationWeapons — danh sách vũ khí ĐÃ tính (chống farm 1 vũ khí nhiều
       // lần). Đủ 9 → lần đổi vũ khí kế tiếp bắn Furioso (Orlando Furioso).
       realizationStacks: 0, realizationWeapons: [],
+      // speedHasteM1Count — "Speed" (Viriscent Pyrojade Ring / Cinq Rapier):
+      // "4 đòn đánh thường sẽ nhận 1 Haste". Bộ đếm TÍCH LUỸ XUYÊN TURN (luật
+      // không nói reset theo turn) — cùng pattern accumulator với Cinq/Dieci
+      // Association. KHÔNG dùng m1CountThisTurnByTarget (bị reset mỗi turn).
+      speedHasteM1Count: 0,
       // Emotion Level — buff TẠM THỜI (xem comment đầy đủ ở EMOTION_LEVEL_TABLE phía
       // trên), KHÔNG cộng dồn vĩnh viễn. emotionLevel=0 nghĩa là KHÔNG có level active.
       // emotionLevelTurnsLeft: số turn còn lại của level ĐANG active (Infinity nếu đã

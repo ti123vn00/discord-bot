@@ -326,7 +326,7 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.customId.startsWith("partybegin:")) {
     const [, channelId] = interaction.customId.split(":");
     try {
-      const { encounter: startedEnc, contract: startedContract, prescriptNotesInit } = await startPartyBoard(channelId, interaction.user.id);
+      const { encounter: startedEnc, contract: startedContract, prescriptNotesInit, memberStartNotes } = await startPartyBoard(channelId, interaction.user.id);
       await interaction.update({ content: `▶️ Contract **${startedContract.name}** đã bắt đầu!`, components: [] }).catch(() => {});
       // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "sau khi contract bắt đầu thì không
       // tự hiện encounter board mà phải tự gõ encounter status mới hiện").
@@ -338,7 +338,10 @@ client.on("interactionCreate", async (interaction) => {
       if (startChannel) {
         await startChannel.send({
           embeds: [buildEncounterBoardEmbed(startedEnc)],
-          content: (prescriptNotesInit ?? []).length > 0 ? prescriptNotesInit.map(n => `> ${n}`).join("\n") : undefined,
+          content: [
+            ...(memberStartNotes ?? []).map(n => `> 🆙 ${n}`),
+            ...(prescriptNotesInit ?? []).map(n => `> ${n}`),
+          ].join("\n") || undefined,
         }).catch(() => {});
         // Panel hành động RIÊNG cho từng thành viên (dropdown gắn userId — mỗi
         // người chỉ bấm được dropdown của mình, xem check ownerId ở encmenu).
@@ -965,13 +968,19 @@ client.on("interactionCreate", async (interaction) => {
           if (opts.guard.cost > 0 && (target.equippedAccessoriesSnapshot ?? []).map(a => a.toLowerCase()).includes("giày wan mk3")) {
             target.currentStamina = Math.min(target.maxStamina, target.currentStamina + opts.guard.cost / 4);
           }
+          // GAP ĐÃ SỬA — "Overflowing Guard" (Envy 45): luật là "≥7 Charge → Guard
+          // giảm 1 nửa Stamina, ĐỒNG THỜI giảm 1 Charge bản thân". Bản fix trước
+          // của tôi chỉ port phần GIẢM GIÁ vào computeDefenseOptions mà quên phần
+          // TIÊU CHARGE — thành ra perk mạnh hơn luật (giảm giá vĩnh viễn, không
+          // mất gì). Trừ ở ĐÂY vì đây mới là nơi commit lựa chọn thật.
+          if (opts.overflowingGuardApplies) target.charge = Math.max(0, (target.charge ?? 0) - 1);
           target.guardCharges = (target.guardCharges ?? 0) + opts.guard.chargesNeededNet;
           target.guardHitSelections = target.guardHitSelections ?? [];
           target.guardHitSelections.push(...realHitIndices);
           if (target.hasIronHorus) target.ironHorusGuardActiveThisTurn = true;
           if (targetResolved.type === "player") target.prescriptBlocked = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
-          choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)`;
+          choiceNote = `🛡️ Guard (-${opts.guard.cost} Sta)${(opts.perkNotes ?? []).length > 0 ? ` [${opts.perkNotes.join(", ")}]` : ""}`;
           // "Tactical Suppression" (Eye Of Horus Critical) — xác nhận trực
           // tiếp: "Nếu Block trong trạng thái này, húc vào 1 kẻ địch và kích
           // hoạt Tremor Burst cùng Tremor Reverb lên người kẻ địch" — "1 kẻ
@@ -1006,6 +1015,15 @@ client.on("interactionCreate", async (interaction) => {
           target.evadeCharges = (target.evadeCharges ?? 0) + opts.evade.chargesNeededNet;
           target.evadeHitSelections = target.evadeHitSelections ?? [];
           target.evadeHitSelections.push(...realHitIndices);
+          // GAP ĐÃ SỬA — "Fleeting Steps" (Sloth 10): bộ đếm né PHẢI tăng ở đây.
+          // computeDefenseOptions chỉ ĐỌC (nó bị gọi nhiều lần chỉ để dựng UI —
+          // tăng ở đó sẽ nhảy số loạn mỗi lần refresh prompt). Bản fix trước của
+          // tôi ghi chú "bộ đếm tăng ở handler" nhưng KHÔNG hề thêm dòng nào —
+          // hệ quả: bộ đếm đứng yên ở 0, `(0+1)%4` không bao giờ bằng 0, perk
+          // KHÔNG BAO GIỜ kích hoạt dù đã port công thức.
+          if (hasPerk(target, "Fleeting Steps")) {
+            target.evadeCountForFleetingSteps = (target.evadeCountForFleetingSteps ?? 0) + 1;
+          }
           if (opts.evade.cost === 0 && (target.lightDashFreeEvadeCharges ?? 0) > 0) target.lightDashFreeEvadeCharges -= 1;
           if (targetResolved.type === "player") target.prescriptEvaded = true;
           if (target.hasZweiAssociation) target.zweiAssociationPendingTremor = true;
@@ -1037,7 +1055,7 @@ client.on("interactionCreate", async (interaction) => {
               chainDashesNote += " 💨[Chain-Dashes: lần né tiếp theo sẽ gộp nhóm kế]";
             }
           }
-          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 ? " [Light Dash miễn phí]" : ""}${chainDashesNote}`;
+          choiceNote = `💨 Evade (-${opts.evade.cost} Sta)${opts.evade.cost === 0 && (target.lightDashFreeEvadeCharges ?? 0) >= 0 && !opts.fleetingStepsFree ? " [Light Dash miễn phí]" : ""}${(opts.perkNotes ?? []).length > 0 ? ` [${opts.perkNotes.join(", ")}]` : ""}${chainDashesNote}`;
         } else if (choice === "dash") {
           // GAP ĐÃ SỬA (Fragaria: "light dash và fleetfoot steps vẫn chưa thấy
           // nút bấm ở reactive defense"). Về mặt cơ chế đây là 1 lần NÉ MIỄN PHÍ
