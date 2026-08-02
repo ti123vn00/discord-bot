@@ -2999,10 +2999,30 @@ roll(v = "no") {
   "grappling": {
     name: "Grappling", weaponOf: "Brawler", tags: "Weapon",
     cost: "—", cd: "1 Turn", diceMul: "1x",
-    roll() {
+    // BUG ĐÃ SỬA (Fragaria: "khi xài mấy weap không kích crit-2 khi đủ condition
+    // ... Brawler"). Brawler KHÔNG có Critical thứ 2 riêng — Grappling là BIẾN
+    // THỂ dice của chính nó, nên dùng cơ chế `variants` (như Extreme Edge) chứ
+    // không phải bảng EXTRA_CRITICALS.
+    // Luật (xác nhận trực tiếp): "là target đang Airborne, sau khi dùng xong kẻ
+    // địch sẽ thoát khỏi Airborne và nhận 10 Dmg".
+    // Biến thể được CHỌN TỰ ĐỘNG theo trạng thái địch (xem deriveAutoVariant ở
+    // skill-verification.js) — người chơi không phải tự bấm chọn.
+    // Phần "thoát Airborne + 10 Dmg" xử lý ở resolve-pending-action.js.
+    variants: [
+      { key: "normal", label: "Địch KHÔNG Airborne", emoji: "👊" },
+      { key: "airborne", label: "Địch đang Airborne (Hakuda)", emoji: "🪁" },
+    ],
+    roll(variantKey = "normal") {
+      if (variantKey === "airborne") {
+        const dAir = r(14, 30);
+        return [
+          `*🪁 [Hakuda] Địch đang **Airborne** — dice tăng lên [14~30]. Sau đòn này địch thoát Airborne và nhận thêm 10 Dmg.*`,
+          `${D1} **${dAir}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Quật ngã kẻ địch, gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst, nhận 1 <:Light:1513786082502770719>Light`,
+        ];
+      }
       const d1 = r(7,15);
       return [
-        `*[Hakuda] Nếu xài Critical sau khi xài skill có tag Airborne: dice đổi thành [14~30]*`,
+        `*[Hakuda] Nếu địch đang Airborne: dice đổi thành [14~30] (tự động nhận diện)*`,
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Quật ngã kẻ địch, gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst, nhận 1 <:Light:1513786082502770719>Light`,
       ];
     },
@@ -4827,6 +4847,17 @@ function findSkill(raw) {
   const aliasLookup = key.replace(/[\s\-,:]/g, "");
   const aliasKey = SKILL_ALIASES[aliasLookup];
   if (aliasKey && SKILLS[aliasKey]) return SKILLS[aliasKey];
+  // 2b. BUG ĐÃ SỬA (Fragaria: "Atelier Logic vẫn chưa bắn crit được để đổi dạng").
+  // Bước 2 ở trên CHỈ cứu được skill có sẵn entry trong SKILL_ALIASES. Skill có
+  // dấu ":" trong tên hiển thị mà KHÔNG có alias thì vẫn trượt hết mọi bước:
+  //   name "Atelier Logic: Shotgun" → key "atelier logic: shotgun"
+  //   nhưng key thật trong SKILLS là "atelier logic shotgun" (KHÔNG dấu ":")
+  // Bước 3 (partial match) cũng trượt vì `keyStripped` vẫn còn dấu ":" ở cuối.
+  // Hệ quả: dropdown dùng skill.name làm value → findSkill trả null → Critical
+  // KHÔNG BAO GIỜ bắn được (Great Split thoát nạn chỉ vì tình cờ CÓ alias).
+  // Giờ bỏ dấu ":" rồi tra THẲNG SKILLS — tổng quát cho mọi skill tương lai.
+  const keyNoColon = key.replace(/:/g, "").replace(/\s+/g, " ").trim();
+  if (keyNoColon !== key && SKILLS[keyNoColon]) return SKILLS[keyNoColon];
   // 3. Fallback: tìm partial match trong SKILLS keys
   const keyStripped = key.replace(/\s+\S+$/, "").trim();
   for (const [k, v] of Object.entries(SKILLS)) {

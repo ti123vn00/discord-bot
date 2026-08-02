@@ -15,6 +15,45 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
+// EXTRA_CRITICALS — Critical THỨ 2 (và 3) của từng vũ khí, kèm ĐIỀU KIỆN mở khoá.
+// `cond(combatant)` trả { ok, note } — note hiện trong label để người chơi biết
+// giá phải trả. Điều kiện lấy NGUYÊN VĂN từ field `cost` của skill trong skills.js
+// (đã đọc và đối chiếu từng cái), KHÔNG tự chế thêm luật mới.
+const EXTRA_CRITICALS = [
+  // Index Longsword — "Castigation" chain sau khi Unlock đủ 3 lần (Unlocked Blade).
+  // Điều kiện KHỚP với gate đã có ở skill-verification.js (unlockBladeStage >= 3),
+  // nếu lệch nhau thì nút hiện ra rồi bấm lại báo lỗi.
+  {
+    weapon: "Index Longsword", skillKey: "castigation",
+    cond: (c) => ({ ok: (c.unlockBladeStage ?? 0) >= 3, note: "Unlocked Blade" }),
+  },
+  // Mook Workshop — "Slay All", cost ghi rõ "Cần kẻ địch Airborne". Panel KHÔNG
+  // truy được encounter (chỉ nhận combatant) nên không tự kiểm tra được địch nào
+  // đang Airborne — hiện nút kèm nhắc điều kiện, để skill-verification chặn thật.
+  {
+    weapon: "Mook Workshop", skillKey: "slay all",
+    cond: () => ({ ok: true, note: "cần địch Airborne" }),
+  },
+  // Mimicry Blade — "Great Split", cost "Tiêu 5 Imitation". Bản Horizontal cần
+  // THÊM "bản thân dưới 30% HP" nên chỉ hiện khi đủ cả 2.
+  {
+    weapon: "Mimicry Blade", skillKey: "great split vertical",
+    cond: (c) => ({ ok: (c.imitation ?? 0) >= 5, note: "tiêu 5 Imitation" }),
+  },
+  {
+    weapon: "Mimicry Blade", skillKey: "great split horizontal",
+    cond: (c) => ({
+      ok: (c.imitation ?? 0) >= 5 && c.maxHp > 0 && c.currentHp < c.maxHp * 0.3,
+      note: "tiêu 5 Imitation, <30% HP",
+    }),
+  },
+  // Soldato Rifle — "Shock Round" (trước đây hardcode riêng, giờ vào bảng chung).
+  {
+    weapon: "Soldato Rifle", skillKey: "shock round",
+    cond: (c) => ({ ok: (c.bulletStack ?? 0) >= 5, note: `tiêu 5 đạn, còn ${c.bulletStack ?? 0}` }),
+  },
+];
+
 module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
 
   // buildEncounterActionPanel — TOP-LEVEL dropdown, GAP REDESIGN (xác nhận
@@ -76,12 +115,25 @@ module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
     if (criticalSkill) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`critical:${criticalSkill.name}`));
     }
-    // "Shock Round" — GAP MỚI (xác nhận trực tiếp): "Soldato Rifle... có 2
-    // critical, 1 cái bình thường và 1 cái có điều kiện để xài là đạn" —
-    // Critical THỨ 2, HOÀN TOÀN riêng biệt weaponCriticalKey (chỉ có 1 giá trị
-    // duy nhất) — chỉ hiện khi cầm Soldato Rifle VÀ đủ 5 viên đạn trong súng.
-    if (combatant.weaponName === "Soldato Rifle" && (combatant.bulletStack ?? 0) >= 5) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: Shock Round (tiêu 5 đạn, còn ${combatant.bulletStack})`).setValue("critical:Shock Round"));
+    // ── CRITICAL THỨ 2 (BUG ĐÃ SỬA — Fragaria: "khi xài mấy weap không kích
+    // crit-2 khi đủ condition... Index Longsword, Mook Workshop, Brawler" +
+    // "cây Mimicry khi đủ 5 stack không có sài crit 2") ───────────────────────
+    // NGUYÊN NHÂN GỐC: `weaponCriticalKey` chỉ chứa ĐÚNG 1 giá trị, nên panel
+    // vĩnh viễn chỉ hiện được 1 Critical. Crit-2 duy nhất từng được làm là Shock
+    // Round — HARDCODE riêng cho Soldato Rifle. Mọi vũ khí khác có Critical thứ
+    // 2 (đã tồn tại đầy đủ trong skills.js với `weaponOf` đúng) KHÔNG có đường
+    // nào để bấm.
+    // Giờ gom thành BẢNG chung: mỗi entry = { weapon, skillKey, cond, label }.
+    // Thêm crit-2 cho vũ khí mới = thêm 1 dòng ở đây, không phải sửa logic.
+    for (const extra of EXTRA_CRITICALS) {
+      if (combatant.weaponName !== extra.weapon) continue;
+      const sk = findSkill(extra.skillKey);
+      if (!sk) continue;
+      const state = extra.cond(combatant);
+      if (!state.ok) continue;
+      options.push(new StringSelectMenuOptionBuilder()
+        .setLabel(`⚡ Critical: ${sk.name}${state.note ? ` (${state.note})` : ""}`.slice(0, 100))
+        .setValue(`critical:${sk.name}`));
     }
     // "You're Too Slow" — option đòn đâm sau khi counter thành công (Fragaria yêu
     // cầu: "đánh dấu kẻ địch bị counter rồi hiện tiếp option ở moves để tấn công

@@ -186,8 +186,16 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
    *  suy ra hợp lệ, đồng thời cứu các profile cũ đã được cấp perk nhánh nhưng
    *  chưa từng được cấp "Shin" trần vì trước đây nó không tồn tại trong bảng). */
   function hasShinAccess(combatant) {
+    // Nguồn CHÍNH: cờ `ShinUnlock` trên profile (GM bật) — đã copy sang combatant
+    // lúc join dưới tên `hasShinUnlock`. Đây là cơ chế mở khoá THẬT của dự án;
+    // 2 nhánh còn lại chỉ là dự phòng.
+    if (combatant.hasShinUnlock) return true;
     const perks = combatant.unlockedPerks ?? [];
+    // Dự phòng 1: GM cấp thẳng perk "Shin" (bảng PERK_POINT_COSTS, cost 0).
     if (perks.includes("Shin")) return true;
+    // Dự phòng 2: đã có perk NHÁNH shin — không thể có perk nhánh mà chưa mở
+    // Shin, nên suy ra hợp lệ. Cũng cứu profile cũ được cấp perk nhánh từ trước
+    // khi cờ ShinUnlock được dùng nhất quán.
     return perks.some(p => PERK_BRANCH[p] === "shin");
   }
   

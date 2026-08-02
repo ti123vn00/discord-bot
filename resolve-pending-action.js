@@ -1612,6 +1612,22 @@ async function resolveOnePendingAction(encounter, p) {
                 }
               }
             }
+            // Grappling (Brawler) — "sau khi dùng xong kẻ địch sẽ thoát khỏi
+            // Airborne và nhận 10 Dmg" (xác nhận trực tiếp từ Fragaria).
+            // 10 Dmg CỐ ĐỊNH, không qua resistance/DR — cùng bản chất với dmg
+            // Airborne ở End Turn (rơi xuống đất), chỉ là bị kích hoạt SỚM.
+            // Áp cho MỌI target của đòn này đang Airborne (Grappling đơn target
+            // nhưng viết theo vòng lặp cho an toàn nếu sau này thành AOE).
+            if (p.skillKey === "grappling") {
+              for (const tg of p.targets ?? []) {
+                const tr = resolveCombatant(encounter, tg.targetId);
+                if (!tr?.combatant?.airborne) continue;
+                tr.combatant.airborne = false;
+                tr.combatant.currentHp = Math.max(0, (tr.combatant.currentHp ?? 0) - 10);
+                verifyNote += ` 🪁[${tr.label} thoát **Airborne** — rơi xuống nhận thêm 10 Dmg]`;
+                checkStaggerPanic(tr.combatant);
+              }
+            }
             if (p.skillKey === "atelier logic shotgun" || p.skillKey === "atelier logic pistols") {
               const nextForm = p.skillKey === "atelier logic shotgun" ? "pistols" : "shotgun";
               attacker.combatant.atelierLogicForm = nextForm;

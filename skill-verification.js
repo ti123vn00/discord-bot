@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere }) {
+module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -124,6 +124,53 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
   /** @param variantKey — biến thể của skill có field `variants` (VD Extreme Edge:
    *  "ground"/"air"/"low"). null = dùng biến thể ĐẦU TIÊN (mặc định). Skill không
    *  có variants thì tham số này bị bỏ qua hoàn toàn. */
+  /** deriveAutoPromptArg — suy giá trị promptArg TỪ STATE encounter thay vì bắt
+   *  người chơi nhập tay (xem comment đầy đủ ở nơi gọi).
+   *  @returns số/giá trị để truyền vào roll(), hoặc `null` nếu KHÔNG suy được
+   *           (khi đó giữ nguyên hành vi cũ: chặn + hướng dẫn dùng `-skill`).
+   *  KHÔNG đoán bừa: chỉ trả giá trị cho skill đã đối chiếu đúng ngữ nghĩa
+   *  promptArg trong skills.js. Skill promptArg MỚI sẽ tự rơi vào nhánh null. */
+  function deriveAutoPromptArg(skillKey, attacker, encounter, refTarget) {
+    switch (skillKey) {
+      case "vengeance retaliation": {
+        // "% HP đã mất kể từ lần dùng skill TRƯỚC (0 nếu không mất gì)".
+        // Mốc so sánh lưu ở `vengeanceRetaliationHpMark`; lần đầu chưa có mốc
+        // thì lấy HP hiện tại làm mốc → 0% (đúng nghĩa "chưa mất gì kể từ lần
+        // trước"). Cập nhật mốc NGAY tại đây để lần sau tính từ điểm này.
+        const maxHp = attacker.maxHp > 0 ? attacker.maxHp : 1;
+        const mark = attacker.vengeanceRetaliationHpMark ?? attacker.currentHp ?? maxHp;
+        const lostPct = Math.max(0, Math.min(100, ((mark - (attacker.currentHp ?? 0)) / maxHp) * 100));
+        attacker.vengeanceRetaliationHpMark = attacker.currentHp ?? 0;
+        return Math.round(lostPct * 100) / 100;
+      }
+      case "thrust":
+        // "Light hiện tại (tối thiểu 2)" — đọc thẳng, không cần hỏi.
+        return attacker.currentLight ?? 0;
+      case "apocalypse":
+        // "Dưới 50% HP?" — boolean suy từ HP thật.
+        return (attacker.maxHp > 0) && (attacker.currentHp < attacker.maxHp * 0.5);
+      case "solemn lament": {
+        // "Số người đã chết" — đếm combatant 0 HP trên sân. Không có encounter
+        // (VD gọi ngoài trận) thì không suy được → null, giữ luồng cũ.
+        if (!encounter) return null;
+        const dead = [...Object.values(encounter.players ?? {}), ...Object.values(encounter.enemies ?? {})]
+          .filter(c => (c?.currentHp ?? 1) <= 0).length;
+        return dead;
+      }
+      case "sanguine pointilism": {
+        // "% Reuse — mặc định 40%, +20% mỗi 5 Bleed trên địch". Cần biết target
+        // để đọc Bleed; không có target thì dùng mặc định 40 (vẫn chạy được,
+        // không chặn người chơi vì lý do kỹ thuật).
+        const bleed = refTarget?.bleed ?? 0;
+        return Math.min(100, 40 + Math.floor(bleed / 5) * 20);
+      }
+      default:
+        // "xuất lực tối đa" (% Hắc Thiểm) và mọi promptArg mới — do NGƯỜI CHƠI
+        // tự quyết, không phải state → không được đoán hộ.
+        return null;
+    }
+  }
+
   async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false, variantKey = null) {
     let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [];
     let refSnippet = null, refLink = null;
@@ -142,7 +189,31 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
     if (skillNameRaw && skillNameRaw.trim()) {
       const skill = findSkill(skillNameRaw.trim());
       if (!skill) throw new Error(`Không tìm thấy skill "${skillNameRaw}" — dùng \`-skill list\` để xem danh sách.`);
-      if (skill.promptArg) throw new Error(`Skill "${skill.name}" cần input đặc biệt (VD: Light hiện tại) — chưa roll trực tiếp qua encounter được. Dùng \`-skill ${skillNameRaw}\` riêng rồi dán link message đó vào ref: thay vào đó.`);
+      // ── promptArg TỰ SUY TỪ STATE (BUG ĐÃ SỬA — Fragaria: "Vengeance
+      // Retaliation chưa automate, có thể cũng còn nhiều skill khác tương tự") ──
+      // TRƯỚC ĐÂY mọi skill có `promptArg` đều bị CHẶN THẲNG khỏi encounter, bắt
+      // người chơi chạy `-skill ...` riêng rồi dán link vào `ref:` — cực kỳ bất
+      // tiện và phá luồng "thuần button".
+      // Nhưng rà lại cả 6 skill dạng này thì con số cần nhập ĐỀU đã có sẵn trong
+      // state encounter — bot tự tính được, không cần hỏi:
+      //   • vengeance retaliation → % HP đã mất kể từ lần dùng TRƯỚC (tự track)
+      //   • thrust                → Light hiện tại
+      //   • apocalypse            → có đang dưới 50% HP không
+      //   • solemn lament         → số người đã chết trên sân
+      //   • sanguine pointilism   → % Reuse (40% + 20% mỗi 5 Bleed trên target)
+      //   • xuất lực tối đa       → % Hắc Thiểm (KHÔNG suy được — do người chơi
+      //     tự quyết, không phải state) → vẫn chặn, giữ luồng `-skill` + ref:
+      const encounterForAuto = await getEncounter(channelId).catch(() => null);
+      // refTarget cho Sanguine Pointilism — lấy enemy còn sống ĐẦU TIÊN làm mốc
+      // đọc Bleed (skill AOE-ish, không có target cụ thể lúc verify; target thật
+      // được chọn Ở BƯỚC SAU). Không có enemy nào thì để undefined → dùng 40%.
+      const refTargetCombatant = encounterForAuto
+        ? Object.values(encounterForAuto.enemies ?? {}).find(e => (e?.currentHp ?? 0) > 0)
+        : null;
+      const autoPromptArg = skill.promptArg ? deriveAutoPromptArg(skillKey, attacker, encounterForAuto, refTargetCombatant) : null;
+      if (skill.promptArg && autoPromptArg === null) {
+        throw new Error(`Skill "${skill.name}" cần input do người chơi tự quyết — chưa roll trực tiếp qua encounter được. Dùng \`-skill ${skillNameRaw}\` riêng rồi dán link message đó vào ref: thay vào đó.`);
+      }
       skillKey = skillNameRaw.trim().toLowerCase();
       const existingCd = attacker.skillCooldowns?.[skillKey] ?? 0;
       // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp, dự án tự động hoá
@@ -276,14 +347,26 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
         : [];
       // Skill có `variants` (VD Extreme Edge) — truyền biến thể player đã chọn.
       // Validate: key lạ → rơi về biến thể đầu tiên thay vì để roll() nhận rác.
+      let promptRollArgs = autoPromptArg !== null ? [autoPromptArg] : [];
       let variantRollArgs = [];
       if (Array.isArray(skill.variants) && skill.variants.length > 0) {
-        const valid = skill.variants.some(v => v.key === variantKey);
-        variantRollArgs = [valid ? variantKey : skill.variants[0].key];
+        // Grappling (Brawler) — biến thể TỰ NHẬN DIỆN theo trạng thái địch, KHÔNG
+        // hỏi người chơi (khác Extreme Edge: 3 tình huống chỉ người chơi biết).
+        // Điều kiện: có bất kỳ enemy còn sống nào đang Airborne.
+        let autoVariant = null;
+        if (skillKey === "grappling" && encounterForAuto) {
+          const anyAirborne = Object.values(encounterForAuto.enemies ?? {})
+            .some(e => (e?.currentHp ?? 0) > 0 && e.airborne);
+          autoVariant = anyAirborne ? "airborne" : "normal";
+        }
+        const chosen = autoVariant ?? variantKey;
+        const valid = skill.variants.some(v => v.key === chosen);
+        variantRollArgs = [valid ? chosen : skill.variants[0].key];
       }
       const autoResult = autoBuildDmgStrFromSkillRoll(skill, {
         forceMinDice: hasParalyze, diceModifier,
-        rollArgs: unlockRollArgs.length ? unlockRollArgs : variantRollArgs,
+        rollArgs: unlockRollArgs.length ? unlockRollArgs
+          : (promptRollArgs.length ? promptRollArgs : variantRollArgs),
       });
       autoDmgStr = autoResult.dmgStr;
       autoWarnings = autoResult.warnings;

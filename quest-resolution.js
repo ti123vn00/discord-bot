@@ -103,10 +103,45 @@ module.exports = function ({
    *  tự bắt buộc: save giữ state cuối rồi mới xoá).
    *
    *  @returns string[] — các dòng thông báo (rỗng nếu quest CHƯA kết thúc). */
+  /** QUEST_MAX_DURATION_MS — BUG ĐÃ SỬA (Fragaria: "player lạm dụng treo
+   *  encounter không chịu kết thúc, treo cho tới khi tới giờ 12h 24h được hồi
+   *  máu rồi mới đánh tiếp abuse khá nặng").
+   *
+   *  CÁCH ABUSE: HP hồi theo mốc 0h/12h giờ VN (getEffectiveCurrentHp). Encounter
+   *  KHÔNG có hạn, và `-encounter end` đã bị chặn cho Contract (chống abuse
+   *  khác) — nên player sắp thua chỉ cần NGỒI IM. Qua mốc reset là full máu,
+   *  đánh tiếp như chưa có gì. Không mất lượt contract, không Death Penalty.
+   *
+   *  CHẶN: hạn **1 NGÀY** kể từ lúc bắt đầu (xác nhận trực tiếp từ Fragaria:
+   *  "1 contract cho thời hạn là 1 ngày, sau hơn 1 ngày đó mà vẫn treo contract
+   *  thì sẽ bị tính là thua và force end contract"). Quá hạn = xử THUA như wipe:
+   *  áp Death Penalty, giải phóng active-encounter-index, xoá encounter.
+   *  LƯU Ý: 24h DÀI HƠN chu kỳ hồi máu 12h, nên hạn này KHÔNG chặn được người
+   *  chỉ chờ đúng 1 mốc reset — nó chặn việc treo VÔ HẠN. Phần chặn abuse mốc
+   *  reset thật sự nằm ở chỗ khác: `-encounter end` đã bị khoá cho Contract và
+   *  người treo trận bị giữ active-encounter-index nên KHÔNG nhận contract mới
+   *  được (tự trừng phạt: đứng im = mất luôn lượt farm). */
+  const QUEST_MAX_DURATION_MS = 24 * 60 * 60 * 1000;
+
+  /** isQuestExpired — encounter contract đã quá hạn (treo quá lâu) chưa. */
+  function isQuestExpired(encounter) {
+    if (!encounter?.isQuest) return false;
+    const startedAt = encounter.createdAt ?? 0;
+    if (!startedAt) return false; // encounter cũ chưa có timestamp — không xử oan
+    return (Date.now() - startedAt) > QUEST_MAX_DURATION_MS;
+  }
+
   async function finalizeQuestOutcome(encounter) {
     const resultLines = [];
-    const questOutcome = checkQuestOutcome(encounter);
+    // Quá hạn → xử THUA ngay, KHÔNG cần đợi điều kiện thắng/thua thường.
+    const expired = isQuestExpired(encounter);
+    const questOutcome = expired
+      ? { won: false, contract: null, reason: "expired" }
+      : checkQuestOutcome(encounter);
     if (!questOutcome) return resultLines;
+    if (expired) {
+      resultLines.push(`⏰ **Contract quá hạn** — encounter đã kéo dài quá ${Math.round(QUEST_MAX_DURATION_MS / 3600000)} tiếng nên bị xử THUA tự động (chống treo trận chờ mốc hồi máu).`);
+    }
     // Chặn chạy 2 lần cho CÙNG 1 encounter (VD resolveOnePendingAction vừa kết
     // thúc quest, rồi performEndTurn chạy ngay sau đó trên object đã đánh dấu) —
     // nếu không sẽ phát thưởng LẶP.
@@ -139,5 +174,5 @@ module.exports = function ({
     return resultLines;
   }
 
-  return { checkQuestOutcome, grantContractReward, finalizeQuestOutcome };
+  return { checkQuestOutcome, grantContractReward, finalizeQuestOutcome, isQuestExpired, QUEST_MAX_DURATION_MS };
 };

@@ -125,6 +125,17 @@ module.exports = function ({
     }
     joined.hasCompositionTool = accessoriesLower.includes("composition tool");
     joined.hasGangTayCamLang = accessoriesLower.includes("gang tay cam lang") || accessoriesLower.includes("găng tay câm lặng");
+    // BUG ĐÃ SỬA (Fragaria: "Shin chưa có dropdown ở special để sử dụng cho
+    // những người unlock được Shin") — LẦN 2, nguyên nhân KHÁC hẳn lần trước.
+    // Lần trước tôi tưởng Shin mở khoá qua PERK ("Shin" trong unlockedSkillTree)
+    // nên thêm perk đó vào bảng + viết hasShinAccess đọc `unlockedPerks`.
+    // Nhưng cơ chế THẬT của dự án là cờ RIÊNG trên profile: `data.ShinUnlock`
+    // (GM bật qua `-setprofile ... shinunlock: ...`, xem UNLOCK_FLAG_KEYS) — nó
+    // chính là điều kiện để được phân bổ điểm vào nhánh shin
+    // (message-create-handler.js). Cờ này TRƯỚC GIỜ chưa bao giờ được copy sang
+    // combatant, nên dropdown Special không có cách nào biết → người đã unlock
+    // Shin đúng cách vẫn không thấy nút.
+    joined.hasShinUnlock = !!profileData.ShinUnlock;
     joined.hasIronHorus = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "") === "abydos's uniform - lazy style";
     const equippedOutfitNameNormalized = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "");
     joined.hasReverberationEnsemble = equippedOutfitNameNormalized === "reverberation ensemble";

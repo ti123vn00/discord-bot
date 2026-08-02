@@ -240,6 +240,47 @@ async function announceCurrentTurn(channelId, encounter, forceNewMessage = false
       }).catch(() => {});
       return;
     }
+    // BUG NGHIÊM TRỌNG ĐÃ SỬA (Fragaria báo trực tiếp: "khi có player bị Stagger
+    // thì Contract bị treo") — LẦN 2 của lớp bug Stagger, KHÁC chỗ với lần trước
+    // (lần trước là thiếu hook AI ở nhánh auto-resolve; lần này là con trỏ lượt).
+    //
+    // NGUYÊN NHÂN GỐC: `advanceToNextTurnHolder` CÓ bỏ qua người đang Stagger,
+    // nhưng nó chỉ chạy LÚC ADVANCE. Người chơi hoàn toàn có thể bị Stagger SAU
+    // khi con trỏ đã dừng ở họ (VD: mob đánh họ, họ Guard, Stamina về 0 → Stagger
+    // — tất cả xảy ra trong lượt của MOB, trước khi tới lượt họ).
+    // Khi đó `announceCurrentTurn` vẫn gửi panel hành động cho họ, nhưng MỌI lựa
+    // chọn đều bị chặn ("Bạn đang bị Stagger") trừ "Kết thúc lượt". Với Contract
+    // (isQuest) — nơi thiết kế là KHÔNG có GM và phải tự động hoàn toàn — không
+    // ai bấm hộ, nên trận đứng im vĩnh viễn.
+    //
+    // SỬA: người giữ lượt hiện tại mà đã gục HOẶC đang Stagger thì TỰ ĐỘNG nhảy
+    // qua ngay tại đây, rồi gọi lại chính mình để announce người kế tiếp. Vòng
+    // lặp KHÔNG thể vô hạn: advanceToNextTurnHolder luôn tăng currentTurnIndex,
+    // chạm cuối turnOrder thì `!entry` ở trên xử lý (tự end-turn cho quest).
+    const entryCombatant = entry.type === "enemy" ? encounter.enemies[entry.id] : encounter.players[entry.id];
+    if (entryCombatant && (entryCombatant.currentHp <= 0 || entryCombatant.staggered)) {
+      const reason = entryCombatant.currentHp <= 0 ? "đã gục" : "đang Stagger";
+      const label = entry.type === "enemy" ? `**${entryCombatant.name}**` : `<@${entry.id}>`;
+      let advancedEnc = null;
+      await withLock(encounterKey(channelId), async () => {
+        const fresh = await getEncounter(channelId);
+        if (!fresh) return;
+        // Đọc LẠI trong lock — trạng thái có thể đã đổi giữa lúc check ngoài lock.
+        const freshEntry = (fresh.turnOrder ?? [])[fresh.currentTurnIndex ?? 0];
+        if (!freshEntry || freshEntry.id !== entry.id) return; // ai đó đã advance rồi
+        const c = freshEntry.type === "enemy" ? fresh.enemies[freshEntry.id] : fresh.players[freshEntry.id];
+        if (!c || (c.currentHp > 0 && !c.staggered)) return; // đã hồi phục, không cần nhảy
+        advanceToNextTurnHolder(fresh);
+        await saveEncounter(channelId, fresh);
+        advancedEnc = fresh;
+      });
+      if (advancedEnc) {
+        const chSkip = await client.channels.fetch(channelId).catch(() => null);
+        if (chSkip) await chSkip.send({ content: `⏭️ ${label} ${reason} — tự động bỏ qua lượt.` }).catch(() => {});
+        announceCurrentTurn(channelId, advancedEnc, true).catch(() => {});
+      }
+      return;
+    }
     if (entry.type === "player") {
       const player = encounter.players[entry.id];
       if (!player || player.currentHp <= 0) return;

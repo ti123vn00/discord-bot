@@ -44,7 +44,24 @@ module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, build
     const color = allDead ? 0x555555 : 0xe74c3c;
     const pageDescs = [];
     let current = "";
-    for (const block of blocks) {
+    for (const rawBlock of blocks) {
+      // BUG ĐÃ SỬA (Fragaria: "encounter nhiều người quá không load hết nổi") —
+      // TRƯỚC ĐÂY 1 block ĐƠN LẺ dài hơn MAX_DESC_PER_PAGE vẫn được đẩy nguyên
+      // vào trang (nhánh `else` khi `current` rỗng), làm description vượt giới
+      // hạn 4096 ký tự của Discord → API TỪ CHỐI cả embed → `.catch(() => {})`
+      // nuốt lỗi → board KHÔNG hiện gì cả, im lặng. Encounter đông người + nhiều
+      // status/buff trên mỗi combatant là chạm ngưỡng rất dễ.
+      // Cắt an toàn ở ranh giới dòng để không xé giữa chừng cú pháp markdown.
+      let block = rawBlock;
+      if (block.length > MAX_DESC_PER_PAGE) {
+        const keep = [];
+        let used = 0;
+        for (const line of block.split("\n")) {
+          if (used + line.length + 1 > MAX_DESC_PER_PAGE - 60) break;
+          keep.push(line); used += line.length + 1;
+        }
+        block = keep.join("\n") + "\n*… (rút gọn — quá dài để hiện hết)*";
+      }
       const candidate = current ? current + "\n\n" + block : block;
       if (candidate.length > MAX_DESC_PER_PAGE && current) {
         pageDescs.push(current);
