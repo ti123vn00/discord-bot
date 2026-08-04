@@ -79,6 +79,20 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, resolveProfile
         { name: "📚 Tổng sách", value: `**${totalBooks}** cuốn`, inline: true },
         { name: "<:Equipment:1525313207021867159> Tổng vật phẩm", value: `**${totalItems}** cái`, inline: true },
         { name: "<:000:1525313179339460739> Skill Tree", value: skillTreeValue, inline: false },
+        // Shin/Mang — CHỈ hiện khi profile đã mở khoá (Fragaria yêu cầu: "nên làm
+        // Shin và Mang lvl hiển thị ở -balance khi player có mở khóa Shin").
+        // Người chưa mở khoá không cần thấy ô này (đỡ rối + không lộ cơ chế chưa
+        // tới lượt họ). `?? mặc định` để profile cũ thiếu field không hiện NaN.
+        ...(data.ShinUnlock ? [{
+          name: "<:Fix_Shin:1507591140180754588> Shin / <:Fix_Mang:1507591172770631822> Mang",
+          value:
+            `<:Fix_Shin:1507591140180754588> **Shin Lvl ${data.ShinLevel ?? 10}** / 50` +
+            ` — giảm 0,2x mọi Res khi kích hoạt` +
+            `\n<:Fix_Mang:1507591172770631822> **Mang Lvl ${data.MangLevel ?? 1}** / 5` +
+            ` — +${(data.MangLevel ?? 1) * 10}% Dmg, +${data.MangLevel ?? 1} Dice Up, +${data.MangLevel ?? 1} Clash Power Up` +
+            (isSelf ? "\n> Dùng **Fixer's Note** (`-usenote`) để +10 Shin Lvl và +1 Mang Lvl" : ""),
+          inline: false,
+        }] : []),
       ],
       footer: { text: INVENTORY_HINT_TEXT },
     };

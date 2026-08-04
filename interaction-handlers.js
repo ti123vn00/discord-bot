@@ -326,8 +326,29 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.customId.startsWith("partybegin:")) {
     const [, channelId] = interaction.customId.split(":");
     try {
+      // BUG ĐÃ SỬA (Fragaria: "contract bị treo sau khi bấm nút bắt đầu luôn, không
+      // thể giải quyết được" — nút kẹt ở trạng thái "...").
+      //
+      // NGUYÊN NHÂN GỐC: Discord huỷ interaction nếu KHÔNG được phản hồi trong
+      // **3 GIÂY**. `startPartyBoard` làm rất nhiều việc I/O trước khi tới
+      // `interaction.update()`: đọc profile TỪNG thành viên, chạy
+      // buildJoinedCombatant cho từng người (mỗi lần lại đọc+ghi profile), spawn
+      // mob, roll turn order, save encounter — với Upstash Redis từ Render (chưa
+      // kể cold start) là rất dễ vượt 3s. Quá hạn thì `interaction.update()` ném
+      // "Unknown interaction", rơi vào catch, `interaction.reply` cũng chết theo
+      // → nút đứng im mãi ở "...".
+      //
+      // Chú ý: đây KHÔNG phải do đoạn phát BGM (nó chạy SAU update). Việc thêm
+      // BGM chỉ trùng thời điểm — thủ phạm là tổng thời gian I/O đã sát ngưỡng
+      // từ trước, các thay đổi gần đây (ghi thêm field Shin/Mang, accessory vào
+      // profile lúc join) đẩy nó vượt hẳn.
+      //
+      // SỬA: `deferUpdate()` NGAY LẬP TỨC — báo Discord "đã nhận, đang xử lý"
+      // (nút hết xoay), nới hạn phản hồi lên 15 phút. Rồi mới làm việc nặng và
+      // `editReply` sau.
+      await interaction.deferUpdate().catch(() => {});
       const { encounter: startedEnc, contract: startedContract, prescriptNotesInit, memberStartNotes } = await startPartyBoard(channelId, interaction.user.id);
-      await interaction.update({ content: `▶️ Contract **${startedContract.name}** đã bắt đầu!`, components: [] }).catch(() => {});
+      await interaction.editReply({ content: `▶️ Contract **${startedContract.name}** đã bắt đầu!`, components: [] }).catch(() => {});
       // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "sau khi contract bắt đầu thì không
       // tự hiện encounter board mà phải tự gõ encounter status mới hiện").
       // NGUYÊN NHÂN GỐC: nút này chỉ update message party board thành dòng chữ
@@ -356,15 +377,30 @@ client.on("interactionCreate", async (interaction) => {
       // contract chưa bao giờ ĐÍNH FILE — chỉ `-encounter start` mới đính. Người
       // chơi vào contract không nghe được gì.
       if (startChannel && startedEnc.currentBgm) {
-        await startChannel.send({
-          content: `> 🎵 BGM trận này: **${startedEnc.currentBgm}**`,
-          files: [new AttachmentBuilder(`./assets/audio/bgm/${startedEnc.currentBgm}`)],
-        }).catch(() => {});
+        // `new AttachmentBuilder(...)` chạy ĐỒNG BỘ như tham số nên `.catch()` của
+        // `.send()` KHÔNG bắt được nó — phải bọc try riêng, nếu không file BGM
+        // thiếu/đường dẫn sai sẽ ném thẳng ra ngoài và phá cả luồng bắt đầu trận.
+        try {
+          await startChannel.send({
+            content: `> 🎵 BGM trận này: **${startedEnc.currentBgm}**`,
+            files: [new AttachmentBuilder(`./assets/audio/bgm/${startedEnc.currentBgm}`)],
+          }).catch(() => {});
+        } catch (bgmErr) {
+          log("error", "partybegin-bgm", interaction.user.id, bgmErr.message);
+        }
       }
       announceCurrentTurn(channelId, startedEnc, true).catch(() => {});
       maybeRunAiTurn(channelId).catch(() => {});
     } catch (err) {
-      interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      // Đã deferUpdate ở trên → `interaction.reply` KHÔNG dùng được nữa (interaction
+      // đã được acknowledge). Phải followUp, và fallback gửi thẳng vào channel nếu
+      // followUp cũng hỏng — để lỗi KHÔNG BAO GIỜ im lặng như trước.
+      log("error", "partybegin", interaction.user.id, err.stack ?? err.message);
+      const failed = await interaction.followUp({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => null);
+      if (!failed) {
+        const ch = await client.channels.fetch(channelId).catch(() => null);
+        if (ch) await ch.send({ content: `❌ <@${interaction.user.id}> Không bắt đầu được contract: ${err.message}` }).catch(() => {});
+      }
     }
     return;
   }

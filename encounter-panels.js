@@ -207,7 +207,7 @@ module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
     // TRƯỚC ĐÂY không tồn tại trong PERK_POINT_COSTS/PERK_BRANCH nên không ai
     // cấp được, và người đã có perk NHÁNH shin vẫn bị chặn. Xem skill-tree.js.
     if (hasShinAccess(combatant)) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1528452250861699215", name: "Shin" }));
+      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1507591140180754588", name: "Fix_Shin" }));
     }
     if ((combatant.emotionLevel ?? 0) >= 1) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("😈 Manifest E.G.O (-30 Sanity)").setValue("manifestego"));
