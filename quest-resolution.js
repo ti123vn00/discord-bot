@@ -22,8 +22,7 @@ const { CONTRACTS } = require("./quest-data");
 module.exports = function ({
   withLock, getPlayerDataWithSlot, savePlayerData, clampExpWithLunacy,
   redis, withTimeout, getVNDateString, DAILY_KEY_TTL_SECONDS, markContractTaskDone,
-  applyDeathPenalty, clearUserActiveEncounterChannel,
-}) {
+  applyDeathPenalty, clearUserActiveEncounterChannel, RARE_DROP_BOOK, RARE_DROP_CHANCE }) {
   function contractCountKey(userId, slot) {
     return `contractcount:${userId}:${slot}`;
   }
@@ -61,9 +60,28 @@ module.exports = function ({
       data.count += 1;
       profileData.exp = clampExpWithLunacy(profileData, (profileData.exp ?? 0) + contract.expReward);
       profileData.ahn = (profileData.ahn ?? 0) + contract.ahnReward;
+      // ── DROP SÁCH (Fragaria xác nhận trực tiếp) — số lượng theo từng contract,
+      // xem bookDropMin/Max ở quest-data.js. Random trong khoảng [min, max].
+      // Cap 99 như mọi item/book khác (ITEM_STACK_MAX).
+      const dropNotes = [];
+      const dMin = contract.bookDropMin, dMax = contract.bookDropMax;
+      if (Number.isFinite(dMin) && Number.isFinite(dMax)) {
+        const count = dMin + Math.floor(Math.random() * (dMax - dMin + 1));
+        if (count > 0) {
+          profileData.books = profileData.books ?? {};
+          profileData.books["Random Book"] = Math.min(99, (profileData.books["Random Book"] ?? 0) + count);
+          dropNotes.push(`+${count} Random Book`);
+        }
+      }
+      // Drop hiếm 1% — ĐỘC LẬP với book thường, áp cho MỌI contract.
+      if (Math.random() < RARE_DROP_CHANCE) {
+        profileData.books = profileData.books ?? {};
+        profileData.books[RARE_DROP_BOOK] = Math.min(99, (profileData.books[RARE_DROP_BOOK] ?? 0) + 1);
+        dropNotes.push(`✨ **${RARE_DROP_BOOK}** (Singularity, 1%)`);
+      }
       await withTimeout(redis.set(key, JSON.stringify(data), { ex: DAILY_KEY_TTL_SECONDS }));
       await savePlayerData(userId, profileData, slot);
-      return { granted: true, count: data.count };
+      return { granted: true, count: data.count, dropNotes };
     });
     // Nhiệm vụ 2 của -daily ("hoàn thành 1 contract bất kỳ") — tính là ĐÃ HOÀN
     // THÀNH ngay khi contract THẮNG (bất kể còn lượt reward 4/ngày hay không —
@@ -154,7 +172,7 @@ module.exports = function ({
         const rewardResult = await grantContractReward(pid, contract);
         resultLines.push(
           rewardResult.granted
-            ? `🎁 <@${pid}> nhận ${contract.expReward} EXP + ${contract.ahnReward.toLocaleString("vi-VN")} Ahn (contract hôm nay: ${rewardResult.count}/4)`
+            ? `🎁 <@${pid}> nhận ${contract.expReward} EXP + ${contract.ahnReward.toLocaleString("vi-VN")} Ahn${(rewardResult.dropNotes ?? []).length ? " + " + rewardResult.dropNotes.join(" + ") : ""} (contract hôm nay: ${rewardResult.count}/4)`
             : `⚠️ <@${pid}> đã dùng hết 4 lượt contract hôm nay — không nhận thưởng lần này (dù trận đã thắng).`
         );
         if (rewardResult.dailyTaskNote) resultLines.push(`<@${pid}> ${rewardResult.dailyTaskNote}`);

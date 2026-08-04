@@ -13,7 +13,7 @@
 // "botReady" → "getBotReady()" ở route "/" — đây là thay đổi CẦN THIẾT để
 // giữ đúng hành vi gốc qua ranh giới module, không phải sửa logic).
 
-module.exports = function ({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, webParrySessions, withLock }) {
+module.exports = function ({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, webParrySessions, withLock, deleteEncounter }) {
 
 app.get("/", (req, res) => getBotReady() ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
 
@@ -86,6 +86,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
     const isSuccess = finalType === "success";
     try {
       let displayText = "";
+      let questEndedHere = false, questEndText = "";
       await withLock(encounterKey(encChannelId), async () => {
         const encounter = await getEncounter(encChannelId);
         if (!encounter) { displayText = "⚠️ Encounter không còn tồn tại."; return; }
@@ -101,15 +102,27 @@ app.post("/rtparry/:token/result", async (req, res) => {
         let choiceNote = "";
         let effectResultNote = "";
 
-        // Áp dụng hiệu ứng phụ + cooldown/Light — CHỈ khi thành công, TRỪ
-        // "alwaysUnlocks" (Yield My Flesh: mở khoá To Claim Their Bones dù
-        // thắng hay thua minigame).
-        if (isSuccess || effect.alwaysUnlocks) {
+        // BUG ĐÃ SỬA (Fragaria: "You're Too Slow khi thua rtparry... cũng không bị
+        // CD luôn").
+        // NGUYÊN NHÂN GỐC: Light + cooldown TRƯỚC ĐÂY nằm TRONG `if (isSuccess ||
+        // alwaysUnlocks)` — thua minigame là KHÔNG mất gì cả: không tốn Light,
+        // không vào CD → bấm lại vô hạn cho tới khi may mắn ăn được. Counter page
+        // trở thành phòng thủ miễn phí không rủi ro.
+        // Luật đúng: ĐÃ PHÓNG PAGE RA là mất tài nguyên, thắng thua chỉ quyết
+        // định có ngắt được đòn hay không (cùng nguyên tắc với Clash — thua clash
+        // vẫn tiêu Light/CD, xem interaction-handlers.js).
+        // → Tách phần CHI PHÍ ra khỏi phần HIỆU ỨNG.
+        {
           const cost = parseSkillCost(counterSkill.cost);
           target.currentLight = Math.max(0, (target.currentLight ?? 0) - (cost.light ?? 0));
           const cdTurns = parseSkillCooldownTurns(counterSkill.cd);
           target.skillCooldowns = target.skillCooldowns ?? {};
           target.skillCooldowns[counterSkillKey] = cdTurns + 1;
+        }
+        // Hiệu ứng phụ (Light hồi, Protection, mở khoá follow-up, nạp đạn...) —
+        // vẫn CHỈ khi thành công, TRỪ "alwaysUnlocks" (Yield My Flesh: mở khoá
+        // To Claim Their Bones dù thắng hay thua minigame).
+        if (isSuccess || effect.alwaysUnlocks) {
           if (effect.light) target.currentLight = Math.min(target.maxLight, (target.currentLight ?? 0) + effect.light);
           if (effect.protection) target.protection = (target.protection ?? 0) + effect.protection;
           if (effect.defenseUp) target.defenseUp = (target.defenseUp ?? 0) + effect.defenseUp;
@@ -220,7 +233,27 @@ app.post("/rtparry/:token/result", async (req, res) => {
 
         const finalized = await finalizeReactiveChoice(encChannelId, encounter, p, targetId, choiceNote, `<@${targetId}>`);
         displayText = finalized.resultText;
+        // BUG ĐÃ SỬA (Fragaria: "sau khi fail counter tự dưng encounter tự kết
+        // thúc luôn — -balance lên check HP thì có vẻ AI đã tự giải quyết ngầm
+        // kết quả encounter, KHÔNG HIỆN LÊN").
+        // NGUYÊN NHÂN GỐC: đòn resolve ở đây có thể GIẾT nốt người/mob cuối →
+        // resolveOnePendingAction gọi finalizeQuestOutcome → quest kết thúc thật
+        // (phát thưởng/Death Penalty, set `_deleteAfterSave`). Nhưng đường
+        // rtparry này CHỈ sửa lại message minigame trên web — KHÔNG gửi gì vào
+        // channel encounter và KHÔNG xử lý `_deleteAfterSave`. Người chơi thấy
+        // trận "tự dưng biến mất" mà không có thông báo nào.
+        questEndedHere = !!encounter._deleteAfterSave;
+        questEndText = finalized.resultText;
       });
+      if (questEndedHere) {
+        const encCh = await client.channels.fetch(encChannelId).catch(() => null);
+        if (encCh) {
+          await encCh.send({ embeds: [{ title: "🏁 Encounter kết thúc", description: questEndText, color: 0xf1c40f }] }).catch(() => {});
+        }
+        // KHÔNG gọi deleteEncounter ở đây: finalizeReactiveChoice ĐÃ tự xoá khi
+        // thấy `_deleteAfterSave` (xem reactive-defense.js). Ở đây chỉ còn thiếu
+        // phần THÔNG BÁO — đó mới là cái bị sót.
+      }
 
       const channel = await client.channels.fetch(session.channelId).catch(() => null);
       if (channel) {
@@ -230,7 +263,25 @@ app.post("/rtparry/:token/result", async (req, res) => {
         }
       }
     } catch (err) {
-      log("error", "counterResolve", session.userId, err.message);
+      // BUG ĐÃ SỬA (Fragaria: "thỉnh thoảng page counter bị kẹt ở rtparry, không
+      // giải quyết được"). TRƯỚC ĐÂY exception ở khối resolve chỉ ghi log server
+      // rồi trả `ok: true` — người chơi thấy trang web báo thành công nhưng trong
+      // Discord KHÔNG có gì xảy ra, pendingAction treo mãi, không ai biết vì sao.
+      // Giờ báo THẲNG vào channel encounter để GM/người chơi biết mà xử lý, và
+      // trả lỗi về trang web thay vì giả vờ thành công.
+      log("error", "counterResolve", session.userId, err.stack ?? err.message);
+      const errCh = await client.channels.fetch(session.counterContext?.encChannelId ?? session.channelId).catch(() => null);
+      if (errCh) {
+        await errCh.send({
+          embeds: [{
+            title: "⚠️ Counter gặp lỗi khi xử lý",
+            description: `<@${session.userId}> — page counter KHÔNG resolve được: \`${String(err.message).slice(0, 300)}\`\n` +
+              "Đòn tấn công vẫn đang treo. GM có thể dùng bảng GM để kết thúc lượt thủ công.",
+            color: 0xe74c3c,
+          }],
+        }).catch(() => {});
+      }
+      return res.status(500).json({ ok: false, error: String(err.message).slice(0, 200) });
     }
     return res.json({ ok: true });
   }

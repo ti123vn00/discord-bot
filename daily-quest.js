@@ -23,7 +23,16 @@ const TASK3_VARIANTS = ["ahn", "books", "killmobs"];
 const TASK_EXP = 2;
 const TASK3_AHN_REWARD = 200_000;
 const TASK3_BOOK_COUNT = 3;
+// BUG ĐÃ SỬA (Fragaria: "Quest 3 ở -daily nhiều khi chỉ cần -daily là hoàn thành
+// luôn, quá dễ"). Chính comment đầu file đã ghi đây là GIẢ ĐỊNH chưa xác nhận —
+// và giả định đó SAI: 2/3 biến thể ("ahn"/"books") tự hoàn thành ngay lúc roll,
+// nên 2/3 số ngày nhiệm vụ 3 là quà miễn phí.
+// Giờ CẢ 3 biến thể đều cần hạ mob thật, chỉ khác ngưỡng + phần thưởng — tái dùng
+// nguyên bộ đếm `killCount` đã có (incrementKillTaskProgress), KHÔNG cần thêm hook
+// theo dõi mới ở chỗ khác.
 const TASK3_KILL_TARGET = 3;
+const TASK3_KILL_TARGET_BY_VARIANT = { killmobs: 3, books: 4, ahn: 5 };
+function killTargetFor(variant) { return TASK3_KILL_TARGET_BY_VARIANT[variant] ?? TASK3_KILL_TARGET; }
 
 module.exports = function ({
   withLock, getActiveProfileSlot, playerKeyForSlot, dailyKeyForSlot,
@@ -107,7 +116,10 @@ module.exports = function ({
       data.loginDone = true;
       profileData.exp = clampExpWithLunacy(profileData, (profileData.exp ?? 0) + TASK_EXP);
       let task3AutoNote = null;
-      if (!data.task3Done && data.task3Variant !== "killmobs") {
+      // KHÔNG còn auto-complete cho biến thể nào — xem comment ở TASK3_KILL_TARGET.
+      // Giữ nguyên khối này dưới dạng "đã hoàn thành nhờ hạ đủ mob" (do
+      // incrementKillTaskProgress set task3Done trước đó).
+      if (false) {
         data.task3Done = true;
         profileData.exp = clampExpWithLunacy(profileData, (profileData.exp ?? 0) + TASK_EXP);
         if (data.task3Variant === "ahn") {
@@ -149,20 +161,32 @@ module.exports = function ({
     return withLock(userId, async () => {
       const slot = await getActiveProfileSlot(userId);
       const { data, dailyKey } = await getOrInitDailyData(userId, slot);
-      if (data.task3Variant !== "killmobs" || data.task3Done) return null;
+      if (data.task3Done) return null; // MỌI biến thể giờ đều đếm mob (xem TASK3_KILL_TARGET)
       data.killCount = (data.killCount ?? 0) + 1;
-      if (data.killCount < TASK3_KILL_TARGET) {
+      const killTarget = killTargetFor(data.task3Variant);
+      if (data.killCount < killTarget) {
         await withTimeout(redis.set(dailyKey, JSON.stringify(data), { ex: DAILY_KEY_TTL_SECONDS }));
         return { completed: false, killCount: data.killCount };
       }
       data.task3Done = true;
       const profileData = await readProfile(userId, slot);
       profileData.exp = clampExpWithLunacy(profileData, (profileData.exp ?? 0) + TASK_EXP);
+      // Phần thưởng THEO BIẾN THỂ — trước đây trao ngay lúc gõ `-daily`, giờ chỉ
+      // trao khi đã hạ đủ mob (ngưỡng cao hơn thì thưởng nhiều hơn).
+      let variantRewardNote = "";
+      if (data.task3Variant === "ahn") {
+        profileData.ahn = (profileData.ahn ?? 0) + TASK3_AHN_REWARD;
+        variantRewardNote = `, +${formatNumber(TASK3_AHN_REWARD)} Ahn`;
+      } else if (data.task3Variant === "books") {
+        profileData.books = profileData.books ?? {};
+        profileData.books["Random Book"] = Math.min(99, (profileData.books["Random Book"] ?? 0) + TASK3_BOOK_COUNT);
+        variantRewardNote = `, +${TASK3_BOOK_COUNT} Random Book`;
+      }
       const weeklyBonusNote = checkAllDoneAndApplyStreak(data, profileData);
       await saveDailyAndProfile(userId, slot, dailyKey, data, profileData);
-      return { completed: true, weeklyBonusNote };
+      return { completed: true, weeklyBonusNote, variantRewardNote, killTarget };
     });
   }
 
-  return { claimDailyLogin, markContractTaskDone, incrementKillTaskProgress, TASK3_KILL_TARGET };
+  return { claimDailyLogin, markContractTaskDone, incrementKillTaskProgress, TASK3_KILL_TARGET, killTargetFor };
 };

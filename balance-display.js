@@ -14,10 +14,12 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
+module.exports = function ({ getPlayerData, getActiveProfileSlot, resolveProfileLabel, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
+    const slotForName = await getActiveProfileSlot(targetUser.id);
+    const profileLabel = await resolveProfileLabel(targetUser.id, slotForName, targetUser.displayName ?? targetUser.username);
     const { grade, expInCurrentGrade, expNeeded } = calcGrade(data.exp ?? 0);
     const totalBooks = Object.values(data.books ?? {}).reduce((a, b) => a + b, 0);
     const totalItems = Object.values(data.items ?? {}).reduce((a, b) => a + b, 0);
@@ -60,7 +62,12 @@ module.exports = function ({ getPlayerData, calcGrade, GRADE_MAX, GRADE_MIN, cal
     const effectiveMaxHpForDisplay = Math.max(1, gradeBasedMaxHpForDisplay - injuryPenaltyForDisplay);
     const currentHpForDisplay = Math.min(data.currentHp ?? effectiveMaxHpForDisplay, effectiveMaxHpForDisplay);
     const embed = {
-      title: `💼 Thông tin của ${targetUser.displayName ?? targetUser.username}`,
+      // GAP ĐÃ SỬA (Fragaria: "Ở phần -balance nên hiện profile name hiện tại hơn
+      // là display name discord của user") — profile name là tên NHÂN VẬT đang
+      // chơi (mỗi user có nhiều slot, mỗi slot 1 nhân vật khác nhau), nên hiện
+      // display name Discord là sai ngữ cảnh RP. Fallback về tên Discord nếu slot
+      // chưa được đặt tên.
+      title: `💼 Thông tin của ${profileLabel}`,
       color: 0x5865f2,
       thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
       fields: [

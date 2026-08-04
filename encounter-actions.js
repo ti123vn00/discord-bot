@@ -15,6 +15,12 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
+// Cap của Shin/Mang (xác nhận trực tiếp từ Fragaria).
+// Mang: tối đa Lvl 5 (5 vòng) → 50% Dmg Bonus, +5 Dice Up, +5 Clash Power Up.
+// Shin: tối đa Level 50 → Defensive Light cho tối đa -0,5x Res cộng thêm.
+const MANG_MAX_LEVEL = 5;
+const SHIN_MAX_LEVEL = 50;
+
 module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
 
   async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
@@ -181,27 +187,63 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       // lệch nhau thì nút hiện ra rồi bấm lại báo lỗi.
       if (!hasShinAccess(player)) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin`).");
       if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
-      // Decimate Mind (Shin, [20 Points]): cho phép hi sinh vượt mốc -10 (xuống tới
-      // -35) để kích hoạt Shin/Mang — KHÔNG có perk thì mốc giới hạn vẫn là -10 như
-      // luật gốc.
-      const sanityFloorForShin = hasPerk(player, "Decimate Mind") ? -35 : -10;
-      if (player.currentSanity <= sanityFloorForShin) throw new Error(`Không thể hi sinh để dùng Shin/Mang khi Sanity hiện tại ≤ ${sanityFloorForShin} (hiện tại: ${player.currentSanity}).`);
-      player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 25);
+      // BUG ĐÃ SỬA (Fragaria làm rõ trực tiếp): "Bạn không thể hi sinh để xài Shin
+      // và Mang VƯỢT HƠN mốc cap -10 Sanity" — cap áp lên **KẾT QUẢ SAU KHI TRỪ
+      // 25**, KHÔNG phải lên Sanity hiện tại.
+      //   • Sanity 0  → 0 - 25 = -25, vượt cap -10 → CHẶN
+      //   • Sanity 15 → 15 - 25 = -10, ĐÚNG BẰNG cap → CHO PHÉP ("không vượt qua")
+      //   • Sanity 14 → -11 → CHẶN
+      // ⇒ Sanity tối thiểu để dùng = cap + 25.
+      // TRƯỚC ĐÂY code so `currentSanity <= sanityFloor` — tức chỉ chặn khi ĐANG
+      // ở dưới cap, nên Sanity 0 vẫn dùng được và tụt thẳng xuống -25 (vượt cap 15
+      // điểm). Sai hẳn hướng.
+      // Decimate Mind (Shin, [20 Points]) nới cap xuống **-30** (xác nhận trực
+      // tiếp — con số cũ trong code là -35, SAI).
+      const SHIN_SANITY_COST = 25;
+      const sanityFloorForShin = hasPerk(player, "Decimate Mind") ? -30 : -10;
+      const sanityAfter = player.currentSanity - SHIN_SANITY_COST;
+      if (sanityAfter < sanityFloorForShin) {
+        throw new Error(
+          `Không đủ Sanity để hi sinh cho Shin/Mang — cần tối thiểu **${sanityFloorForShin + SHIN_SANITY_COST}** Sanity ` +
+          `(hiện tại ${player.currentSanity}; trừ ${SHIN_SANITY_COST} sẽ còn ${sanityAfter}, vượt mốc cap ${sanityFloorForShin}).`
+        );
+      }
+      player.currentSanity = sanityAfter;
       player.shinMangActive = true;
       player.shinMangUsedThisTurn = true;
-      player.shinMangRounds = (player.shinMangRounds ?? 0) + 1;
+      // BUG ĐÃ SỬA (Fragaria làm rõ): "shinMangRounds tôi nói KHÔNG phải là số
+      // vòng (turn) đã sử dụng Mang, mà là LVL MANG của player — 1 lvl Mang
+      // tương ứng 1 vòng tròn sáng".
+      // TRƯỚC ĐÂY code CỘNG THÊM 1 mỗi lần kích hoạt (coi như bộ đếm số lần
+      // dùng) → dùng 5 turn là tự lên max 5 vòng miễn phí, hoàn toàn sai. Mang
+      // Lvl là CHỈ SỐ CỦA PROFILE, chỉ tăng bằng vật phẩm (Fixer's Note); kích
+      // hoạt Shin/Mang chỉ BẬT buff theo level ĐANG CÓ, không lên level.
+      const mangLevel = Math.min(MANG_MAX_LEVEL, Math.max(1, player.mangLevel ?? 1));
+      player.mangLevel = mangLevel;
+      player.shinLevel = Math.min(SHIN_MAX_LEVEL, Math.max(1, player.shinLevel ?? 10));
+      // GAP ĐÃ SỬA: "Với mỗi 1 vòng Mang thì sẽ gia tăng 10% Dmg Bonus, +1 Dice
+      // Up, +1 Clash Power Up" — TRƯỚC ĐÂY chỉ có phần +10% Dmg, hoàn toàn thiếu
+      // Dice Up và Clash Power Up.
+      // Đặt BẰNG số vòng (không cộng dồn mỗi lần kích hoạt) — đây là giá trị
+      // PHÁI SINH từ số vòng Mang, không phải buff cộng thêm; cộng dồn sẽ khiến
+      // dùng lại nhiều turn thành +N vô hạn dù số vòng đã chạm cap.
+      // Cả 2 đều reset về 0 khi Shin/Mang tắt (turn-advance.js).
+      player.diceUp = (player.diceUp ?? 0) - (player.mangDiceUpApplied ?? 0) + mangLevel;
+      player.mangDiceUpApplied = mangLevel;
+      player.clashPowerUp = mangLevel;
       checkStaggerPanic(player);
       // Defensive Light (Shin, [10 Points]): +0,1x giảm Res CỘNG THÊM (trên nền -0,2x
       // gốc) cho MỖI 10 Shin Level hiện có. shinLevel mặc định = 10 (luật: "Khởi điểm
       // với 10 Shin Lvl") — KHÔNG có cơ chế nào khác cho biết Shin Lvl tăng/giảm theo
       // gì, nên tạm coi là hằng số 10 trừ khi có thêm luật rõ hơn.
-      const shinLevel = player.shinLevel ?? 10;
+      const shinLevel = Math.min(SHIN_MAX_LEVEL, player.shinLevel ?? 10);
       const defensiveLightNote = hasPerk(player, "Defensive Light")
         ? ` Defensive Light: thêm -${(Math.floor(shinLevel / 10) * 0.1).toFixed(1)}x Res (Shin Lvl ${shinLevel}).`
         : "";
+      const cappedNote = mangLevel >= MANG_MAX_LEVEL ? ` *(đã ở cap)*` : "";
       result =
         `<:Shin:1528452250861699215> **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
-        `Mang: +${player.shinMangRounds * 10}% Dmg M1+skill turn này (vòng ${player.shinMangRounds}), gây True Dmg.`;
+        `Mang Lvl ${mangLevel}/${MANG_MAX_LEVEL}${cappedNote}: +${mangLevel * 10}% Dmg, +${mangLevel} Dice Up, +${mangLevel} Clash Power Up, gây True Dmg (M1+skill turn này).`;
       appendActionLog(encounter, result);
       await saveEncounter(channelId, encounter);
     });
@@ -246,6 +288,30 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
    *  (encounter-panels.js) — TÁCH NGUYÊN VĂN từ message-create-handler.js (không
    *  đổi hành vi), chỉ đổi tham số messageAuthorId → userId và trả về result
    *  string thay vì message.reply trực tiếp. */
+  /** applyFixersNote — "Fixer's Note" (Fragaria yêu cầu trực tiếp): "cho khả năng
+   *  mở khoá Shin, tăng 10 lvl shin và 1 vòng mang nếu đã mở khoá".
+   *  Lần đầu (chưa mở khoá) → BẬT ShinUnlock, giữ nguyên mốc khởi điểm 10 Lvl /
+   *  1 vòng. Các lần sau → +10 Shin Lvl và +1 Mang Lvl, kẹp trong cap 50/5.
+   *  Ghi vào PROFILE (không phải combatant) vì đây là chỉ số vĩnh viễn.
+   *  @returns chuỗi mô tả kết quả để caller hiển thị. */
+  function applyFixersNote(data) {
+    data.ShinLevel = data.ShinLevel ?? 10;
+    data.MangLevel = data.MangLevel ?? 1;
+    if (!data.ShinUnlock) {
+      data.ShinUnlock = true;
+      return `<:Shin:1528452250861699215> **Fixer's Note** — đã MỞ KHOÁ Shin! Khởi điểm Shin Lvl ${data.ShinLevel}, Mang Lvl ${data.MangLevel}.`;
+    }
+    const beforeShin = data.ShinLevel, beforeMang = data.MangLevel;
+    data.ShinLevel = Math.min(SHIN_MAX_LEVEL, beforeShin + 10);
+    data.MangLevel = Math.min(MANG_MAX_LEVEL, beforeMang + 1);
+    const parts = [];
+    if (data.ShinLevel > beforeShin) parts.push(`Shin Lvl ${beforeShin} → **${data.ShinLevel}**`);
+    else parts.push(`Shin Lvl đã ở cap ${SHIN_MAX_LEVEL}`);
+    if (data.MangLevel > beforeMang) parts.push(`Mang Lvl ${beforeMang} → **${data.MangLevel}**`);
+    else parts.push(`Mang Lvl đã ở cap ${MANG_MAX_LEVEL}`);
+    return `<:Shin:1528452250861699215> **Fixer's Note** — ${parts.join(", ")}.`;
+  }
+
   async function performUseItem(channelId, userId, itemNameRaw) {
     let result;
     await withLock(encounterKey(channelId), async () => {
@@ -369,7 +435,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
     if (player.followUpUsedThisTurn) throw new Error("Đã dùng Follow-Up/Pounce trong turn này rồi — chỉ 1 lần/turn.");
     const dmgStr = hasFollowUp ? `${r(10, 14)}B` : `${r(8, 30)}B`;
     // Shin Follow Up (Shin, [5 Points]): Follow-Up/Pounce LUÔN LUÔN xài Mang (True
-    // Dmg + bonus% theo shinMangRounds hiện có) — kể cả khi CHƯA tự kích hoạt Shin/
+    // Dmg + bonus% theo mangLevel hiện có) — kể cả khi CHƯA tự kích hoạt Shin/
     // Mang turn này. "Ép" tạm thời shinMangActive=true CHỈ cho lượt hit này (lưu
     // trước khi gọi doPlayerHit vì hàm đó tự fetch/save encounter riêng, rồi khôi
     // phục lại giá trị gốc ngay sau — không làm thay đổi trạng thái Shin/Mang thật
@@ -404,10 +470,12 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       description: `Tung đòn theo sau: \`${dmgStr}\`${hasFollowUp ? " — kẻ địch rơi vào **[Airborne]** (tự narrate, không phải status hệ thống)" : ""}`,
       color: 0xf39c12,
     };
-    return { followupEmbed, hitEmbed };
+    return {
+    followupEmbed, hitEmbed };
   }
 
   return {
+    applyFixersNote,
     performGuardEvade,
     performParry,
     performShinMang,

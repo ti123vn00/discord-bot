@@ -1618,6 +1618,23 @@ async function resolveOnePendingAction(encounter, p) {
             // Airborne ở End Turn (rơi xuống đất), chỉ là bị kích hoạt SỚM.
             // Áp cho MỌI target của đòn này đang Airborne (Grappling đơn target
             // nhưng viết theo vòng lặp cho an toàn nếu sau này thành AOE).
+            // Wheel's Industry — "gây 10 Tremor, Tremor Burst nếu ≥20 Tremor".
+            // Điều kiện kiểm SAU khi 10 Tremor đã cộng vào (dmgStr xử lý trước).
+            if (p.skillKey === "wheels industry") {
+              for (const tg of p.targets ?? []) {
+                const tr = resolveCombatant(encounter, tg.targetId);
+                if (!tr?.combatant || (tr.combatant.tremor ?? 0) < 20) continue;
+                // Dùng ĐÚNG cơ chế Tremor Burst có sẵn (pattern giống Scorch
+                // Propellant Round bên dưới) — KHÔNG bịa field cờ mới, vì cờ tự
+                // chế sẽ không có ai đọc (lỗi "cờ mồ côi" đã mắc trước đây).
+                const tbRes = calcMathCore({ dmgStr: "0B+TremorBurst", resStr: combatantResStr(tr.combatant), tremorInit: tr.combatant.tremor ?? 0 });
+                tr.combatant.currentHp = Math.max(0, tr.combatant.currentHp - tbRes.totalDmg);
+                tr.combatant.currentStamina = Math.max(0, (tr.combatant.currentStamina ?? 0) - tbRes.totalTremorStaminaLoss);
+                tr.combatant.tremor = tbRes.finalTremor;
+                checkStaggerPanic(tr.combatant);
+                verifyNote += ` 💥[${tr.label} có ≥20 Tremor → **Tremor Burst**: -${tbRes.totalDmg.toFixed(1)} HP, -${tbRes.totalTremorStaminaLoss} Sta]`;
+              }
+            }
             if (p.skillKey === "grappling") {
               for (const tg of p.targets ?? []) {
                 const tr = resolveCombatant(encounter, tg.targetId);

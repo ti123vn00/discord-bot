@@ -17,6 +17,10 @@
 // PHẢI gọi bên trong withLock(encounterKey(...)) như -encounter join gốc, và
 // caller vẫn phải tự saveEncounter sau khi gọi xong.
 
+// Cap Shin/Mang — DUY NHẤT 1 nguồn sự thật, encounter-actions.js import lại từ đây.
+const SHIN_MAX_LEVEL = 50;
+const MANG_MAX_LEVEL = 5;
+
 module.exports = function ({
   createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight,
   calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp,
@@ -136,6 +140,10 @@ module.exports = function ({
     // combatant, nên dropdown Special không có cách nào biết → người đã unlock
     // Shin đúng cách vẫn không thấy nút.
     joined.hasShinUnlock = !!profileData.ShinUnlock;
+    // Shin Lvl / Mang Lvl là chỉ số PROFILE (xem player-data.js) — copy sang
+    // combatant mỗi lần join. Kẹp trong cap để profile lỗi không phá cân bằng.
+    joined.shinLevel = Math.min(SHIN_MAX_LEVEL, Math.max(1, profileData.ShinLevel ?? 10));
+    joined.mangLevel = Math.min(MANG_MAX_LEVEL, Math.max(1, profileData.MangLevel ?? 1));
     joined.hasIronHorus = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "") === "abydos's uniform - lazy style";
     const equippedOutfitNameNormalized = (profileData.equippedOutfit ?? "").toLowerCase().replace(/^["']+|["']+$/g, "");
     joined.hasReverberationEnsemble = equippedOutfitNameNormalized === "reverberation ensemble";

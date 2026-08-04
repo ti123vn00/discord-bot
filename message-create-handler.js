@@ -11,7 +11,7 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-module.exports = function ({ ADMIN_IDS, AMMO_MAX, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -1041,13 +1041,15 @@ client.on("messageCreate", async (message) => {
           }
           if (bookEntries.length > 0) {
             for (const { name, count, isAdd } of bookEntries) {
-              data.books[name] = isAdd ? (data.books[name] ?? 0) + count : count;
+              data.books[name] = Math.min(ITEM_STACK_MAX, isAdd ? (data.books[name] ?? 0) + count : count); // cap x99 như item
             }
             changes.push(`Sách:\n` + bookEntries.map(e => `> • 📚 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
           }
           if (itemEntries.length > 0) {
             for (const { name, count, isAdd } of itemEntries) {
-              data.items[name] = isAdd ? (data.items[name] ?? 0) + count : count;
+              // Cap x99 cho MỌI item (Fragaria yêu cầu). Áp cả nhánh cộng lẫn nhánh set
+              // tuyệt đối — GM set 500 cũng bị kẹp về 99 để không phá cân bằng shop.
+              data.items[name] = Math.min(ITEM_STACK_MAX, isAdd ? (data.items[name] ?? 0) + count : count);
             }
             changes.push(`Vật phẩm:\n` + itemEntries.map(e => `> • 🔩 **${e.name}** ${e.isAdd ? `+${e.count}` : `× ${e.count} (set)`}`).join("\n"));
           }
@@ -1135,6 +1137,24 @@ client.on("messageCreate", async (message) => {
     } else {
       message.reply(body);
     }
+    return;
+  }
+
+  // ── -usenote (Fixer's Note) ───────────────────────────────────────────────
+  // Fragaria yêu cầu: item "cho khả năng mở khoá Shin, tăng 10 lvl shin và 1
+  // vòng mang nếu đã mở khoá". Dùng NGOÀI encounter (đây là item tiến trình,
+  // không phải consumable trong trận) nên đặt ở đây thay vì performUseItem.
+  if (message.content.trim().toLowerCase() === "-usenote") {
+    await withLock(message.author.id, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(message.author.id);
+      const have = data.items?.["Fixer's Note"] ?? 0;
+      if (have <= 0) { message.reply("⚠️ Bạn không có **Fixer's Note** nào."); return; }
+      data.items["Fixer's Note"] = have - 1;
+      if (data.items["Fixer's Note"] <= 0) delete data.items["Fixer's Note"];
+      const note = applyFixersNote(data);
+      await savePlayerData(message.author.id, data, slot);
+      message.reply(`${note}\n*(Còn ${data.items?.["Fixer's Note"] ?? 0} Fixer's Note)*`);
+    });
     return;
   }
 
@@ -1232,6 +1252,15 @@ client.on("messageCreate", async (message) => {
         const { data, slot } = await getPlayerDataWithSlot(user.id);
         data.unlockedSkillTree = data.unlockedSkillTree ?? [];
         if (isUnlock) {
+          // "Shin" KHÔNG phải perk skill tree — mở khoá Shin/Mang là cờ PROFILE
+          // `ShinUnlock`. Chặn tường minh ở đây vì lệnh này KHÔNG có whitelist
+          // (perk lạ vẫn được push tự do), nên nếu không chặn thì GM gõ
+          // `-unlockskilltree @user Shin` sẽ lại tạo ra đúng thứ rác mà
+          // migratePlayerData vừa dọn — vòng lặp vô nghĩa.
+          if (perkName.trim().toLowerCase() === "shin") {
+            results.push(`❌ ${user.username}: "Shin" KHÔNG phải perk skill tree. Dùng \`-setplayer @${user.username} shinunlock: yes\` (hoặc cho player dùng **Fixer's Note**) để mở khoá Shin/Mang.`);
+            continue;
+          }
           if (data.unlockedSkillTree.includes(perkName)) { results.push(`⚠️ ${user.username}: đã có "${perkName}" rồi.`); continue; }
           const conflict = findExclusiveConflict(data.unlockedSkillTree, perkName);
           if (conflict) { results.push(`❌ ${user.username}: "${perkName}" loại trừ với "${conflict}" đã có sẵn — không thể có cả 2 (dùng \`-ununlockskilltree\` xoá "${conflict}" trước nếu muốn đổi).`); continue; }
@@ -1895,7 +1924,7 @@ if (message.content.startsWith("-gacha")) {
       }
       // Task yêu cầu trực tiếp: "đang lúc giữa encounter thì không được đổi
       // profile" — chặn nếu user đang active trong 1 encounter bất kỳ.
-      const activeChan = await getUserActiveEncounterChannel(userId);
+      const activeChan = await getUserActiveEncounterChannelChecked(userId, encounterKey);
       if (activeChan) {
         message.reply(`⚠️ Bạn đang trong 1 encounter (channel <#${activeChan}>) — không thể đổi profile giữa trận. Kết thúc encounter đó trước đã.`);
         return;
@@ -2054,7 +2083,7 @@ if (message.content.startsWith("-gacha")) {
     if (sub === "new") {
       const kv = parseKeyValues(rest);
       const contractKey = (kv["key"] ?? "").trim();
-      const activeChanNew = await getUserActiveEncounterChannel(message.author.id);
+      const activeChanNew = await getUserActiveEncounterChannelChecked(message.author.id, encounterKey);
       if (activeChanNew) {
         message.reply(`⚠️ Bạn đang trong 1 encounter khác (channel <#${activeChanNew}>) — không thể tạo contract mới cho tới khi kết thúc encounter đó.`);
         return;
@@ -2435,7 +2464,7 @@ if (message.content.startsWith("-gacha")) {
       }
       // Task yêu cầu trực tiếp: "cấm không cho join nhiều encounter một lúc" —
       // chặn nếu user ĐANG active ở 1 encounter KHÁC (channel khác).
-      const activeChanJoin = await getUserActiveEncounterChannel(message.author.id);
+      const activeChanJoin = await getUserActiveEncounterChannelChecked(message.author.id, encounterKey);
       if (activeChanJoin && activeChanJoin !== encChannelId) {
         message.reply(`⚠️ Bạn đang trong 1 encounter khác (channel <#${activeChanJoin}>) — không thể join 2 encounter cùng lúc. Kết thúc encounter đó trước đã.`);
         return;

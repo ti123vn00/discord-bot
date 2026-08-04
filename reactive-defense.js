@@ -596,9 +596,14 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         }
       }
 
-      const canClash = isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable
-        && (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
-      const canClashGeneral = isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable;
+      // Clash chỉ dùng được khi Speed CAO HƠN người tấn công (hoà cũng không được).
+      // `canClash` VỐN ĐÃ có check này; `canClashGeneral` thì KHÔNG — đó là lỗ hổng
+      // thật ở đường player (nút clash "chung" vẫn hiện cho người chậm hơn).
+      // Tách ra biến riêng để 2 nhánh dùng CHUNG một nguồn sự thật, khỏi lệch nhau.
+      // (Biến attacker ở scope này tên là `attacker`, KHÔNG phải `attackerResolved`.)
+      const clashSpeedOk = (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
+      const canClash = clashSpeedOk && isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable;
+      const canClashGeneral = canClash;
 
       const isEnemyTarget = targetResolved.type === "enemy";
       let sendChannel = channel;
@@ -652,7 +657,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         counterRows.push(new ActionRowBuilder().addComponents(
           ...availableDashPages.slice(0, 5).map(dp => new ButtonBuilder()
             .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:dash:${currentGroupIdx}:${dp.key}`)
-            .setLabel(`💨 ${dp.name} (né free${dp.lightCost > 0 ? `, -${dp.lightCost} Light` : ""})`)
+            .setLabel(`💨 ${dp.name}${dp.lightCost > 0 ? ` (-${dp.lightCost} Light)` : ""}`)
             .setStyle(ButtonStyle.Success)),
         ));
       }

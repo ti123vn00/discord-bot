@@ -100,7 +100,13 @@ module.exports = function ({
     const attackerFirstDiceValue = attackerFirstDiceMatch ? parseFloat(attackerFirstDiceMatch[1]) : null;
     if (attackerFirstDiceValue === null) return false; // đòn không có Dice thì Clash vô nghĩa
 
-    const clashPick = pickClashSkill(target);
+    // BUG ĐÃ SỬA (Fragaria: "Bug AI có thể clash dù tốc chậm hơn").
+    // Clash là hành động CHẶN TRƯỚC đòn địch — chỉ người NHANH HƠN mới kịp ra tay.
+    // Trước đây KHÔNG có một dòng so Speed nào ở cả 2 đường (AI lẫn player), nên
+    // mob chậm hơn vẫn clash thoải mái.
+    // Hoà Speed → KHÔNG clash được (phải NHANH HƠN, không phải "không chậm hơn").
+    const clashSpeedOk = (target.currentSpeed ?? 0) > (attackerResolved.combatant.currentSpeed ?? 0);
+    const clashPick = clashSpeedOk ? pickClashSkill(target) : null;
     if (clashPick) {
       const cost = parseSkillCost(clashPick.skill.cost);
       target.currentLight = Math.max(0, (target.currentLight ?? 0) - (cost.light ?? 0));
@@ -109,8 +115,8 @@ module.exports = function ({
       target.skillCooldowns[clashPick.skillKey] = cdTurns + 1;
       const myPenalty = getParryClashPenalty(target);
       const oppPenalty = getParryClashPenalty(attackerResolved.combatant);
-      const myEffectiveDice = clashPick.rolled.firstDiceValue - myPenalty + (target.clashAttackBoost ?? 0);
-      const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0);
+      const myEffectiveDice = clashPick.rolled.firstDiceValue - myPenalty + (target.clashAttackBoost ?? 0) + (target.clashPowerUp ?? 0);
+      const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0) + (attackerResolved.combatant.clashPowerUp ?? 0);
       if (myEffectiveDice > oppEffectiveDice) {
         const hitCount = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
         target.evadeCharges = (target.evadeCharges ?? 0) + hitCount;

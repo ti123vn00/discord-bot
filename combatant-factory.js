@@ -454,10 +454,22 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // Shin/Mang — hi sinh 25 Sanity/turn (CHẶN nếu Sanity hiện tại ≤ -10) để nhận
       // Shin (-0.2x mọi Res BẢN THÂN — dễ ăn dmg hơn) + Mang (+10%/+10% mỗi vòng kích
       // hoạt liên tiếp Dmg M1+skill TRONG TURN, gây True Dmg — Res mục tiêu < 1x bị
-      // ép về 1x). shinMangRounds KHÔNG tự reset (giả định "vòng" = số lần kích hoạt
+      // ép về 1x). mangLevel là chỉ số cố định của player, không reset theo turn
       // liên tiếp tự track, không tự suy ra "liên tiếp" qua nhiều turn — GM tự theo
       // dõi nếu cần đúng nghĩa "liên tiếp không gián đoạn").
-      shinMangActive: false, shinMangRounds: 0, shinMangUsedThisTurn: false,
+      // mangLevel — SỐ VÒNG MANG của player (chỉ số profile, KHÔNG phải bộ đếm
+      // số lần đã dùng Shin/Mang). Mặc định 1 vòng, cap 5. Tăng bằng Fixer's Note.
+      shinMangActive: false, mangLevel: 1, shinMangUsedThisTurn: false,
+      // shinLevel — Level Shin (xác nhận trực tiếp: "Người mới Unlock Shin sẽ có
+      // lvl Shin mặc định là lvl 10", max cap 50). Ảnh hưởng perk Defensive Light
+      // (cứ 10 Level → thêm -0,1x mọi Res khi Shin active). Hiện chưa có cơ chế
+      // TĂNG level trong trận — GM set qua profile nếu cần.
+      shinLevel: 10,
+      // clashPowerUp — "Clash Power Up" (Mang: +1/vòng). KHÁC HẲN diceUp: chỉ
+      // cộng vào giá trị dice KHI CLASH, không cộng vào dmg. Tách riêng khỏi
+      // clashAttackBoost (nguồn khác: Emotion Level/Black Suit, cap 8) để 2 nguồn
+      // không giẫm cap của nhau — clash cộng CẢ HAI.
+      clashPowerUp: 0,
       // ── Consumable Item (luật: "1 trận chỉ có thể mang 4 item hồi phục vào, và
       // mỗi turn chỉ được sử dụng một lần"). consumablesLoadout: list tên item ĐÃ
       // MANG vào trận (tối đa 4, khai qua -encounter additem, trừ THẬT khi dùng qua

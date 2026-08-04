@@ -713,20 +713,20 @@ const SKILLS = {
       if (variantKey === "air") {
         const air = r(4, 7);
         return [
-          `*Biến thể: 🕊️ **Trên không***`,
+          `*🕊️ **Trên không***`,
           `<:Dice1:1508173590078558369> **${air}** [<:Slash:1513768633434640517>Slash] — gây 5 <:DefenseDown:1513767463337066576>Defense Down`,
         ];
       }
       if (variantKey === "low") {
         const low = r(17, 30);
         return [
-          `*Biến thể: 🩸 **Dưới 33% HP***`,
+          `*🩸 **Dưới 33% HP***`,
           `<:Dice1:1508173590078558369> **${low}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] [AOE] — gây 8 <:Bleed:1513762688226955285>Bleed và 5 <:DefenseDown:1513767463337066576>Defense Down`,
         ];
       }
       const normal = r(7, 8);
       return [
-        `*Biến thể: 🦶 **Mặt đất***`,
+        `*🦶 **Mặt đất***`,
         `<:Dice1:1508173590078558369> **${normal}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Knockback] — gây 5 <:Bleed:1513762688226955285>Bleed và 2 <:DefenseDown:1513767463337066576>Defense Down`,
       ];
     },
@@ -2827,7 +2827,7 @@ roll(v = "no") {
       const lightText = isReuse ? "" : " và nhận 1 <:Light:1513786082502770719>Light";
       const reuseTag = isReuse ? " *(Reuse — tốn 1 <:Light:1513786082502770719>Light, không nhận Light)*" : "";
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit${lightText} và gây 2 <:Rupture:1513762812722155682>Rupture${reuseTag}`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Rút kiếm cắt không gian nơi kẻ địch đứng, gây dmg 2 hit${lightText} và gây 4 <:Rupture:1513762812722155682>Rupture${reuseTag}`,
       ];
     },
   },
@@ -2847,8 +2847,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,11), d2 = r(7,11);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [AOE 2 người] — Đâm hai thanh kiếm vào kẻ địch`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] [AOE 2 người] — Trảm ngang người chúng`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [AOE 2 người] — Đâm hai thanh kiếm vào kẻ địch, gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] [AOE 2 người] — Trảm ngang người chúng, gây 2 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -2858,8 +2858,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,9), d2 = r(8,12);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Dùng rìu chặt đứt kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau)`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Dùng chùy kết liễu, gây 6 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Dùng rìu chặt đứt kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau) và 3 <:Bind:1513763376122400908>Bind`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Dùng chùy kết liễu, gây 6 <:Tremor:1513762737388257380>Tremor, 3 <:Fragile:1513763336167100536>Fragile và <:TremorBurst:1513802464632246352>Tremor Burst`,
       ];
     },
   },
@@ -2879,8 +2879,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,9), d2 = r(7,10);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Dùng Pistol bên trái bắn kẻ địch`,
-        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Kết thúc bằng Pistol bên phải, đổi về dạng Shotgun`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Dùng Pistol bên trái bắn kẻ địch, gây 2 <:Burn:1513762716722106388>Burn`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Kết thúc bằng Pistol bên phải, gây 2 <:Burn:1513762716722106388>Burn, đổi về dạng Shotgun`,
       ];
     },
   },
@@ -2902,7 +2902,11 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,24);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] [AOE 3 người] — Lao lên bổ xuống kẻ địch`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] [AOE 3 người] — Lao lên bổ xuống kẻ địch, gây 10 <:Tremor:1513762737388257380>Tremor`,
+        // Tremor Burst CÓ ĐIỀU KIỆN nên KHÔNG viết trên dòng dice: parser
+        // (extractAutoStatusTags) sẽ auto-gắn vào dmgStr bất kể điều kiện.
+        // Điều kiện thật xử lý ở resolve-pending-action.js.
+        `*Nếu địch có ≥20 <:Tremor:1513762737388257380>Tremor sau đòn này: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst (tự động)*`,
       ];
     },
   },
@@ -2912,7 +2916,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(10,18);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — Dùng ngọn thương đâm xuyên kẻ địch trong chớp mắt`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Unblockable] — Dùng ngọn thương đâm xuyên kẻ địch trong chớp mắt, nhận 6 <:Poise:1513762945715142736>Poise. **Chắc chắn Crit**`,
       ];
     },
   },
@@ -3016,13 +3020,12 @@ roll(v = "no") {
       if (variantKey === "airborne") {
         const dAir = r(14, 30);
         return [
-          `*🪁 [Hakuda] Địch đang **Airborne** — dice tăng lên [14~30]. Sau đòn này địch thoát Airborne và nhận thêm 10 Dmg.*`,
+          `*🪁 [Hakuda] Địch đang **Airborne** — sau đòn này địch rơi xuống, nhận thêm 10 Dmg.*`,
           `${D1} **${dAir}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Quật ngã kẻ địch, gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst, nhận 1 <:Light:1513786082502770719>Light`,
         ];
       }
       const d1 = r(7,15);
       return [
-        `*[Hakuda] Nếu địch đang Airborne: dice đổi thành [14~30] (tự động nhận diện)*`,
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Quật ngã kẻ địch, gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst, nhận 1 <:Light:1513786082502770719>Light`,
       ];
     },

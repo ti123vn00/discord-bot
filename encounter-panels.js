@@ -36,17 +36,12 @@ const EXTRA_CRITICALS = [
   },
   // Mimicry Blade — "Great Split", cost "Tiêu 5 Imitation". Bản Horizontal cần
   // THÊM "bản thân dưới 30% HP" nên chỉ hiện khi đủ cả 2.
-  {
-    weapon: "Mimicry Blade", skillKey: "great split vertical",
-    cond: (c) => ({ ok: (c.imitation ?? 0) >= 5, note: "tiêu 5 Imitation" }),
-  },
-  {
-    weapon: "Mimicry Blade", skillKey: "great split horizontal",
-    cond: (c) => ({
-      ok: (c.imitation ?? 0) >= 5 && c.maxHp > 0 && c.currentHp < c.maxHp * 0.3,
-      note: "tiêu 5 Imitation, <30% HP",
-    }),
-  },
+  // Mimicry Blade — Great Split KHÔNG còn là nút riêng.
+  // Luật (Fragaria làm rõ): "điều kiện để xài Great Split của Mimicry là phải
+  // dùng critical 1 nữa. Ví dụ khi đủ 5 imitation và xài critical 1 tức
+  // upstanding slash thì sẽ TỰ ĐỘNG thành great split".
+  // → Xử lý bằng cách THAY THẾ Critical 1 ngay tại nút (xem MIMICRY_AUTO_UPGRADE
+  //   bên dưới), không thêm entry vào bảng này.
   // Soldato Rifle — "Shock Round" (trước đây hardcode riêng, giờ vào bảng chung).
   {
     weapon: "Soldato Rifle", skillKey: "shock round",
@@ -111,9 +106,19 @@ module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
     const criticalKeyEffective = isAtelierLogic
       ? `atelier logic ${combatant.atelierLogicForm ?? "shotgun"}`
       : combatant.weaponCriticalKey;
-    const criticalSkill = criticalKeyEffective ? findSkill(criticalKeyEffective) : null;
+    // Mimicry Blade — Critical 1 (Upstanding Slash) TỰ ĐỘNG nâng cấp thành Great
+    // Split khi đủ 5 Imitation. Ưu tiên Horizontal nếu THÊM điều kiện <30% HP
+    // (bản mạnh hơn, AOE 4 người), không thì Vertical.
+    let criticalKeyFinal = criticalKeyEffective;
+    let mimicryNote = "";
+    if (combatant.weaponName === "Mimicry Blade" && (combatant.imitation ?? 0) >= 5) {
+      const lowHp = combatant.maxHp > 0 && combatant.currentHp < combatant.maxHp * 0.3;
+      criticalKeyFinal = lowHp ? "great split horizontal" : "great split vertical";
+      mimicryNote = lowHp ? " (tiêu 5 Imitation, <30% HP)" : " (tiêu 5 Imitation)";
+    }
+    const criticalSkill = criticalKeyFinal ? findSkill(criticalKeyFinal) : null;
     if (criticalSkill) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}`).setValue(`critical:${criticalSkill.name}`));
+      options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}${mimicryNote}`.slice(0, 100)).setValue(`critical:${criticalSkill.name}`));
     }
     // ── CRITICAL THỨ 2 (BUG ĐÃ SỬA — Fragaria: "khi xài mấy weap không kích
     // crit-2 khi đủ condition... Index Longsword, Mook Workshop, Brawler" +

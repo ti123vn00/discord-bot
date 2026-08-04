@@ -28,6 +28,30 @@ function migratePlayerData(data) {
     // profile CŨ hoàn toàn THIẾU field, KHÔNG PHẢI = false, gây khó hiểu khi GM tự
     // xem/sửa JSON trực tiếp trong Upstash.
     data.ShinUnlock = data.ShinUnlock ?? false;
+    // ── DỌN "Shin" MỒ CÔI khỏi unlockedSkillTree (Fragaria yêu cầu trực tiếp:
+    // "Nhiều player bây giờ có 'Shin' trong unlockskilltree ở database rồi mặc
+    // dù họ không có unlockedshin: yes, cần clear ra bằng cách nào đó").
+    //
+    // NGUỒN GỐC: ở phiên trước tôi ĐOÁN SAI cơ chế mở khoá Shin nên đã thêm
+    // `"Shin": 0` vào PERK_POINT_COSTS — GM cấp được perk tên "Shin" với giá 0
+    // điểm. Sau khi xác định cơ chế THẬT là cờ profile `ShinUnlock`, những entry
+    // "Shin" đó thành RÁC: vô nghĩa về luật nhưng vẫn nằm trong database.
+    //
+    // Dọn NGAY LÚC LOAD (migrate) nên tự lành dần khi player tương tác, không
+    // cần chạy script quét toàn bộ database. Cost của "Shin" là 0 nên KHÔNG có
+    // điểm skill tree nào phải hoàn lại — xoá là sạch.
+    // Chỉ xoá đúng entry "Shin" TRẦN; perk NHÁNH shin (Shin Follow Up, Defensive
+    // Light, Decimate Mind, Regain Mind) GIỮ NGUYÊN — chúng tốn điểm thật và vẫn
+    // có tác dụng khi player được mở khoá sau này.
+    if (Array.isArray(data.unlockedSkillTree) && data.unlockedSkillTree.includes("Shin")) {
+      data.unlockedSkillTree = data.unlockedSkillTree.filter(p => p !== "Shin");
+    }
+  // ShinLevel / MangLevel — CHỈ SỐ CỦA PROFILE (không phải bộ đếm trong trận).
+  // Fragaria làm rõ: "Mang là để ám chỉ LVL Mang của player, 1 lvl Mang tương
+  // ứng 1 vòng tròn sáng... Khởi đầu player sẽ có 10 Shin Lvl và 1 Mang Lvl".
+  // Tăng bằng vật phẩm (Fixer's Note), KHÔNG tăng khi kích hoạt Shin/Mang.
+  data.ShinLevel = data.ShinLevel ?? 10;
+  data.MangLevel = data.MangLevel ?? 1;
     data.LightSkillTreeUnlock = data.LightSkillTreeUnlock ?? false;
     data["50StatUnlock"] = data["50StatUnlock"] ?? false;
     data.ManifestedEGOUnlock = data.ManifestedEGOUnlock ?? false;
@@ -54,6 +78,12 @@ function migratePlayerData(data) {
   data.equippedOutfit = data.equippedOutfit ?? null;
   data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
   data.ShinUnlock = data.ShinUnlock ?? false;
+  // ShinLevel / MangLevel — CHỈ SỐ CỦA PROFILE (không phải bộ đếm trong trận).
+  // Fragaria làm rõ: "Mang là để ám chỉ LVL Mang của player, 1 lvl Mang tương
+  // ứng 1 vòng tròn sáng... Khởi đầu player sẽ có 10 Shin Lvl và 1 Mang Lvl".
+  // Tăng bằng vật phẩm (Fixer's Note), KHÔNG tăng khi kích hoạt Shin/Mang.
+  data.ShinLevel = data.ShinLevel ?? 10;
+  data.MangLevel = data.MangLevel ?? 1;
   data.LightSkillTreeUnlock = data.LightSkillTreeUnlock ?? false;
   data["50StatUnlock"] = data["50StatUnlock"] ?? false;
   data.ManifestedEGOUnlock = data.ManifestedEGOUnlock ?? false;
@@ -151,6 +181,39 @@ async function getUserActiveEncounterChannel(userId) {
 async function setUserActiveEncounterChannel(userId, channelId) {
   await withTimeout(redis.set(activeEncounterUserKey(userId), channelId, { ex: 86400 }));
 }
+/** getUserActiveEncounterChannelChecked — BUG ĐÃ SỬA (Fragaria: "thỉnh thoảng khi
+ *  encounter end nhưng key useractiveenc ở trên database vẫn còn khiến encounter
+ *  đó bị kẹt trên hệ thống dù đã hết rồi, -encounter end cũng không được").
+ *
+ *  NGUYÊN NHÂN GỐC: `deleteEncounter` CHỈ xoá key encounter, KHÔNG dọn key
+ *  `useractiveenc:<userId>` của từng người. Chỉ 2 đường có dọn tường minh
+ *  (finalizeQuestOutcome và `-encounter end`); mọi đường khác (bot restart giữa
+ *  chừng, xoá encounter thủ công, lỗi mạng ở giữa 2 thao tác) để lại key MỒ CÔI
+ *  trỏ tới encounter không còn tồn tại. Người chơi bị khoá vĩnh viễn: join gì
+ *  cũng bị chặn, mà `-encounter end` cũng vô dụng vì encounter đã biến mất.
+ *
+ *  SỬA TẬN GỐC — TỰ CHỮA LÀNH: khi đọc key, kiểm tra encounter đích còn tồn tại
+ *  VÀ người này còn trong đó không; nếu không thì xoá key luôn rồi trả null.
+ *  Đặt ở đây (không phải từng call site) để MỌI đường kiểm tra đều được chữa,
+ *  kể cả đường thêm về sau. Nhận `encounterKeyFn` qua tham số thay vì require
+ *  encounter-persistence — tránh circular dependency.
+ */
+async function getUserActiveEncounterChannelChecked(userId, encounterKeyFn) {
+  const chan = await getUserActiveEncounterChannel(userId);
+  if (!chan) return null;
+  try {
+    const raw = await withTimeout(redis.get(encounterKeyFn(chan)));
+    if (!raw) { await clearUserActiveEncounterChannel(userId).catch(() => {}); return null; }
+    const enc = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!enc?.players?.[userId]) { await clearUserActiveEncounterChannel(userId).catch(() => {}); return null; }
+    return chan;
+  } catch {
+    // Redis lỗi tạm thời — GIỮ NGUYÊN key (không xoá nhầm khi chỉ là timeout),
+    // trả về chan như cũ để hành vi chặn vẫn đúng.
+    return chan;
+  }
+}
+
 async function clearUserActiveEncounterChannel(userId) {
   await withTimeout(redis.del(activeEncounterUserKey(userId)));
 }
@@ -282,6 +345,6 @@ function formatNumber(n) {
     getActiveProfileSlot, setActiveProfileSlot, playerKeyForSlot, dailyKeyForSlot,
     getPlayerData, getPlayerDataWithSlot, savePlayerData, saveMultiplePlayerData,
     unwrapPipelineResults, formatNumber,
-    getUserActiveEncounterChannel, setUserActiveEncounterChannel, clearUserActiveEncounterChannel,
+    getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, setUserActiveEncounterChannel, clearUserActiveEncounterChannel,
   };
 };

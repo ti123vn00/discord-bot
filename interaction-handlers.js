@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -343,14 +343,23 @@ client.on("interactionCreate", async (interaction) => {
             ...(prescriptNotesInit ?? []).map(n => `> ${n}`),
           ].join("\n") || undefined,
         }).catch(() => {});
-        // Panel hành động RIÊNG cho từng thành viên (dropdown gắn userId — mỗi
-        // người chỉ bấm được dropdown của mình, xem check ownerId ở encmenu).
-        for (const pid of Object.keys(startedEnc.players ?? {})) {
-          await startChannel.send({
-            content: `<@${pid}> — bảng hành động của bạn:`,
-            components: buildEncounterActionPanel(channelId, startedEnc.players[pid], pid),
-          }).catch(() => {});
-        }
+        // BUG ĐÃ SỬA (Fragaria: "Dropdown lúc contract begin hiện ra liên tục 3
+        // cái") — do CHÍNH bản fix "tự hiện board" của tôi: nó gửi panel hành
+        // động cho TỪNG player, trong khi `announceCurrentTurn` ngay bên dưới VỐN
+        // ĐÃ gửi panel cho người tới lượt. Kết quả: panel bị nhân đôi/nhân ba
+        // (mỗi panel lại gồm 3 dropdown Moves/Special/Items nên càng rối).
+        // Bỏ vòng lặp này — để announceCurrentTurn lo, đúng như luồng encounter
+        // thường vẫn chạy.
+      }
+      // BGM — GAP ĐÃ SỬA (Fragaria: "Contract khi begin không play bgm").
+      // `startPartyBoard` ĐÃ chọn sẵn `currentBgm` (party-board.js), nhưng đường
+      // contract chưa bao giờ ĐÍNH FILE — chỉ `-encounter start` mới đính. Người
+      // chơi vào contract không nghe được gì.
+      if (startChannel && startedEnc.currentBgm) {
+        await startChannel.send({
+          content: `> 🎵 BGM trận này: **${startedEnc.currentBgm}**`,
+          files: [new AttachmentBuilder(`./assets/audio/bgm/${startedEnc.currentBgm}`)],
+        }).catch(() => {});
       }
       announceCurrentTurn(channelId, startedEnc, true).catch(() => {});
       maybeRunAiTurn(channelId).catch(() => {});
@@ -1255,8 +1264,8 @@ client.on("interactionCreate", async (interaction) => {
       // dmg nếu clasher thắng) — xác nhận trực tiếp: "A Clash THAY cho B".
       const myPenalty = getParryClashPenalty(clasher);
       const oppPenalty = getParryClashPenalty(attackerResolved.combatant);
-      const myEffectiveDice = myRoll.firstDiceValue - myPenalty + (clasher.clashAttackBoost ?? 0);
-      const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0);
+      const myEffectiveDice = myRoll.firstDiceValue - myPenalty + (clasher.clashAttackBoost ?? 0) + (clasher.clashPowerUp ?? 0);
+      const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0) + (attackerResolved.combatant.clashPowerUp ?? 0);
 
       // Tiêu Light/CD cho skill VỪA DÙNG để Clash (của CLASHER, không phải
       // target), bất kể thắng thua (đã dùng là dùng, giống "-encounter clash"
@@ -1348,6 +1357,33 @@ client.on("interactionCreate", async (interaction) => {
             }
           } else {
             choiceNote += ` (Page-counter — ngắt đòn, không tự gây dmg riêng.)`;
+          }
+        } else {
+          // GAP ĐÃ SỬA (Fragaria: "sau khi clash thắng cũng không tung đòn vào
+          // người thua clash nữa. Khi thắng clash xong vẫn sẽ tiếp tục thực thi
+          // đòn đã clash lên kẻ địch").
+          // TRƯỚC ĐÂY thắng Clash chỉ NGẮT đòn địch rồi thôi — skill đã tiêu
+          // Light/CD nhưng không gây một điểm dmg nào (trừ page-counter có
+          // counterEffect riêng ở nhánh trên). Người chơi mất tài nguyên vô ích.
+          // Giờ skill dùng để clash được THỰC THI luôn lên kẻ thua clash.
+          // Áp THẲNG dmg thay vì tạo pendingAction mới: kẻ thua clash vừa bị
+          // "áp đảo" nên KHÔNG được phòng thủ lại — tạo pendingAction sẽ mở
+          // prompt reactive defense cho họ, sai luật và dễ gây treo lượt.
+          const winBuilt = autoBuildDmgStrFromSkillRoll(chosenSkill);
+          if (winBuilt.dmgStr) {
+            const winResStr = combatantResStr(attackerResolved.combatant);
+            const winPreview = calcMathCore({
+              dmgStr: winBuilt.dmgStr, resStr: winResStr,
+              poiseInit: clasher.poise, chargeInit: clasher.charge,
+              sanityBonusPct: clasher.currentSanity ?? 0,
+            });
+            attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - winPreview.totalDmg);
+            // Poise/Charge tự thân của skill ghi ngược về clasher (cùng cách
+            // resolve-pending-action.js làm) để không mất buff của chính page.
+            if (Number.isFinite(winPreview.finalPoiseStacks)) clasher.poise = winPreview.finalPoiseStacks;
+            if (Number.isFinite(winPreview.finalCharge)) clasher.charge = winPreview.finalCharge;
+            checkStaggerPanic(attackerResolved.combatant);
+            choiceNote += ` ⚔️ **${chosenSkill.name}** tung thẳng vào ${attackerResolved.label}: **-${winPreview.totalDmg.toFixed(3)} HP** (còn ${attackerResolved.combatant.currentHp.toFixed(1)}).`;
           }
         }
       } else {

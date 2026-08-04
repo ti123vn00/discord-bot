@@ -236,6 +236,15 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     combatant.voracityUsedThisTurn = false;
     // Shin/Mang chỉ active TRONG TURN đã kích hoạt — hết turn thì tắt hẳn (phải dùng
     // lại -encounter shinmang, tốn thêm 25 Sanity, nếu muốn duy trì turn sau).
+    // Buff PHÁI SINH của Mang (+Dice Up / +Clash Power Up) chỉ sống trong turn.
+    // LƯU Ý: KHÔNG cần tự trừ Dice Up ở đây — `combatant.diceUp = 0` đã có sẵn ở
+    // khối reset status cuối hàm này (cùng advanceCombatantTurn), Dice Up vốn là
+    // status theo-turn. Chỉ `clashPowerUp` là field MỚI nên phải reset tường minh.
+    // `mangDiceUpApplied` vẫn giữ để performShinMang biết phần Dice Up nào là của
+    // Mang khi kích hoạt LẠI trong CÙNG turn (tránh cộng chồng).
+    combatant.mangDiceUpApplied = 0;
+    combatant.clashPowerUp = 0;
+    // mangLevel là chỉ số profile — KHÔNG reset theo turn.
     combatant.shinMangActive = false;
     combatant.shinMangUsedThisTurn = false;
     combatant.bleedFirstHitUsedThisTurn = false;

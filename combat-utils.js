@@ -305,7 +305,11 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       const shinLevel = combatant.shinLevel ?? 10;
       const extraReduction = hasPerk(combatant, "Defensive Light") ? Math.floor(shinLevel / 10) * 0.1 : 0;
       const totalReduction = 0.2 + extraReduction;
-      return `${Math.max(0, r.B - totalReduction)}xB ${Math.max(0, r.P - totalReduction)}xP ${Math.max(0, r.S - totalReduction)}xS`;
+      // round1 — làm tròn 1 chữ số thập phân. BẮT BUỘC: phép trừ số thực JS cho ra
+      // rác kiểu `1 - 0.7 = 0.30000000000000004`, lọt thẳng vào resStr rồi hiển thị
+      // cho người chơi (và phải parse lại ở trueDmgResStr/damage-calc).
+      const round1 = (v) => Math.round(Math.max(0, v) * 10) / 10;
+      return `${round1(r.B - totalReduction)}xB ${round1(r.P - totalReduction)}xP ${round1(r.S - totalReduction)}xS`;
     }
     return `${r.B}xB ${r.P}xP ${r.S}xS`;
   }

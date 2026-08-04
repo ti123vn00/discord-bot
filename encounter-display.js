@@ -140,7 +140,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     lines.push(emotionLine);
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) lines.push(`> ⚡ **Overcharged** — +${combatant.overchargedDiceUpBonus} Dice Up, +${combatant.overchargedDmgBonusPct}% Dmg — còn ${combatant.overchargedTurnsLeft} turn`);
     if ((combatant.breakTheDamsCdLeft ?? 0) > 0) lines.push(`> ⏳ Break the Dams CD — còn ${combatant.breakTheDamsCdLeft} turn`);
-    if (combatant.shinMangActive) lines.push(`> 🌑 **Shin/Mang active** (vòng ${combatant.shinMangRounds}) — -0,2x Res bản thân, +${combatant.shinMangRounds * 10}% Dmg M1+skill, True Dmg`);
+    if (combatant.shinMangActive) lines.push(`> 🌑 **Shin/Mang active** — Shin Lvl ${combatant.shinLevel ?? 10}, Mang Lvl ${combatant.mangLevel ?? 1}/5: -0,2x Res bản thân, +${(combatant.mangLevel ?? 1) * 10}% Dmg, +${combatant.mangLevel ?? 1} Dice Up, +${combatant.mangLevel ?? 1} Clash Power Up, True Dmg (M1+skill, bỏ qua DR)`);
     if ((combatant.consumablesLoadout ?? []).length > 0) lines.push(`> 🎒 Item mang vào: ${combatant.consumablesLoadout.join(", ")} (${combatant.consumablesLoadout.length}/4)${combatant.usedItemThisTurn ? " — đã dùng 1 turn này" : ""}`);
     if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill`);
     else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) lines.push(`> ⏳ Manifest E.G.O CD — còn ${combatant.manifestedEGOCooldownLeft} turn`);
@@ -180,11 +180,12 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if ((combatant.attackPowerDown ?? 0) > 0) statusParts.push(`Attack Power Down${combatant.attackPowerDown}`);
     if ((combatant.defenseUp ?? 0) > 0) statusParts.push(`Defense Up${combatant.defenseUp}`);
     if ((combatant.defenseDown ?? 0) > 0) statusParts.push(`Defense Down${combatant.defenseDown}`);
-    if ((combatant.clashAttackBoost ?? 0) > 0) statusParts.push(`Clash Attack Boost${combatant.clashAttackBoost}`);
+    if ((combatant.clashAttackBoost ?? 0) > 0) statusParts.push(`<:DiceUp:1513767795681398894>Clash Atk Boost${combatant.clashAttackBoost}`);
+    if ((combatant.clashPowerUp ?? 0) > 0) statusParts.push(`<:DiceUp:1513767795681398894>Clash Power Up${combatant.clashPowerUp}`);
     if ((combatant.chargeShieldStack ?? 0) > 0) statusParts.push(`Charge Shield${combatant.chargeShieldStack}`);
     if ((combatant.dullahanStacks ?? 0) > 0) statusParts.push(`Dullahan${combatant.dullahanStacks}`);
     if ((combatant.unopposedAttackBoost ?? 0) > 0) statusParts.push(`Unopposed Attack Boost${combatant.unopposedAttackBoost}`);
-    if ((combatant.imitationConsumedTotal ?? 0) > 0) statusParts.push(`Imitation Consumed${combatant.imitationConsumedTotal}`);
+    if ((combatant.imitationConsumedTotal ?? 0) > 0) statusParts.push(`<:Imitation:1513769425063514173>Consumed${combatant.imitationConsumedTotal}`);
     // Rà soát TOÀN BỘ 119 field combatant-factory.js (không chỉ danh sách GM
     // Panel) — GAP MỚI (xác nhận trực tiếp): "cứ rà hết đi" — 14 field dưới đây
     // ĐÃ tự động hoá đầy đủ (xác nhận qua audit code) nhưng CHƯA TỪNG hiển thị.
@@ -196,7 +197,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if ((combatant.coffinStacks ?? 0) > 0) statusParts.push(`Coffin${combatant.coffinStacks}`);
     if ((combatant.darkCloudOutfitStacks ?? 0) > 0) statusParts.push(`Dark Cloud${combatant.darkCloudOutfitStacks}`);
     if ((combatant.graceOfPrescript ?? 0) > 0) statusParts.push(`Grace of Prescript${combatant.graceOfPrescript}`);
-    if ((combatant.imitation ?? 0) > 0) statusParts.push(`Imitation${combatant.imitation}`);
+    if ((combatant.imitation ?? 0) > 0) statusParts.push(`<:Imitation:1513769425063514173>${combatant.imitation}`);
     if (combatant.prescriptRoll !== null && combatant.prescriptRoll !== undefined) {
       const PRESCRIPT_ROLL_LABELS = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
       statusParts.push(`<:Prescript:1528452494945157281>Sắc lệnh #${combatant.prescriptRoll} (${PRESCRIPT_ROLL_LABELS[combatant.prescriptRoll] ?? "?"})`);

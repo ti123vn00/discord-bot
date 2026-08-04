@@ -6,18 +6,27 @@
 // CONTRACTS — key dùng cho dropdown/customId, "mobKey" trỏ tới QUEST_MOBS bên
 // dưới, "killCount" = số mob cần hạ (mob CÙNG LOẠI, spawn đủ số lượng lúc start
 // — xem party-board.js).
+// bookDropMin/Max — số Random Book rơi ra khi HOÀN THÀNH contract (Fragaria xác
+// nhận trực tiếp). RARE_DROP_* — 1% cơ hội rơi thêm "Borrowed Eyes" (Singularity)
+// ở MỌI contract, độc lập với book thường.
+const RARE_DROP_BOOK = "Borrowed Eyes";
+const RARE_DROP_CHANCE = 0.01;
+
 const CONTRACTS = {
   evict: {
     name: "Evict", description: "Diệt 3 Rats",
     mobKey: "rats", killCount: 3, expReward: 3, ahnReward: 50000,
+    bookDropMin: 0, bookDropMax: 1,
   },
   debtcollector: {
     name: "Debt Collector", description: "Diệt 5 Rats",
     mobKey: "rats", killCount: 5, expReward: 5, ahnReward: 100000,
+    bookDropMin: 1, bookDropMax: 1,
   },
   backonline: {
     name: "Back Online", description: "Diệt 3 người nhóm lưỡi câu",
     mobKey: "hookgang", killCount: 3, expReward: 10, ahnReward: 250000,
+    bookDropMin: 1, bookDropMax: 2,
   },
   rescue: {
     name: "Rescue", description: "Diệt 10 Rats",
@@ -26,10 +35,12 @@ const CONTRACTS = {
   contrabandtech: {
     name: "Contraband Tech", description: "Diệt 1 thành viên của Amon Syndicate",
     mobKey: "amonsyndicate", killCount: 1, expReward: 15, ahnReward: 400000,
+    bookDropMin: 2, bookDropMax: 2,
   },
   eyegouger: {
     name: "Eye Gouger", description: "Diệt 1 Eye Gouger",
     mobKey: "eyegouger", killCount: 1, expReward: 20, ahnReward: 500000,
+    bookDropMin: 2, bookDropMax: 3,
   },
 };
 
@@ -86,4 +97,4 @@ const QUEST_MOBS = {
   },
 };
 
-module.exports = { CONTRACTS, QUEST_MOBS };
+module.exports = { CONTRACTS, RARE_DROP_BOOK, RARE_DROP_CHANCE, QUEST_MOBS };

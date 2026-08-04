@@ -68,13 +68,11 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
     "Charge Up": 5, "Convert Physical Trauma": 10, "Blessed by the Sparks": 15,
     "Electrifying Vendetta": 30, "Short Circuit Trip": 35, "Kinetic Energy": 40,
     "Overflowing Guard": 45, "Overcharged Vessel": 50,
-    // Shin — "Shin" là KỸ NĂNG GỐC, cost 0 (xác nhận trực tiếp từ Fragaria: "Shin
-    // là một kỹ năng khi unlock thì sẽ mở được Shin Skill tree nhưng không cần
-    // nâng nhánh Shin thì vẫn sử dụng được Shin, nhánh chỉ là bổ trợ thêm").
-    // TRƯỚC ĐÂY "Shin" KHÔNG hề có trong bảng này lẫn PERK_BRANCH — nên nó không
-    // xuất hiện ở đâu để GM biết mà cấp, dù `hasPerk(combatant, "Shin")` là điều
-    // kiện DUY NHẤT để hiện Shin/Mang ở dropdown Special.
-    "Shin": 0,
+    // LƯU Ý: KHÔNG có entry "Shin" ở đây. Mở khoá Shin/Mang là cờ PROFILE
+    // `ShinUnlock` (GM bật qua `-setplayer shinunlock:`, hoặc player dùng
+    // Fixer's Note), KHÔNG phải perk skill tree.
+    // Phiên trước tôi từng thêm `"Shin": 0` vì đoán sai cơ chế — đã gỡ, và
+    // migratePlayerData (player-data.js) tự dọn entry rác trong database.
     "Shin Follow Up": 5, "Defensive Light": 10, "Decimate Mind": 20, "Regain Mind": 30,
     "Overwhelming Power": 50,
     // Light (chỉ thủ thư thư viện) — LƯU Ý: "Light Dash" ở đây là PERK (mỗi turn
@@ -127,8 +125,7 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
     "Charge Up": "envy", "Convert Physical Trauma": "envy", "Blessed by the Sparks": "envy",
     "Electrifying Vendetta": "envy", "Short Circuit Trip": "envy", "Kinetic Energy": "envy",
     "Overflowing Guard": "envy", "Overcharged Vessel": "envy",
-    // Shin
-    "Shin": "shin",
+    // Shin (KHÔNG có entry "Shin" trần — xem PERK_POINT_COSTS)
     "Shin Follow Up": "shin", "Defensive Light": "shin", "Decimate Mind": "shin", "Regain Mind": "shin",
     "Overwhelming Power": "shin",
     // Light
@@ -186,17 +183,16 @@ module.exports = function ({ calcGrade, GRADE_MIN }) {
    *  suy ra hợp lệ, đồng thời cứu các profile cũ đã được cấp perk nhánh nhưng
    *  chưa từng được cấp "Shin" trần vì trước đây nó không tồn tại trong bảng). */
   function hasShinAccess(combatant) {
-    // Nguồn CHÍNH: cờ `ShinUnlock` trên profile (GM bật) — đã copy sang combatant
-    // lúc join dưới tên `hasShinUnlock`. Đây là cơ chế mở khoá THẬT của dự án;
-    // 2 nhánh còn lại chỉ là dự phòng.
-    if (combatant.hasShinUnlock) return true;
-    const perks = combatant.unlockedPerks ?? [];
-    // Dự phòng 1: GM cấp thẳng perk "Shin" (bảng PERK_POINT_COSTS, cost 0).
-    if (perks.includes("Shin")) return true;
-    // Dự phòng 2: đã có perk NHÁNH shin — không thể có perk nhánh mà chưa mở
-    // Shin, nên suy ra hợp lệ. Cũng cứu profile cũ được cấp perk nhánh từ trước
-    // khi cờ ShinUnlock được dùng nhất quán.
-    return perks.some(p => PERK_BRANCH[p] === "shin");
+    // BUG ĐÃ SỬA (Fragaria: "Dropdown Shin/Mang mở khóa ai cũng thấy để bấm, chỉ
+    // có những người được unlock check ở profile shin/mang mới sử dụng được. Vô
+    // số player đã có Shin ở unlocked skill tree dù họ không được check
+    // unlockshin true").
+    // Bản trước tôi để 2 nhánh DỰ PHÒNG đọc `unlockedPerks` — sai thực tế: rất
+    // nhiều profile đã được cấp perk nhánh shin (hoặc perk "Shin" trần) trong
+    // khi cờ `ShinUnlock` vẫn false, nên dropdown hiện cho gần như tất cả mọi
+    // người. Nguồn sự thật DUY NHẤT là cờ profile `ShinUnlock` (GM bật) — đã
+    // copy sang combatant lúc join dưới tên `hasShinUnlock`.
+    return !!combatant.hasShinUnlock;
   }
   
   // ── SKILL TREE PERK ENGINE ───────────────────────────────────────────────────
