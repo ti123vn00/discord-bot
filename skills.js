@@ -450,32 +450,44 @@ const SKILLS = {
   "furioso": {
     name: "Furioso",
     cost: "A Prayer For Loving Sorrow", cd: "—", diceMul: "2.5x",
+    // ── FURIOSO REWORK (Fragaria xác nhận trực tiếp) ────────────────────────────
+    // BỎ [Unclashable] — giờ Furioso CLASH ĐƯỢC, và clash bằng **TỔNG roll của cả
+    // 9 dice gộp lại** (không phải dice đầu như skill thường) → xem
+    // `clashUsesTotalDice` bên dưới.
+    // 3 TAG MỚI:
+    //   • [Unbreakable Dice] — THUA clash vẫn TIẾN HÀNH sử dụng, chỉ còn 50% dmg
+    //     gốc (thay vì bị huỷ hoàn toàn như mọi skill khác).
+    //   • [Uncounterable] — không thể bị page-counter ngắt.
+    //   • [Unfocused Volley] — MỖI DICE nảy sang 1 kẻ địch NGẪU NHIÊN trên sân;
+    //     riêng dice ĐẦU chắc chắn trúng target được aim.
+    // Tag khai ở DÒNG HEADER = áp cho CẢ page (parsePerHitBypass đọc được — xem
+    // index.js), nên không phải lặp ở từng dòng dice nữa.
+    clashUsesTotalDice: true,
+    unbreakableDiceMul: 0.5,
+    unfocusedVolley: true,
     roll() {
       const d1=r(12,21), d2=r(11,20), d3=r(16,25), d4=r(15,21),
             d5=r(17,26), d6=r(14,23), d7=r(17,26), d8=r(29,38), d9=r(17,26);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
-        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable]`,
-        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 2 <:Tremor:1513762737388257380>Tremor`,
-        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture`,
-        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        // "50% Slash / 50% Blunt" — xác nhận trực tiếp từ Fragaria: KHÔNG phải
-        // random chọn 1 loại, mà CHIA ĐÔI thành 2 HIT ("dice ra 20 thì thành 2
-        // Hit: 10 Slash và 10 Blunt"). TRƯỚC ĐÂY dòng này không có tag loại dmg
-        // hợp lệ nào ([50% Slash/50% Blunt] không khớp regex) nên bị parser bỏ
-        // qua HOÀN TOÀN — Dice 6 và Dice 8 rơi khỏi dmgStr, mất trắng damage.
-        // Giờ tách thành 2 dòng, mỗi dòng nửa giá trị (giữ TỔNG chính xác kể cả
-        // số lẻ — 23 → 11.5 + 11.5, damage-calc.js nhận số thập phân).
-        // QUAN TRỌNG: status phụ (4 Fragile, Tremor Burst) CHỈ ghi ở 1 dòng —
-        // để cả 2 sẽ bị áp GẤP ĐÔI.
-        `${D6} **${half(d6)}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Slash của Dice 6)* gây 4 <:Fragile:1513763336167100536>Fragile, <:TremorBurst:1513802464632246352>Tremor Burst`,
-        `${D6} **${half(d6)}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Blunt của Dice 6)*`,
-        `${D7} **${d7}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 10 <:Tremor:1513762737388257380>Tremor`,
-        `${D8} **${half(d8)}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Slash của Dice 8)*`,
-        `${D8} **${half(d8)}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — *(nửa Blunt của Dice 8)*`,
-        `${D9} **${d9}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — gây 1 <:Rupture:1513762812722155682>Rupture *trước* khi gây Dmg`,
+        `**[Undodgeable] [Unblockable] [Unparriable] [Uncounterable] [Unbreakable Dice] [Unfocused Volley]**`,
+        `*⚔️ Clash bằng TỔNG cả 9 dice · thua clash vẫn dùng với 50% dmg · mỗi dice nảy ngẫu nhiên sang kẻ địch khác (dice 1 luôn trúng mục tiêu được nhắm)*`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762716722106388>Burn`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [100% Crit] — nhận 6 <:Poise:1513762945715142736>Poise`,
+        `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Tremor:1513762737388257380>Tremor`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Rupture:1513762812722155682>Rupture`,
+        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] — gây 5 <:Bleed:1513762688226955285>Bleed`,
+        // Dice 6 và 8 là "50% Slash / 50% Blunt" — CHIA ĐÔI thành 2 hit (xác nhận
+        // trực tiếp: "dice ra 20 → 2 Hit: 10 Slash + 10 Blunt"). Status phụ CHỈ
+        // ghi ở 1 trong 2 nửa, nếu không sẽ bị áp GẤP ĐÔI.
+        `${D6} **${half(d6)}** [<:Slash:1513768633434640517>Slash] — *(nửa Slash)* gây 3 <:Fragile:1513763336167100536>Fragile, 3 <:Bind:1513763376122400908>Bind và <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D6} **${half(d6)}** [<:Blunt:1513768529718022254>Blunt] — *(nửa Blunt)*`,
+        `${D7} **${d7}** [<:Blunt:1513768529718022254>Blunt] — gây 10 <:Tremor:1513762737388257380>Tremor`,
+        `${D8} **${half(d8)}** [<:Slash:1513768633434640517>Slash] — *(nửa Slash)* gây 2 <:Sinking:1513762793436741652>Sinking`,
+        `${D8} **${half(d8)}** [<:Blunt:1513768529718022254>Blunt] — *(nửa Blunt)* gây 3 <:Rupture:1513762812722155682>Rupture`,
+        `${D9} **${d9}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Rupture:1513762812722155682>Rupture; nhận 3 <:DiceUp:1513767795681398894>Dice Up (áp TRƯỚC khi gây dmg, kéo dài hết turn)`,
       ];
     },
+
   },
 
 // NEW SKILLS BLOCK - insert before closing }; of SKILLS
@@ -4645,6 +4657,19 @@ Object.assign(SKILLS, {
     // đã có sẵn). "Thumb Soldato" outfit: đồng minh Thumb nhận 1/2 số nạp
     // (làm tròn lên) — xử lý cùng chỗ.
     customLoad: { field: "bulletStack", max: 8, half: true },
+    // GAP ĐÃ SỬA (Fragaria: "Page Re-load chưa cho chọn nạp đạn giữa đạn thường
+    // hoặc frost hoặc incendiary; chỉ tự động nạp đạn thường").
+    // Logic nạp ĐÃ hỗ trợ `p.loadType` từ lâu (resolve-pending-action.js), nhưng
+    // UI KHÔNG BAO GIỜ cho chọn — chỉ lệnh text cũ có param `loadtype:`, còn
+    // dropdown Moves thì không, nên luôn rơi về mặc định "ammo".
+    // Dùng LẠI cơ chế `variants` (như Extreme Edge): người chơi bấm page → hiện
+    // dropdown chọn loại → variantKey được map sang `loadType` ở
+    // interaction-handlers.js. Không cần cơ chế UI mới.
+    variants: [
+      { key: "ammo", label: "Đạn thường", emoji: "🔫" },
+      { key: "frost", label: "Frost Ammo", emoji: "❄️" },
+      { key: "incendiary", label: "Incendiary Ammo", emoji: "🔥" },
+    ],
   },
   "ignite weaponry": {
     name: "Ignite Weaponry", tags: "Burn",

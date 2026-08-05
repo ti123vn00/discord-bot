@@ -352,7 +352,7 @@ async function sendThirdPartyClashPrompts(encounter, channelId, channel, p, t, a
       components: [new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`encreactivedef:${channelId}:${p.id}:${t.targetId}:clash:${entry.id}`)
-          .setLabel(`⚔️ Clash thay cho ${targetResolved.label}`)
+          .setLabel(`⚔️ Clash thay cho ${targetResolved.label}${unbreakableNote}`)
           .setStyle(ButtonStyle.Primary),
         // "hãy thêm lựa chọn không clash, tức là nút hủy" (xác nhận trực
         // tiếp, theo tester) — không làm gì cả, chỉ ẩn prompt này đi.
@@ -541,7 +541,9 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       // là chiến thuật bình thường, không mâu thuẫn gì.
       const isFirstUndecidedGroup = !t.perHitChoices.some(c => c !== null);
       const availableCounterPages = [];
-      {
+      // [Uncounterable] (Furioso rework) — đòn có tag này KHÔNG thể bị page-counter
+      // ngắt, nên không hiện nút counter nào cả.
+      if (!thisGroupBypass.uncounterable) {
         const addedCounterKeys = new Set();
         for (const pageName of (target.unlockedPagesSnapshot ?? [])) {
           const pageSkill = findSkill(pageName);
@@ -602,6 +604,11 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       // Tách ra biến riêng để 2 nhánh dùng CHUNG một nguồn sự thật, khỏi lệch nhau.
       // (Biến attacker ở scope này tên là `attacker`, KHÔNG phải `attackerResolved`.)
       const clashSpeedOk = (target.currentSpeed ?? -Infinity) > (attacker.combatant.currentSpeed ?? Infinity);
+      // Furioso: [Unbreakable Dice] — báo trước cho người phòng thủ biết thắng
+      // clash cũng KHÔNG huỷ được đòn, chỉ giảm còn 50% dmg. Nếu không báo, họ sẽ
+      // tưởng clash thắng là an toàn rồi bất ngờ ăn nguyên nửa đòn.
+      const unbreakableNote = thisGroupBypass.unbreakableDice
+        ? " ⚠️ *(Unbreakable Dice — thắng clash chỉ giảm còn 50% dmg, KHÔNG huỷ được đòn)*" : "";
       const canClash = clashSpeedOk && isFirstUndecidedGroup && !isM1Type && !thisGroupBypass.unclashable;
       const canClashGeneral = canClash;
 

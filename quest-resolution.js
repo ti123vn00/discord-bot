@@ -22,7 +22,7 @@ const { CONTRACTS } = require("./quest-data");
 module.exports = function ({
   withLock, getPlayerDataWithSlot, savePlayerData, clampExpWithLunacy,
   redis, withTimeout, getVNDateString, DAILY_KEY_TTL_SECONDS, markContractTaskDone,
-  applyDeathPenalty, clearUserActiveEncounterChannel, RARE_DROP_BOOK, RARE_DROP_CHANCE }) {
+  applyDeathPenalty, clearUserActiveEncounterChannel, RARE_DROP_BOOK, RARE_DROP_CHANCE, appendActionLog }) {
   function contractCountKey(userId, slot) {
     return `contractcount:${userId}:${slot}`;
   }
@@ -188,6 +188,30 @@ module.exports = function ({
     for (const pid of encounter.questMeta?.memberIds ?? []) {
       clearUserActiveEncounterChannel(pid).catch(() => {});
     }
+    // GAP ĐÃ SỬA (Fragaria: "cần sửa lại phần action log khi end encounter/contract
+    // ghi rõ ra hơn để debug tốt hơn").
+    // TRƯỚC ĐÂY encounter kết thúc mà action log KHÔNG ghi một dòng nào — nhìn log
+    // chỉ thấy trận đứt ngang, không biết vì sao (thắng? wipe? quá hạn?), lúc đó
+    // ai còn bao nhiêu HP, ai đã gục. Đây chính là thứ cần nhất khi debug các bug
+    // "encounter tự kết thúc ngầm" / "AI kẹt".
+    // Ghi ẢNH CHỤP TOÀN CẢNH ngay trước khi xoá encounter.
+    const snapshot = [];
+    const fmt = (c, label) => `${label}: ${(c.currentHp ?? 0).toFixed(1)}/${c.maxHp ?? "?"} HP` +
+      `, ${(c.currentStamina ?? 0).toFixed(0)} Sta` +
+      (c.staggered ? " 💫Stagger" : "") + ((c.currentHp ?? 0) <= 0 ? " ☠️GỤC" : "");
+    for (const [pid, c] of Object.entries(encounter.players ?? {})) snapshot.push(fmt(c, `<@${pid}>`));
+    for (const [ek, c] of Object.entries(encounter.enemies ?? {})) snapshot.push(fmt(c, `**${c.name ?? ek}**`));
+    const pendingLeft = (encounter.pendingActions ?? []).length;
+    const diagLines = [
+      `🏁 **ENCOUNTER KẾT THÚC** — lý do: ${expired ? "QUÁ HẠN (treo quá lâu)" : (questOutcome.won ? "HOÀN THÀNH mục tiêu" : "cả team GỤC NGÃ")}`,
+      `📊 Turn ${encounter.turnNumber ?? "?"} · pendingActions còn lại: ${pendingLeft}${pendingLeft > 0 ? " ⚠️ (đòn chưa resolve — dấu hiệu treo)" : ""}`,
+      ...snapshot,
+    ];
+    appendActionLog(encounter, [...diagLines, ...resultLines], "end");
+    // QUAN TRỌNG: encounter bị XOÁ ngay sau hàm này (`_deleteAfterSave`), nên ghi
+    // vào actionLog thôi là MẤT — phải đẩy chẩn đoán vào resultLines để caller gửi
+    // ra channel. Đây chính là thứ cần để debug "encounter tự kết thúc ngầm".
+    resultLines.push("", "**— Chẩn đoán lúc kết thúc —**", ...diagLines);
     encounter._deleteAfterSave = true;
     return resultLines;
   }

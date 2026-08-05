@@ -16,7 +16,7 @@
 // cập nhật nếu weapon.js thêm vũ khí có cùng mechanicId.
 const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 
-module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData }) {
+module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -196,6 +196,11 @@ async function resolveOnePendingAction(encounter, p) {
               const bleedBeforeHit = target.bleed; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
               burnBeforeMap[t.targetId] = target.burn ?? 0;
               let finalDmg = t.preview.totalDmg;
+              // [Unbreakable Dice] (Furioso rework) — người phòng thủ THẮNG clash
+              // nhưng đòn có tag này thì KHÔNG bị huỷ, chỉ còn 50% dmg gốc. Cờ do
+              // interaction-handlers.js đặt lúc xử lý clash thắng (thay vì cộng
+              // evadeCharges như đòn thường).
+              if (p.unbreakableDiceHalved) finalDmg *= 0.5;
               let defenseNote = "";
               let evadedCompletely = false;
               // Guard/Evade/Parry — TIÊU THỤ charge SỐNG (đọc trực tiếp target lúc xử
@@ -302,6 +307,14 @@ async function resolveOnePendingAction(encounter, p) {
                 const instanceResults = t.preview.instanceResults ?? [];
                 const totalHits = instanceResults.length || hitCount;
                 const perHitMult = new Array(totalHits).fill(1);
+                // [Unfocused Volley] — target này CHỈ ăn đúng những dice được
+                // phân về cho họ (index.js phân bổ lúc tạo pendingAction). Các
+                // dice khác thuộc về địch khác nên tắt hoàn toàn (mult 0) để
+                // không bị tính trùng cho mọi target.
+                if (Array.isArray(t.volleyHitIndices)) {
+                  const mine = new Set(t.volleyHitIndices);
+                  for (let i = 0; i < totalHits; i++) if (!mine.has(i)) perHitMult[i] = 0;
+                }
                 const hitEvadedOrParried = new Array(totalHits).fill(false);
                 let hitIdx = 0;
                 const noteParts = [];
@@ -1971,6 +1984,13 @@ async function resolveOnePendingAction(encounter, p) {
   // "resolve 1 pendingAction". performEndTurn (GM bấm kết thúc turn, hoặc enemy
   // cuối chết vì DoT tick) KHÔNG bao giờ chạy qua đây → contract không tự end.
   // Xem comment đầy đủ ở finalizeQuestOutcome.
+  // GAP ĐÃ SỬA (Fragaria: "action log nó khá kỳ, không thể hiện được rõ").
+  // TRƯỚC ĐÂY action log CHỈ ghi "dùng skill X" / "bỏ qua lượt" / "kết thúc lượt"
+  // — tức là CHỈ Ý ĐỊNH, KHÔNG có KẾT QUẢ: ai trúng ai, mất bao nhiêu HP, phòng
+  // thủ kiểu gì, ai gục. Xem lại log để debug thì không suy ra được gì.
+  // Giờ ghi luôn dòng kết quả (chính là `resultLines` vẫn gửi ra channel), gắn
+  // type "resolve" để phân biệt với dòng ý định.
+  if (resultLines.length > 0) appendActionLog(encounter, resultLines, "resolve");
   resultLines.push(...(await finalizeQuestOutcome(encounter)));
 
   return resultLines;

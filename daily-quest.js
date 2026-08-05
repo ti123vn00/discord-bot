@@ -133,6 +133,8 @@ module.exports = function ({
       }
       const weeklyBonusNote = checkAllDoneAndApplyStreak(data, profileData);
       await saveDailyAndProfile(userId, slot, dailyKey, data, profileData);
+      // task3AutoNote giữ lại để tương thích caller cũ, nhưng LUÔN null kể từ khi
+      // bỏ auto-complete — KHÔNG hiển thị nó ra (sẽ ra chuỗi "null").
       return { alreadyDone: false, data, task3AutoNote, weeklyBonusNote };
     });
   }

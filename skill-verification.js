@@ -88,6 +88,15 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       // Airborne" — 1 tag riêng trên ĐÒN TẤN CÔNG (giống Unblockable...), KHÔNG
       // phải status trên combatant nào — đòn có tag này sẽ tắt airborne của target.
       airborneCondition: /\[Airborne\]/i.test(t),
+      // ── 3 TAG MỚI cho Furioso rework (Fragaria xác nhận trực tiếp) ──
+      // uncounterable  — page-counter KHÔNG ngắt được đòn này.
+      // unbreakableDice — THUA clash vẫn tiến hành sử dụng, chỉ còn 50% dmg gốc
+      //                   (thay vì bị huỷ hoàn toàn như skill thường).
+      // unfocusedVolley — MỖI dice nảy sang 1 kẻ địch ngẫu nhiên; dice ĐẦU luôn
+      //                   trúng target được aim.
+      uncounterable: /\[Uncounterable\]/i.test(t),
+      unbreakableDice: /\[Unbreakable Dice\]/i.test(t),
+      unfocusedVolley: /\[Unfocused Volley\]/i.test(t),
     };
   }
   

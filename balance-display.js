@@ -14,12 +14,23 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ getPlayerData, getActiveProfileSlot, resolveProfileLabel, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
+module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
+    // BUG ĐÃ SỬA (Fragaria: "phần hiển thị display profile name chưa đúng, nó ra
+    // một số ngẫu nhiên thay vì đúng tên profile user" — ảnh chụp: "Thông tin của 8").
+    // NGUYÊN NHÂN GỐC: tôi ĐOÁN SAI signature. `resolveProfileLabel(names, slot)`
+    // nhận OBJECT tên (map slot→tên) và là hàm ĐỒNG BỘ; tôi lại truyền userId vào
+    // vị trí `names` rồi `await` nó. Kết quả `names[String(slot)]` biến thành
+    // `userId["1"]` = KÝ TỰ THỨ 2 của chuỗi userId → ra 1 chữ số ngẫu nhiên.
+    // Đúng cách: lấy bảng tên bằng getProfileNames(userId) trước, rồi mới resolve.
+    // resolveProfileLabel tự fallback về PROFILE_LABELS[slot] ("Profile 1"...) nếu
+    // slot chưa đặt tên — nhưng ở đây ưu tiên tên Discord cho thân thiện hơn.
     const slotForName = await getActiveProfileSlot(targetUser.id);
-    const profileLabel = await resolveProfileLabel(targetUser.id, slotForName, targetUser.displayName ?? targetUser.username);
+    const profileNamesMap = await getProfileNames(targetUser.id);
+    const profileLabel = profileNamesMap?.[String(slotForName)]
+      ?? (targetUser.displayName ?? targetUser.username);
     const { grade, expInCurrentGrade, expNeeded } = calcGrade(data.exp ?? 0);
     const totalBooks = Object.values(data.books ?? {}).reduce((a, b) => a + b, 0);
     const totalItems = Object.values(data.items ?? {}).reduce((a, b) => a + b, 0);

@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -320,6 +320,43 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.update({ content: `👋 <@${interaction.user.id}> đã rời party.\n${formatBoardTextInline(board, contract)}`, components: buildPartyBoardComponentsInline(channelId) }).catch(() => {});
     } catch (err) {
       interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    return;
+  }
+  // ── SHOP (shop.js) ────────────────────────────────────────────────────────
+  // Mọi nhánh đều kiểm ownerId ở customId — tránh người khác bấm mua/reset hộ.
+  if (interaction.customId.startsWith("shopbuy:") || interaction.customId.startsWith("shopqty:")
+      || interaction.customId.startsWith("shopreset:") || interaction.customId.startsWith("shopback:")) {
+    const parts = interaction.customId.split(":");
+    const ownerId = parts[1];
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({ content: "⚠️ Đây là cửa hàng của người khác — gõ `-shop` để mở của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    try {
+      if (parts[0] === "shopbuy") {
+        // Bước 1 → 2: chọn món xong thì hỏi số lượng.
+        const itemKey = (interaction.values?.[0] ?? "").replace(/^item:/, "");
+        return interaction.update({ components: buildQuantityComponents(ownerId, itemKey) }).catch(() => {});
+      }
+      if (parts[0] === "shopback") {
+        const { data } = await getPlayerDataWithSlot(ownerId);
+        return interaction.update({ embeds: [buildShopEmbed(data)], components: buildShopComponents(ownerId) }).catch(() => {});
+      }
+      // shopqty / shopreset — có I/O (đọc + ghi profile) nên defer trước cho an
+      // toàn với hạn 3 giây của Discord (bài học từ bug treo contract begin).
+      await interaction.deferUpdate().catch(() => {});
+      const result = parts[0] === "shopreset"
+        ? await shopResetSkillTree(ownerId)
+        : await shopPurchase(ownerId, parts[2], parts[3]);
+      const freshData = result.data ?? (await getPlayerDataWithSlot(ownerId)).data;
+      await interaction.editReply({
+        content: result.message,
+        embeds: [buildShopEmbed(freshData)],
+        components: buildShopComponents(ownerId),
+      }).catch(() => {});
+    } catch (err) {
+      log("error", "shop", interaction.user.id, err.stack ?? err.message);
+      await interaction.followUp({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     return;
   }
@@ -1314,13 +1351,27 @@ client.on("interactionCreate", async (interaction) => {
 
       const clasherLabel = clasherId === targetId ? "Bạn" : clasherResolved.label;
       let choiceNote;
+      let choiceNote2Unbreakable = "";
       if (myEffectiveDice > oppEffectiveDice) {
         // THẮNG Clash — HUỶ TOÀN BỘ đòn nhắm vào TARGET (không phải clasher —
         // dù clasher là người thắng, người được "cứu" khỏi dmg vẫn là target
         // gốc của đòn tấn công) — văn bản gốc: "người bị clash thua sẽ bị hủy
         // toàn bộ dice của skill/page". Tái dùng evadeCharges (perHitMult=0).
         const hitCount = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
-        target.evadeCharges = (target.evadeCharges ?? 0) + hitCount;
+        // [Unbreakable Dice] (Furioso rework — Fragaria xác nhận trực tiếp: "khi
+        // thua clash sẽ VẪN TIẾN HÀNH sử dụng thay vì bị huỷ, với 50% sát thương
+        // gốc"). Đòn có tag này KHÔNG bị huỷ khi thua clash — chỉ giảm nửa dmg.
+        // Nên KHÔNG cộng evadeCharges (đó là cơ chế "né sạch"); thay vào đó đặt
+        // cờ để resolve-pending-action.js nhân 0.5 vào dmg cuối.
+        // Signature ĐÚNG: (skillRollEmbedDescription, tags, totalHits) — xem cách
+        // gọi ở nhánh reactive defense phía trên, KHÔNG đoán thêm tham số.
+        const attackBypassForClash = (parsePerHitBypass(p.skillRollEmbed?.description, p.tags, hitCount) ?? [])[0] ?? {};
+        if (attackBypassForClash.unbreakableDice) {
+          p.unbreakableDiceHalved = true;
+          choiceNote2Unbreakable = ` ⚠️ **Unbreakable Dice** — đòn KHÔNG bị huỷ, chỉ còn **50% dmg gốc**.`;
+        } else {
+          target.evadeCharges = (target.evadeCharges ?? 0) + hitCount;
+        }
         const myBefore = clasher.currentSanity;
         applySanityGain(clasher, 10);
         applyEmotionDelta(clasher, 2);
@@ -2113,6 +2164,10 @@ client.on("interactionCreate", async (interaction) => {
         // giữa lúc roll xong và lúc target được chọn (dropdown Critical đi qua
         // Map trung gian này, khác luồng M1 gọi doPlayerHit trực tiếp).
         effectiveBulletType: verify.effectiveBulletType, effectiveBulletCount: verify.effectiveBulletCount ?? 0,
+        // Re-Load — biến thể người chơi chọn CHÍNH LÀ loại đạn muốn nạp. Map sang
+        // `loadType` để resolve-pending-action.js dùng (nó đã đọc `p.loadType`
+        // từ trước, chỉ thiếu người truyền vào).
+        loadType: verify.skillKey === "re-load" ? (chosenVariantKey ?? "ammo") : undefined,
         expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
       });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: target dropdown thay vì gõ key) — chọn
@@ -2510,6 +2565,10 @@ client.on("interactionCreate", async (interaction) => {
           refSnippet: null, refLink: null, orlandoFuriosoBypassConsumed: pending.orlandoFuriosoBypassConsumed ?? false,
           effectiveBulletType: pending.effectiveBulletType, effectiveBulletCount: pending.effectiveBulletCount ?? 0,
         },
+        // Re-Load: loại đạn người chơi chọn ở bước variant. doPlayerHit đọc param
+        // `loadtype` (index.js) rồi gắn vào pendingAction.loadType — đây là mắt
+        // xích TỪNG THIẾU khiến Page Re-Load luôn nạp đạn thường.
+        ...(pending.loadType ? { loadtype: pending.loadType } : {}),
       });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: "Vẫn nên hiện bảng roll của -skill ra"
       // + "hiện bảng roll của -skill ra là hiện cả tag rồi, nên là phần này
@@ -3369,13 +3428,23 @@ client.on("interactionCreate", async (interaction) => {
     try {
       const result = await claimDailyLogin(interaction.user.id);
       if (result.alreadyDone) {
-        const d = result.data;
+      // BUG ĐÃ SỬA (Fragaria: "-daily quest thứ 3 ra null"). TRƯỚC ĐÂY phần hiển
+      // thị vẫn giả định 2 biến thể "ahn"/"books" TỰ HOÀN THÀNH, nên in
+      // `result.task3AutoNote` — biến đó giờ luôn null (đã bỏ auto-complete để
+      // nhiệm vụ 3 không còn "gõ -daily là xong"). Kết quả: "(null)" trên màn hình.
+      // Giờ mô tả THỐNG NHẤT cho cả 3 biến thể: đều là hạ mob, chỉ khác ngưỡng và
+      // phần thưởng (xem TASK3_KILL_TARGET_BY_VARIANT ở daily-quest.js).
+      const task3Line = (d) => {
+        const target = { killmobs: 3, books: 4, ahn: 5 }[d.task3Variant] ?? 3;
+        const bonus = { ahn: " + 200.000 Ahn", books: " + 3 Random Book" }[d.task3Variant] ?? "";
+        const done = Math.min(d.killCount ?? 0, target);
+        return `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên: hạ **${target} mob/boss bất kỳ** (${done}/${target}) — +2 Exp${bonus} khi đủ`;
+      };
+      const d = result.data;
         const taskLines = [
           `${d.loginDone ? "✅" : "⬜"} Login hôm nay (\`/daily\`)`,
           `${d.contractDone ? "✅" : "⬜"} Hoàn thành 1 contract bất kỳ`,
-          d.task3Variant === "killmobs"
-            ? `${d.task3Done ? "✅" : "⬜"} Hạ 3 mob/boss bất kỳ (${Math.min(d.killCount ?? 0, 3)}/3)`
-            : `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên hôm nay: ${d.task3Variant === "ahn" ? "nhận Ahn" : "nhận sách"} (tự hoàn thành)`,
+          task3Line(d),
         ];
         await interaction.editReply({
           content: `${interaction.user}, bạn đã điểm danh hôm nay rồi.\n${taskLines.join("\n")}\n` +
@@ -3388,9 +3457,7 @@ client.on("interactionCreate", async (interaction) => {
       const taskLines = [
         `✅ Login hôm nay: +2 Exp`,
         `${d.contractDone ? "✅" : "⬜"} Hoàn thành 1 contract bất kỳ: +2 Exp`,
-        d.task3Variant === "killmobs"
-          ? `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên: hạ **3 mob/boss bất kỳ** (${Math.min(d.killCount ?? 0, 3)}/3) — +2 Exp khi đủ`
-          : `✅ Nhiệm vụ ngẫu nhiên hôm nay (${result.task3AutoNote})`,
+        task3Line(d),
       ];
       let replyMsg = `🎉 ${interaction.user} đã điểm danh thành công!\n${taskLines.join("\n")}\n🔥 Streak (đủ cả 3 nhiệm vụ liên tục 7 ngày): **${d.streak ?? 0}/7** ngày`;
       if (result.weeklyBonusNote) replyMsg += `\n\n${result.weeklyBonusNote}`;
