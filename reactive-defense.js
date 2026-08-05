@@ -422,8 +422,110 @@ function applyDullahanParryCounter(target, attackerCombatant) {
   return preview.totalDmg;
 }
 
+/** commitAutoSkippedTargets — PHA KHOÁ chạy TRƯỚC khi gửi bất kỳ prompt nào.
+ *
+ *  BUG NGHIÊM TRỌNG ĐÃ SỬA — "AI kẹt sau player Stagger" LẦN 3 (Fragaria gửi
+ *  ảnh chẩn đoán: `pendingActions còn lại: 1 ⚠️ (đòn chưa resolve — dấu hiệu
+ *  treo)`). Lần 1 là thiếu hook maybeRunAiTurn, lần 2 là con trỏ lượt. Lần này
+ *  là LOST UPDATE do THIẾU LOCK — hoàn toàn khác 2 lần trước.
+ *
+ *  NGUYÊN NHÂN GỐC: `sendReactiveDefensePrompt` được gọi FIRE-AND-FORGET và
+ *  chạy HOÀN TOÀN NGOÀI `withLock(encounterKey)`. Nó làm nguyên chuỗi
+ *  read-modify-write không nguyên tử:
+ *      getEncounter → sửa p.reactedTargetIds → resolveOnePendingAction → saveEncounter
+ *  Trong khi đó `enemy-ai.js` ngay sau `doEnemyAttack` chạy SONG SONG:
+ *      withLock(...) { const enc3 = await getEncounter(...);
+ *                      mob.staminaUsedThisTurn += ...; await saveEncounter(enc3); }
+ *  Nếu `enc3` được đọc TRƯỚC khi prompt kịp save, cú save của AI GHI ĐÈ toàn bộ
+ *  → pendingAction vừa resolve xong bị HỒI SINH, HP đã trừ bị hoàn lại.
+ *
+ *  VÌ SAO CHỈ LỘ KHI CÓ STAGGER: target Stagger là nhánh AUTO-RESOLVE TỨC THÌ
+ *  (không gửi prompt, không chờ ai bấm) nên nó rơi đúng vào cửa sổ đua vài chục
+ *  ms của AI. Người thật bấm nút mất mấy giây nên không bao giờ đụng.
+ *
+ *  HẬU QUẢ DÂY CHUYỀN: pendingAction sống lại → `announceCurrentTurn` có gate
+ *  `if (isQuest && pendingActions.length === 0)` nên KHÔNG BAO GIỜ tự kết thúc
+ *  turn order; AI thì đứng đợi hook `finalizeReactiveChoice` mà hook đó đã bắn
+ *  rồi → treo vĩnh viễn, GM phải gmpanel end tay.
+ *
+ *  LỖI PHỤ CÙNG HỌ (cũng sửa ở đây): với AOE vừa có người Stagger vừa có người
+ *  bình thường, `p.reactedTargetIds.push(...)` của người Stagger TRƯỚC ĐÂY chỉ
+ *  nằm trong RAM — `saveEncounter` chỉ được gọi ở nhánh "tất cả đều auto-skip".
+ *  Người bình thường bấm nút sau đó đọc Redis tươi → thiếu dấu → `allReacted`
+ *  mãi mãi false → chờ một người chưa từng được hỏi.
+ *
+ *  CÁCH SỬA: tách riêng phần ĐỘNG VÀO DỮ LIỆU ra thành pha này, chạy TRONG
+ *  lock (đọc tươi → đánh dấu → LƯU → nếu đủ thì resolve luôn cũng trong lock).
+ *  Phần gửi prompt (I/O Discord, chậm) vẫn nằm NGOÀI lock như cũ để không giữ
+ *  lock qua round-trip mạng.
+ *  @returns {Promise<{resolved: boolean, lines?: string[], deleteAfterSave?: boolean, attackerIsAi?: boolean}>}
+ */
+async function commitAutoSkippedTargets(channelId, pendingId) {
+  return withLock(encounterKey(channelId), async () => {
+    const encounter = await getEncounter(channelId);
+    if (!encounter) return { resolved: false };
+    const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
+    if (!p) return { resolved: false };
+    p.reactedTargetIds = p.reactedTargetIds ?? [];
+    let changed = false;
+    for (const t of p.targets ?? []) {
+      const tr = resolveCombatant(encounter, t.targetId);
+      if (!tr) continue;
+      if (p.reactedTargetIds.includes(t.targetId)) continue;
+      // 3 điều kiện auto-skip — PHẢI khớp từng chữ với vòng lặp gửi prompt bên
+      // dưới, nếu lệch thì có người vừa bị đánh dấu vừa được hỏi (hoặc ngược lại).
+      const zeroDmg = (t.preview?.totalDmg ?? 0) <= 0;
+      const staggered = !!tr.combatant.staggered;
+      const ironHorusPreGuard = tr.combatant.hasIronHorus
+        && tr.combatant.ironHorusGuardActiveThisTurn
+        && (tr.combatant.guardCharges ?? 0) > 0;
+      if (zeroDmg || staggered || ironHorusPreGuard) {
+        p.reactedTargetIds.push(t.targetId);
+        changed = true;
+      }
+    }
+    const allTargetIds = (p.targets ?? []).map(tg => tg.targetId);
+    const allReacted = allTargetIds.length > 0 && allTargetIds.every(tid => p.reactedTargetIds.includes(tid));
+    if (!allReacted) {
+      // CHỐT QUAN TRỌNG: phải LƯU cả khi chưa resolve — đây chính là lỗi phụ
+      // khiến AOE hỗn hợp treo (dấu auto-skip mất khi người khác bấm nút).
+      if (changed) await saveEncounter(channelId, encounter);
+      return { resolved: false };
+    }
+    const lines = await resolveOnePendingAction(encounter, p);
+    encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
+    await saveEncounter(channelId, encounter);
+    return {
+      resolved: true,
+      lines,
+      deleteAfterSave: !!encounter._deleteAfterSave,
+      attackerIsAi: p.attackerType === "enemy" && !!encounter.enemies?.[p.attackerId]?.aiControlled,
+    };
+  });
+}
+
 async function sendReactiveDefensePrompt(channelId, pendingId) {
   try {
+    // PHA 1 (CÓ KHOÁ) — đánh dấu + lưu người bị auto-skip, resolve nếu đủ.
+    const autoSkip = await commitAutoSkippedTargets(channelId, pendingId);
+    if (autoSkip.resolved) {
+      const resultChannel = await client.channels.fetch(channelId).catch(() => null);
+      if (resultChannel) {
+        await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không cần phòng thủ)", description: (autoSkip.lines ?? []).join("\n"), color: 0x95a5a6 }] }).catch(() => {});
+      }
+      if (autoSkip.deleteAfterSave) {
+        await deleteEncounter(channelId).catch((err) => log("error", "autoresolve-deleteEncounter", "system", err.message));
+        return;
+      }
+      // Hook AI: mob đang đợi đúng callback này để thử hành động tiếp (xem
+      // hasUnresolvedTargetPending trong enemy-ai.js). Thiếu nó = mob treo.
+      if (autoSkip.attackerIsAi) aiHooks.maybeRunAiTurn(channelId).catch(() => {});
+      const encAfterAutoSkip = await getEncounter(channelId);
+      if (encAfterAutoSkip) announceCurrentTurn(channelId, encAfterAutoSkip, true).catch(() => {});
+      return;
+    }
+    // PHA 2 (KHÔNG KHOÁ) — gửi prompt cho những người CÒN LẠI. I/O Discord chậm
+    // nên cố tình không giữ lock ở đây; mọi thay đổi dữ liệu thật đã xong ở pha 1.
     const encounter = await getEncounter(channelId);
     if (!encounter) return;
     const p = (encounter.pendingActions ?? []).find(pa => pa.id === pendingId);
@@ -652,7 +754,13 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         const chunk = availableCounterPages.slice(i, i + 5);
         counterRows.push(new ActionRowBuilder().addComponents(
           ...chunk.map(cp => new ButtonBuilder()
-            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:counter:${cp.key}`)
+            // BUG ĐÃ SỬA (Fragaria: "khi thắng hay thua rtparry của You're Too
+            // Slow đều tính là ăn sạch cả toàn bộ group hit"). MỌI nút phòng thủ
+            // khác đều mang `:${currentGroupIdx}` ở cuối — RIÊNG nút Counter thì
+            // KHÔNG, nên counterContext không hề biết đang counter NHÓM NÀO, và
+            // đường rtparry buộc phải finalize cả pendingAction. Thêm groupIdx
+            // vào ô thứ 7 (choice="counter" nên ô này trống, không đụng dash).
+            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:counter:${cp.key}:${currentGroupIdx}`)
             .setLabel(`⚔️ ${cp.name} (Counter)`)
             .setStyle(ButtonStyle.Success)),
         ));
@@ -699,46 +807,28 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       continue;
 
     }
-    // Nếu MỌI target trong đòn đều dmg=0 (toàn bộ bị auto-skip ở trên, không ai
-    // được gửi prompt nào) — không còn ai để chờ, resolve NGAY thay vì để pending
-    // treo vô thời hạn không ai bấm gì cả.
+    // Lưới an toàn: nếu tới đây mà MỌI target đã được đánh dấu (VD nhánh AI
+    // resolveAiDefenseForTarget vừa đánh dấu xong trong lúc ta đang gửi prompt),
+    // resolve nốt — nhưng PHẢI đi qua commitAutoSkippedTargets để thao tác nằm
+    // TRONG lock. TRƯỚC ĐÂY khối này tự resolve + saveEncounter NGOÀI lock, đó
+    // chính là chỗ bị AI ghi đè làm sống lại pendingAction (xem comment đầy đủ
+    // ở commitAutoSkippedTargets).
     const allTargetIds = p.targets.map(tg => tg.targetId);
     if (allTargetIds.length > 0 && allTargetIds.every(tid => p.reactedTargetIds.includes(tid))) {
-      const lines = await resolveOnePendingAction(encounter, p);
-      encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
-      await saveEncounter(channelId, encounter);
-      const resultChannel = await client.channels.fetch(channelId).catch(() => null);
-      if (resultChannel) {
-        await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không cần phòng thủ)", description: lines.join("\n"), color: 0x95a5a6 }] }).catch(() => {});
+      const late = await commitAutoSkippedTargets(channelId, pendingId);
+      if (late.resolved) {
+        const resultChannel = await client.channels.fetch(channelId).catch(() => null);
+        if (resultChannel) {
+          await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không cần phòng thủ)", description: (late.lines ?? []).join("\n"), color: 0x95a5a6 }] }).catch(() => {});
+        }
+        if (late.deleteAfterSave) {
+          await deleteEncounter(channelId).catch((err) => log("error", "autoresolve-deleteEncounter", "system", err.message));
+          return;
+        }
+        if (late.attackerIsAi) aiHooks.maybeRunAiTurn(channelId).catch(() => {});
+        const encAfterLate = await getEncounter(channelId);
+        if (encAfterLate) announceCurrentTurn(channelId, encAfterLate, true).catch(() => {});
       }
-      // BUG NGHIÊM TRỌNG ĐÃ SỬA (Fragaria báo trực tiếp: "sau khi có một player
-      // bất kỳ bị stagger, AI không thể act tiếp được, hành động bị treo nhiều
-      // khiến encounter bị đơ và GM phải dùng gmpanel để end turn order").
-      //
-      // NGUYÊN NHÂN GỐC: nhánh này là đường auto-resolve khi MỌI target đều bị
-      // bỏ qua không gửi prompt — 3 trường hợp: (a) đòn không gây dmg, (b) target
-      // ĐANG STAGGER (không được phòng thủ, ăn đủ dmg), (c) Iron Horus đã Guard
-      // sẵn. Trường hợp (b) là cái Fragaria gặp.
-      // finalizeReactiveChoice (đường BÌNH THƯỜNG, khi người thật bấm nút) có
-      // hook `aiHooks.maybeRunAiTurn` ở cuối để báo AI "đòn vừa resolve xong, cân
-      // nhắc hành động tiếp" — nhưng nhánh NÀY thì KHÔNG. Mob AI đang đứng đợi
-      // đúng callback đó (attemptOneMobAction chỉ thử 1 hành động/lần, phải đợi
-      // đòn hiện tại resolve mới thử tiếp — xem hasUnresolvedTargetPending) →
-      // không ai gọi lại → mob treo vĩnh viễn giữa lượt. announceCurrentTurn bên
-      // dưới KHÔNG cứu được vì gặp enemy aiControlled là `return` ngay.
-      //
-      // Cũng thiếu luôn xử lý `_deleteAfterSave` (finalizeReactiveChoice CÓ) —
-      // nếu chính đòn này giết nốt người cuối/mob cuối thì quest đã kết thúc
-      // nhưng encounter không bao giờ bị xoá.
-      if (encounter._deleteAfterSave) {
-        await deleteEncounter(channelId).catch((err) => log("error", "autoresolve-deleteEncounter", "system", err.message));
-        return;
-      }
-      if (p.attackerType === "enemy" && encounter.enemies?.[p.attackerId]?.aiControlled) {
-        aiHooks.maybeRunAiTurn(channelId).catch(() => {});
-      }
-      const encAfterZeroDmg = await getEncounter(channelId);
-      if (encAfterZeroDmg) announceCurrentTurn(channelId, encAfterZeroDmg, true).catch(() => {});
     }
   } catch (err) {
     log("error", "sendReactiveDefensePrompt", "system", err.message);

@@ -226,6 +226,10 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // định / "pistols"). Lật mỗi khi dùng Critical tương ứng — xem
       // encounter-panels.js + resolve-pending-action.js.
       atelierLogicForm: "shotgun",
+      // Augury Kick — "+2 Dice Up cho 2 Turn kế tiếp" khi địch >20 Tremor.
+      // diceUp bị reset mỗi turn nên phải giữ bonus + số turn còn lại rồi cộng
+      // LẠI ở đầu mỗi turn (turn-advance.js), giống blackSuitPersistentBonus.
+      auguryKickDiceUpBonus: 0, auguryKickTurnsLeft: 0,
       // realizationStacks — "A Prayer For Loving Sorrow" (Găng Tay Câm Lặng):
       // "Mỗi lần đổi vũ khí Black Silence bằng Dimension Pocket VÀ sử dụng
       // Critical của chúng bạn nhận được 1 Realization [mỗi vũ khí 1 lần]".

@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
+module.exports = function ({ findSkill, resolveSkillKey, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -181,7 +181,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
   }
 
   async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false, variantKey = null) {
-    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [];
+    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [], autoSideEffects = null;
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
     // effectiveBulletType/effectiveBulletCount — GAP ĐÃ SỬA (lỗi scope): khai
@@ -219,11 +219,43 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       const refTargetCombatant = encounterForAuto
         ? Object.values(encounterForAuto.enemies ?? {}).find(e => (e?.currentHp ?? 0) > 0)
         : null;
+      // ══ BUG HỆ THỐNG #1 ĐÃ SỬA — skillKey GÁN SAU KHI ĐÃ DÙNG ══════════
+      // Fragaria: "Vengeance Retaliation chưa hoạt động".
+      // NGUYÊN NHÂN GỐC: `deriveAutoPromptArg(skillKey, ...)` TRƯỚC ĐÂY được gọi
+      // Ở TRÊN dòng `skillKey = ...`, tức lúc đó skillKey VẪN CÒN `null`.
+      // `switch (null)` rơi thẳng vào `default:` → trả null → điều kiện ngay bên
+      // dưới `autoPromptArg === null` luôn đúng → THROW "cần input do người chơi
+      // tự quyết" cho MỌI skill có promptArg. Toàn bộ cơ chế auto-suy promptArg
+      // (viết ra chính vì Fragaria yêu cầu) CHƯA BAO GIỜ chạy được một lần nào:
+      // vengeance retaliation, thrust, apocalypse, solemn lament, sanguine
+      // pointilism đều bị chặn khỏi encounter. Cùng họ lỗi scope/thứ tự đã ghi
+      // trong HANDOFF (khai báo sau khi dùng).
+      //
+      // ══ BUG HỆ THỐNG #2 ĐÃ SỬA — skillKey KHÔNG chuẩn hoá qua alias ═════
+      // Fragaria: "Onrush chưa tự động hoá phần giảm stamina (cũng có thể nhiều
+      // page tương tự chưa tự động hoá nốt)".
+      // NGUYÊN NHÂN GỐC: `skillKey = skillNameRaw.trim().toLowerCase()` giữ
+      // NGUYÊN chuỗi người chơi gõ. `findSkill()` CÓ resolve alias (vr →
+      // vengeance retaliation, aq → astral quantization, ds2 → drilling stab...)
+      // nhưng kết quả đó bị VỨT ĐI. Hệ quả dây chuyền:
+      //   • MỌI handler tự động hoá đều so `p.skillKey === "<key chuẩn>"`
+      //     (onrush, wheels industry, atelier logic pistols, castigation,
+      //     augury kick, tactical suppression...) → gõ alias là TRƯỢT SẠCH,
+      //     page trông như "chưa được tự động hoá" dù code có sẵn.
+      //   • CD lưu theo skillKey → dùng alias xong dùng tên đầy đủ = HAI ô CD
+      //     riêng biệt → né cooldown hoàn toàn (exploit).
+      //   • `skill.promptArg` + `deriveAutoPromptArg` cũng so theo key chuẩn.
+      // SỬA: lấy key chuẩn TỪ CHÍNH object skill đã resolve (`skill.name`), có
+      // fallback về chuỗi gõ nếu skill thiếu name. Đặt TRƯỚC mọi chỗ dùng.
+      // Dùng resolveSkillKey (skills.js) — KHÔNG suy từ skill.name: có 31 skill
+      // mà tên hiển thị khác key ("Wheel's Industry" ↔ `wheels industry`,
+      // "Atelier Logic: Pistols" ↔ `atelier logic pistols`…), suy từ name sẽ phá
+      // đúng những handler đang chạy tốt.
+      skillKey = resolveSkillKey(skillNameRaw) ?? skillNameRaw.trim().toLowerCase();
       const autoPromptArg = skill.promptArg ? deriveAutoPromptArg(skillKey, attacker, encounterForAuto, refTargetCombatant) : null;
       if (skill.promptArg && autoPromptArg === null) {
         throw new Error(`Skill "${skill.name}" cần input do người chơi tự quyết — chưa roll trực tiếp qua encounter được. Dùng \`-skill ${skillNameRaw}\` riêng rồi dán link message đó vào ref: thay vào đó.`);
       }
-      skillKey = skillNameRaw.trim().toLowerCase();
       const existingCd = attacker.skillCooldowns?.[skillKey] ?? 0;
       // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp, dự án tự động hoá
       // toàn bộ weapon/outfit): "Orlando Furioso" — swap vũ khí xong, Critical
@@ -379,6 +411,9 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       });
       autoDmgStr = autoResult.dmgStr;
       autoWarnings = autoResult.warnings;
+      // Hiệu ứng KHÔNG đi qua dmgStr được (Fragile/Paralyze/giảm Stamina địch/
+      // nhận Imitation-Light/hồi HP) — xem extractNonDmgStrEffects trong skills.js.
+      autoSideEffects = autoResult.sideEffects ?? null;
       const header = skill.weaponOf
         ? `[🗡️ ${skill.weaponOf}] [CD: ${skill.cd}] [Dice Mul: ${skill.diceMul}]`
         : skill.cost !== "—"
@@ -431,7 +466,7 @@ module.exports = function ({ findSkill, hasPerk, isEgoSkill, buildSkillRollResul
       }
     }
   
-    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed, effectiveBulletType, effectiveBulletCount };
+    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, autoSideEffects, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed, effectiveBulletType, effectiveBulletCount };
   }
 
   return {

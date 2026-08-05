@@ -315,6 +315,14 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // — 50-STATUS NHÓM 2 (batch 1, xác nhận trực tiếp từng cái từ tài liệu gốc) —
     // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
     combatant.diceUp = 0;
+    // Augury Kick — cộng LẠI bonus còn hiệu lực ngay sau khi diceUp bị reset.
+    if ((combatant.auguryKickTurnsLeft ?? 0) > 0) combatant.diceUp += (combatant.auguryKickDiceUpBonus ?? 0);
+    // "Overcharged Vessel" — BUG ĐÃ SỬA (phát hiện khi làm Augury Kick, cùng cơ
+    // chế): `overchargedDiceUpBonus` được GHI (encounter-actions.js), được DECAY
+    // (cuối file này) và được HIỂN THỊ (encounter-display.js) — nhưng KHÔNG nơi
+    // nào cộng nó vào `diceUp`. Nửa "Dice Up" của perk chưa từng có tác dụng;
+    // chỉ nửa `overchargedDmgBonusPct` chạy (qua attacker-perk-context.js).
+    if ((combatant.overchargedTurnsLeft ?? 0) > 0) combatant.diceUp += (combatant.overchargedDiceUpBonus ?? 0);
     combatant.diceUp += (combatant.blackSuitPersistentBonus ?? 0); // "Black Suit" — GAP MỚI: Dice Up từ Emotion Level KÉO DÀI hết encounter, cộng LẠI ngay sau reset mỗi turn (TRƯỚC khi Rotate Trigram/Geon áp +3 riêng, để không bị ghi đè mất).
     // "Rotate Trigram" (Augury Spear passive) — xác nhận trực tiếp: "Vào đầu
     // mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam
@@ -469,6 +477,11 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       combatant.poiseReductionPending = 0;
     }
     // Overcharged Vessel: hết Duration 3 turn thì mất hẳn bonus Dice Up/Dmg đã kích hoạt.
+    // Augury Kick — hết 2 turn thì bỏ hẳn bonus Dice Up.
+    if ((combatant.auguryKickTurnsLeft ?? 0) > 0) {
+      combatant.auguryKickTurnsLeft -= 1;
+      if (combatant.auguryKickTurnsLeft <= 0) combatant.auguryKickDiceUpBonus = 0;
+    }
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) {
       combatant.overchargedTurnsLeft -= 1;
       if (combatant.overchargedTurnsLeft <= 0) {

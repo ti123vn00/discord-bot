@@ -554,9 +554,9 @@ function calcMath(opts) {
     if (r.burnApplied !== 0) {
       const sign = r.burnApplied > 0 ? "+" : "";
       const label = r.burnApplied > 0 ? "" : " (tiêu thụ)";
-      extraInfo += ` | ${sign}${r.burnApplied} <:Burn:1513762753691652177>Burn${label} → ${r.burnStacksAfter} Counts`;
+      extraInfo += ` | ${sign}${r.burnApplied} <:Fix_Burn:1513762753691652177>Burn${label} → ${r.burnStacksAfter} Counts`;
     }
-    if (r.burnShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.burnShortfall} <:Burn:1513762753691652177>Burn để tiêu thụ hết`;
+    if (r.burnShortfall > 0) extraInfo += ` | ⚠️ Thiếu ${r.burnShortfall} <:Fix_Burn:1513762753691652177>Burn để tiêu thụ hết`;
     if (r.bleedApplied !== 0) {
       const sign = r.bleedApplied > 0 ? "+" : "";
       const label = r.bleedApplied > 0 ? "" : " (tiêu thụ)";
@@ -661,7 +661,7 @@ function calcMath(opts) {
     { name: "Enemy's Sanity", value: sanity.toString(), inline: true, showIf: sanity !== 0 },
     { name: "Enemy's <:Sinking:1513762793436741652>Sinking Counts", value: enemySinking.toString(), inline: true, showIf: enemySinking !== 0 },
     { name: "Enemy's <:Rupture:1513762812722155682>Rupture Counts", value: enemyRupture.toString(), inline: true, showIf: enemyRupture !== 0 },
-    { name: "<:Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 || finalBurn > 0 || burnDmgThisTurn > 0 },
+    { name: "<:Fix_Burn:1513762753691652177>Burn (end turn)", value: `${burnDmgThisTurn.toFixed(2)} dmg — count: ${burnInit} → ${finalBurn}`, inline: true, showIf: burnInit > 0 || finalBurn > 0 || burnDmgThisTurn > 0 },
     { name: "Bleed (end turn)", value: `${bleedDmgThisTurn.toFixed(2)} dmg (x${bleedActions} hành động) — count: ${bleedInit} → ${finalBleed}`, inline: true, showIf: bleedInit > 0 || finalBleed > 0 || bleedDmgThisTurn > 0 },
     { name: "<:TremorBurst:1513802464632246352>Tremor Burst", value: `-${totalTremorStaminaLoss} Sta địch — count: ${tremorInit} → ${finalTremor}`, inline: true, showIf: tremorInit > 0 || finalTremor > 0 || totalTremorStaminaLoss > 0 },
     { name: "<:Charge:1513762867558613033>Charge Stacks", value: `${chargeInit} → ${finalCharge}`, inline: true, showIf: chargeInit > 0 || finalCharge > 0 },

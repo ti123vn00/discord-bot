@@ -158,7 +158,7 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.rupture > 0) statusParts.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
     if (combatant.poise > 0) statusParts.push(`<:Poise:1513762945715142736>${combatant.poise}`);
     if (combatant.charge > 0) statusParts.push(`<:Charge:1513762867558613033>${combatant.charge}`);
-    if (combatant.burn > 0) statusParts.push(`<:Burn:1513762753691652177>${combatant.burn}`);
+    if (combatant.burn > 0) statusParts.push(`<:Fix_Burn:1513762753691652177>${combatant.burn}`);
     if (combatant.bleed > 0) statusParts.push(`<:Bleed:1513762688226955285>${combatant.bleed}`);
     if (combatant.tremor > 0) statusParts.push(`<:Tremor:1513762737388257380>${combatant.tremor}`);
     if (combatant.paralyze > 0) statusParts.push(`<:Paralyze:1513763316479295548>${combatant.paralyze}`);
@@ -276,7 +276,15 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     // nên vẫn tóm tắt được, chỉ cần ghi rõ điều kiện áp dụng.
     if ((combatant.gazeAwe ?? 0) > 0) dmgEffectParts.push(`+${combatant.gazeAwe * 10}% Dmg Taken (Gaze[Awe], 2 chiều với ${combatant.gazeAweSourceId ? `<@${combatant.gazeAweSourceId}>` : "nguồn đã gắn"})`);
     if ((combatant.contempt ?? 0) > 0) dmgEffectParts.push(`-50% Dmg Taken & -50% Dmg Bonus khi đối đầu ${combatant.contemptSourceId ? `<@${combatant.contemptSourceId}>` : "nguồn đã gắn"} (Contempt)`);
-    if ((combatant.protection ?? 0) > 0) dmgEffectParts.push(`-${combatant.protection}% Dmg Taken (Protection)`);
+    // BUG HIỂN THỊ ĐÃ SỬA (Fragaria báo trực tiếp: "với mỗi 1% Protection là 5%
+    // Dmg Protection chứ không phải 1. Ở trong code vẫn là 1% thay vì 5").
+    // PHÉP TÍNH THẬT vốn đã ĐÚNG (misc-helpers.js's computeDefenderDmgReduction:
+    // `reductionPct += (defender.protection ?? 0) * 5`) — chỉ riêng DÒNG HIỂN THỊ
+    // này in 1:1, nên 4 Protection hiện "-4% Dmg Taken" trong khi thực tế đang
+    // giảm 20%. Mọi status nhiều-stack khác quanh đây đều đã nhân hệ số sẵn
+    // (hemorrhage×10, chargeShieldStack×10, gazeAwe×10) — Protection bị sót.
+    // Ghi kèm số stack để vẫn đối chiếu được với dòng status ở trên.
+    if ((combatant.protection ?? 0) > 0) dmgEffectParts.push(`-${combatant.protection * 5}% Dmg Taken (Protection ×${combatant.protection})`);
     if ((combatant.chargeShieldStack ?? 0) > 0) dmgEffectParts.push(`-${combatant.chargeShieldStack * 10}% Dmg Taken (Charge Shield)`);
     if ((combatant.dullahanStacks ?? 0) > 0) dmgEffectParts.push(`+30% Dmg Bonus (Dullahan)`);
     if ((combatant.gazeOfContempt ?? 0) > 0) dmgEffectParts.push(`+${combatant.gazeOfContempt * 7}% Dmg Bonus (Gaze of Contempt)`);

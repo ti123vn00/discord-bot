@@ -1816,7 +1816,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // cho tới khi GM xác nhận"). refLink/refSnippet/skillRollEmbed chỉ để HIỂN THỊ.
       // emotionDelta = TỔNG của delta tự roll skill (Max/Min dice) + manualCoin (GM/
       // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
-      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType, effectiveBulletType, effectiveBulletCount: bulletsToConsume,
     });
@@ -2019,7 +2019,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       attackerId: playerId, attackerType: "player",
       targets: finalTargets,
       dmgStr, defenseBypass, tags: manualTagsRaw,
-      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveBulletType: verify.effectiveBulletType, effectiveBulletCount: verify.effectiveBulletCount ?? 0,
       loadType: (loadTypeRaw ?? "ammo").trim().toLowerCase(),
@@ -2193,7 +2193,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       attackerId: ekey, attackerType: "enemy",
       targets: previews.map(p => ({ targetId: p.target.id, targetType: "player", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
       dmgStr: effectiveDmgStrFinal, defenseBypass, tags: effectiveTagsRawFinal,
-      skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost,
     });
@@ -2304,7 +2304,7 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
-const { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll } = require("./skills");
+const { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll } = require("./skills");
 const { buildEncounterActionPanel, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildBossActionPanel } = require("./encounter-panels")({ findSkill, hasPerk, hasShinAccess }); // ĐÃ TÁCH sang file riêng (encounter-panels.js) — đặt SAU import skills.js để tránh TDZ (findSkill là const)
 const { performGuardEvade, performParry, performShinMang, performManifestEgo, performOvercharge, performFollowUp, performUseItem, applyFixersNote } = require("./encounter-actions")({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES, hasShinAccess }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
 const { findWeapon } = require("./weapon");
@@ -2417,7 +2417,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll, r, combatantResStr, findWeaponAnywhere, getEncounter });
+const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, resolveSkillKey, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll, r, combatantResStr, findWeaponAnywhere, getEncounter });
 // Tăng giới hạn listener — kiến trúc CÓ CHỦ Ý dùng NHIỀU client.on("interactionCreate",
 // ...) riêng biệt (mỗi cái tự check customId prefix, return sớm nếu không khớp) thay
 // vì 1 handler khổng lồ — KHÔNG PHẢI memory leak thật, chỉ là số lượng listener hợp lệ
@@ -2825,7 +2825,7 @@ require("./interaction-handlers")({ ADMIN_IDS, pityKeyFor, pityPoolFor, attachCo
 client.login(TOKEN);
 
 const getBotReady = () => botReady; // closure - LUÔN đọc giá trị MỚI NHẤT của "let botReady" (mutated sau client.once("ready")), không "đóng băng" giá trị lúc gọi.
-require("./express-routes")({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, webParrySessions, withLock, deleteEncounter }); // ĐÃ TÁCH sang file riêng (express-routes.js)
+require("./express-routes")({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, saveEncounter, sendReactiveDefensePrompt, webParrySessions, withLock, deleteEncounter }); // ĐÃ TÁCH sang file riêng (express-routes.js)
 
 // ─── EXPRESS SERVER ────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).send("Not found."));

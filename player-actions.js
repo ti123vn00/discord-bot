@@ -80,6 +80,16 @@ module.exports = function createPlayerActions(deps) {
     // user thường — trước đây admin "cho" miễn phí (không trừ gì cả), tạo ra ahn/sách/item
     // ra từ không khí, phá vỡ economy. Chỉ exp/grade vẫn miễn phí cho admin vì đó là CẤP
     // PHÁT (set trực tiếp), không phải "chuyển" thứ admin đang có trong kho.
+    // Lunacy KHÔNG TRAO ĐỔI ĐƯỢC (Fragaria xác nhận trực tiếp: "Lunacy là tiền
+    // tệ gacha nên là hãy làm cho player không trao đổi với nhau được").
+    // Chốt chặn ở TẦNG LÕI — mọi caller (-give text, /give slash, và bất kỳ
+    // đường mới nào sau này) đều đi qua đây. Hàm này vốn KHÔNG có tham số
+    // `lunacy` nên không thể chuyển số dư Lunacy thật; chỗ hở duy nhất còn lại
+    // là admin dùng `findItemAdmin` (nhận TỰ DO mọi chuỗi) để tạo 1 item kho
+    // TÊN là "Lunacy" — trông y hệt tiền tệ thật trong -inventory. Chặn luôn.
+    if (itemName && /^\s*lunacy\s*$/i.test(itemName)) {
+      throw new Error("**Lunacy** là tiền tệ gacha — không thể trao đổi hay tạo thành vật phẩm trong kho.");
+    }
     const needsSenderData = ahnGain > 0 || !!bookName || !!itemName;
     let senderData = null, senderSlot = null;
     if (needsSenderData) {

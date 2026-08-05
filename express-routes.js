@@ -13,7 +13,7 @@
 // "botReady" → "getBotReady()" ở route "/" — đây là thay đổi CẦN THIẾT để
 // giữ đúng hành vi gốc qua ranh giới module, không phải sửa logic).
 
-module.exports = function ({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, webParrySessions, withLock, deleteEncounter }) {
+module.exports = function ({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, saveEncounter, sendReactiveDefensePrompt, webParrySessions, withLock, deleteEncounter }) {
 
 app.get("/", (req, res) => getBotReady() ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
 
@@ -87,6 +87,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
     try {
       let displayText = "";
       let questEndedHere = false, questEndText = "";
+      let needNextGroupPrompt = false;
       await withLock(encounterKey(encChannelId), async () => {
         const encounter = await getEncounter(encChannelId);
         if (!encounter) { displayText = "⚠️ Encounter không còn tồn tại."; return; }
@@ -147,6 +148,31 @@ app.post("/rtparry/:token/result", async (req, res) => {
           }
         }
 
+        // ── XÁC ĐỊNH NHÓM HIT ĐANG COUNTER ────────────────────────────────
+        // Counter chỉ tác động lên ĐÚNG 1 nhóm (M1) — phải biết nhóm nào. Tính
+        // y hệt reactive-defense.js/interaction-handlers.js để không lệch nhau.
+        const tEntryForGroup = p.targets.find(tg => tg.targetId === targetId);
+        const totalHitsForGroup = Math.max(1, tEntryForGroup?.preview?.dmgValues?.length ?? 1);
+        const isM1ForGroup = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+        const attackerWeightForGroup = attackerResolved.combatant.weaponWeight ?? "medium";
+        const hitsPerGroup = p.isEyeOfHorusFixedBurst ? 9 : (isM1ForGroup ? (WEAPON_DEFENSE_HITS[attackerWeightForGroup] ?? 1) : 1);
+        const groupCount = Math.max(1, Math.ceil(totalHitsForGroup / hitsPerGroup));
+        tEntryForGroup.perHitChoices = tEntryForGroup.perHitChoices ?? Array(groupCount).fill(null);
+        // Nút Counter cũ (message gửi TRƯỚC khi deploy bản này) không mang
+        // groupIdx → fallback về nhóm CHƯA quyết định đầu tiên, đúng nhóm đang
+        // được hỏi trên thực tế.
+        const rawGroupIdx = session.counterContext?.groupIdx;
+        const fallbackIdx = tEntryForGroup.perHitChoices.findIndex(c => c === null);
+        const counterGroupIdx = Number.isFinite(rawGroupIdx)
+          ? Math.max(0, Math.min(groupCount - 1, rawGroupIdx))
+          : (fallbackIdx === -1 ? 0 : fallbackIdx);
+        // Chỉ số hit THẬT (1-based) thuộc nhóm này — cùng công thức với
+        // realHitIndices ở interaction-handlers.js.
+        const counterGroupHitIndices = [];
+        for (let h = counterGroupIdx * hitsPerGroup; h < Math.min((counterGroupIdx + 1) * hitsPerGroup, totalHitsForGroup); h++) {
+          counterGroupHitIndices.push(h + 1);
+        }
+
         if (isSuccess) {
           // Tiêu hit THEO WEAPON WEIGHT (tái dùng đúng cơ chế evadeCharges có
           // sẵn — "né/ngắt" đòn địch, resolveOnePendingAction sẽ tự set
@@ -177,6 +203,30 @@ app.post("/rtparry/:token/result", async (req, res) => {
           //
           // → M1: đúng 1 charge (1 group). Skill: đủ charge phủ hết hit.
           const chargesNeeded = isM1Type ? 1 : Math.ceil(hitCount / hitsPerCharge);
+          // BUG NẶNG ĐÃ SỬA (Fragaria, kèm ảnh: "khi thắng hay thua rtparry của
+          // You're Too Slow đều tính là ăn sạch cả toàn bộ group hit... rtparry
+          // hiện tại đang giải quyết TOÀN BỘ group hit thay vì chỉ 1 group hit").
+          //
+          // `chargesNeeded` ở trên vốn đã ĐÚNG luật. Cái sai nằm ở chỗ counter
+          // dùng `evadeCharges` TRẦN — resolve-pending-action.js chỉ tiêu charge
+          // đó TỪ HIT SỐ 1 TRỞ ĐI (nhánh "né hit 1-4"), nên counter ở nhóm 2 lại
+          // đi né nhóm 1. Đường nút bấm thường KHÔNG bị vậy vì nó ghi
+          // `evadeHitSelections` = ĐÚNG chỉ số hit thật của nhóm đang chọn.
+          // → Dùng CÙNG cơ chế evadeHitSelections, không dùng charge trần nữa.
+          //
+          // Phạm vi ngắt (Fragaria chốt trực tiếp): "counter chỉ ngắt 1 group hit
+          // của M1, còn khi counter thành công page hay critical thì sẽ ngắt
+          // TOÀN BỘ dice của critical hay page đó".
+          target.evadeHitSelections = target.evadeHitSelections ?? [];
+          if (isM1Type) {
+            for (const h of counterGroupHitIndices) {
+              if (!target.evadeHitSelections.includes(h)) target.evadeHitSelections.push(h);
+            }
+          } else {
+            for (let h = 1; h <= hitCount; h++) {
+              if (!target.evadeHitSelections.includes(h)) target.evadeHitSelections.push(h);
+            }
+          }
           target.evadeCharges = (target.evadeCharges ?? 0) + chargesNeeded;
 
           // Gây dmg phản công NGAY (nếu skill này tự gây dmg — noDirectDamage
@@ -231,7 +281,45 @@ app.post("/rtparry/:token/result", async (req, res) => {
           choiceNote = `❌ Counter thất bại — không phòng thủ (ăn dmg thường)`;
         }
 
-        const finalized = await finalizeReactiveChoice(encChannelId, encounter, p, targetId, choiceNote, `<@${targetId}>`);
+        // ── GHI LỰA CHỌN CHO ĐÚNG NHÓM, KHÔNG FINALIZE CẢ ĐÒN ─────────────
+        // BUG NẶNG ĐÃ SỬA (Fragaria, kèm ảnh "Hit 5-8/57 (Nhóm 2/15)" rồi kết
+        // quả lại resolve trọn 57 hit → -413.400 HP → chết).
+        //
+        // NGUYÊN NHÂN GỐC: đường rtparry gọi THẲNG `finalizeReactiveChoice`,
+        // BỎ QUA hoàn toàn máy `t.perHitChoices[]`. Đường nút bấm thường thì:
+        // ghi perHitChoices[groupIdx] → CÒN nhóm null thì KHÔNG finalize, gửi
+        // prompt nhóm kế. Gọi thẳng finalize = tuyên bố "mọi nhóm đã quyết
+        // định" → resolveOnePendingAction xử hết 15 nhóm/57 hit trong 1 phát,
+        // THẮNG HAY THUA CŨNG VẬY (thua thì càng thảm: không né được gì mà vẫn
+        // ăn trọn mọi nhóm).
+        //
+        // SỬA: bám ĐÚNG luồng của nút bấm.
+        //  • Counter M1 → ghi 1 ô perHitChoices, các nhóm khác vẫn được hỏi tiếp.
+        //  • Counter page/critical THÀNH CÔNG → ngắt toàn bộ dice nên đánh dấu
+        //    LUÔN mọi nhóm còn trống (không còn gì để hỏi nữa).
+        //  • Counter THẤT BẠI → chỉ mất ĐÚNG nhóm này; nhóm sau vẫn được phòng thủ.
+        const counterCoversWholeAction = isSuccess && !isM1ForGroup;
+        if (counterCoversWholeAction) {
+          for (let gi = 0; gi < tEntryForGroup.perHitChoices.length; gi++) {
+            if (tEntryForGroup.perHitChoices[gi] === null) tEntryForGroup.perHitChoices[gi] = choiceNote;
+          }
+        } else {
+          tEntryForGroup.perHitChoices[counterGroupIdx] = choiceNote;
+        }
+        const stillUndecided = tEntryForGroup.perHitChoices.some(c => c === null);
+        if (stillUndecided) {
+          // Còn nhóm chưa quyết định → LƯU rồi hỏi tiếp, KHÔNG resolve.
+          await saveEncounter(encChannelId, encounter);
+          const decidedCount = tEntryForGroup.perHitChoices.filter(c => c !== null).length;
+          displayText = `${choiceNote}\n> Đã xử lý nhóm **${counterGroupIdx + 1}/${groupCount}** — còn **${groupCount - decidedCount}** nhóm hit nữa, xem prompt phòng thủ tiếp theo trong Discord.`;
+          // KHÔNG gọi sendReactiveDefensePrompt ở ĐÂY: ta đang GIỮ
+          // withLock(encounterKey) và hàm đó cũng cần chính cái lock ấy (xem
+          // reactive-defense.js) — gọi lồng vào sẽ tự chặn mình. Đặt cờ, gọi
+          // SAU KHI lock đã nhả.
+          needNextGroupPrompt = true;
+          return;
+        }
+        const finalized = await finalizeReactiveChoice(encChannelId, encounter, p, targetId, tEntryForGroup.perHitChoices.filter(Boolean).join(" · "), `<@${targetId}>`);
         displayText = finalized.resultText;
         // BUG ĐÃ SỬA (Fragaria: "sau khi fail counter tự dưng encounter tự kết
         // thúc luôn — -balance lên check HP thì có vẻ AI đã tự giải quyết ngầm
@@ -245,6 +333,12 @@ app.post("/rtparry/:token/result", async (req, res) => {
         questEndedHere = !!encounter._deleteAfterSave;
         questEndText = finalized.resultText;
       });
+      // Hỏi phòng thủ cho nhóm hit KẾ TIẾP — phải nằm NGOÀI withLock ở trên.
+      if (needNextGroupPrompt) {
+        await sendReactiveDefensePrompt(encChannelId, pendingId).catch((err) => {
+          log("error", "counterNextGroupPrompt", session.userId, err.stack ?? err.message);
+        });
+      }
       if (questEndedHere) {
         const encCh = await client.channels.fetch(encChannelId).catch(() => null);
         if (encCh) {

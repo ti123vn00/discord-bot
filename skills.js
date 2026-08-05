@@ -168,7 +168,7 @@ const SKILLS = {
     roll() {
       const d1 = r(16,24);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE 3 người] — gây 5 <:Bleed:1513762688226955285>Bleed ở turn kế, 2 <:Bind:1513768025881317457>Bind và nhận 2 **Middle Nursefather Tattoos** với mỗi địch đánh trúng`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] [AOE 3 người] — gây 5 <:Bleed:1513762688226955285>Bleed ở turn kế, 2 <:Fix_Bind:1513768025881317457>Bind và nhận 2 **Middle Nursefather Tattoos** với mỗi địch đánh trúng`,
       ];
     },
   },
@@ -188,10 +188,10 @@ const SKILLS = {
     roll() {
       const d1 = r(3,6), d2 = r(7,9), d3 = r(8,10);
       return [
-        `${D1} *Nếu địch có ≥4 <:Bind:1513768025881317457>Bind, mọi Dice của skill này add thêm 1 <:Burn:1513762753691652177>Burn*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Burn:1513762753691652177>Burn và 2 <:Bind:1513768025881317457>Bind`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Burn:1513762753691652177>Burn`,
+        `${D1} *Nếu địch có ≥4 <:Fix_Bind:1513768025881317457>Bind, mọi Dice của skill này add thêm 1 <:Fix_Burn:1513762753691652177>Burn*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Fix_Burn:1513762753691652177>Burn và 2 <:Fix_Bind:1513768025881317457>Bind`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -202,10 +202,10 @@ const SKILLS = {
       const d1 = r(4,6), d2 = r(5,7), d3 = r(7,10), d4 = r(8,12);
       return [
         `${D1} *Khi dùng: +1 <:DiceUp:1513767795681398894>Dice Up turn này và sau ứng với mỗi nhánh Skill Tree Wrath đã kích hoạt [Max: 4]*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Bind:1513768025881317457>Bind và +1 <:Burn:1513762753691652177>Burn ứng với mỗi <:Bind:1513768025881317457>Bind trên địch`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Fix_Bind:1513768025881317457>Bind và +1 <:Fix_Burn:1513762753691652177>Burn ứng với mỗi <:Fix_Bind:1513768025881317457>Bind trên địch`,
       ];
     },
   },
@@ -246,7 +246,7 @@ const SKILLS = {
     roll() {
       return [
         `*Không có Dice — page chỉ tự áp buff lên vũ khí bản thân*`,
-        `Đốt cháy vũ khí của bạn trong 3 Turn, khiến cho đòn đánh thường (M1) tự động áp 1/2/4 <:Burn:1513762753691652177>Burn [Light/Medium/Heavy] lên kẻ địch mỗi lần trúng.`,
+        `Đốt cháy vũ khí của bạn trong 3 Turn, khiến cho đòn đánh thường (M1) tự động áp 1/2/4 <:Fix_Burn:1513762753691652177>Burn [Light/Medium/Heavy] lên kẻ địch mỗi lần trúng.`,
       ];
     },
   },
@@ -304,9 +304,9 @@ const SKILLS = {
     roll() {
       const d1 = r(3,6), d2 = r(3,6), d3 = r(5,9);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 4 <:Burn:1513762753691652177>Burn và 1 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 1 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 6 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 1 <:Burn:1513762753691652177>Burn`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 10 <:Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 2 <:Burn:1513762753691652177>Burn`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 4 <:Fix_Burn:1513762753691652177>Burn và 1 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 6 <:Fix_Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [AOE tất cả] — gây 10 <:Fix_Burn:1513762753691652177>Burn và 2 <:Fragile:1513763336167100536>Fragile; tự gắn lên bản thân 2 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -316,9 +316,9 @@ const SKILLS = {
     roll() {
       const d1 = r(9,12), d2 = r(11,13);
       return [
-        `${D1} *Nếu địch có sẵn 10 <:Burn:1513762753691652177>Burn: tăng lượng <:Burn:1513762753691652177>Burn mỗi Hit thêm 3 <:Burn:1513762753691652177>Burn*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Burn:1513762753691652177>Burn; tự gắn lên bản thân 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 6 <:Burn:1513762753691652177>Burn; tự gắn lên bản thân 4 <:Burn:1513762753691652177>Burn; kích Burning Sensation`,
+        `${D1} *Nếu địch có sẵn 10 <:Fix_Burn:1513762753691652177>Burn: tăng lượng <:Fix_Burn:1513762753691652177>Burn mỗi Hit thêm 3 <:Fix_Burn:1513762753691652177>Burn*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Fix_Burn:1513762753691652177>Burn; tự gắn lên bản thân 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 6 <:Fix_Burn:1513762753691652177>Burn; tự gắn lên bản thân 4 <:Fix_Burn:1513762753691652177>Burn; kích Burning Sensation`,
       ];
     },
   },
@@ -328,9 +328,9 @@ const SKILLS = {
     roll() {
       return [
         `*Không có Dice — page chỉ tự áp hiệu ứng lên bản thân/đối phương*`,
-        `Tự gắn lên bản thân 20 <:Burn:1513762753691652177>Burn, kích hoạt **Burning Sensation** trên người đối phương`,
-        `Khả năng gắn <:Burn:1513762753691652177>Burn tăng lên 1,5x (kéo dài 2 Turn)`,
-        `*Nếu bản thân có sẵn 10 <:Burn:1513762753691652177>Burn (không phải từ chính Page này): kích hoạt thêm 1 lần **Burning Sensation** nữa*`,
+        `Tự gắn lên bản thân 20 <:Fix_Burn:1513762753691652177>Burn, kích hoạt **Burning Sensation** trên người đối phương`,
+        `Khả năng gắn <:Fix_Burn:1513762753691652177>Burn tăng lên 1,5x (kéo dài 2 Turn)`,
+        `*Nếu bản thân có sẵn 10 <:Fix_Burn:1513762753691652177>Burn (không phải từ chính Page này): kích hoạt thêm 1 lần **Burning Sensation** nữa*`,
       ];
     },
   },
@@ -393,9 +393,12 @@ const SKILLS = {
     cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(14,26);
+      // Fragaria xác nhận trực tiếp: "Onrush không có khả năng reuse nữa" —
+      // dòng "≥6 Light thì dùng thêm 3 Light để reuse" ĐÃ BỎ HẲN khỏi text.
+      // Hai hiệu ứng còn lại (giảm 40 Stamina địch + nhận 1 Imitation) KHÔNG
+      // đi qua dmgStr được nên xử lý bằng code ở resolve-pending-action.js.
       return [
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 1 <:Imitation:1513769425063514173>Imitation, giảm 40 Stamina địch`,
-        `${D1} *Nếu bản thân có ≥6 <:Light:1513786082502770719>Light: dùng thêm 3 <:Light:1513786082502770719>Light để reuse đòn này*`,
       ];
     },
   },
@@ -471,7 +474,7 @@ const SKILLS = {
       return [
         `**[Undodgeable] [Unblockable] [Unparriable] [Uncounterable] [Unbreakable Dice] [Unfocused Volley]**`,
         `*⚔️ Clash bằng TỔNG cả 9 dice · thua clash vẫn dùng với 50% dmg · mỗi dice nảy ngẫu nhiên sang kẻ địch khác (dice 1 luôn trúng mục tiêu được nhắm)*`,
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762716722106388>Burn`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
         `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [100% Crit] — nhận 6 <:Poise:1513762945715142736>Poise`,
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] — gây 2 <:Tremor:1513762737388257380>Tremor`,
         `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Rupture:1513762812722155682>Rupture`,
@@ -479,7 +482,7 @@ const SKILLS = {
         // Dice 6 và 8 là "50% Slash / 50% Blunt" — CHIA ĐÔI thành 2 hit (xác nhận
         // trực tiếp: "dice ra 20 → 2 Hit: 10 Slash + 10 Blunt"). Status phụ CHỈ
         // ghi ở 1 trong 2 nửa, nếu không sẽ bị áp GẤP ĐÔI.
-        `${D6} **${half(d6)}** [<:Slash:1513768633434640517>Slash] — *(nửa Slash)* gây 3 <:Fragile:1513763336167100536>Fragile, 3 <:Bind:1513763376122400908>Bind và <:TremorBurst:1513802464632246352>Tremor Burst`,
+        `${D6} **${half(d6)}** [<:Slash:1513768633434640517>Slash] — *(nửa Slash)* gây 3 <:Fragile:1513763336167100536>Fragile, 3 <:Fix_Bind:1513768025881317457>Bind và <:TremorBurst:1513802464632246352>Tremor Burst`,
         `${D6} **${half(d6)}** [<:Blunt:1513768529718022254>Blunt] — *(nửa Blunt)*`,
         `${D7} **${d7}** [<:Blunt:1513768529718022254>Blunt] — gây 10 <:Tremor:1513762737388257380>Tremor`,
         `${D8} **${half(d8)}** [<:Slash:1513768633434640517>Slash] — *(nửa Slash)* gây 2 <:Sinking:1513762793436741652>Sinking`,
@@ -564,7 +567,7 @@ const SKILLS = {
     name: "Hematic Coloring", cost: "5 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "(1~4): 0.5x / (5): 1x",
     roll() {
       const EFFECTS = [
-        `<:Burn:1513762753691652177>Burn`, `<:Tremor:1513762737388257380>Tremor`,
+        `<:Fix_Burn:1513762753691652177>Burn`, `<:Tremor:1513762737388257380>Tremor`,
         `<:Rupture:1513762812722155682>Rupture`, `<:Sinking:1513762793436741652>Sinking`, `<:Bleed:1513762688226955285>Bleed`
       ];
       function pickEffects() {
@@ -613,13 +616,13 @@ const SKILLS = {
       const REUSE_EMOJIS = [D2, D3, `<:Dice4:1508176464367845600>`];
       const d1 = 14;
       const lines = [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Fix_Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture`,
       ];
       for (let i = 1; i <= 2; i++) {
         const triggered = Math.random() * 100 < reusePct;
         const dEmoji = REUSE_EMOJIS[i - 1] ?? REUSE_EMOJIS[REUSE_EMOJIS.length - 1];
         if (triggered) {
-          lines.push(`${dEmoji} ↩️ Reuse ${i} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture *(${reusePct}% → ✅)*`);
+          lines.push(`${dEmoji} ↩️ Reuse ${i} **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Bleed:1513762688226955285>Bleed 2 <:Fix_Burn:1513762753691652177>Burn 2 <:Tremor:1513762737388257380>Tremor 2 <:Sinking:1513762793436741652>Sinking 2 <:Rupture:1513762812722155682>Rupture *(${reusePct}% → ✅)*`);
         } else {
           lines.push(`${dEmoji} ↩️ Reuse ${i} dừng tại đây *(${reusePct}% → ❌)*`);
           break;
@@ -629,17 +632,17 @@ const SKILLS = {
     },
   },
 
-  // ── <:Burn:1513762753691652177>Burn skills ──
+  // ── <:Fix_Burn:1513762753691652177>Burn skills ──
   "perfected death fist": {
     name: "Perfected Death Fist", cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1=r(3,6),d2=r(6,9),d3=r(9,12);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `<:Dice3:1508173643518050395> *Nếu địch có trên 8 <:Burn:1513762753691652177>Burn: gắn thêm 3 <:Burn:1513762753691652177>Burn*`,
-        `<:Dice3:1508173643518050395> *Nếu địch có trên 6 <:Burn:1513762753691652177>Burn: +5 <:DiceUp:1513767795681398894>Dice Up cho bản thân*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice3:1508173643518050395> *Nếu địch có trên 8 <:Fix_Burn:1513762753691652177>Burn: gắn thêm 3 <:Fix_Burn:1513762753691652177>Burn*`,
+        `<:Dice3:1508173643518050395> *Nếu địch có trên 6 <:Fix_Burn:1513762753691652177>Burn: +5 <:DiceUp:1513767795681398894>Dice Up cho bản thân*`,
       ];
     },
   },
@@ -648,8 +651,8 @@ const SKILLS = {
     roll() {
       const d1=r(5,9),d2=r(10,16);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — gây 4 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — gây 8 <:Burn:1513762753691652177>Burn`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — gây 4 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu] — gây 8 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -658,7 +661,7 @@ const SKILLS = {
     roll() {
       const d1=r(9,13);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 5 <:Burn:1513762753691652177>Burn`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 5 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -667,9 +670,9 @@ const SKILLS = {
     roll() {
       const d1=r(2,5),d2=r(8,13);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> *Tấn công cộng thêm (số <:Burn:1513762753691652177>Burn trên địch ÷ 3) dice*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> *Tấn công cộng thêm (số <:Fix_Burn:1513762753691652177>Burn trên địch ÷ 3) dice*`,
       ];
     },
   },
@@ -678,8 +681,8 @@ const SKILLS = {
     roll() {
       const d1=r(8,14);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gắn 4 <:Burn:1513762753691652177>Burn`,
-        `<:Dice1:1508173590078558369> *Trên 30 Sanity: gắn 6 <:Burn:1513762753691652177>Burn | Trên 45 Sanity: gắn 8 <:Burn:1513762753691652177>Burn*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gắn 4 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice1:1508173590078558369> *Trên 30 Sanity: gắn 6 <:Fix_Burn:1513762753691652177>Burn | Trên 45 Sanity: gắn 8 <:Fix_Burn:1513762753691652177>Burn*`,
       ];
     },
   },
@@ -688,9 +691,9 @@ const SKILLS = {
     roll() {
       const d1=r(3,6),d2=r(4,12);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> *Nếu địch có trên 10 <:Burn:1513762753691652177>Burn: gắn thêm 3 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> *Nếu địch có trên 10 <:Fix_Burn:1513762753691652177>Burn: gắn thêm 3 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>*`,
       ];
     },
   },
@@ -699,8 +702,8 @@ const SKILLS = {
     roll() {
       const d1=r(3,5),d2=r(6,10);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Burn:1513762753691652177>Burn`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 4 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -1132,19 +1135,10 @@ const SKILLS = {
       ];
     },
   },
-  "augury kick": {
-    name: "Augury Kick",
-    cost: "4 <:Light:1513786082502770719>Light", cd: "5 Turn", diceMul: "1x",
-    roll() {
-      const d1 = r(5,9), d2 = r(18,26);
-      const hasDiceUp = d2 > 20;
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — đá địch lên trời, gây 8 <:Tremor:1513762737388257380>Tremor`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable] [Undodgeable] — đá xuống, gây <:TremorBurst:1513802464632246352>Tremor Burst`,
-        hasDiceUp ? `✨ Trên 20 Tremor: nhận 2 <:DiceUp:1513767795681398894>Dice Up cho 2 Turn kế tiếp` : `*(Cần trên 20 <:Tremor:1513762737388257380>Tremor để nhận <:DiceUp:1513767795681398894>Dice Up)*`,
-      ];
-    },
-  },
+  // (ĐÃ XOÁ bản "augury kick" TRÙNG KEY ở đây — có HAI entry cùng key
+  // "augury kick" trong cùng object literal, nên theo luật JS bản khai báo SAU
+  // ghi đè hoàn toàn bản này. Bản này là CODE CHẾT: sửa nó không có tác dụng
+  // gì. Bản còn sống nằm gần "stob" — đã tự động hoá Dice Up ở đó.)
   // "Singularity" — CATEGORY MỚI (xác nhận trực tiếp): "1 loại equipment riêng
   // biệt chỉ có 1 slot duy nhất, KHÔNG tính slot với accessory/outfit/weapon".
   // "Borrowed Eyes" (Singularity item CỦA Eye Gouger) cho thêm 1 PAGE KHÔNG TỐN
@@ -1845,7 +1839,7 @@ roll(v = "no") {
       return [
         `*Yêu cầu tối thiểu 1 viên đạn (không tiêu)*`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — dậm chân, gây 6 <:Tremor:1513762737388257380>Tremor`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — rút súng bắn rồi giật lùi, áp 4 <:Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — rút súng bắn rồi giật lùi, áp 4 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -1899,9 +1893,9 @@ roll(v = "no") {
     roll() {
       const d1 = r(4,6), d2 = r(4,6), d3 = r(4,6);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Burn:1513762753691652177>Burn và gắn 1 <:Bind:1513768025881317457>Bind với mỗi 2 <:Burn:1513762753691652177>Burn trên địch [Max: 6]`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Fix_Burn:1513762753691652177>Burn và gắn 1 <:Fix_Bind:1513768025881317457>Bind với mỗi 2 <:Fix_Burn:1513762753691652177>Burn trên địch [Max: 6]`,
       ];
     },
   },
@@ -1914,7 +1908,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,40);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [AOE] — chém đường lửa gây 5 <:Burn:1513762753691652177>Burn lên kẻ thù ở turn sau`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [AOE] — chém đường lửa gây 5 <:Fix_Burn:1513762753691652177>Burn lên kẻ thù ở turn sau`,
       ];
     },
   },
@@ -1987,7 +1981,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(9,25), d2 = r(5,8);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nhảy lên chém xuống, gây 3 <:Bind:1513768025881317457>Bind và 3 Feeble`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nhảy lên chém xuống, gây 3 <:Fix_Bind:1513768025881317457>Bind và 3 Feeble`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — chém địch`,
       ];
     },
@@ -2335,7 +2329,7 @@ roll(v = "no") {
       return [
         `*[AOE] — Lượng dmg = số dice x2*`,
         `<:Dice1:1508173590078558369> **${d1*2}** [<:Blunt:1513768529718022254>Blunt] — Màn một: khiến tất cả địch mất 3 <:Light:1513786082502770719>Light`,
-        `<:Dice2:1508173623691710625> **${d2*2}** [<:Blunt:1513768529718022254>Blunt] — Màn hai: tất cả địch nhận 10 <:Bind:1513768025881317457>Bind`,
+        `<:Dice2:1508173623691710625> **${d2*2}** [<:Blunt:1513768529718022254>Blunt] — Màn hai: tất cả địch nhận 10 <:Fix_Bind:1513768025881317457>Bind`,
         `<:Dice3:1508173643518050395> **${d3*2}** [<:Blunt:1513768529718022254>Blunt] — Màn cuối: tất cả địch nhận 2 Feeble`,
       ];
     },
@@ -2350,8 +2344,8 @@ roll(v = "no") {
       const d1 = r(7,12), d2 = r(8,13);
       return [
         `*[AOE]*`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Fix_Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Fix_Bind:1513768025881317457>Bind và 1 Feeble trong 1 Turn`,
       ];
     },
   },
@@ -2389,7 +2383,7 @@ roll(v = "no") {
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed ở turn kế`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đạp địch ra xa, gây 2 <:Bind:1513768025881317457>Bind`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — đạp địch ra xa, gây 2 <:Fix_Bind:1513768025881317457>Bind`,
         `<:Dice4:1508176464367845600> **${d4}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [AoE 2 người] — gây 3 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
@@ -2572,7 +2566,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,18);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tạo một cái cánh hất vào mặt kẻ thù, gây 7 <:Burn:1513762753691652177>Burn; bản thân giảm 15 Sanity`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — Tạo một cái cánh hất vào mặt kẻ thù, gây 7 <:Fix_Burn:1513762753691652177>Burn; bản thân giảm 15 Sanity`,
       ];
     },
   },
@@ -2623,7 +2617,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(12,20);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Guard Break] [AOE 3 người] — Đập trường đao xuống tạo vùng lửa lớn, gắn 5 <:Burn:1513762753691652177>Burn`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Guard Break] [AOE 3 người] — Đập trường đao xuống tạo vùng lửa lớn, gắn 5 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -2633,8 +2627,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,8), d2 = r(6,16);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 3 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đấm vào mặt kẻ thù, gây 6 <:Burn:1513762753691652177>Burn`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù, gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đấm vào mặt kẻ thù, gây 6 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -2803,7 +2797,7 @@ roll(v = "no") {
       const d1 = r(5,8), d2 = r(2,4), d3 = r(10,12);
       return [
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, nhận 5 <:Poise:1513762945715142736>Poise`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, gây 4 <:Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, gây 4 <:Fix_Burn:1513762753691652177>Burn`,
         `${D3} **${d3}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Đấm vào mặt kẻ thù, gây 4 <:Bleed:1513762688226955285>Bleed`,
       ];
     },
@@ -2870,7 +2864,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(7,9), d2 = r(8,12);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Dùng rìu chặt đứt kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau) và 3 <:Bind:1513763376122400908>Bind`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Dùng rìu chặt đứt kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed (turn sau) và 3 <:Fix_Bind:1513768025881317457>Bind`,
         `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Dùng chùy kết liễu, gây 6 <:Tremor:1513762737388257380>Tremor, 3 <:Fragile:1513763336167100536>Fragile và <:TremorBurst:1513802464632246352>Tremor Burst`,
       ];
     },
@@ -2891,8 +2885,8 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,9), d2 = r(7,10);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Dùng Pistol bên trái bắn kẻ địch, gây 2 <:Burn:1513762716722106388>Burn`,
-        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Kết thúc bằng Pistol bên phải, gây 2 <:Burn:1513762716722106388>Burn, đổi về dạng Shotgun`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Dùng Pistol bên trái bắn kẻ địch, gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable] — Kết thúc bằng Pistol bên phải, gây 2 <:Fix_Burn:1513762753691652177>Burn, đổi về dạng Shotgun`,
       ];
     },
   },
@@ -2910,7 +2904,9 @@ roll(v = "no") {
   },
   "wheels industry": {
     name: "Wheel's Industry", weaponOf: "Wheel's Industry", tags: "Weapon",
-    cost: "—", cd: "2 Turn", diceMul: "1x",
+    // Fragaria xác nhận trực tiếp: "CD critical của Wheel Industry chưa thành 3
+    // turn sửa nó thành CD 3 turn".
+    cost: "—", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,24);
       return [
@@ -2918,7 +2914,7 @@ roll(v = "no") {
         // Tremor Burst CÓ ĐIỀU KIỆN nên KHÔNG viết trên dòng dice: parser
         // (extractAutoStatusTags) sẽ auto-gắn vào dmgStr bất kể điều kiện.
         // Điều kiện thật xử lý ở resolve-pending-action.js.
-        `*Nếu địch có ≥20 <:Tremor:1513762737388257380>Tremor sau đòn này: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst (tự động)*`,
+        `*Nếu địch có ≥20 <:Tremor:1513762737388257380>Tremor sau đòn này: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst*`,
       ];
     },
   },
@@ -3089,7 +3085,11 @@ roll(v = "no") {
       const d1 = r(5,9), d2 = r(18,26);
       return [
         `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — Đá thẳng đối thủ trước mặt lên trời, gây 8 <:Tremor:1513762737388257380>Tremor.`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable][Undodgeable] — Nhảy lên đá thêm 1 phát khiến hắn đập mặt xuống đất, gây Tremor Burst. *(Nếu trên 20 Tremor: +2 Dice Up cho 2 Turn kế tiếp — GM/player tự áp, không tự động track.)*`,
+        // Điều kiện ">20 Tremor" KHÔNG viết trên dòng dice (parser auto-gắn bất
+        // kể điều kiện) — xử lý thật ở resolve-pending-action.js. Disclaimer cũ
+        // "GM/player tự áp, không tự động track" ĐÃ BỎ vì giờ tự động thật.
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unparriable][Undodgeable] — Nhảy lên đá thêm 1 phát khiến hắn đập mặt xuống đất, gây <:TremorBurst:1513802464632246352>Tremor Burst.`,
+        `*Nếu địch có >20 <:Tremor:1513762737388257380>Tremor sau đòn này: bản thân nhận +2 <:DiceUp:1513767795681398894>Dice Up trong 2 Turn kế tiếp*`,
       ];
     },
   },
@@ -3332,18 +3332,18 @@ roll(v = "no") {
       return [
         `*[Mỗi Dice có thể tốn 5 viên đạn <:The_Living_The_Departed:1528452731147391137>The Living and The Departed để +1 <:DiceUp:1513767795681398894>Dice Up/Dice và +1 <:Sinking:1513762793436741652>Sinking mỗi viên]*`,
         `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Bắn liên tục vào kẻ địch`,
-        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Lao tới bắn phát cuối, gây 3 <:Sinking:1513762793436741652>Sinking. Tùy theo <:Sinking:1513762793436741652>Sinking trên địch: 0 → -2 <:DiceDown:1513767826257874964>Dice Down | 1-19 → 6 <:Bind:1513768025881317457>Bind | ≥20 → 6 Fragile`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Lao tới bắn phát cuối, gây 3 <:Sinking:1513762793436741652>Sinking. Tùy theo <:Sinking:1513762793436741652>Sinking trên địch: 0 → -2 <:DiceDown:1513767826257874964>Dice Down | 1-19 → 6 <:Fix_Bind:1513768025881317457>Bind | ≥20 → 6 Fragile`,
       ];
     },
   },
   "kaen jujizan": {
     name: "Kaen Jūjizan", weaponOf: "Kaenken Rekka", tags: "Weapon",
-    cost: "—", cd: "2 Turn", diceMul: "1x (2x nếu địch >10 <:Burn:1513762753691652177>Burn)",
+    cost: "—", cd: "2 Turn", diceMul: "1x (2x nếu địch >10 <:Fix_Burn:1513762753691652177>Burn)",
     roll() {
       const d1 = r(6,20);
       return [
         `**[<:Slash:1513768633434640517>Slash] [Khuếch tán 3 mục tiêu]**`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch, triệu hồi rồng lửa cuốn vòng rồi tung chuỗi chém, gây 6 <:Burn:1513762753691652177>Burn`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch, triệu hồi rồng lửa cuốn vòng rồi tung chuỗi chém, gây 6 <:Fix_Burn:1513762753691652177>Burn`,
       ];
     },
   },
@@ -3440,9 +3440,9 @@ roll(v = "no") {
     passive: [
       `**Rule Violation** — Mỗi 1 Turn: hai đòn tấn công đầu tiên bạn chịu từ kẻ thù phản 1/2 Dmg về cho chúng (Type: <:Blunt:1513768529718022254>Blunt; <:Slash:1513768633434640517>Slash từ Seal 2+). Mỗi đòn gây cho chúng 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. +10 Minimum Dice từ Follow Up Attack [Follow Up / Pounce]`,
       `**Sealed Sword [Lævateinn]** — Khởi đầu là Heavy Weapon với 30 Base Dmg [<:Blunt:1513768529718022254>Blunt]. Mỗi khi dùng 1 Page của **Middle Syndicate**: nhận 1 Stack **Rising Fever**. Mọi Bonus Dmg <:Blunt:1513768529718022254>Blunt % chuyển sang Dmg Type tương ứng với đòn gây ra. Mỗi khi mở khoá một lớp phong ấn: thi triển ngay 1 đòn tấn công với số Dice bằng tổng lượng stack **Rising Fever** hiện có. Khi mở khoá phong ấn cuối: nhận hiệu ứng **Ridiculous Grit** duy trì đến hết Encounter.\n` +
-      `> — **10 Rising Fever** → Seal 1: Base Dmg 35 [<:Blunt:1513768529718022254>Blunt], +50% Dmg. Mọi đòn đánh áp 1 <:Bleed:1513762688226955285>Bleed + 1 <:Burn:1513762753691652177>Burn\n` +
-      `> — **20 Rising Fever** → Seal 2: Medium Weapon, Base Dmg 20 [<:Slash:1513768633434640517>Slash], +100% Dmg. Mọi đòn đánh áp 2 <:Bleed:1513762688226955285>Bleed + 2 <:Burn:1513762753691652177>Burn\n` +
-      `> — **30 Rising Fever** → Seal 3: Light Weapon, Base Dmg 13 [<:Slash:1513768633434640517>Slash], +200% Dmg. Mọi đòn đánh áp 4 <:Bleed:1513762688226955285>Bleed + 4 <:Burn:1513762753691652177>Burn. Toàn bộ đồng minh lẫn kẻ thù chịu 20 <:Burn:1513762753691652177>Burn vào đầu mỗi turn`,
+      `> — **10 Rising Fever** → Seal 1: Base Dmg 35 [<:Blunt:1513768529718022254>Blunt], +50% Dmg. Mọi đòn đánh áp 1 <:Bleed:1513762688226955285>Bleed + 1 <:Fix_Burn:1513762753691652177>Burn\n` +
+      `> — **20 Rising Fever** → Seal 2: Medium Weapon, Base Dmg 20 [<:Slash:1513768633434640517>Slash], +100% Dmg. Mọi đòn đánh áp 2 <:Bleed:1513762688226955285>Bleed + 2 <:Fix_Burn:1513762753691652177>Burn\n` +
+      `> — **30 Rising Fever** → Seal 3: Light Weapon, Base Dmg 13 [<:Slash:1513768633434640517>Slash], +200% Dmg. Mọi đòn đánh áp 4 <:Bleed:1513762688226955285>Bleed + 4 <:Fix_Burn:1513762753691652177>Burn. Toàn bộ đồng minh lẫn kẻ thù chịu 20 <:Fix_Burn:1513762753691652177>Burn vào đầu mỗi turn`,
       `**Time to Revenge** — Nếu mục tiêu có từ 3 / 6 / 9 <:VengeanceMark:1513768136023740436>Vengeance Mark: tăng số lượng stack **Rising Fever** có thể nhận thêm 1 / 2 / 3. (Tối đa 2 lần mỗi turn)`,
     ].join("\n"),
     cost: "—", cd: "—", diceMul: "—",
@@ -4248,8 +4248,8 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(18,24);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down, 2 <:Bind:1513768025881317457>Bind và toàn bộ đồng minh nhận 3 <:Haste:1513768004222062632>Haste turn kế [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable]`,
-        `*[After Use] E.G.O Passive **Silence**: khi bị tấn công turn kế sẽ nhận 3 <:Bind:1513768025881317457>Bind và tăng 20% Dmg Up*`,
+        `<:Dice1:1508173590078558369> **${d1}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down, 2 <:Fix_Bind:1513768025881317457>Bind và toàn bộ đồng minh nhận 3 <:Haste:1513768004222062632>Haste turn kế [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable]`,
+        `*[After Use] E.G.O Passive **Silence**: khi bị tấn công turn kế sẽ nhận 3 <:Fix_Bind:1513768025881317457>Bind và tăng 20% Dmg Up*`,
         `*__Utter to me what you think the ideal is.__*`,
       ];
     },
@@ -4537,8 +4537,8 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(2,4), d2 = r(3,5);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** sau khi sử dụng`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** sau khi sử dụng`,
       ];
     },
   },
@@ -4548,9 +4548,9 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(1,5), d2 = r(3,8), d3 = r(3,9);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Gây 2 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn, <:Tremor:1513762737388257380>Tremor và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** sau khi sử dụng`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — Gây 2 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn, <:Tremor:1513762737388257380>Tremor và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up. Nhận được 5 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** sau khi sử dụng`,
       ];
     },
   },
@@ -4560,9 +4560,9 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(4,6), d2 = r(4,8), d3 = r(8,11);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm <:Fix_Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
       ];
     },
   },
@@ -4572,9 +4572,9 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(5,7), d2 = r(5,7), d3 = r(5,5);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst *(nếu có trên hoặc bằng 15 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round**)*. Tiêu toàn bộ Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm <:Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** được xả`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn và tăng 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Unblockable] — Gây 3 <:Tremor:1513762737388257380>Tremor. Tiêu 1 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm 2 <:Fix_Burn:1513762753691652177>Burn và tăng thêm 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Gây 3 <:Tremor:1513762737388257380>Tremor và <:TremorBurst:1513802464632246352>Tremor Burst *(nếu có trên hoặc bằng 15 Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round**)*. Tiêu toàn bộ Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** để gây thêm <:Fix_Burn:1513762753691652177>Burn tương ứng với số <:Tremor:1513762737388257380>Tremor trên người địch và tăng thêm 3 <:DiceUp:1513767795681398894>Dice Up tương ứng với mỗi Stack **<:Scorch_Propellant_Ammo:1528452773690085416>Scorch Propellant Round** được xả`,
       ];
     },
   },
@@ -4583,7 +4583,7 @@ Object.assign(SKILLS, {
   "tiantui star's blade": {
     name: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
     weaponType: "Medium", weaponDmg: "14 [<:Slash:1513768633434640517>Slash]",
-    passive: "**Reloading Tiantui Star's Blade** — Khi sử dụng <:Shin:1507591140180754588>Shin và dùng **Tiantui Star's Blade Reload**, bạn nhận được và chuyển hóa toàn bộ **<:Tigermark_Round:1528452815838777394>Tigermark Round** hiện có qua **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round**",
+    passive: "**Reloading Tiantui Star's Blade** — Khi sử dụng <:Fix_Shin:1507591140180754588>Shin và dùng **Tiantui Star's Blade Reload**, bạn nhận được và chuyển hóa toàn bộ **<:Tigermark_Round:1528452815838777394>Tigermark Round** hiện có qua **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round**",
     cost: "—", cd: "—", diceMul: "—",
     roll() { return [`*(Đây là passive/weapon entry — dùng tên Critical cụ thể để roll, VD: "tiantui triple slash blast" hoặc "tiantui savage tigerslayer flurry")*`]; },
   },
@@ -4594,7 +4594,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(10,15);
       return [
-        `${D1} *Tiêu thụ toàn bộ **<:Tigermark_Round:1528452815838777394>Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng. Nếu có trên hoặc bằng 6 **<:Tigermark_Round:1528452815838777394>Tigermark Round**: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst*`,
+        `${D1} *Tiêu thụ toàn bộ **<:Tigermark_Round:1528452815838777394>Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Fix_Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor tương ứng. Nếu có trên hoặc bằng 6 **<:Tigermark_Round:1528452815838777394>Tigermark Round**: gây thêm <:TremorBurst:1513802464632246352>Tremor Burst*`,
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch`,
       ];
     },
@@ -4607,13 +4607,13 @@ Object.assign(SKILLS, {
       const d1 = r(5,7), d2 = r(5,7), d3 = r(10,13), d4 = r(8,9), d5 = r(5,7), d6 = r(20,21);
       return [
         `*Điều kiện: dùng ngay sau **Triple Slash Blast [爆]** và có ít nhất 10 **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round** trên người*`,
-        `${D1} *Tiêu thụ toàn bộ **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Burn:1513762753691652177>Burn, 1 <:Tremor:1513762737388257380>Tremor tương ứng vào Dice cuối*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó tiếp tục chém, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Vận lực lấy đà lùi phía sau một chút rồi chém ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
-        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó bổ dọc xuống, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
-        `${D5} **${d5}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Rồi vung ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Burn:1513762753691652177>Burn`,
-        `${D6} **${d6}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [AOE 4 người] — Khuỵu gối xuống vận lực, nổ ga lần cuối nữa rồi nhảy bổ lên bổ thanh kiếm xuống kẻ địch, gây 6 <:Tremor:1513762737388257380>Tremor, <:Burn:1513762753691652177>Burn và <:TremorBurst:1513802464632246352>Tremor Burst 2 lần`,
+        `${D1} *Tiêu thụ toàn bộ **<:Savage_Tigermark_Round:1528452850248843304>Savage Tigermark Round** có trên người — mỗi 1 Round tiêu thụ gây thêm 1 <:Fix_Burn:1513762753691652177>Burn, 1 <:Tremor:1513762737388257380>Tremor tương ứng vào Dice cuối*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Khuỵu người xuống, rồi kích hoạt đạn của thanh kiếm tạo lực đẩy sau đó lao tới chặt kẻ địch, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó tiếp tục chém, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Vận lực lấy đà lùi phía sau một chút rồi chém ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Sau đó bổ dọc xuống, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D5} **${d5}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] — Rồi vung ngang, gây 1 <:Tremor:1513762737388257380>Tremor, 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `${D6} **${d6}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Guard Break] [AOE 4 người] — Khuỵu gối xuống vận lực, nổ ga lần cuối nữa rồi nhảy bổ lên bổ thanh kiếm xuống kẻ địch, gây 6 <:Tremor:1513762737388257380>Tremor, <:Fix_Burn:1513762753691652177>Burn và <:TremorBurst:1513802464632246352>Tremor Burst 2 lần`,
       ];
     },
   },
@@ -4886,6 +4886,30 @@ function findSkill(raw) {
   // Giờ bỏ dấu ":" rồi tra THẲNG SKILLS — tổng quát cho mọi skill tương lai.
   const keyNoColon = key.replace(/:/g, "").replace(/\s+/g, " ").trim();
   if (keyNoColon !== key && SKILLS[keyNoColon]) return SKILLS[keyNoColon];
+  // 2c. BUG ĐÃ SỬA (phát hiện khi làm resolveSkillKey — dò 324 skill).
+  // Bước 2b chỉ bỏ dấu ":". Còn DẤU NHÁY và DẤU CÂU thì vẫn trượt hết:
+  //   • name "Wheel's Industry" → key thật `wheels industry` → findSkill trả
+  //     NULL → Critical của Wheel's Industry KHÔNG BAO GIỜ bắn được từ dropdown
+  //     (dropdown dùng skill.name làm value). Đúng cùng họ bug với Atelier Logic.
+  //   • name "For Justice!!!" còn TỆ HƠN NULL: nó rơi xuống bước 3 (partial
+  //     match), `keyStripped` = "for", rồi `k.includes("for")` khớp NHẦM
+  //     "the forgotten" → trả về SAI SKILL HOÀN TOÀN mà không báo lỗi gì.
+  // SỬA: chuẩn hoá CẢ HAI PHÍA (bỏ dấu tiếng Latin mở rộng + mọi ký tự không
+  // phải chữ/số/space, gộp space) rồi so KHỚP CHÍNH XÁC. Đặt TRƯỚC bước 3 để
+  // tên đầy đủ luôn thắng partial match mù quáng.
+  const punctNorm = (str) => str
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/gi, "")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+  const keyPunctNorm = punctNorm(key);
+  if (keyPunctNorm) {
+    for (const [k, v] of Object.entries(SKILLS)) {
+      if (punctNorm(k) === keyPunctNorm) return v;
+    }
+    for (const [, v] of Object.entries(SKILLS)) {
+      if (v.name && punctNorm(v.name) === keyPunctNorm) return v;
+    }
+  }
   // 3. Fallback: tìm partial match trong SKILLS keys
   const keyStripped = key.replace(/\s+\S+$/, "").trim();
   for (const [k, v] of Object.entries(SKILLS)) {
@@ -5068,6 +5092,57 @@ function autoExtractDiceSideEffects(lines) {
   return effects.some(Boolean) ? effects : null;
 }
 
+/** extractNonDmgStrEffects — TÁCH RIÊNG những hiệu ứng KHÔNG thể đi qua dmgStr.
+ *
+ *  BUG HỆ THỐNG ĐÃ SỬA (Fragaria: "Page Onrush không giảm stamina như text ghi,
+ *  có vẻ còn nhiều page cũng thế không hoạt động đúng như effect").
+ *
+ *  BỐI CẢNH: `damageRegex` (damage-calc.js) CHỈ hiểu Sinking/Rupture/Poise/
+ *  Charge/Burn/Bleed/Tremor/TremorBurst/Living/Departed/Crit. Mọi hiệu ứng khác
+ *  viết trong roll() chỉ là CHỮ — không có đường nào chạy. Rà 324 skill thì có
+ *  hàng chục page rơi vào cảnh này, nổi bật:
+ *    • Fragile / Paralyze  → Vengeance Retaliation ghi "12 Fragile, 5 Paralyze"
+ *                            mà CHƯA TỪNG áp được cái nào.
+ *    • giảm N Stamina địch → Onrush, Regret, Fragments from Somewhere,
+ *                            Flooding Bullets.
+ *    • nhận N Imitation / N Light / hồi N HP cho bản thân.
+ *
+ *  VÌ SAO KHÔNG NHÉT VÀO damageRegex: đó là khúc mỏng manh nhất của codebase
+ *  (mỗi tag phải xuyên qua sumSignedTag → dmgValues → preview → apply, 4 tầng).
+ *  Fragile/Paralyze KHÔNG tham gia công thức dmg nên không cần đi đường đó —
+ *  đọc thẳng từ text đã roll rồi áp ở resolve-pending-action.js là đủ và an toàn.
+ *
+ *  QUY TẮC ĐỌC: chỉ nhận dạng "<số> <Tên>" (emoji đứng giữa cũng được, vì text
+ *  hay viết `5 <:Fragile:...>Fragile`). Dòng có chữ "Nếu"/"nếu" ở đầu là hiệu
+ *  ứng CÓ ĐIỀU KIỆN → BỎ QUA (điều kiện thật phải xử lý bằng code riêng, đúng
+ *  gotcha đã ghi trong HANDOFF: parser auto-gắn bất kể điều kiện).
+ *  @returns {{fragile:number, paralyze:number, drainStamina:number, selfImitation:number, selfLight:number, healHp:number}}
+ */
+function extractNonDmgStrEffects(lines) {
+  const out = { fragile: 0, paralyze: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, healHp: 0 };
+  const stripEmoji = (t) => t.replace(/<a?:[^:>]+:\d+>/g, "");
+  for (const raw of lines ?? []) {
+    const line = stripEmoji(String(raw));
+    // Bỏ dòng điều kiện — "*Nếu địch có ≥20 Tremor: ...*"
+    if (/(^|[*_\s(])n[eế]u\s/i.test(line)) continue;
+    const sum = (re) => {
+      let m, total = 0;
+      const r2 = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+      while ((m = r2.exec(line)) !== null) total += parseInt(m[1], 10) || 0;
+      return total;
+    };
+    out.fragile      += sum(/(\d+)\s*Fragile/i);
+    out.paralyze     += sum(/(\d+)\s*Paralyze/i);
+    // "giảm 40 Stamina địch" / "-40 Stamina của địch" — BẮT BUỘC có chữ "địch"
+    // để không nhầm với chi phí Stamina của CHÍNH MÌNH.
+    out.drainStamina += sum(/gi[ảa]m\s*(\d+)\s*Stamina\s*(?:c[ủu]a\s*)?[đd][ị i]ch/i);
+    out.selfImitation += sum(/nh[ậa]n\s*(\d+)\s*Imitation/i);
+    out.selfLight     += sum(/nh[ậa]n\s*(\d+)\s*Light/i);
+    out.healHp        += sum(/h[ồo]i(?:\s*ph[ụu]c)?\s*(\d+)\s*(?:HP|M[áa]u)/i);
+  }
+  return out;
+}
+
 function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifier = 0, rollArgs = [] } = {}) {
   startEmotionTracking();
   if (forceMinDice) startForceMinDice();
@@ -5182,10 +5257,35 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
   }
 
   if (diceTypeByLine.length === 0) {
-    return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines };
+    return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines, sideEffects: extractNonDmgStrEffects(lines) };
   }
   const dmgStr = diceTypeByLine.map(d => `${d.result}${d.type}${d.statusTags ?? ""}`).join(" + ");
-  return { dmgStr, warnings, tracked, totalEmotionDelta, lines };
+  return { dmgStr, warnings, tracked, totalEmotionDelta, lines, sideEffects: extractNonDmgStrEffects(lines) };
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+/** resolveSkillKey — trả về ĐÚNG KEY trong object SKILLS cho một chuỗi người
+ *  chơi gõ (hoặc value dropdown). Đây là thứ mọi handler tự động hoá so sánh
+ *  (`p.skillKey === "wheels industry"`), KHÔNG PHẢI tên hiển thị.
+ *
+ *  VÌ SAO KHÔNG DÙNG `skill.name.toLowerCase()`: có **31 skill** mà tên hiển thị
+ *  KHÁC key — `wheels industry` ↔ "Wheel's Industry", `atelier logic pistols` ↔
+ *  "Atelier Logic: Pistols", `great split vertical` ↔ "Great Split: Vertical",
+ *  `furusiyya` ↔ "Furūsiyya", `for justice` ↔ "For Justice!!!"… Suy từ name sẽ
+ *  phá vỡ đúng những handler đang chạy tốt.
+ *
+ *  CÁCH LÀM: tái dùng `findSkill` (đã xử lý alias + dấu ":" + space/dash) rồi
+ *  dò ngược ra key theo THAM CHIẾU object — chính xác tuyệt đối, kể cả 2 skill
+ *  trùng tên hiển thị nhưng khác key (VD "Dimensional Rift" có bản dagger và
+ *  bản gauntlets). Trả null nếu không tìm ra skill nào. */
+function resolveSkillKey(raw) {
+  const skill = findSkill(raw);
+  if (!skill) return null;
+  const direct = (raw ?? "").toLowerCase().trim();
+  if (SKILLS[direct] === skill) return direct; // đường nhanh, giữ đúng key khi gõ chuẩn
+  for (const k of Object.keys(SKILLS)) {
+    if (SKILLS[k] === skill) return k;
+  }
+  return null;
+}
+
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, extractNonDmgStrEffects, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };

@@ -25,6 +25,28 @@ async function resolveOnePendingAction(encounter, p) {
   // trong vòng for LẪN các đoạn code SAU KHI vòng for đó đã đóng (VD Blade
   // Lineage keypage 1's trigger, đặt sau chỗ ghi đè poise chung).
   let perHitMultForBulletEffect = null;
+  // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "-daily có bug là nhận ahn và sách xong
+  // nhưng vẫn không hoàn thành quest").
+  //
+  // NGUYÊN NHÂN GỐC — TRANH CHẤP LOCK userId, lỗi bị `catch {}` nuốt mất:
+  // Khi player hạ con mob CUỐI CÙNG của 1 contract, đúng 1 lần resolve này kích
+  // hoạt BA thao tác cùng khoá `withLock(userId)` trên CÙNG 1 người:
+  //   (1) incrementKillTaskProgress(attacker) — nhiệm vụ 3 của -daily
+  //   (2) grantContractReward(pid)            — phát EXP/Ahn/Random Book
+  //   (3) markContractTaskDone(pid)           — nhiệm vụ 2 của -daily
+  // (1) TRƯỚC ĐÂY là fire-and-forget (`.catch(() => {})`, KHÔNG await) nên nó
+  // vẫn đang GIỮ lock khi finalizeQuestOutcome chạy tới (2) rồi (3).
+  // `withLock` mặc định chỉ kiên nhẫn `retries: 3 × retryDelayMs: 200` ≈ 600ms —
+  // mà mỗi lần acquireLock là 1 round-trip Upstash từ Render. (3) là thao tác
+  // ĐI SAU CÙNG nên chịu tranh chấp nặng nhất, và lỗi của nó bị nuốt bởi
+  // `catch { }` trong quest-resolution.js → KHÔNG ai biết nó đã thất bại.
+  // → Kết quả ĐÚNG như mô tả: Ahn + sách (bước 2) đã vào tay, nhưng nhiệm vụ
+  //   "hoàn thành 1 contract" (bước 3) vẫn ⬜.
+  //
+  // SỬA: KHÔNG fire-and-forget nữa — gom promise lại rồi `await` HẾT ngay
+  // TRƯỚC finalizeQuestOutcome. Lock được nhả sạch trước khi (2)/(3) cần tới,
+  // tranh chấp biến mất hoàn toàn thay vì chỉ "hy vọng kịp".
+  const dailyKillHookPromises = [];
             const attacker = resolveCombatant(encounter, p.attackerId);
             if (!attacker) { resultLines.push(`⚠️ Bỏ qua 1 action — không tìm thấy attacker ${p.attackerId} (có thể đã rời encounter).`); return resultLines; }
 
@@ -899,7 +921,15 @@ async function resolveOnePendingAction(encounter, p) {
                   // (bất kỳ encounter nào, quest hay GM thường — "mob/boss bất kỳ"
                   // không giới hạn phạm vi). Fire-and-forget — không chặn action
                   // chính nếu lỗi (giống pattern applyEmotionDelta/HP sync ở trên).
-                  incrementKillTaskProgress(p.attackerId).catch(() => {});
+                  // KHÔNG fire-and-forget nữa — xem comment đầy đủ ở khai báo
+                  // dailyKillHookPromises (đầu hàm). Vẫn nuốt lỗi RIÊNG của hook
+                  // này (không được chặn đòn đánh chính) nhưng phải ĐỢI nó xong
+                  // để nhả lock userId trước khi finalizeQuestOutcome cần dùng.
+                  dailyKillHookPromises.push(
+                    incrementKillTaskProgress(p.attackerId).catch((err) => {
+                      resultLines.push(`⚠️ Không cập nhật được tiến độ nhiệm vụ \`-daily\` (hạ mob): ${err?.message ?? err}`);
+                    })
+                  );
                 } else if (targetResolved.type === "player") {
                   for (const otherPid of Object.keys(encounter.players)) {
                     if (otherPid === t.targetId) continue;
@@ -1661,7 +1691,97 @@ async function resolveOnePendingAction(encounter, p) {
             if (p.skillKey === "atelier logic shotgun" || p.skillKey === "atelier logic pistols") {
               const nextForm = p.skillKey === "atelier logic shotgun" ? "pistols" : "shotgun";
               attacker.combatant.atelierLogicForm = nextForm;
-              verifyNote += ` 🔫[Atelier Logic đổi sang dạng **${nextForm === "pistols" ? "Pistols" : "Shotgun"}**]`;
+              // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "còn nhiều page cũng không
+              // hoạt động đúng như effect... trong số đó có Atelier Logic").
+              //
+              // NGUYÊN NHÂN GỐC: `atelierLogicForm` TRƯỚC ĐÂY chỉ là 1 cái nhãn
+              // — nó quyết định Critical nào hiện trên panel, và KHÔNG gì khác.
+              // Chỉ số vũ khí thật trên combatant (weaponBaseDamage/weaponType/
+              // weaponWeight) vẫn đứng im ở giá trị Shotgun (26 / Blunt / heavy)
+              // kể cả khi đã đổi sang Pistols. Chính passive trong weapon.js
+              // cũng thừa nhận điều đó: "GM/player TỰ CHỌN form đang dùng khi
+              // tính M1, hệ thống chỉ lưu 1 baseDamage cố định". Hệ quả: đổi
+              // form xong thì M1, chi phí Stamina và số hit/nhóm phòng thủ đều
+              // vẫn là Shotgun — form Pistols gần như vô nghĩa.
+              //
+              // SỬA Ở ĐÚNG 1 CHỖ NÀY thay vì vá riêng cho M1: ghi thẳng chỉ số
+              // của form mới lên combatant, nên MỌI nơi đọc chỉ số vũ khí
+              // (dmgStr M1 ở interaction-handlers.js, WEAPON_STAMINA_COST,
+              // WEAPON_DEFENSE_HITS khi chia nhóm hit phòng thủ, Parry
+              // counter-dmg ở reactive-defense.js) tự động đúng theo form.
+              const ATELIER_FORM_STATS = {
+                shotgun: { baseDamage: 26,  type: "Blunt",  weight: "heavy" },
+                pistols: { baseDamage: 6.5, type: "Pierce", weight: "light" },
+              };
+              const formStats = ATELIER_FORM_STATS[nextForm];
+              attacker.combatant.weaponBaseDamage = formStats.baseDamage;
+              attacker.combatant.weaponType = formStats.type;
+              attacker.combatant.weaponWeight = formStats.weight;
+              verifyNote += ` 🔫[Atelier Logic đổi sang dạng **${nextForm === "pistols" ? "Pistols" : "Shotgun"}** — ${formStats.baseDamage} ${formStats.type} / ${formStats.weight}]`;
+            }
+            // ── HIỆU ỨNG NGOÀI dmgStr (dùng CHUNG cho MỌI page) ───────────────
+            // BUG HỆ THỐNG ĐÃ SỬA (Fragaria: "Page Onrush không giảm stamina như
+            // text ghi, có vẻ còn nhiều page cũng thế không hoạt động đúng như
+            // effect... trong số đó có Atelier Logic và Vengeance Retaliation").
+            //
+            // TRƯỚC ĐÂY mỗi page phải có 1 khối `if (p.skillKey === "...")` viết
+            // tay, nên hàng chục page có hiệu ứng ghi trong text mà KHÔNG AI code
+            // thì im lặng không chạy — người chơi không có cách nào biết.
+            // Giờ đọc từ `p.autoSideEffects` (skills.js's extractNonDmgStrEffects
+            // phân tích chính text đã roll) → page MỚI tự động chạy luôn, không
+            // cần thêm handler. Hiệu ứng CÓ ĐIỀU KIỆN vẫn phải code riêng (parser
+            // cố ý bỏ qua dòng bắt đầu bằng "Nếu" — xem gotcha trong HANDOFF).
+            //
+            // Bao phủ ngay: Onrush (−40 Sta địch, +1 Imitation), Regret (−100 Sta),
+            // Vengeance Retaliation (Fragile + Paralyze — hai status này KHÔNG có
+            // trong damageRegex nên chưa từng áp được lần nào).
+            {
+              const sfx = p.autoSideEffects;
+              if (sfx && (sfx.drainStamina || sfx.fragile || sfx.paralyze)) {
+                const sfxLabels = [];
+                for (const t2 of p.targets ?? []) {
+                  const tr2 = resolveCombatant(encounter, t2.targetId);
+                  if (!tr2) continue;
+                  const parts = [];
+                  if (sfx.drainStamina > 0) {
+                    const before = tr2.combatant.currentStamina ?? 0;
+                    tr2.combatant.currentStamina = Math.max(0, before - sfx.drainStamina);
+                    // Hết Stamina là điều kiện Stagger — phải kiểm ngay như mọi
+                    // nguồn trừ Stamina khác.
+                    checkStaggerPanic(tr2.combatant);
+                    parts.push(`−${(before - tr2.combatant.currentStamina).toFixed(0)} Sta`);
+                  }
+                  if (sfx.fragile > 0) {
+                    tr2.combatant.fragile = Math.min(99, (tr2.combatant.fragile ?? 0) + sfx.fragile);
+                    parts.push(`+${sfx.fragile} Fragile`);
+                  }
+                  if (sfx.paralyze > 0) {
+                    tr2.combatant.paralyze = Math.min(99, (tr2.combatant.paralyze ?? 0) + sfx.paralyze);
+                    parts.push(`+${sfx.paralyze} Paralyze`);
+                  }
+                  if (parts.length) sfxLabels.push(`${tr2.label} ${parts.join(", ")}`);
+                }
+                if (sfxLabels.length) verifyNote += ` ✨[${sfxLabels.join(" · ")}]`;
+              }
+              // Hiệu ứng lên CHÍNH MÌNH.
+              if (sfx && attacker.type === "player") {
+                const selfParts = [];
+                if (sfx.selfImitation > 0) {
+                  attacker.combatant.imitation = (attacker.combatant.imitation ?? 0) + sfx.selfImitation;
+                  selfParts.push(`+${sfx.selfImitation} Imitation (tổng ${attacker.combatant.imitation})`);
+                }
+                if (sfx.selfLight > 0) {
+                  const beforeL = attacker.combatant.currentLight ?? 0;
+                  attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 99, beforeL + sfx.selfLight);
+                  selfParts.push(`+${(attacker.combatant.currentLight - beforeL)} Light`);
+                }
+                if (sfx.healHp > 0) {
+                  const beforeH = attacker.combatant.currentHp ?? 0;
+                  attacker.combatant.currentHp = Math.min(attacker.combatant.maxHp ?? beforeH, beforeH + sfx.healHp);
+                  selfParts.push(`+${(attacker.combatant.currentHp - beforeH).toFixed(0)} HP`);
+                }
+                if (selfParts.length) verifyNote += ` 💠[${selfParts.join(", ")}]`;
+              }
             }
             if (p.skillKey === "castigation") {
               attacker.combatant.unlockBladeStage = 0;
@@ -1991,6 +2111,10 @@ async function resolveOnePendingAction(encounter, p) {
   // Giờ ghi luôn dòng kết quả (chính là `resultLines` vẫn gửi ra channel), gắn
   // type "resolve" để phân biệt với dòng ý định.
   if (resultLines.length > 0) appendActionLog(encounter, resultLines, "resolve");
+  // BẮT BUỘC đợi hook -daily (nhiệm vụ 3) nhả lock userId TRƯỚC khi
+  // finalizeQuestOutcome đi phát thưởng + đánh dấu nhiệm vụ 2 trên CÙNG userId
+  // đó — xem comment đầy đủ ở khai báo dailyKillHookPromises.
+  if (dailyKillHookPromises.length > 0) await Promise.all(dailyKillHookPromises);
   resultLines.push(...(await finalizeQuestOutcome(encounter)));
 
   return resultLines;

@@ -385,12 +385,21 @@ client.on("messageCreate", async (message) => {
       const result = await claimDailyLogin(userId);
       if (result.alreadyDone) {
         const d = result.data;
+        // BUG HIỂN THỊ ĐÃ SỬA (Fragaria: "-daily có những disclaimer thừa thãi
+        // như (tự hoàn thành)"). Nhánh "đã điểm danh rồi" này CÒN SÓT mô hình
+        // CŨ — thời còn auto-complete: biến thể ahn/books ghi "(tự hoàn thành)"
+        // và biến thể killmobs hardcode ngưỡng 3. Cả hai đều SAI kể từ khi bỏ
+        // auto-complete: giờ CẢ 3 biến thể đều phải hạ mob, ngưỡng khác nhau
+        // (killmobs 3 / books 4 / ahn 5 — xem TASK3_KILL_TARGET_BY_VARIANT).
+        // Hệ quả thực tế: người chơi biến thể "ahn" thấy dòng "(tự hoàn thành)"
+        // kèm ô ⬜ và KHÔNG hề thấy tiến độ x/5 — tưởng hệ thống hỏng.
+        // Dùng CHUNG đúng công thức với nhánh "vừa điểm danh" bên dưới.
+        const t3TargetSeen = { killmobs: 3, books: 4, ahn: 5 }[d.task3Variant] ?? 3;
+        const t3BonusSeen = { ahn: " + 200.000 Ahn", books: " + 3 Random Book" }[d.task3Variant] ?? "";
         const taskLines = [
           `${d.loginDone ? "✅" : "⬜"} Login hôm nay (\`-daily\`)`,
           `${d.contractDone ? "✅" : "⬜"} Hoàn thành 1 contract bất kỳ`,
-          d.task3Variant === "killmobs"
-            ? `${d.task3Done ? "✅" : "⬜"} Hạ 3 mob/boss bất kỳ (${Math.min(d.killCount ?? 0, 3)}/3)`
-            : `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên hôm nay: ${d.task3Variant === "ahn" ? "nhận Ahn" : "nhận sách"} (tự hoàn thành)`,
+          `${d.task3Done ? "✅" : "⬜"} Nhiệm vụ ngẫu nhiên: hạ **${t3TargetSeen} mob/boss bất kỳ** (${Math.min(d.killCount ?? 0, t3TargetSeen)}/${t3TargetSeen}) — +2 Exp${t3BonusSeen} khi đủ`,
         ];
         message.reply(
           `${message.author}, bạn đã điểm danh hôm nay rồi.\n> ${taskLines.join("\n> ")}\n` +
@@ -535,6 +544,17 @@ client.on("messageCreate", async (message) => {
       const n = parseInt(raw, 10);
       if (isNaN(n)) return { value: null, error: `❌ \`${fieldName}\` phải là số nguyên, nhận được: \`${raw}\`` };
       return { value: n, error: null };
+    }
+    // Lunacy KHÔNG TRAO ĐỔI ĐƯỢC (Fragaria xác nhận trực tiếp: "Lunacy là tiền
+    // tệ gacha nên là hãy làm cho player không trao đổi với nhau được").
+    // `lunacy` NẰM trong KNOWN_KEYS (dành cho -setprofile của admin) nên
+    // parseKeyValues nuốt nó im lặng — người chơi gõ `-give @x lunacy: 500` sẽ
+    // thấy "thiếu ahn/book/item" chứ không biết vì sao. Báo RÕ ở đây.
+    // KHÔNG có miễn trừ cho admin: admin muốn cấp Lunacy thì dùng `-setprofile`
+    // (cấp phát), không đi qua đường CHUYỂN giữa 2 người chơi.
+    if (kv["lunacy"] != null) {
+      message.reply("❌ **Lunacy** là tiền tệ gacha — không thể trao đổi giữa người chơi.");
+      return;
     }
     const expParsed  = parseIntOrError(kv["exp"],  "exp");
     const ahnParsed  = parseIntOrError(kv["ahn"],  "ahn");

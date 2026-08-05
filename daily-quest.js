@@ -142,6 +142,13 @@ module.exports = function ({
   /** markContractTaskDone — nhiệm vụ 2, gọi từ quest-resolution.js SAU KHI lock
    *  userId ở đó đã release (KHÔNG lồng lock). Idempotent trong ngày. */
   async function markContractTaskDone(userId) {
+    // KIÊN NHẪN HƠN MẶC ĐỊNH (retries 3 × 200ms ≈ 600ms) — hàm này luôn bị gọi
+    // ở đúng thời điểm nóng nhất: mob cuối chết → hook hạ-mob của -daily,
+    // grantContractReward và chính nó cùng tranh `withLock(userId)`, mỗi lần
+    // acquire là 1 round-trip Upstash. Nguyên nhân gốc đã xử ở
+    // resolve-pending-action.js (await hook trước khi finalize); đây là lớp
+    // phòng thủ thứ hai cho các đường gọi khác. Thao tác này rất nhẹ (2 read +
+    // 2 write) nên chờ lâu hơn không tốn gì.
     return withLock(userId, async () => {
       const slot = await getActiveProfileSlot(userId);
       const { data, dailyKey } = await getOrInitDailyData(userId, slot);
@@ -152,7 +159,7 @@ module.exports = function ({
       const weeklyBonusNote = checkAllDoneAndApplyStreak(data, profileData);
       await saveDailyAndProfile(userId, slot, dailyKey, data, profileData);
       return { granted: true, weeklyBonusNote };
-    });
+    }, { retries: 8, retryDelayMs: 250 });
   }
 
   /** incrementKillTaskProgress — nhiệm vụ 3 (biến thể "killmobs"), gọi từ

@@ -8,7 +8,9 @@ const OUTFITS = {
   "black suit": {
     name: "Black Suit",
     resistance: { B: 1, P: 1.3, S: 1.3 },
-    speedRange: { min: 5, max: 8 },
+    // Fragaria xác nhận trực tiếp: "range speed của Black Suit là 6~9 chứ không
+    // phải 5~8".
+    speedRange: { min: 6, max: 9 },
     keypage: [
       "Mỗi khi đạt Emotion Level nhận được 1 <:DiceUp:1513767795681398894>Dice Up, 1 Clash Power và 1 Protection kéo dài cho đến hết encounter",
       "Refund 1/5 Stamina khi đánh thường",
@@ -29,7 +31,7 @@ const OUTFITS = {
     speedRange: { min: 2, max: 5 },
     keypage: [
       "Các vũ khí/skill/page sử dụng đạn sẽ được tăng thêm 20% Dmg gây ra",
-      "Khi sử dụng Tiantui Star's Blade [天退星刀]: Khi gây <:Tremor:1513762737388257380>Tremor bạn sẽ áp thêm <:Burn:1513762753691652177>Burn bằng một nửa count của <:Tremor:1513762737388257380>Tremor và ngược lại",
+      "Khi sử dụng Tiantui Star's Blade [天退星刀]: Khi gây <:Tremor:1513762737388257380>Tremor bạn sẽ áp thêm <:Fix_Burn:1513762753691652177>Burn bằng một nửa count của <:Tremor:1513762737388257380>Tremor và ngược lại",
     ],
   },
   "abydos's uniform - lazy style": {

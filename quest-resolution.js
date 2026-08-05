@@ -93,10 +93,22 @@ module.exports = function ({
     // forget bỏ qua, KHÔNG ai thấy dù đã cộng đúng — giờ trả ra để resolve-
     // pending-action.js hiện kèm trong resultLines.
     let dailyTaskNote = null;
+    // BUG ĐÃ SỬA (Fragaria: "nhận ahn và sách xong nhưng vẫn không hoàn thành
+    // quest") — `catch { }` TRỐNG ở đây chính là thứ khiến bug VÔ HÌNH: nếu
+    // markContractTaskDone không giành được `withLock(userId)` (tranh chấp với
+    // hook hạ-mob của -daily, xem resolve-pending-action.js) thì nó ném lỗi,
+    // lỗi bị nuốt sạch, và người chơi thấy đúng cảnh "đã nhận Ahn + Random Book
+    // nhưng nhiệm vụ 2 vẫn ⬜" mà KHÔNG có một dòng log nào để lần ra.
+    // Nguyên nhân gốc đã xử ở resolve-pending-action.js (await hook trước khi
+    // finalize). Ở đây giữ nguyên nguyên tắc "daily hỏng KHÔNG được chặn reward
+    // chính", nhưng BẮT BUỘC báo ra — cả vào log lẫn cho người chơi thấy —
+    // thay vì im lặng (đúng gotcha đã ghi trong HANDOFF về `.catch(() => {})`).
     try {
       const dailyResult = await markContractTaskDone(userId);
       if (dailyResult?.weeklyBonusNote) dailyTaskNote = dailyResult.weeklyBonusNote;
-    } catch { /* không chặn reward chính nếu daily-quest lỗi */ }
+    } catch (err) {
+      dailyTaskNote = `⚠️ Chưa đánh dấu được nhiệm vụ \`-daily\` "hoàn thành 1 contract" (${err?.message ?? err}) — gõ \`-daily\` lại sau ít giây để hệ thống thử lại.`;
+    }
     return { ...result, dailyTaskNote };
   }
 

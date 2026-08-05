@@ -325,7 +325,10 @@ client.on("interactionCreate", async (interaction) => {
   }
   // ── SHOP (shop.js) ────────────────────────────────────────────────────────
   // Mọi nhánh đều kiểm ownerId ở customId — tránh người khác bấm mua/reset hộ.
-  if (interaction.customId.startsWith("shopbuy:") || interaction.customId.startsWith("shopqty:")
+  // LƯU Ý: `shopbuy:` KHÔNG nằm ở đây — nó là StringSelectMenu, xử lý ở listener
+  // riêng bên dưới (tìm "shopbuy:"). Listener NÀY bắt đầu bằng
+  // `if (!interaction.isButton()) return;` nên mọi dropdown rơi vào đây đều CHẾT.
+  if (interaction.customId.startsWith("shopqty:")
       || interaction.customId.startsWith("shopreset:") || interaction.customId.startsWith("shopback:")) {
     const parts = interaction.customId.split(":");
     const ownerId = parts[1];
@@ -333,11 +336,6 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({ content: "⚠️ Đây là cửa hàng của người khác — gõ `-shop` để mở của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
     }
     try {
-      if (parts[0] === "shopbuy") {
-        // Bước 1 → 2: chọn món xong thì hỏi số lượng.
-        const itemKey = (interaction.values?.[0] ?? "").replace(/^item:/, "");
-        return interaction.update({ components: buildQuantityComponents(ownerId, itemKey) }).catch(() => {});
-      }
       if (parts[0] === "shopback") {
         const { data } = await getPlayerDataWithSlot(ownerId);
         return interaction.update({ embeds: [buildShopEmbed(data)], components: buildShopComponents(ownerId) }).catch(() => {});
@@ -835,7 +833,16 @@ client.on("interactionCreate", async (interaction) => {
         // AMAZING/GREAT không ảnh hưởng gameplay) — xem comment đầy đủ ở route đó.
         // attachCounterContext — GHI LẠI xuống Redis (không chỉ sửa object trong
         // RAM như trước) — xem comment ở rtparry.js.
-        await attachCounterContext(linkInfo.token, { encChannelId: channelId, pendingId, targetId, counterSkillKey });
+        // groupIdx — BẮT BUỘC (xem comment ở nút Counter trong reactive-defense.js).
+        // Thiếu nó thì express-routes.js không biết counter nhóm nào và phải
+        // finalize cả pendingAction → thắng/thua gì cũng ăn sạch mọi group hit.
+        // Nút cũ (message còn sót trước khi deploy) không có ô này → NaN, fallback
+        // về nhóm chưa quyết định đầu tiên ở phía express-routes.
+        const counterGroupIdx = parseInt(dashSkillKey, 10);
+        await attachCounterContext(linkInfo.token, {
+          encChannelId: channelId, pendingId, targetId, counterSkillKey,
+          groupIdx: Number.isFinite(counterGroupIdx) ? counterGroupIdx : null,
+        });
         await interaction.followUp({
           embeds: [{ title: `⚔️ ${counterSkill.name}`, description: "Bấm nút dưới để mở Parry Real Time.", color: 0xf39c12 }],
           components: [buildRtparryLinkButton(linkInfo.url)],
@@ -1294,6 +1301,47 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+
+// ─── SHOP — dropdown chọn món (StringSelectMenu) ──────────────────────────
+// BUG ĐÃ SỬA (Fragaria báo trực tiếp kèm ảnh chụp: "bug shop không mua đồ được,
+// bị didn't respond in time").
+//
+// NGUYÊN NHÂN GỐC: nhánh `shopbuy:` TRƯỚC ĐÂY nằm CHUNG khối với shopqty/
+// shopreset/shopback ở listener phía trên — mà listener đó mở đầu bằng
+// `if (!interaction.isButton()) return;`. shopqty/shopreset/shopback ĐÚNG là
+// Button nên chạy bình thường; nhưng `shopbuy:` là **StringSelectMenu** (xem
+// buildShopComponents trong shop.js) → `isButton()` trả false → listener return
+// NGAY, KHÔNG handler nào đụng tới interaction đó → Discord chờ 3 giây không
+// thấy ai ack → hiện "didn't respond in time". Đây không phải chậm I/O (nhánh
+// này còn không đọc Redis) mà là interaction bị ROUTE SAI LOẠI hoàn toàn.
+//
+// GOTCHA CHUNG (đã ghi vào HANDOFF): customId của dropdown KHÔNG được đặt trong
+// listener isButton, và ngược lại. Thêm 1 customId mới thì phải kiểm nó thuộc
+// loại component nào TRƯỚC khi chọn listener.
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("shopbuy:")) return;
+  const ownerId = interaction.customId.split(":")[1];
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Đây là cửa hàng của người khác — gõ `-shop` để mở của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  try {
+    // Bước 1 → 2: chọn món xong thì hỏi số lượng. Không có I/O nên update thẳng
+    // được (vẫn thừa sức trong 3 giây), không cần defer.
+    const itemKey = (interaction.values?.[0] ?? "").replace(/^item:/, "");
+    const qtyComponents = buildQuantityComponents(ownerId, itemKey);
+    if (!qtyComponents) {
+      // buildQuantityComponents trả null khi itemKey không có trong SHOP_CATALOG
+      // — PHẢI ack bằng reply, nếu để throw thì lại rơi vào đúng cảnh "không ai
+      // trả lời" như bug gốc.
+      return interaction.reply({ content: "❌ Món này không có trong cửa hàng.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    await interaction.update({ components: qtyComponents }).catch(() => {});
+  } catch (err) {
+    log("error", "shopbuy", interaction.user.id, err.stack ?? err.message);
+    await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
 
 // ─── SELECT MENU INTERACTIONS (encclashselect — Clash responsive, xác nhận
 // trực tiếp: "khi bị đòn skill/page có dice đánh thì nếu có speed cao hơn thì

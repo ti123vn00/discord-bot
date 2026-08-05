@@ -80,6 +80,10 @@ module.exports = function ({
    *  Tách 2 bước để tránh 30 option (10 món × 3 số lượng) trong 1 dropdown. */
   function buildQuantityComponents(userId, itemKey) {
     const item = CATALOG_BY_KEY[itemKey];
+    // Trả null thay vì để `item.price` ném TypeError — handler dropdown cần
+    // phân biệt "không có món" để còn ack interaction (xem interaction-handlers.js,
+    // bug "didn't respond in time").
+    if (!item) return null;
     return [new ActionRowBuilder().addComponents(
       ...QUANTITY_CHOICES.map(q =>
         new ButtonBuilder()
