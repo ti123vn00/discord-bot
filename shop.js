@@ -126,29 +126,47 @@ module.exports = function ({
     });
   }
 
-  /** resetSkillTree — hoàn lại toàn bộ điểm bằng cách XOÁ danh sách perk đã mở.
-   *  Điểm khả dụng được TÍNH LẠI từ grade (calcSkillTreePointsEarned) trừ đi số
-   *  đã tiêu (calcBranchPointsAllocated đọc từ unlockedSkillTree) — nên xoá danh
-   *  sách là tự động hoàn hết điểm, KHÔNG cần cộng trả tay ở đâu cả. */
+  /** resetSkillTree — hoàn lại TOÀN BỘ điểm đã phân bổ.
+   *
+   *  BUG ĐÃ SỬA (Fragaria: "chỗ reset stats + skill tree chưa hoạt động, nó chỉ
+   *  clear unlocked skill tree ra chứ stats không được hoàn trả lại khiến không
+   *  thể đổi build được... sau khi reset xong tôi vẫn còn kẹt Light: 50").
+   *
+   *  NGUYÊN NHÂN GỐC: tôi GIẢ ĐỊNH điểm nhánh được SUY RA từ `unlockedSkillTree`
+   *  nên xoá danh sách perk là tự hoàn hết. SAI — có HAI kho dữ liệu ĐỘC LẬP:
+   *    • `data.branchPoints`      = điểm đã rót vào TỪNG NHÁNH (Wrath/Light/...)
+   *    • `data.unlockedSkillTree` = danh sách perk đã mở bằng số điểm đó
+   *  `calcBranchPointsAllocated` đọc THẲNG `branchPoints`, hoàn toàn không liên
+   *  quan tới `unlockedSkillTree`. Xoá 1 kho mà giữ kho kia → perk mất sạch
+   *  nhưng điểm vẫn kẹt trong nhánh cũ: mất build mà KHÔNG đổi được build mới.
+   *
+   *  SỬA: xoá CẢ HAI. Điểm khả dụng = calcSkillTreePointsEarned(grade) −
+   *  calcBranchPointsAllocated(branchPoints), nên `branchPoints = {}` là trả hết
+   *  điểm về pool. */
   async function resetSkillTree(userId) {
     return withLock(userId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(userId);
       if ((data.ahn ?? 0) < RESET_COST) {
         return { ok: false, message: `❌ Không đủ Ahn — cần **${formatNumber(RESET_COST)}**, bạn có **${formatNumber(data.ahn ?? 0)}**.` };
       }
-      const cleared = (data.unlockedSkillTree ?? []).length;
-      if (cleared === 0) {
-        return { ok: false, message: "⚠️ Bạn chưa mở perk nào — không có gì để reset (không trừ Ahn)." };
+      const clearedPerks = (data.unlockedSkillTree ?? []).length;
+      const clearedPoints = Object.values(data.branchPoints ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+      // Chặn khi KHÔNG có gì để reset — phải kiểm CẢ HAI kho, vì người chơi hoàn
+      // toàn có thể đã rót điểm vào nhánh mà chưa mở perk nào (đúng tình huống
+      // trong ảnh Fragaria gửi: Light 50 điểm, 0 perk).
+      if (clearedPerks === 0 && clearedPoints === 0) {
+        return { ok: false, message: "⚠️ Bạn chưa phân bổ điểm hay mở perk nào — không có gì để reset (không trừ Ahn)." };
       }
       data.ahn = (data.ahn ?? 0) - RESET_COST;
       data.unlockedSkillTree = [];
+      data.branchPoints = {};
       await savePlayerData(userId, data, slot);
-      log("info", "shop-reset", userId, `cleared ${cleared} perks`);
+      log("info", "shop-reset", userId, `cleared ${clearedPerks} perks + ${clearedPoints} branch points`);
       return {
         ok: true,
-        message: `♻️ Đã reset **${cleared} perk** — toàn bộ điểm Stats + Skill Tree đã hoàn lại.\n` +
+        message: `♻️ Đã reset — hoàn lại **${clearedPoints} điểm** đã rót vào nhánh và xoá **${clearedPerks} perk**.\n` +
           `> Trừ ${formatNumber(RESET_COST)} Ahn · còn **${formatNumber(data.ahn)} Ahn**.\n` +
-          `> Dùng \`-balance\` để phân bổ lại.`,
+          `> Dùng \`-balance\` để phân bổ lại từ đầu.`,
         data,
       };
     });

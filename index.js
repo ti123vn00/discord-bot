@@ -262,6 +262,11 @@ const VALID_ITEMS = [
   "Chuối", "Táo", "Dưa hấu", "Medkit",
   "Ammo", "Incendiary Ammo", "Frost Ammo",
   "Giày Wan MK3", "Composition Tool", "Perfect Cube",
+  // Banner Herta Space Station — 3 item Tier 2 (chung) + 6 item Tier 3 (mỗi
+  // banner 1 món). Phải có ở đây thì mới sở hữu/-give/-inventory được.
+  "Only Silence Remains", "Day One of My New Life", "The Birth of the Self",
+  "Madam Herta's Magic Wand", "Into the Unreachable Veil", "Ruan Lute",
+  "Past Self in Mirror", "Star of Eden", "In the Name of the World",
 ];
 
 // ITEM_STACK_MAX — Fragaria yêu cầu: "nên làm thêm cap toàn bộ item, books ở x99".
@@ -282,6 +287,13 @@ const GACHA_PITY_MAX = 100; // xác nhận trực tiếp: "1 Pity = 1 roll khi �
 // timezone của máy chủ.
 const NARUTO_BANNER_EXPIRES_AT = 1785517140000;
 
+// Tier 2 dùng CHUNG cho cả 6 banner Herta (Fragaria liệt kê y hệt nhau ở cả 6).
+const HERTA_POOL_MID = ["Only Silence Remains", "Day One of My New Life", "The Birth of the Self"];
+// Hạn banner Herta (Fragaria chốt trực tiếp): **23:59:59 ngày 31/08/2026 giờ VN**.
+// VN = UTC+7 nên quy về UTC là 16:59:59 cùng ngày. Tháng trong Date.UTC đếm từ 0
+// ⇒ tháng 8 là 7.
+const HERTA_BANNER_EXPIRES_AT = Date.UTC(2026, 7, 31, 16, 59, 59);
+
 const GACHA_BANNERS = {
   standard: {
     name: "Standard Banner",
@@ -301,7 +313,41 @@ const GACHA_BANNERS = {
     poolRare: ["Rinnegan", "Kurama", "Hiraishin Kunai"],
     expiresAt: NARUTO_BANNER_EXPIRES_AT,
   },
+  // ══ HERTA SPACE STATION — banner limited 6 phần, CHUNG PITY ══════════════════
+  // (Fragaria yêu cầu trực tiếp: "tách ra làm 6 banner phụ chỉ có duy nhất 1 vật
+  //  phẩm cực hiếm tier 3 và 6 banner share chung pity")
+  //
+  // `pityGroup` — TRƯỜNG MỚI. Pity vốn lưu theo TỪNG bannerKey
+  // (profileData.gachaPity[bannerKey]); banner nào khai cùng `pityGroup` sẽ dùng
+  // CHUNG một ô đếm (xem pityKeyFor ở gacha-system.js). Roll ở banner nào cũng
+  // cộng vào cùng 1 pity, và đổi Pity được chọn Tier 3 của BẤT KỲ banner nào
+  // trong nhóm — đúng nghĩa "share chung pity".
+  //
+  // Tier 2 GIỐNG NHAU ở cả 6 (3 item chung), Tier 3 mỗi banner ĐÚNG 1 món.
+  // Tier 1 giữ nguyên RANDOM_BOOK_POOL như mọi banner khác (không được nhắc đổi).
+  ...Object.fromEntries([
+    ["hertagenius1", "Genius Society 1", "Madam Herta's Magic Wand"],
+    ["hertamemories1", "Genius's Memories 1", "Into the Unreachable Veil"],
+    ["hertagenius2", "Genius Society 2", "Ruan Lute"],
+    ["hertamemories2", "Genius's Memories 2", "Past Self in Mirror"],
+    ["hertaexpress", "Astral Express", "Star of Eden"],
+    ["hertanameless", "The Stop of Nameless", "In the Name of the World"],
+  ].map(([key, sub, rare]) => [key, {
+    name: `Herta Space Station - ${sub}`,
+    poolHigh: RANDOM_BOOK_POOL,
+    poolMid: HERTA_POOL_MID,
+    poolRare: [rare],
+    pityGroup: "herta",
+    expiresAt: HERTA_BANNER_EXPIRES_AT,
+  }])),
 };
+
+/** HERTA_TIER3_ALL — gom Tier 3 của cả 6 banner Herta. Dùng cho đổi Pity: pity
+ *  dùng chung thì phần thưởng đổi cũng phải chọn được từ CẢ NHÓM, nếu không thì
+ *  "share pity" chỉ đúng một nửa (tích chung nhưng tiêu bị bó vào 1 banner). */
+const HERTA_TIER3_ALL = Object.values(GACHA_BANNERS)
+  .filter(b => b.pityGroup === "herta")
+  .flatMap(b => b.poolRare);
 
 /** isBannerActive — banner không giới hạn (expiresAt=null) luôn active; banner
  *  giới hạn thời gian hết hạn sau NARUTO_BANNER_EXPIRES_AT. */
@@ -2740,7 +2786,7 @@ function parsePerHitBypass(skillRollEmbedDescription, manualTagsRaw, totalHits) 
   return result;
 }
 
-const { performGachaPull, performPityExchange, buildGachaPanelEmbed, buildGachaPanelButtons } = require("./gacha-system")({ ActionRowBuilder, ButtonBuilder, ButtonStyle, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, VALID_BOOKS, formatNumber, getPlayerDataWithSlot, isBannerActive, rollGachaOnce, savePlayerData, withLock }); // ĐÃ TÁCH sang file riêng (gacha-system.js)
+const { performGachaPull, performPityExchange, pityKeyFor, pityPoolFor, buildGachaPanelEmbed, buildGachaPanelButtons } = require("./gacha-system")({ ActionRowBuilder, ButtonBuilder, ButtonStyle, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, VALID_BOOKS, formatNumber, getPlayerDataWithSlot, isBannerActive, rollGachaOnce, savePlayerData, withLock }); // ĐÃ TÁCH sang file riêng (gacha-system.js)
 
 
 
@@ -2773,7 +2819,7 @@ aiHooks.announceCurrentTurn = announceCurrentTurn;
 const { buildGmPanelContent } = require("./gmpanel-builder")({ ADMIN_IDS, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, getEncounter }); // module MỚI — TÁCH logic gmpanel để dùng chung cho lệnh text VÀ nút "🎛️ Mở GM Panel"
 require("./message-create-handler")({ ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createPartyBoard, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, startPartyBoard, stopEmotionTracking, transferHost, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }); // ĐÃ TÁCH sang file riêng (message-create-handler.js)
 
-require("./interaction-handlers")({ ADMIN_IDS, attachCounterContext, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
+require("./interaction-handlers")({ ADMIN_IDS, pityKeyFor, pityPoolFor, attachCounterContext, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
 
 
 client.login(TOKEN);

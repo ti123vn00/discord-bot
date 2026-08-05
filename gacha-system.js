@@ -5,6 +5,22 @@
 
 module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, VALID_BOOKS, formatNumber, getPlayerDataWithSlot, isBannerActive, rollGachaOnce, savePlayerData, withLock }) {
 
+/** pityKeyFor — ô đếm Pity của banner. Banner khai `pityGroup` dùng CHUNG ô đó
+ *  với mọi banner cùng nhóm; không khai thì dùng chính bannerKey (hành vi cũ). */
+function pityKeyFor(bannerKey) {
+  return GACHA_BANNERS[bannerKey]?.pityGroup ?? bannerKey;
+}
+
+/** pityPoolFor — danh sách Tier 3 được phép đổi bằng Pity ở banner này. Nếu
+ *  banner thuộc 1 nhóm chung pity thì gom Tier 3 của TOÀN BỘ nhóm. */
+function pityPoolFor(bannerKey) {
+  const group = GACHA_BANNERS[bannerKey]?.pityGroup;
+  if (!group) return GACHA_BANNERS[bannerKey]?.poolRare ?? [];
+  return [...new Set(Object.values(GACHA_BANNERS)
+    .filter(b => b.pityGroup === group)
+    .flatMap(b => b.poolRare))];
+}
+
 async function performGachaPull(userId, count, bannerKey) {
   let resultInfo;
   await withLock(userId, async () => {
@@ -25,8 +41,13 @@ async function performGachaPull(userId, count, bannerKey) {
     // pity — GAP ĐÃ SỬA (xác nhận trực tiếp): "khi chưa roll ra 1 món đồ nào của
     // Tier 3 thì sẽ tích Pity, 1 Pity = 1 roll khi đạt 100 có thể đổi bất kỳ 1
     // món từ Tier 3" — lưu riêng theo TỪNG banner (profileData.gachaPity[bannerKey]).
+    // pityKeyFor — banner khai `pityGroup` thì DÙNG CHUNG một ô đếm pity với mọi
+    // banner cùng nhóm (Fragaria: "6 banner share chung pity"). Banner không khai
+    // thì giữ nguyên hành vi cũ (pity riêng theo bannerKey) — không phá dữ liệu
+    // pity đã tích của Standard/Naruto.
+    const pityKey = pityKeyFor(bannerKey);
     profileData.gachaPity = profileData.gachaPity ?? {};
-    profileData.gachaPity[bannerKey] = profileData.gachaPity[bannerKey] ?? 0;
+    profileData.gachaPity[pityKey] = profileData.gachaPity[pityKey] ?? 0;
     const results = [];
     const rareHits = [];
     for (let i = 0; i < count; i++) {
@@ -43,16 +64,16 @@ async function performGachaPull(userId, count, bannerKey) {
       results.push(item);
       if (tier === 3) {
         rareHits.push(item);
-        profileData.gachaPity[bannerKey] = 0; // roll ra Tier 3 thật — reset Pity
+        profileData.gachaPity[pityKey] = 0; // roll ra Tier 3 thật — reset Pity (chung nhóm)
       } else {
-        profileData.gachaPity[bannerKey] += 1;
+        profileData.gachaPity[pityKey] += 1;
       }
     }
     await savePlayerData(userId, profileData, slot);
     const counted = {};
     for (const item of results) counted[item] = (counted[item] ?? 0) + 1;
     const resultLines = Object.entries(counted).map(([item, n]) => `${banner.poolRare.includes(item) ? "🌟" : banner.poolMid.includes(item) ? "✨" : "▫️"} ${item}${n > 1 ? ` x${n}` : ""}`);
-    resultInfo = { totalCost, resultLines, rareHits, remainingLunacy: profileData.lunacy, pity: profileData.gachaPity[bannerKey] };
+    resultInfo = { totalCost, resultLines, rareHits, remainingLunacy: profileData.lunacy, pity: profileData.gachaPity[pityKey], pityShared: pityKey !== bannerKey };
   });
   return resultInfo;
 }
@@ -67,20 +88,25 @@ async function performPityExchange(userId, bannerKey, chosenItem) {
   await withLock(userId, async () => {
     const banner = GACHA_BANNERS[bannerKey];
     if (!banner) throw new Error(`Banner "${bannerKey}" không tồn tại.`);
-    if (!banner.poolRare.includes(chosenItem)) {
-      throw new Error(`"${chosenItem}" không thuộc Tier 3 của **${banner.name}**.`);
+    // Pity dùng chung nhóm thì phần thưởng đổi cũng phải chọn được từ CẢ NHÓM —
+    // nếu không thì "share pity" chỉ đúng một nửa (tích chung mà tiêu bị bó vào
+    // đúng 1 banner).
+    const allowedRare = pityPoolFor(bannerKey);
+    if (!allowedRare.includes(chosenItem)) {
+      throw new Error(`"${chosenItem}" không thuộc Tier 3 có thể đổi ở **${banner.name}**.`);
     }
     const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
+    const pityKey = pityKeyFor(bannerKey);
     profileData.gachaPity = profileData.gachaPity ?? {};
-    const currentPity = profileData.gachaPity[bannerKey] ?? 0;
+    const currentPity = profileData.gachaPity[pityKey] ?? 0;
     if (currentPity < GACHA_PITY_MAX) {
       throw new Error(`Chưa đủ Pity — cần **${GACHA_PITY_MAX}**, hiện có **${currentPity}**.`);
     }
-    profileData.gachaPity[bannerKey] = currentPity - GACHA_PITY_MAX;
+    profileData.gachaPity[pityKey] = currentPity - GACHA_PITY_MAX;
     profileData.items = profileData.items ?? {};
     profileData.items[chosenItem] = (profileData.items[chosenItem] ?? 0) + 1;
     await savePlayerData(userId, profileData, slot);
-    resultInfo = { chosenItem, remainingPity: profileData.gachaPity[bannerKey] };
+    resultInfo = { chosenItem, remainingPity: profileData.gachaPity[pityKey] };
   });
   return resultInfo;
 }
@@ -94,13 +120,22 @@ function buildGachaPanelEmbed(lunacy, bannerKey, pity) {
   const rateHigh = (GACHA_RATES.high / banner.poolHigh.length).toFixed(2);
   const rateMid = (GACHA_RATES.mid / banner.poolMid.length).toFixed(2);
   const rateRare = (GACHA_RATES.rare / banner.poolRare.length).toFixed(2);
+  // Banner chung pity — nói rõ để người chơi biết roll ở banner nào cũng cộng
+  // chung, và đổi Pity được chọn Tier 3 của cả nhóm.
+  const groupBanners = banner.pityGroup
+    ? Object.values(GACHA_BANNERS).filter(b => b.pityGroup === banner.pityGroup)
+    : [];
+  const sharedPityNote = groupBanners.length > 1
+    ? `\n🔗 **Pity dùng CHUNG** với ${groupBanners.length} banner Herta — đổi Pity chọn được Tier 3 của bất kỳ banner nào trong nhóm:\n> ${pityPoolFor(bannerKey).map(i => `🌟 ${i}`).join(" · ")}`
+    : "";
   const deadlineNote = banner.expiresAt
     ? `\n⏳ Kết thúc: **${new Date(banner.expiresAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}** (giờ VN)`
     : "";
   return {
     title: `🎰 Gacha — ${banner.name}`,
     color: 0x9b59b6,
-    description: `Bạn có **${formatNumber(lunacy)}** <:Lunacy:1524989409529823342>Lunacy | Chi phí: **${GACHA_COST_PER_PULL}**/lần\n🎯 Pity: **${pity}/${GACHA_PITY_MAX}** (đủ 100 → đổi bất kỳ 1 item Tier 3)${deadlineNote}`,
+    description: `Bạn có **${formatNumber(lunacy)}** <:Lunacy:1524989409529823342>Lunacy | Chi phí: **${GACHA_COST_PER_PULL}**/lần\n` +
+      `🎯 Pity: **${pity}/${GACHA_PITY_MAX}** (đủ 100 → đổi bất kỳ 1 item Tier 3)${sharedPityNote}${deadlineNote}`,
     fields: [
       {
         name: `▫️ Rate cao — ${GACHA_RATES.high}% tổng (mỗi item ${rateHigh}%)`,
@@ -137,5 +172,5 @@ function buildGachaPanelButtons(userId, bannerKey, pity) {
   return rows;
 }
 
-  return { performGachaPull, performPityExchange, buildGachaPanelEmbed, buildGachaPanelButtons };
+  return { performGachaPull, performPityExchange, pityKeyFor, pityPoolFor, buildGachaPanelEmbed, buildGachaPanelButtons };
 };
