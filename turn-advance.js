@@ -315,6 +315,12 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // — 50-STATUS NHÓM 2 (batch 1, xác nhận trực tiếp từng cái từ tài liệu gốc) —
     // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
     combatant.diceUp = 0;
+    // TÍCH TỤ (chargeSpec) — mỗi turn giữ nguyên trạng thái tích thì +1.
+    // KHÔNG kẹp ở đây (skills.js's roll() tự kẹp theo chargeSpec.maxTurns) để
+    // turn-advance không phải biết luật của từng skill.
+    if (combatant.chargingSkillKey) {
+      combatant.chargingTurns = Math.min(10, (combatant.chargingTurns ?? 0) + 1);
+    }
     // Augury Kick — cộng LẠI bonus còn hiệu lực ngay sau khi diceUp bị reset.
     if ((combatant.auguryKickTurnsLeft ?? 0) > 0) combatant.diceUp += (combatant.auguryKickDiceUpBonus ?? 0);
     // "Overcharged Vessel" — BUG ĐÃ SỬA (phát hiện khi làm Augury Kick, cùng cơ

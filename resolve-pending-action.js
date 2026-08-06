@@ -397,19 +397,42 @@ async function resolveOnePendingAction(encounter, p) {
                   // — parryRolls[i] ứng ĐÚNG với parryHitSelections[i] (cùng thứ tự
                   // đẩy vào lúc chọn từng hit).
                   const validSelected = target.parryHitSelections.filter(h => h >= 1 && h <= totalHits);
-                  for (const h of validSelected) {
+                  // BUG LUẬT ĐÃ SỬA (Fragaria xác nhận trực tiếp: "1 charge parry
+                  // vẫn hoạt động như evade và guard là chặn được 1 group hit m1").
+                  //
+                  // TRƯỚC ĐÂY vòng lặp `for (const h of validSelected)` shift MỘT
+                  // roll cho MỖI HIT. Nhưng số roll đẩy vào lúc chọn chỉ là
+                  // `opts.chargesNeeded` = ceil(hitsTrongNhóm / hitsPerCharge) —
+                  // với M1 Light (4 hit/charge) là ĐÚNG 1 roll cho 4 hit. Hệ quả:
+                  // roll hết sau hit ĐẦU TIÊN, `break`, và 3 hit còn lại của nhóm
+                  // ăn FULL mà KHÔNG có lần thử Parry nào. Người chơi trả đủ giá
+                  // cho 1 charge nhưng chỉ được bảo vệ 1/4 nhóm, và không có cách
+                  // nào biết. Guard/Evade thì 1 charge phủ TRỌN nhóm (xem 2 nhánh
+                  // ngay trên/dưới) — Parry lệch hẳn khỏi 2 anh em.
+                  //
+                  // SỬA: chia validSelected thành từng CỤM `hitsPerCharge` hit,
+                  // MỘT roll quyết định cho CẢ CỤM — khớp đúng cách roll được sinh
+                  // ra (1 roll/charge) và đúng luật Fragaria vừa chốt.
+                  // Cụm CUỐI có thể ngắn hơn (nhóm cuối của đòn ít hit hơn) —
+                  // chunk theo thứ tự đã push nên vẫn khớp 1-1 với roll.
+                  for (let ci = 0; ci < validSelected.length; ci += hitsPerCharge) {
+                    const chunk = validSelected.slice(ci, ci + hitsPerCharge);
                     const defRoll = target.parryRolls.shift();
                     if (defRoll === undefined) break;
                     const atkRoll = 1 + Math.floor(Math.random() * 20);
                     const won = defRoll >= atkRoll;
+                    const hitLabel = chunk.length > 1 ? `hit ${chunk[0]}-${chunk[chunk.length - 1]}` : `hit ${chunk[0]}`;
                     if (won) {
-                      perHitMult[h - 1] = 0; hitEvadedOrParried[h - 1] = true;
-                      noteParts.push(`🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll} — né hit ${h})${applyParrySuccessPerks(target, attacker.combatant)}`);
+                      for (const h of chunk) { perHitMult[h - 1] = 0; hitEvadedOrParried[h - 1] = true; }
+                      // applyParrySuccessPerks gọi MỘT lần cho cả cụm: đây là MỘT
+                      // hành động Parry (1 charge, 1 roll), không phải N lần thành
+                      // công — gọi mỗi hit sẽ nhân hiệu ứng perk lên gấp bội.
+                      noteParts.push(`🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll} — né ${hitLabel})${applyParrySuccessPerks(target, attacker.combatant)}`);
                     } else {
                       const baseFailCost = hasPerk(target, "Mastered Breaths") ? 30 : 40;
                       const failCost = (target.injuries ?? []).includes("Gãy tay") ? baseFailCost * 2 : baseFailCost;
                       target.currentStamina = Math.max(0, target.currentStamina - failCost);
-                      noteParts.push(`🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta — ăn full hit ${h})`);
+                      noteParts.push(`🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta — ăn full ${hitLabel})`);
                     }
                   }
                   target.parryHitSelections = target.parryHitSelections.filter(h => !(h >= 1 && h <= totalHits));
@@ -1759,6 +1782,14 @@ async function resolveOnePendingAction(encounter, p) {
                     tr2.combatant.paralyze = Math.min(99, (tr2.combatant.paralyze ?? 0) + sfx.paralyze);
                     parts.push(`+${sfx.paralyze} Paralyze`);
                   }
+                  // Airborne là BOOLEAN trên combatant (combatant-factory.js:
+                  // `airborne: false`), KHÔNG phải bộ đếm — turn-advance.js đọc
+                  // nó dạng cờ rồi set false + gây 10 dmg rơi. Cộng dồn số vào
+                  // đây là sai mô hình dữ liệu (đúng lỗi #1 trong HANDOFF).
+                  if (sfx.airborne > 0 && !tr2.combatant.airborne) {
+                    tr2.combatant.airborne = true;
+                    parts.push("Airborne");
+                  }
                   if (parts.length) sfxLabels.push(`${tr2.label} ${parts.join(", ")}`);
                 }
                 if (sfxLabels.length) verifyNote += ` ✨[${sfxLabels.join(" · ")}]`;
@@ -1775,6 +1806,12 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 99, beforeL + sfx.selfLight);
                   selfParts.push(`+${(attacker.combatant.currentLight - beforeL)} Light`);
                 }
+                if (sfx.selfHaste > 0) {
+                  // Cap 20 — cùng trần với nguồn Haste sẵn có ở turn-advance.js.
+                  const beforeHa = attacker.combatant.haste ?? 0;
+                  attacker.combatant.haste = Math.min(20, beforeHa + sfx.selfHaste);
+                  selfParts.push(`+${attacker.combatant.haste - beforeHa} Haste (tổng ${attacker.combatant.haste})`);
+                }
                 if (sfx.healHp > 0) {
                   const beforeH = attacker.combatant.currentHp ?? 0;
                   attacker.combatant.currentHp = Math.min(attacker.combatant.maxHp ?? beforeH, beforeH + sfx.healHp);
@@ -1782,6 +1819,28 @@ async function resolveOnePendingAction(encounter, p) {
                 }
                 if (selfParts.length) verifyNote += ` 💠[${selfParts.join(", ")}]`;
               }
+            }
+            // ── RESONATE ─────────────────────────────────────────────────────
+            // "nếu kẻ địch có số Tremor BẰNG số Dice này thì sẽ Stagger ngay".
+            // CÓ ĐIỀU KIỆN + so với giá trị dice cụ thể → parser chung cố ý
+            // không đụng tới, phải code riêng (đúng gotcha trong HANDOFF).
+            // So Tremor SAU đòn với TỪNG giá trị dice của chính đòn này
+            // (p.dmgStr đã roll sẵn lúc declare — KHÔNG roll lại, tránh lệch số
+            // giữa cái hiển thị và cái đem ra so).
+            if (p.skillKey === "resonate") {
+              const diceValues = [...String(p.dmgStr ?? "").matchAll(/(\d+(?:\.\d+)?)\s*(?:x\d+)?\s*[BPSbps]/g)]
+                .map(m => Math.round(parseFloat(m[1])));
+              const staggeredLabels = [];
+              for (const t2 of p.targets ?? []) {
+                const tr2 = resolveCombatant(encounter, t2.targetId);
+                if (!tr2 || tr2.combatant.staggered) continue;
+                const tremorNow = Math.round(tr2.combatant.tremor ?? 0);
+                if (tremorNow > 0 && diceValues.includes(tremorNow)) {
+                  forceStagger(tr2.combatant);
+                  staggeredLabels.push(`${tr2.label} (Tremor ${tremorNow} = Dice)`);
+                }
+              }
+              if (staggeredLabels.length) verifyNote += ` 💫[Resonate ép STAGGER: ${staggeredLabels.join(", ")}]`;
             }
             if (p.skillKey === "castigation") {
               attacker.combatant.unlockBladeStage = 0;

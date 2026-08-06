@@ -230,6 +230,11 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // diceUp bị reset mỗi turn nên phải giữ bonus + số turn còn lại rồi cộng
       // LẠI ở đầu mỗi turn (turn-advance.js), giống blackSuitPersistentBonus.
       auguryKickDiceUpBonus: 0, auguryKickTurnsLeft: 0,
+      // TÍCH TỤ (chargeSpec — Overdrive / Charge Shot). Fragaria: "bấm skill =
+      // bắt đầu tích (charge khởi đầu 0), bấm thêm lần nữa để phóng theo số turn
+      // đã tích. Đang tích mà bị Stagger hay bị đánh sẽ KHÔNG mất."
+      // null = không tích gì. Xem CHARGE_SPEC_CONTRACT trong skills.js.
+      chargingSkillKey: null, chargingTurns: 0,
       // realizationStacks — "A Prayer For Loving Sorrow" (Găng Tay Câm Lặng):
       // "Mỗi lần đổi vũ khí Black Silence bằng Dimension Pocket VÀ sử dụng
       // Critical của chúng bạn nhận được 1 Realization [mỗi vũ khí 1 lần]".

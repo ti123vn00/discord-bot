@@ -85,6 +85,41 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
   
   /** Render 1 dòng trạng thái cho 1 combatant (enemy hoặc player) — dùng chung để
    *  không lặp code giữa phần hiện enemy và phần hiện từng player. */
+  /** formatCombatantCompact — 1 DÒNG cho mỗi enemy, dùng khi encounter đông.
+   *
+   *  GAP ĐÃ SỬA (Fragaria làm rõ: "encounter status chỉ hiện được nổi 5 rats,
+   *  player về sau KHÔNG THẤY ĐƯỢC do encounter quá đông người rồi").
+   *
+   *  Đã ĐO THẬT: 1 khối đầy đủ ≈ 242 ký tự / 7 dòng. 5 rats + 1 player mới
+   *  ~1.470 ký tự nên CHƯA hề chạm giới hạn 4096 của Discord — tức lỗi KHÔNG
+   *  phải API cắt. Vấn đề là CHIỀU DÀI ĐỌC: 5 con rat đã chiếm ~35 dòng, người
+   *  chơi phải cuộn qua hết đám mob mới tới khối của CHÍNH MÌNH — trên mobile là
+   *  vài màn hình. Đông hơn nữa (≥15 enemy) thì player bị đẩy hẳn sang trang 2.
+   *
+   *  Chế độ gọn: giữ đúng thứ người ta cần liếc khi có cả bầy mob — tên, HP,
+   *  Stamina, và status ĐANG có. Bỏ Res/Speed Range/Emotion/Coin vì với mob tạp
+   *  chúng gần như luôn giống nhau. Muốn xem chi tiết 1 con thì dùng lệnh text.
+   */
+  function formatCombatantCompact(combatant, label) {
+    const hpPct = combatant.maxHp > 0 ? Math.min(1, Math.max(0, combatant.currentHp / combatant.maxHp)) : 0;
+    const bar = "🟥".repeat(Math.round(hpPct * 5)) + "⬛".repeat(5 - Math.round(hpPct * 5));
+    const hp = Math.max(0, Math.round(combatant.currentHp * 100) / 100);
+    const flags = [];
+    if (combatant.staggered) flags.push("💫STAGGER");
+    if (combatant.airborne) flags.push("🪂Air");
+    if ((combatant.dazedStacks ?? 0) > 0) flags.push(`💫x${combatant.dazedStacks}`);
+    const st = [];
+    if (combatant.sinking > 0) st.push(`<:Sinking:1513762793436741652>${combatant.sinking}`);
+    if (combatant.rupture > 0) st.push(`<:Rupture:1513762812722155682>${combatant.rupture}`);
+    if (combatant.burn > 0) st.push(`<:Fix_Burn:1513762753691652177>${combatant.burn}`);
+    if (combatant.bleed > 0) st.push(`<:Bleed:1513762688226955285>${combatant.bleed}`);
+    if (combatant.tremor > 0) st.push(`<:Tremor:1513762737388257380>${combatant.tremor}`);
+    if (combatant.poise > 0) st.push(`<:Poise:1513762945715142736>${combatant.poise}`);
+    return `${bar} **${label}** — **${hp}/${combatant.maxHp}** HP · ${combatant.currentStamina}/${combatant.maxStamina} Sta`
+      + (flags.length ? ` · ${flags.join(" ")}` : "")
+      + (st.length ? ` · ${st.join(" ")}` : "");
+  }
+
   function formatCombatantBlock(combatant, label) {
     const hpPct = combatant.maxHp > 0 ? Math.min(1, Math.max(0, combatant.currentHp / combatant.maxHp)) : 0;
     const filled = Math.round(hpPct * 10);
@@ -314,5 +349,6 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     resolveCombatant,
     resolveTargets,
     formatCombatantBlock,
+    formatCombatantCompact,
   };
 };

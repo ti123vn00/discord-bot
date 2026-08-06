@@ -49,7 +49,52 @@ const EXTRA_CRITICALS = [
   },
 ];
 
-module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
+module.exports = function ({ findSkill, resolveSkillKey, parseSkillCost, hasPerk, hasShinAccess }) {
+
+  /** describePageOption — dòng mô tả phụ (setDescription) cho mỗi Page trong
+   *  dropdown Moves.
+   *
+   *  GAP ĐÃ SỬA (Fragaria: "cải thiện phần dropdown Moves quá nghèo thông tin").
+   *  TRƯỚC ĐÂY mỗi option CHỈ có nhãn "📖 <Tên page>" — `setDescription` bỏ
+   *  trống hoàn toàn dù Discord cho sẵn 100 ký tự MIỄN PHÍ cho mỗi option.
+   *  Đây lại là màn hình người chơi nhìn nhiều nhất trong trận, mà họ KHÔNG
+   *  thấy được: tốn bao nhiêu Light, CD còn mấy turn, có bấm được ngay không.
+   *  Kết quả: phải nhớ thuộc lòng hoặc bấm thử rồi ăn lỗi "đang cooldown" /
+   *  "không đủ Light" — mất lượt tương tác vô ích.
+   *
+   *  Trả về { desc, blocked } — `blocked` để caller gắn thêm dấu ⛔ vào NHÃN,
+   *  vì trên mobile phần description bị thu nhỏ, dấu ở nhãn dễ thấy hơn nhiều.
+   */
+  function describePageOption(combatant, pageName) {
+    const sk = findSkill(pageName);
+    if (!sk) return { desc: null, blocked: false };
+    const parts = [];
+    let blocked = false;
+
+    // ── Cooldown ──────────────────────────────────────────────────────────
+    // CD lưu theo KEY CHUẨN của skill (xem resolveSkillKey trong skills.js) —
+    // KHÔNG phải tên hiển thị. Tra bằng tên sẽ luôn trượt, hiện "sẵn sàng" cho
+    // page đang cooldown.
+    const key = resolveSkillKey ? resolveSkillKey(pageName) : null;
+    const cdLeft = key ? (combatant.skillCooldowns?.[key] ?? 0) : 0;
+    if (cdLeft > 0) { parts.push(`⏳ CD còn ${cdLeft} turn`); blocked = true; }
+
+    // ── Chi phí Light / Sanity ────────────────────────────────────────────
+    let cost = null;
+    try { cost = parseSkillCost ? parseSkillCost(sk.cost) : null; } catch { cost = null; }
+    const lightCost = cost?.light ?? 0;
+    const sanityCost = cost?.sanity ?? 0;
+    if (lightCost > 0) {
+      const have = combatant.currentLight ?? 0;
+      parts.push(`${lightCost} Light (có ${have})`);
+      if (have < lightCost) blocked = true;
+    }
+    if (sanityCost > 0) parts.push(`${sanityCost} Sanity`);
+    if (lightCost === 0 && sanityCost === 0 && cdLeft === 0) parts.push("Không tốn Light");
+
+    if (sk.cd && sk.cd !== "—" && cdLeft === 0) parts.push(`CD ${sk.cd}`);
+    return { desc: parts.join(" · ").slice(0, 100) || null, blocked };
+  }
 
   // buildEncounterActionPanel — TOP-LEVEL dropdown, GAP REDESIGN (xác nhận
   // trực tiếp, spec chi tiết từ user): thay vì 1 dropdown DÀI gộp hết mọi hành
@@ -166,16 +211,26 @@ module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
       if (!sk) return false;
       return !!(sk.counterEffect || sk.reactiveOnly);
     }
+    // pushPageOption — dùng CHUNG cho page thường / E.G.O / special-no-slot để
+    // 3 nhóm không bị lệch định dạng (trước đây mỗi nhóm tự viết 1 kiểu).
+    function pushPageOption(pageName, prefix) {
+      const info = describePageOption(combatant, pageName);
+      const opt = new StringSelectMenuOptionBuilder()
+        .setLabel(`${info.blocked ? "⛔ " : ""}${prefix} ${pageName}`.slice(0, 100))
+        .setValue(`hit:${pageName}`);
+      if (info.desc) opt.setDescription(info.desc);
+      options.push(opt);
+    }
     for (const pageName of combatant.unlockedPagesSnapshot ?? []) {
       if (pageName && !addedPageNames.has(pageName) && !isReactiveOnlyPage(pageName)) {
         addedPageNames.add(pageName);
-        options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${pageName}`).setValue(`hit:${pageName}`));
+        pushPageOption(pageName, "📖");
       }
     }
     for (const pageName of combatant.unlockedEgoPagesSnapshot ?? []) {
       if (pageName && !addedPageNames.has(pageName) && !isReactiveOnlyPage(pageName)) {
         addedPageNames.add(pageName);
-        options.push(new StringSelectMenuOptionBuilder().setLabel(`✨ ${pageName} (E.G.O)`).setValue(`hit:${pageName}`));
+        pushPageOption(pageName, "✨");
       }
     }
     const outfit = combatant.equippedOutfit;
@@ -191,7 +246,7 @@ module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
     for (const { name, condition } of SPECIAL_NO_SLOT_PAGES) {
       if (condition && !addedPageNames.has(name) && !isReactiveOnlyPage(name)) {
         addedPageNames.add(name);
-        options.push(new StringSelectMenuOptionBuilder().setLabel(`📖 ${name}`).setValue(`hit:${name}`));
+        pushPageOption(name, "📖");
       }
     }
     if ((hasPerk(combatant, "Follow-Up") || hasPerk(combatant, "Pounce")) && combatant.staminaUsedThisTurn >= 20 && !combatant.followUpUsedThisTurn) {
@@ -227,7 +282,20 @@ module.exports = function ({ findSkill, hasPerk, hasShinAccess }) {
   // buildMovesPanel/buildSpecialPanel — sub-menu THẬT (kèm nút "◀ Back" đầu
   // tiên để quay lại dropdown top-level Attack/Moves/Special).
   function buildMovesPanel(channelId, combatant, playerId) {
-    const options = [new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...buildMovesOptions(combatant)];
+    const moveOptions = buildMovesOptions(combatant);
+    const options = [new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...moveOptions];
+    // GAP ĐÃ SỬA: `slice(0, 25)` bên dưới là BẮT BUỘC (Discord chặn cứng 25
+    // option/dropdown) nhưng TRƯỚC ĐÂY cắt HOÀN TOÀN IM LẶNG — player mở trên 24
+    // page thì page thứ 25 trở đi biến mất, không có một dấu hiệu nào. Thay 1 ô
+    // cuối bằng dòng báo số page bị ẩn để ít nhất họ BIẾT là còn (và báo GM).
+    if (options.length > 25) {
+      const hidden = options.length - 24;
+      options.splice(24);
+      options.push(new StringSelectMenuOptionBuilder()
+        .setLabel(`⚠️ Còn ${hidden} page nữa không hiện được`)
+        .setDescription("Discord giới hạn 25 lựa chọn/dropdown — báo GM để dùng lệnh text.")
+        .setValue("toomanypages"));
+    }
     return [
       new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()

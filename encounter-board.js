@@ -12,7 +12,13 @@
 // trang tại 1 thời điểm, kèm nút "◀ Trang trước / Trang sau ▶" để lật qua lại
 // — gọn gàng hơn nhiều so với dồn embed.
 
-module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, buildTurnOrderText, formatCombatantBlock }) {
+module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, buildTurnOrderText, formatCombatantBlock, formatCombatantCompact }) {
+
+  // Trên ngưỡng này thì enemy chuyển sang HIỂN THỊ GỌN 1 dòng/con.
+  // Chọn 6 vì: đo thật 1 khối đầy đủ ≈ 242 ký tự / 7 dòng, 6 con đã ~42 dòng —
+  // quá 1 màn hình mobile, mà thứ người chơi cần liếc giữa bầy mob tạp chỉ là
+  // HP/Stamina/status chứ không phải Res hay Emotion Coin của từng con.
+  const COMPACT_ENEMY_THRESHOLD = 6;
 
   const MAX_DESC_PER_PAGE = 3900; // chừa đệm an toàn dưới giới hạn 4096 ký tự/embed description của Discord
 
@@ -29,16 +35,31 @@ module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, build
     // KHÔNG liên quan gì tới quyết định "không cắt bớt khi board dài" ở trên
     // (đó là về ĐỘ DÀI, đây là về TRẠNG THÁI đã-chết cụ thể) — nếu TẤT CẢ đều
     // đã chết thì hiện 1 dòng tóm tắt thay vì bỏ trống hẳn phần enemy.
+    // ══ PLAYER TRƯỚC, ENEMY SAU ══════════════════════════════════════════
+    // GAP ĐÃ SỬA (Fragaria: "encounter status chỉ hiện được nổi 5 rats, player
+    // về sau KHÔNG THẤY ĐƯỢC do encounter quá đông người rồi").
+    // TRƯỚC ĐÂY enemy đổ ra HẾT rồi mới tới player — người đọc board LÀ player,
+    // mà phải cuộn qua toàn bộ bầy mob mới thấy HP/Stamina/Light của chính mình.
+    // Đông tới ~15 enemy thì player còn bị đẩy hẳn sang TRANG 2, phải bấm nút
+    // mới thấy được bản thân. Đảo thứ tự là xong: player LUÔN ở đầu trang 1.
+    for (const pid of Object.keys(encounter.players)) {
+      blocks.push(formatCombatantBlock(encounter.players[pid], `<@${pid}>`));
+    }
     const aliveEnemyKeys = Object.keys(encounter.enemies).filter(ekey => encounter.enemies[ekey].currentHp > 0);
     if (aliveEnemyKeys.length > 0) {
-      for (const ekey of aliveEnemyKeys) {
-        blocks.push(formatCombatantBlock(encounter.enemies[ekey], `⚔️ ${encounter.enemies[ekey].name} (${ekey})`));
+      // Đông mob → gộp thành MỘT block nhiều dòng gọn, thay vì mỗi con 1 khối 7
+      // dòng. Gộp chung 1 block để chúng không bị tách rời sang 2 trang khác nhau.
+      if (aliveEnemyKeys.length > COMPACT_ENEMY_THRESHOLD && formatCombatantCompact) {
+        const compactLines = aliveEnemyKeys.map(ekey =>
+          formatCombatantCompact(encounter.enemies[ekey], `${encounter.enemies[ekey].name} \`${ekey}\``));
+        blocks.push(`⚔️ **Kẻ địch (${aliveEnemyKeys.length} còn sống)** — *chế độ gọn*\n${compactLines.join("\n")}`);
+      } else {
+        for (const ekey of aliveEnemyKeys) {
+          blocks.push(formatCombatantBlock(encounter.enemies[ekey], `⚔️ ${encounter.enemies[ekey].name} (${ekey})`));
+        }
       }
     } else if (Object.keys(encounter.enemies).length > 0) {
       blocks.push(`☠️ *(Tất cả enemy đã bị đánh bại)*`);
-    }
-    for (const pid of Object.keys(encounter.players)) {
-      blocks.push(formatCombatantBlock(encounter.players[pid], `<@${pid}>`));
     }
     const allDead = Object.keys(encounter.enemies).length > 0 && Object.values(encounter.enemies).every(e => e.currentHp <= 0);
     const color = allDead ? 0x555555 : 0xe74c3c;

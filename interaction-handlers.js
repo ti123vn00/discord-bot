@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, buildReuseVariants, resolveSkillKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -338,7 +338,9 @@ client.on("interactionCreate", async (interaction) => {
     try {
       if (parts[0] === "shopback") {
         const { data } = await getPlayerDataWithSlot(ownerId);
-        return interaction.update({ embeds: [buildShopEmbed(data)], components: buildShopComponents(ownerId) }).catch(() => {});
+        // content: "" — xoá dòng kết quả của lần mua trước, nếu không nó treo
+        // lại phía trên embed mãi (đúng cảnh Fragaria chụp: text cũ + "(edited)").
+        return interaction.update({ content: "", embeds: [buildShopEmbed(data)], components: buildShopComponents(ownerId) }).catch(() => {});
       }
       // shopqty / shopreset — có I/O (đọc + ghi profile) nên defer trước cho an
       // toàn với hạn 3 giây của Discord (bài học từ bug treo contract begin).
@@ -347,9 +349,18 @@ client.on("interactionCreate", async (interaction) => {
         ? await shopResetSkillTree(ownerId)
         : await shopPurchase(ownerId, parts[2], parts[3]);
       const freshData = result.data ?? (await getPlayerDataWithSlot(ownerId)).data;
+      // Fragaria: "phần shop nên để text ở DƯỚI embed shop để tiện theo dõi".
+      // Discord LUÔN render `content` phía TRÊN embed — không có cách nào đảo
+      // thứ tự đó. Nên kết quả mua/reset được đưa vào EMBED THỨ HAI: nhiều embed
+      // render theo đúng thứ tự trong mảng, nên nó nằm ngay dưới embed cửa hàng,
+      // sát trên hàng nút. `content: ""` để xoá dòng text cũ còn sót từ lần
+      // trước (editReply không tự xoá field không truyền).
       await interaction.editReply({
-        content: result.message,
-        embeds: [buildShopEmbed(freshData)],
+        content: "",
+        embeds: [
+          buildShopEmbed(freshData),
+          { description: result.message, color: result.ok ? 0x2ecc71 : 0xe74c3c },
+        ],
         components: buildShopComponents(ownerId),
       }).catch(() => {});
     } catch (err) {
@@ -523,6 +534,7 @@ client.on("interactionCreate", async (interaction) => {
         if (encounter._deleteAfterSave) {
           await deleteEncounter(channelId).catch((err) => log("error", "confirmall-deleteEncounter", interaction.user.id, err.message));
           await interaction.update({
+            content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
             embeds: [{
               title: isConfirm ? "✅ Đã xác nhận tất cả" : "❌ Đã reject tất cả",
               description: (resultLines.join("\n") || "*(không có gì)*") + victoryNote,
@@ -534,6 +546,7 @@ client.on("interactionCreate", async (interaction) => {
         }
 
         await interaction.update({
+          content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
           embeds: [{
             title: isConfirm ? "✅ Đã xác nhận tất cả" : "❌ Đã reject tất cả",
             description: (resultLines.join("\n") || "*(không có gì)*") + victoryNote,
@@ -862,6 +875,7 @@ client.on("interactionCreate", async (interaction) => {
     // này đi, không làm gì khác — người khác vẫn có thể Clash nếu muốn.
     if (choice === "clashdecline") {
       await interaction.update({
+        content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
         embeds: [{ title: "❌ Đã bỏ qua", description: "Bạn chọn không Clash hộ lần này.", color: 0x95a5a6 }],
         components: [],
       }).catch(() => {});
@@ -958,6 +972,7 @@ client.on("interactionCreate", async (interaction) => {
           displayText = finalized.resultText;
         });
         await interaction.update({
+          content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
           embeds: [{ title: "🛡️ Your Shield — Kết quả", description: displayText, color: 0x9b59b6 }],
           components: [],
         }).catch(() => {});
@@ -1544,6 +1559,7 @@ client.on("interactionCreate", async (interaction) => {
       displayText = finalized.resultText;
     });
     await interaction.update({
+      content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
       embeds: [{ title: "⚔️ Clash — Kết quả", description: displayText, color: 0x2ecc71 }],
       components: [],
     }).catch(() => {});
@@ -2041,6 +2057,14 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.reply({ content: "⚠️ Bạn đang bị Stagger — không thể hành động (kể cả phòng thủ) cho tới khi tỉnh lại.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
     }
+    // Ô cảnh báo tràn 25 lựa chọn (xem buildMovesPanel) — không phải hành động,
+    // chỉ để player BIẾT là còn page bị ẩn. Ack rồi thôi, tránh interaction treo.
+    if (value === "toomanypages") {
+      return interaction.reply({
+        content: "⚠️ Discord chỉ cho tối đa 25 lựa chọn mỗi dropdown nên một số page của bạn chưa hiện được. Báo GM để dùng lệnh text cho những page đó.",
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+    }
     if (value === "back") {
       const encBack = await getEncounter(channelId);
       const combatantBack = encBack?.players?.[interaction.user.id];
@@ -2295,7 +2319,7 @@ client.on("interactionCreate", async (interaction) => {
       });
       const encAfterYts = await getEncounter(channelId);
       if (encAfterYts) announceCurrentTurn(channelId, encAfterYts, true).catch(() => {});
-      return interaction.update({ embeds: [{ title: "⚡ You're Too Slow", description: ytsText, color: 0x1abc9c }], components: [] }).catch(() => {});
+      return interaction.update({ content: "", embeds: [{ title: "⚡ You're Too Slow", description: ytsText, color: 0x1abc9c }], components: [] }).catch(() => {});
     }
     if (value.startsWith("hit:")) {
       // LỖ HỔNG BẢO MẬT ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp thật: "dù Blade
@@ -2312,7 +2336,7 @@ client.on("interactionCreate", async (interaction) => {
       const rawPageValue = value.slice(4);
       const pipeIdx = rawPageValue.indexOf("|");
       const pageName = pipeIdx >= 0 ? rawPageValue.slice(0, pipeIdx) : rawPageValue;
-      const chosenVariantKey = pipeIdx >= 0 ? rawPageValue.slice(pipeIdx + 1) : null;
+      let chosenVariantKey = pipeIdx >= 0 ? rawPageValue.slice(pipeIdx + 1) : null;
       const encounter = await getEncounter(channelId);
       const combatant = encounter?.players?.[interaction.user.id];
       if (!combatant) {
@@ -2323,6 +2347,77 @@ client.on("interactionCreate", async (interaction) => {
       // roll. Dùng LẠI customId "encmenumoves:" nên rơi vào đúng handler này ở
       // lần chọn sau, không cần handler riêng.
       const variantSkill = findSkill(pageName);
+      // ══ DROPDOWN REUSE ĐỘNG (Thrust / Mook Workshop) ═════════════════════
+      // Fragaria cảnh báo: "player có thể nhập tùy ý ví dụ nhập 9 lần reuse dù
+      // chỉ đang có 4 Light". Kẹp ở server (resolveReuseTimes) là bắt buộc,
+      // nhưng CHƯA ĐỦ về mặt UX: người chơi chọn "9" rồi bị âm thầm kẹp về 2 sẽ
+      // tưởng mình đã reuse 9 lần. Nên dựng danh sách theo Light THẬT ngay tại
+      // UI — chỉ hiện đúng những lựa chọn khả thi.
+      const reuseCombatant = encounter?.players?.[interaction.user.id];
+      // ══ TÍCH TỤ — BẤM LẦN 1 = BẮT ĐẦU TÍCH, BẤM LẦN 2 = PHÓNG ═══════════
+      // Fragaria mô tả trực tiếp: "khi bấm skill sẽ tính là bắt đầu tích (charge
+      // khởi đầu là 0), có thể bấm thêm một lần nữa để phóng ra số turn đã tích"
+      // + "đang tích mà bị Stagger hay bị đánh sẽ KHÔNG mất".
+      // Lần 1 KHÔNG roll, KHÔNG tốn CD, KHÔNG tạo pendingAction — chỉ ghi state
+      // rồi thoát. Lần 2 rơi xuống luồng dùng skill bình thường, và
+      // skill-verification.js đọc chargingTurns làm rollArgs.
+      const chargeKey = variantSkill?.chargeSpec ? resolveSkillKey(pageName) : null;
+      if (chargeKey && reuseCombatant && reuseCombatant.chargingSkillKey !== chargeKey) {
+        // Đang tích skill KHÁC → phải huỷ cái cũ, không giữ 2 charge cùng lúc.
+        const previous = reuseCombatant.chargingSkillKey;
+        await withLock(encounterKey(channelId), async () => {
+          const encForCharge = await getEncounter(channelId);
+          const meCharge = encForCharge?.players?.[interaction.user.id];
+          if (!meCharge) return;
+          meCharge.chargingSkillKey = chargeKey;
+          meCharge.chargingTurns = 0;
+          await saveEncounter(channelId, encForCharge);
+        });
+        return interaction.update({
+          content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
+          embeds: [{
+            title: `🔋 ${variantSkill.name} — bắt đầu tích tụ`,
+            description:
+              `Đã bắt đầu tích (**0**/${variantSkill.chargeSpec.maxTurns} Turn).\n` +
+              `> Mỗi Turn trôi qua tích thêm 1. Bấm lại **${variantSkill.name}** để **phóng**.\n` +
+              `> Bị Stagger hay bị đánh **KHÔNG** làm mất tiến độ tích.` +
+              (previous ? `\n> ⚠️ Đã huỷ tiến độ tích của **${previous}** trước đó.` : ""),
+            color: 0xe67e22,
+          }],
+          components: [],
+        }).catch(() => {});
+      }
+      const dynamicReuseVariants = variantSkill?.reuseSpec
+        ? buildReuseVariants(variantSkill, reuseCombatant?.currentLight ?? 0)
+        : null;
+      if (!chosenVariantKey && dynamicReuseVariants) {
+        // Không đủ tài nguyên để reuse lần nào → khỏi hỏi, đi thẳng đòn gốc.
+        if (dynamicReuseVariants.length <= 1) {
+          chosenVariantKey = "0";
+        } else {
+          return interaction.update({
+            embeds: [{
+              title: `🔁 ${variantSkill.name} — chọn số lần Reuse`,
+              description:
+                `Mỗi lần Reuse tiêu tài nguyên thật của bạn, nên bạn tự quyết.\n` +
+                `> Đang có **${reuseCombatant?.currentLight ?? 0}** <:Light:1513786082502770719>Light — ` +
+                `tối đa **${dynamicReuseVariants.length - 1}** lần Reuse.`,
+              color: 0x9b59b6,
+            }],
+            components: [new ActionRowBuilder().addComponents(
+              new StringSelectMenuBuilder()
+                .setCustomId(`encmenumoves:${channelId}:${interaction.user.id}`)
+                .setPlaceholder("Chọn số lần Reuse...")
+                .addOptions(
+                  new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"),
+                  ...dynamicReuseVariants.slice(0, 24).map(v => new StringSelectMenuOptionBuilder()
+                    .setLabel(`${v.emoji ?? "▪"} ${v.label}`.slice(0, 100))
+                    .setValue(`hit:${pageName}|${v.key}`)),
+                ),
+            )],
+          }).catch(() => {});
+        }
+      }
       if (!chosenVariantKey && Array.isArray(variantSkill?.variants) && variantSkill.variants.length > 0) {
         return interaction.update({
           embeds: [{
@@ -2398,12 +2493,14 @@ client.on("interactionCreate", async (interaction) => {
         if (encounter._deleteAfterSave) {
           await deleteEncounter(channelId).catch((err) => log("error", "page-deleteEncounter", interaction.user.id, err.message));
           return interaction.update({
+            content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
             embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
             components: [],
           }).catch(() => {});
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.update({
+          content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
           embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
           components: [],
         }).catch(() => {});
@@ -2635,6 +2732,7 @@ client.on("interactionCreate", async (interaction) => {
       // không còn đúng vì mọi field liên quan giờ đã tự động — không cần cảnh
       // báo dạng "tự gõ tay" nữa).
       await interaction.update({
+        content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
         embeds: skillRollEmbed ? [skillRollEmbed] : [],
         components: [],
       }).catch(() => {});
@@ -2692,7 +2790,7 @@ client.on("interactionCreate", async (interaction) => {
       // MỚI (nếu GM bấm hộ 1 enemy KHÔNG aiControlled kết thúc lượt, người kế
       // tiếp trong turnOrder có thể LÀ 1 enemy aiControlled khác).
       maybeRunAiTurn(channelId).catch(() => {});
-      await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
+      await interaction.update({ content: "", embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
       return;
     }
     if (value === "attack" || value === "attackm1") {

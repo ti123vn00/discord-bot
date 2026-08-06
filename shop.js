@@ -59,7 +59,11 @@ module.exports = function ({
         new StringSelectMenuBuilder()
           .setCustomId(`shopbuy:${userId}`)
           .setPlaceholder("🛒 Chọn món muốn mua...")
-          .addOptions(SHOP_CATALOG.map(i =>
+          // slice(0, 25) — Discord chặn cứng 25 option/dropdown, vượt là NÉM LỖI
+          // và cả cửa hàng không hiện được. Hiện mới 10 món nên chưa chạm, nhưng
+          // đây là chỗ Fragaria sẽ thêm món về sau nên chặn sẵn (xem
+          // buildMovesPanel trong encounter-panels.js — cũng slice vì lý do này).
+          .addOptions(SHOP_CATALOG.slice(0, 25).map(i =>
             new StringSelectMenuOptionBuilder()
               .setLabel(`${i.key} — ${formatNumber(i.price)} Ahn`.slice(0, 100))
               .setDescription(i.desc.slice(0, 100))

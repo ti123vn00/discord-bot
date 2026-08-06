@@ -278,15 +278,38 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       });
     if (alive.length === 0) return "Không còn ai sống trong turn order.";
     const hiddenCount = order.length - alive.length;
+    // BUG HIỂN THỊ ĐÃ SỬA (Fragaria: "encounter nhiều người quá là nó bị mất xén
+    // thông tin như này", kèm ảnh 5 con Rats).
+    // TRƯỚC ĐÂY label chỉ lấy `name` → **cả 5 con đều hiện đúng chữ "Rats"**,
+    // không cách nào biết "#4 Rats" là rats1 hay rats4. Trong khi khối chi tiết
+    // bên dưới lại ghi "Rats (rats4)" — hai phần KHÔNG khớp nhau được, người
+    // chơi không biết con đang Stagger là con nào trong thứ tự turn.
+    // → Chỉ thêm key khi tên bị TRÙNG (1 con Rats duy nhất thì "(rats1)" là rác).
+    const enemyNameCount = {};
+    for (const { e } of alive) {
+      if (e.type !== "enemy") continue;
+      const nm = encounter.enemies[e.id]?.name ?? e.id;
+      enemyNameCount[nm] = (enemyNameCount[nm] ?? 0) + 1;
+    }
     const lines = alive.map(({ e, idx }, i) => {
-      const label = e.type === "enemy" ? `**${encounter.enemies[e.id]?.name ?? e.id}**` : `<@${e.id}>`;
-      const tieNote = e.tiedWith.length > 0 ? ` ⚖️ *(hoà Speed với ${e.tiedWith.length} người khác — thứ tự đã random tự động)*` : "";
+      let label;
+      if (e.type === "enemy") {
+        const nm = encounter.enemies[e.id]?.name ?? e.id;
+        label = enemyNameCount[nm] > 1 ? `**${nm}** \`${e.id}\`` : `**${nm}**`;
+      } else {
+        label = `<@${e.id}>`;
+      }
+      // Ghi chú hoà Speed rút gọn: bản cũ dài 60 ký tự và LẶP trên MỌI dòng bị
+      // hoà (ảnh của Fragaria có 3 dòng y hệt nhau) — chiếm hết chiều cao màn
+      // hình mobile mà không thêm thông tin gì.
+      const tieNote = e.tiedWith.length > 0 ? ` ⚖️` : "";
       const turnMarker = idx === curIdx ? " 👉 **(đang tới lượt)**" : "";
       // Stagger: vẫn HIỆN (khác người chết — họ còn trong trận, chỉ mất lượt này)
       // nhưng đánh dấu rõ để không ai thắc mắc "sao bị bỏ lượt".
-      const staggerNote = (e.type === "enemy" ? encounter.enemies[e.id] : encounter.players[e.id])?.staggered ? " 💫 *(Stagger — bỏ lượt)*" : "";
+      const staggerNote = (e.type === "enemy" ? encounter.enemies[e.id] : encounter.players[e.id])?.staggered ? " 💫 **Stagger — bỏ lượt**" : "";
       return `**#${i + 1}** ${label} — Speed **${e.speed}**${tieNote}${staggerNote}${turnMarker}`;
     });
+    if (alive.some(({ e }) => e.tiedWith.length > 0)) lines.push(`*⚖️ = hoà Speed, thứ tự đã random tự động*`);
     if (hiddenCount > 0) lines.push(`*(đã ẩn ${hiddenCount} người/enemy đã gục)*`);
     return lines.join("\n");
   }

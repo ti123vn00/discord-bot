@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, resolveSkillKey, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
+module.exports = function ({ findSkill, resolveSkillKey, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -181,7 +181,7 @@ module.exports = function ({ findSkill, resolveSkillKey, hasPerk, isEgoSkill, bu
   }
 
   async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false, variantKey = null) {
-    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [], autoSideEffects = null;
+    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [], autoSideEffects = null, reuseTimesResolved = 0;
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
     // effectiveBulletType/effectiveBulletCount — GAP ĐÃ SỬA (lỗi scope): khai
@@ -329,6 +329,21 @@ module.exports = function ({ findSkill, resolveSkillKey, hasPerk, isEgoSkill, bu
       // xong (tốn thời gian/RNG) mới phát hiện không đủ Light/Sanity.
       const parsedCost = parseSkillCost(skill.cost);
       lightCost = parsedCost.light ?? 0;
+      // ══ REUSE CÓ TÍNH PHÍ (Thrust / Mook Workshop) ═══════════════════════
+      // BUG NẶNG ĐÃ SỬA (Fragaria cảnh báo: "check kỹ Mook Workshop lẫn Thrust,
+      // player có thể nhập tùy ý ví dụ nhập 9 lần reuse dù chỉ đang có 4 Light").
+      // Đúng là có bug, và còn nặng hơn: `lightCost` TRƯỚC ĐÂY chỉ lấy từ
+      // `skill.cost` = chi phí ĐÒN GỐC. Thrust reuse 4 lần cho ra 5 dice, text
+      // tự in "Light 6 → 1", nhưng thực tế **chỉ bị trừ 2 Light** — reuse gần
+      // như MIỄN PHÍ. Giờ `reuseSpec.netCost()` quyết định số Light thật bị trừ,
+      // GHI ĐÈ giá trị parse từ `skill.cost`.
+      // Số lần reuse LUÔN bị kẹp theo Light thật (resolveReuseTimes) nên gửi
+      // customId tay với "9" vẫn không vượt được trần.
+      if (skill.reuseSpec) {
+        const reuseInfo = resolveReuseTimes(skill, attacker.currentLight ?? 0, variantKey);
+        reuseTimesResolved = reuseInfo.reuseTimes;
+        lightCost = reuseInfo.netCost;
+      }
       sanityCost = parsedCost.sanity ?? 0;
       if (sanityCost > 0 && isEgoSkill(skill) && hasPerk(attacker, "Tap Of The Light")) {
         sanityCost = Math.floor(sanityCost / 2);
@@ -386,6 +401,29 @@ module.exports = function ({ findSkill, resolveSkillKey, hasPerk, isEgoSkill, bu
       const unlockRollArgs = skillKey === "unlock"
         ? [Math.min(3, (attacker.unlockBladeStage ?? 0) + 1)]
         : [];
+      // "Cloud Cutter" — BUG ĐÃ SỬA (Fragaria: "phần reuse chưa hoạt động").
+      // Text ghi "Reuse 1 lần nếu bản thân đang có TRÊN 2 Light" nhưng roll()
+      // trước đây không nhận Light nên KHÔNG BAO GIỜ reuse. Reuse phải cộng DICE
+      // nên bắt buộc biết Light NGAY LÚC ROLL (không xử lý hậu kỳ như Tremor
+      // Burst được). Fragaria chọn HƯỚNG 1 → bot tự đọc state, không hỏi.
+      // Dùng đúng pattern `unlockRollArgs` sẵn có cho "skill cần đọc state".
+      const cloudCutterRollArgs = skillKey === "cloud cutter"
+        ? [attacker.currentLight ?? 0]
+        : [];
+      // TÍCH TỤ (chargeSpec) — tới đây nghĩa là người chơi đã bấm LẦN 2 = PHÓNG
+      // (lần 1 đã bị chặn ở interaction-handlers.js, không vào tới đây).
+      // Đọc số turn đã tích rồi XOÁ state ngay: đã phóng là hết, CD bắt đầu từ
+      // lúc này ("CD bắt đầu sau khi phóng" đúng như text skill ghi).
+      let chargeRollArgs = [];
+      if (skill.chargeSpec && attacker.chargingSkillKey === skillKey) {
+        chargeRollArgs = [Math.min(skill.chargeSpec.maxTurns, attacker.chargingTurns ?? 0)];
+        attacker.chargingSkillKey = null;
+        attacker.chargingTurns = 0;
+      } else if (skill.chargeSpec) {
+        // Phòng hờ: vào thẳng đây mà chưa từng tích (VD lệnh `-skill` của GM) →
+        // coi như tích 0 turn thay vì ném lỗi chặn GM.
+        chargeRollArgs = [0];
+      }
       // Skill có `variants` (VD Extreme Edge) — truyền biến thể player đã chọn.
       // Validate: key lạ → rơi về biến thể đầu tiên thay vì để roll() nhận rác.
       let promptRollArgs = autoPromptArg !== null ? [autoPromptArg] : [];
@@ -404,10 +442,27 @@ module.exports = function ({ findSkill, resolveSkillKey, hasPerk, isEgoSkill, bu
         const valid = skill.variants.some(v => v.key === chosen);
         variantRollArgs = [valid ? chosen : skill.variants[0].key];
       }
+      // GAP ĐÃ SỬA (Fragaria: Thrust phải HỎI Ý người chơi muốn reuse hay không).
+      // TRƯỚC ĐÂY promptArg và variants LOẠI TRỪ nhau (`promptRollArgs.length ?
+      // promptRollArgs : variantRollArgs`) — skill nào có promptArg thì variants
+      // bị vứt đi hoàn toàn. Thrust cần CẢ HAI: Light (auto-suy từ state) VÀ số
+      // lần Reuse (người chơi chọn). Giờ GHÉP lại thành [light, reuseChoice] cho
+      // skill khai `reuseChoiceVariants`. Mọi skill cũ giữ nguyên hành vi vì
+      // chúng chỉ có 1 trong 2.
+      // Skill có reuseSpec: truyền SỐ LẦN ĐÃ KẸP (reuseTimesResolved) chứ KHÔNG
+      // truyền lựa chọn thô của người chơi — nếu không, roll() lại tự kẹp một
+      // lần nữa theo công thức riêng và hai nơi có thể lệch nhau.
+      const combinedRollArgs = skill.reuseSpec
+        ? [...promptRollArgs, String(reuseTimesResolved)]
+        : (promptRollArgs.length ? promptRollArgs : variantRollArgs);
       const autoResult = autoBuildDmgStrFromSkillRoll(skill, {
         forceMinDice: hasParalyze, diceModifier,
         rollArgs: unlockRollArgs.length ? unlockRollArgs
-          : (promptRollArgs.length ? promptRollArgs : variantRollArgs),
+          : (chargeRollArgs.length ? chargeRollArgs
+            : (cloudCutterRollArgs.length ? cloudCutterRollArgs : combinedRollArgs)),
+        // mode "repeat" (Mook Workshop): roll() chỉ sinh 1 dice/lần gọi nên phải
+        // gọi (1 gốc + N reuse) lần. mode "arg" (Thrust) tự sinh cả chuỗi → 1 lần.
+        repeatTimes: skill.reuseSpec?.mode === "repeat" ? reuseTimesResolved + 1 : 1,
       });
       autoDmgStr = autoResult.dmgStr;
       autoWarnings = autoResult.warnings;

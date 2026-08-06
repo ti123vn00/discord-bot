@@ -1221,13 +1221,26 @@ const SKILLS = {
   "cloud cutter": {
     name: "Cloud Cutter",
     cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
-    roll() {
-      const d1 = r(1,5), d2 = r(1,5);
-      return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`,
-        `*Reuse 1 lần nếu bản thân đang có trên 2 <:Light:1513786082502770719>Light*`,
-      ];
+    // BUG ĐÃ SỬA (Fragaria: "phần reuse chưa hoạt động").
+    // TRƯỚC ĐÂY dòng "Reuse 1 lần nếu có trên 2 Light" chỉ là CHỮ — roll() không
+    // hề nhận Light nên KHÔNG BAO GIỜ reuse, dmgStr luôn đúng 2 dice.
+    // Reuse phải cộng DICE nên bắt buộc phải biết Light NGAY LÚC ROLL (khác các
+    // hiệu ứng hậu-kỳ như Tremor Burst — cái đó xử lý sau khi đã đánh được).
+    // Fragaria chọn HƯỚNG 1 (bot tự quyết, không hỏi) → đọc thẳng Light của
+    // combatant qua rollArgs ở skill-verification.js. `light = 0` mặc định để
+    // lệnh `-skill cloud cutter` đứng riêng vẫn chạy như cũ (không reuse).
+    roll(light = 0) {
+      const line = (emoji, v) =>
+        `${emoji} **${v}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Bleed:1513762688226955285>Bleed và nhận 2 <:Poise:1513762945715142736>Poise`;
+      const lines = [line("<:Dice1:1508173590078558369>", r(1,5)), line("<:Dice2:1508173623691710625>", r(1,5))];
+      if (light > 2) {
+        lines.push(`↩️ **Reuse 1** *(có ${light} <:Light:1513786082502770719>Light > 2)*`);
+        lines.push(line("<:Dice1:1508173590078558369>", r(1,5)));
+        lines.push(line("<:Dice2:1508173623691710625>", r(1,5)));
+      } else {
+        lines.push(`*Không Reuse — cần TRÊN 2 <:Light:1513786082502770719>Light (đang có ${light})*`);
+      }
+      return lines;
     },
   },
   "sky clearing cut": {
@@ -1654,7 +1667,7 @@ roll(v = "no") {
       const d1 = r(6, 10), d2 = r(5, 9);
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] [Unblockable]`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] [Unblockable] — sau khi dùng: hồi sinh TOÀN BỘ đồng minh đã chết trong trận này trong 1 Turn (4 Light, mọi Buff trừ Emotion Level bị reset). [KHÔNG TỰ ĐỘNG HOÁ hồi sinh — GM tự thao tác trên board.]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Undodgeable] [Unblockable] — sau khi dùng: hồi sinh TOÀN BỘ đồng minh đã chết trong trận này trong 1 Turn (4 Light, mọi Buff trừ Emotion Level bị reset).`,
       ];
     },
   },
@@ -2826,6 +2839,20 @@ roll(v = "no") {
     // maxUses: 3 = 1 lần gốc + tối đa 2 lần reuse (đúng theo mô tả "max 2 lần").
     // Lệnh -skill sẽ tự clamp số lần roll theo field này thay vì SKILL_MAX_ROLLS chung.
     maxUses: 3,
+    // Fragaria chốt: "Mook Workshop, Thrust sẽ hỏi ý người chơi muốn reuse hay
+    // không, còn lại là tự reuse". Mook khác Thrust ở chỗ roll() CHỈ sinh 1 dice
+    // mỗi lần gọi → phải gọi LẶP (mode "repeat"), không như Thrust tự sinh cả chuỗi.
+    reuseChoiceVariants: true,
+    reuseSpec: {
+      mode: "repeat",              // gọi roll(isReuse) nhiều lần rồi ghép dice
+      resource: "light",
+      // maxUses 3 = 1 gốc + tối đa 2 Reuse; mỗi Reuse tốn 1 Light nên còn bị
+      // chặn thêm bởi số Light thật đang có.
+      maxReuse: (light) => Math.min(2, Math.max(0, light ?? 0)),
+      netCost: (n) => n,           // reuse tốn 1 Light/lần; +1 Light của đòn gốc
+                                   // do parser selfLight lo (chỉ dòng gốc mới có)
+      repeatArgs: (i) => [i > 0],  // roll(false) cho gốc, roll(true) cho reuse
+    },
     // isReuse = true cho lần roll thứ 2 trở đi (do -skill mook workshop <n> gọi).
     // Theo mô tả: reuse mất hiệu ứng "nhận 1 Light" nhưng vẫn gây dmg 2 hit + Rupture như cũ.
     roll(isReuse = false) {
@@ -3061,9 +3088,9 @@ roll(v = "no") {
     cost: "?? Light", cd: "3 Turn", diceMul: "1x",
     roll() {
       return [
-        `${D1} dồn một viên cầu rồi bắn thẳng tới kẻ địch, gây 30 × Lượng Light bỏ ra [KHÔNG TỰ ĐỘNG TÍNH — GM/player tự nhân theo Light đã dùng].`,
+        `${D1} dồn một viên cầu rồi bắn thẳng tới kẻ địch, gây 30 × Lượng Light bỏ ra .`,
         `${D1} Khi đạt -40 Sanity, áp thêm 2 Paralyze.`,
-        `${D1} Nếu kẻ địch có Bleed: tiêu hết Bleed, chuyển thành 2 Erosion (Erosion: +0,1x Res của ĐỐI PHƯƠNG, chỉ áp dụng 1 Turn, áp với chính bản thân — KHÔNG PHẢI status hệ thống track được, GM tự áp).`,
+        `${D1} Nếu kẻ địch có Bleed: tiêu hết Bleed, chuyển thành 2 Erosion (Erosion: +0,1x Res của ĐỐI PHƯƠNG, chỉ áp dụng 1 Turn, áp với chính bản thân)`,
       ];
     },
   },
@@ -3074,7 +3101,7 @@ roll(v = "no") {
       return [
         `${D1} Bắn 1 đòn Repeat Ammo [AOE/True Dmg], gây 5 Blind và 2 Bleed.`,
         `Nhận 100 HP Shield với TỪNG mục tiêu dính đòn.`,
-        `*(Blind: khiến đòn đánh thường tiếp theo bị trượt — KHÔNG PHẢI status hệ thống track được, GM tự áp. HP Shield cũng không tự động — GM/player tự quản lý.)*`,
+        `*(Blind: khiến đòn đánh thường tiếp theo bị trượt)*`,
       ];
     },
   },
@@ -3108,6 +3135,28 @@ roll(v = "no") {
     name: "Thrust",
     cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     needsReuse: true,
+    // Fragaria chốt trực tiếp: "Reuse hãy làm theo hướng 1 (bot tự quyết). TUY
+    // NHIÊN có 1 số trường hợp như page Thrust sẽ HỎI Ý NGƯỜI CHƠI muốn reuse
+    // hay không." → Thrust là ngoại lệ vì mỗi lần Reuse TIÊU Light thật của
+    // người chơi (net −1/lần) — đó là quyết định tài nguyên, không phải xác
+    // suất, nên bot không được quyết hộ.
+    // Dùng cơ chế `variants` có sẵn (cùng đường với Extreme Edge / Re-Load):
+    // dropdown hiện trước khi roll. Số lần chọn được KẸP lại theo Light thật
+    // trong roll() nên chọn quá tay cũng không hỏng.
+    reuseChoiceVariants: true,
+    // reuseSpec — 1 NGUỒN SỰ THẬT cho: (a) số Reuse tối đa theo tài nguyên thật,
+    // (b) Light thật sự bị trừ, (c) lọc dropdown chỉ hiện lựa chọn KHẢ THI.
+    // Xem REUSE_SPEC_CONTRACT ở cuối file để biết ý nghĩa từng field.
+    reuseSpec: {
+      mode: "arg",                 // roll() tự sinh cả chuỗi reuse trong 1 lần gọi
+      resource: "light",
+      maxReuse: (light) => Math.min(9, Math.max(0, (light ?? 0) - 2)),
+      netCost: (n) => n + 1,       // mỗi lần dùng net −1 Light (tốn 2, nhận 1)
+      // roll() in "Nhận 1 Light" ở MỌI dòng → parser selfLight sẽ cộng lại
+      // (n+1) Light, thành ra net = 0. netCost ở trên đã tính net rồi nên phải
+      // TẮT nhánh parser để không cộng bù hai lần.
+      suppressSelfLight: true,
+    },
     promptArg: {
       label: "Light hiện tại",
       parse: (s) => parseInt(s.trim(), 10),
@@ -3127,9 +3176,16 @@ roll(v = "no") {
           : `[Reuse: ${reuseTimes} lần${reuseTimes === 9 ? " (đã chạm cap)" : ""}] [Light: ${v}→${finalLight}] [Dice Up lần cuối: +${reuseTimes * 5} <:DiceUp:1513767795681398894>] [CD: ${s.cd}]`;
       },
     },
-    roll(light = 4) {
+    roll(light = 4, reuseChoice = "max") {
       // Cap 9 lần Reuse theo spec gốc, dù light dư nhiều hơn mức cần cho 9 lần.
-      const reuseTimes = Math.min(9, Math.max(0, light - 2));
+      const maxReuse = Math.min(9, Math.max(0, light - 2));
+      // reuseChoice do NGƯỜI CHƠI chọn (variants ở trên). Luôn KẸP theo Light
+      // thật: chọn 9 mà chỉ đủ 3 thì ra 3, không bao giờ tiêu quá số Light có.
+      // "max"/không chọn → giữ nguyên hành vi cũ (reuse hết mức).
+      const wanted = (reuseChoice === "max" || reuseChoice === undefined || reuseChoice === null)
+        ? maxReuse
+        : Math.max(0, parseInt(reuseChoice, 10) || 0);
+      const reuseTimes = Math.min(maxReuse, wanted);
       const DICE_EMOJIS = [D1, D2, D3, D4, D5];
       const getEmoji = (i) => DICE_EMOJIS[Math.min(i, DICE_EMOJIS.length - 1)];
       const L = "<:Light:1513786082502770719>Light";
@@ -3822,13 +3878,18 @@ roll(v = "no") {
   "overdrive": {
     name: "Overdrive", weaponOf: "Devil Sword Dante", tags: "Weapon",
     cost: "—", cd: "1 Turn sau khi tích xong", diceMul: "1.5x",
-    roll() {
-      const chargeturns = 1; // default 1 turn charge
-      const d1 = r(10,16);
-      return [
-        `*Tích tụ tối đa 3 Turn — mỗi turn tích thêm 1 Reuse; CD bắt đầu sau khi phóng*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — phóng kiếm khí từ năng lượng quỷ tích tụ`,
-      ];
+    // chargeSpec — cơ chế TÍCH TỤ (Fragaria mô tả trực tiếp): "khi bấm skill sẽ
+    // tính là BẮT ĐẦU TÍCH (charge khởi đầu là 0), có thể bấm thêm một lần nữa
+    // để phóng ra theo số turn đã tích. Đang tích mà bị Stagger hay bị đánh sẽ
+    // KHÔNG mất." Xem CHARGE_SPEC_CONTRACT ở cuối file.
+    chargeSpec: { maxTurns: 3, effect: "reuse" },
+    roll(chargeTurns = 0) {
+      const n = Math.max(0, Math.min(3, chargeTurns | 0));
+      const lines = [`*Đã tích **${n}**/3 Turn — mỗi turn tích thêm 1 Reuse*`];
+      for (let i = 0; i <= n; i++) {
+        lines.push(`${i === 0 ? D1 : D2} ${i > 0 ? `↩️ **Reuse ${i}** — ` : ""}**${r(10,16)}** [<:Slash:1513768633434640517>Slash] [Unblockable] — phóng kiếm khí từ năng lượng quỷ tích tụ`);
+      }
+      return lines;
     },
   },
   "judgement": {
@@ -3846,12 +3907,16 @@ roll(v = "no") {
   "charge shot": {
     name: "Charge Shot", weaponOf: "Ebony & Ivory", tags: "Weapon",
     cost: "—", cd: "1 Turn sau khi tích xong", diceMul: "1x",
-    roll() {
-      const chargeBonus = 0; // +10 Dice per extra turn charged, shown as note
-      const d1 = r(20,23);
+    // Cùng cơ chế tích tụ với Overdrive, khác EFFECT: mỗi turn +10 Dice thay vì
+    // +1 Reuse. Xem CHARGE_SPEC_CONTRACT.
+    chargeSpec: { maxTurns: 3, effect: "dice", perTurn: 10 },
+    roll(chargeTurns = 0) {
+      const n = Math.max(0, Math.min(3, chargeTurns | 0));
+      const bonus = n * 10;
+      const base = r(20,23);
       return [
-        `*Tích tối thiểu 1 Turn, tối đa 3 Turn — mỗi turn tích thêm +10 Dice*`,
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] — bắn viên đạn chứa năng lượng quỷ tích tụ`,
+        `*Đã tích **${n}**/3 Turn — mỗi turn tích thêm +10 Dice*`,
+        `${D1} **${base + bonus}**${bonus > 0 ? ` (${base} +${bonus})` : ""} [<:Pierce:1513768511179329556>Pierce] [Guard Break] — bắn viên đạn chứa năng lượng quỷ tích tụ`,
       ];
     },
   },
@@ -5119,7 +5184,7 @@ function autoExtractDiceSideEffects(lines) {
  *  @returns {{fragile:number, paralyze:number, drainStamina:number, selfImitation:number, selfLight:number, healHp:number}}
  */
 function extractNonDmgStrEffects(lines) {
-  const out = { fragile: 0, paralyze: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, healHp: 0 };
+  const out = { fragile: 0, paralyze: 0, airborne: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0 };
   const stripEmoji = (t) => t.replace(/<a?:[^:>]+:\d+>/g, "");
   for (const raw of lines ?? []) {
     const line = stripEmoji(String(raw));
@@ -5139,18 +5204,118 @@ function extractNonDmgStrEffects(lines) {
     out.selfImitation += sum(/nh[ậa]n\s*(\d+)\s*Imitation/i);
     out.selfLight     += sum(/nh[ậa]n\s*(\d+)\s*Light/i);
     out.healHp        += sum(/h[ồo]i(?:\s*ph[ụu]c)?\s*(\d+)\s*(?:HP|M[áa]u)/i);
+    // Haste — BẮT BUỘC động từ "nhận" NGAY trước số (cùng nguyên tắc gainOnly của
+    // Poise/Charge trong AUTO_STATUS_TAGS). Cố ý BỎ SÓT các dạng mập mờ hơn:
+    //   • Catch Breath "khi dưới 50% HP thêm 2 Poise và 4 Haste" → CÓ ĐIỀU KIỆN
+    //     nằm giữa dòng dice, không được áp mù.
+    //   • Fervent Beats "nhận NGAY 10 Dice Up, 10 Defense Up, ... 10 Haste" → số
+    //     không đứng liền sau "nhận" nên không khớp.
+    // Bỏ sót thì GM gõ tay được; áp NHẦM thì phá cân bằng âm thầm — chọn bỏ sót.
+    out.selfHaste     += sum(/nh[ậa]n\s*(\d+)\s*Haste/i);
+    // Airborne — debuff LÊN ĐỊCH ("đá kẻ địch lên trời gây 1 [Airborne]").
+    // Cho phép markdown xen giữa: text thật là "gây 1 **[Airborne]**".
+    out.airborne      += sum(/g[âaăằ]y\s*(\d+)\s*[*\[\s]*Airborne/i);
   }
   return out;
 }
 
-function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifier = 0, rollArgs = [] } = {}) {
+/** CHARGE_SPEC_CONTRACT — hợp đồng của field `chargeSpec` (cơ chế TÍCH TỤ).
+ *
+ *  Luật do Fragaria mô tả trực tiếp:
+ *    "khi bấm skill, sẽ tính là BẮT ĐẦU TÍCH (charge khởi đầu là 0), có thể bấm
+ *     thêm một lần nữa để phóng ra theo số turn đã tích"
+ *    "đang tích mà bị Stagger hay bị đánh tôi nghĩ sẽ KHÔNG mất"
+ *
+ *  → Máy trạng thái 2 nhịp trên combatant:
+ *    · Bấm lần 1  : `chargingSkillKey = <key>`, `chargingTurns = 0` — KHÔNG roll,
+ *                   KHÔNG tốn CD, KHÔNG tạo pendingAction.
+ *    · Mỗi đầu turn: `chargingTurns += 1`, kẹp tại `maxTurns` (turn-advance.js).
+ *    · Bấm lần 2  : PHÓNG — roll(chargingTurns), xong mới bắt đầu CD, xoá state.
+ *    · Stagger/bị đánh: KHÔNG đụng tới state (đúng yêu cầu). Chỉ có chính lần
+ *      phóng mới xoá.
+ *
+ *  effect: "reuse" → mỗi turn tích thêm 1 dice reuse (Overdrive)
+ *          "dice"  → mỗi turn +`perTurn` vào giá trị dice (Charge Shot)
+ */
+
+/** REUSE_SPEC_CONTRACT — hợp đồng của field `reuseSpec` trên skill.
+ *
+ *  Fragaria chốt trực tiếp: "Mook Workshop, Thrust sẽ HỎI Ý người chơi muốn reuse
+ *  hay không, còn lại là TỰ reuse" — và cảnh báo tiếp: "player có thể nhập tùy ý,
+ *  ví dụ nhập 9 lần reuse dù chỉ đang có 4 Light".
+ *
+ *  BUG NẶNG ĐÃ SỬA nhờ cảnh báo đó: chi phí Light của các lần Reuse **CHƯA BAO
+ *  GIỜ ĐƯỢC TRỪ**. `lightCost` (skill-verification.js) chỉ lấy từ `skill.cost`
+ *  = chi phí ĐÒN GỐC. Thrust reuse 4 lần → 5 dice, text tự ghi "Light 6 → 1",
+ *  nhưng thực tế chỉ bị trừ **2** Light. Reuse gần như MIỄN PHÍ.
+ *
+ *  reuseSpec là 1 NGUỒN SỰ THẬT cho cả 3 tầng, để không lệch nhau:
+ *    • maxReuse(resourceNow) → trần thật theo tài nguyên đang có
+ *      · dùng để LỌC dropdown (chỉ hiện lựa chọn khả thi)
+ *      · dùng để KẸP lại lần nữa ở server (phòng người chơi gửi customId tay)
+ *      · dùng để tính chi phí
+ *    • netCost(reuseTimes) → số Light THẬT bị trừ (đã tính cả phần hồi lại)
+ *    • mode "arg"    → roll(res, choice) tự sinh cả chuỗi reuse trong 1 lần gọi
+ *      mode "repeat" → roll() chỉ sinh 1 lần, phải gọi LẶP rồi ghép dice
+ *    • repeatArgs(i) → tham số cho lần gọi thứ i (chỉ dùng ở mode "repeat")
+ *    • suppressSelfLight → roll() có in "nhận N Light" nhưng netCost ĐÃ tính rồi,
+ *      phải tắt nhánh parser để không cộng bù hai lần.
+ *
+ *  KHÔNG BAO GIỜ tin con số người chơi gửi lên — luôn `Math.min(maxReuse, wanted)`.
+ */
+/** applySideEffectSuppression — tắt những nhánh parser mà reuseSpec đã tự tính,
+ *  tránh cộng bù HAI LẦN (xem `suppressSelfLight` trong REUSE_SPEC_CONTRACT). */
+function applySideEffectSuppression(skill, sfx) {
+  if (skill?.reuseSpec?.suppressSelfLight) sfx.selfLight = 0;
+  return sfx;
+}
+
+function resolveReuseTimes(skill, resourceNow, wantedRaw) {
+  const spec = skill?.reuseSpec;
+  if (!spec) return { reuseTimes: 0, maxReuse: 0, netCost: 0 };
+  const maxReuse = Math.max(0, spec.maxReuse(resourceNow) | 0);
+  const wanted = (wantedRaw === "max" || wantedRaw === undefined || wantedRaw === null || wantedRaw === "")
+    ? maxReuse
+    : Math.max(0, parseInt(wantedRaw, 10) || 0);
+  const reuseTimes = Math.min(maxReuse, wanted);
+  return { reuseTimes, maxReuse, netCost: Math.max(0, spec.netCost(reuseTimes) | 0) };
+}
+
+/** buildReuseVariants — dropdown ĐỘNG: chỉ liệt kê số lần Reuse người chơi THẬT
+ *  SỰ đủ tài nguyên để chọn. Chặn ngay ở tầng UI thay vì để họ chọn 9 rồi âm
+ *  thầm bị kẹp về 2 (người chơi tưởng mình reuse 9 lần). */
+function buildReuseVariants(skill, resourceNow) {
+  const spec = skill?.reuseSpec;
+  if (!spec) return null;
+  const maxReuse = Math.max(0, spec.maxReuse(resourceNow) | 0);
+  const unit = spec.resource === "light" ? "<:Light:1513786082502770719>Light" : spec.resource;
+  const opts = [{ key: "0", label: `Không Reuse (chỉ đòn gốc)`, emoji: "⏹️" }];
+  for (let n = 1; n <= maxReuse; n++) {
+    opts.push({ key: String(n), label: `Reuse ${n} lần — tổng −${spec.netCost(n)} ${unit === "light" ? "Light" : "Light"}`, emoji: "🔁" });
+  }
+  return opts;
+}
+
+function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifier = 0, rollArgs = [], repeatTimes = 1 } = {}) {
   startEmotionTracking();
   if (forceMinDice) startForceMinDice();
   if (diceModifier !== 0) setDiceModifier(diceModifier);
   // rollArgs — cho skill CÓ TRẠNG THÁI cần đọc từ combatant (VD Unlock: stage
   // 1/2/3 theo số stack Unlock Blade đang có). Mặc định rỗng → roll() dùng giá
   // trị mặc định của chính nó, mọi skill cũ không đổi hành vi.
-  const lines = skill.roll(...rollArgs);
+  // repeatTimes > 1 — mode "repeat" của reuseSpec: roll() chỉ sinh 1 dice mỗi
+  // lần gọi (VD Mook Workshop) nên phải gọi LẶP rồi ghép, khác mode "arg" (Thrust
+  // tự sinh cả chuỗi trong 1 lần gọi).
+  let lines;
+  if (repeatTimes > 1 && skill.reuseSpec?.mode === "repeat") {
+    lines = [];
+    for (let i = 0; i < repeatTimes; i++) {
+      const args = skill.reuseSpec.repeatArgs ? skill.reuseSpec.repeatArgs(i) : rollArgs;
+      lines.push(...skill.roll(...args));
+    }
+  } else {
+    lines = skill.roll(...rollArgs);
+  }
   if (forceMinDice) stopForceMinDice();
   if (diceModifier !== 0) clearDiceModifier();
   const tracked = stopEmotionTracking();
@@ -5257,10 +5422,10 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
   }
 
   if (diceTypeByLine.length === 0) {
-    return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines, sideEffects: extractNonDmgStrEffects(lines) };
+    return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
   }
   const dmgStr = diceTypeByLine.map(d => `${d.result}${d.type}${d.statusTags ?? ""}`).join(" + ");
-  return { dmgStr, warnings, tracked, totalEmotionDelta, lines, sideEffects: extractNonDmgStrEffects(lines) };
+  return { dmgStr, warnings, tracked, totalEmotionDelta, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
 }
 
 /** resolveSkillKey — trả về ĐÚNG KEY trong object SKILLS cho một chuỗi người
@@ -5288,4 +5453,4 @@ function resolveSkillKey(raw) {
   return null;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, extractNonDmgStrEffects, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };

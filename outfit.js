@@ -44,7 +44,7 @@ const OUTFITS = {
       // (hệ thống hiện dùng cứng 10 Sta/90% giảm cho mọi player, không có field
       // "override Guard cost/hiệu quả theo outfit") — GM/player tự áp dụng bằng
       // tay khi Guard trong lúc mặc outfit này.
-      "Iron Horus: Block tốn 40 stamina nhưng giảm sát thương TOÀN BỘ đòn (KHÔNG tự động hoá — GM/player tự áp khi Guard).",
+      "Iron Horus: Block tốn 40 stamina nhưng giảm sát thương TOÀN BỘ đòn.",
     ],
   },
   "casual outfit": {

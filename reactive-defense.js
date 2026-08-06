@@ -785,7 +785,112 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         ));
       }
 
-      const dmgPreview = t.preview?.totalDmg?.toFixed(3) ?? "?";
+      // ══ DMG CÒN LẠI — TÍNH ĐỦ CẢ GUARD, PARRY, COUNTER ═══════════════════
+      // Fragaria: "1 group hit 4 đòn tổng 20 dmg thì khi né 1 đòn nên show còn
+      // lại 15 dmg để player dễ tính" → sau đó: "hiện luôn cả số dmg còn lại sau
+      // khi guard hay parry hay counter gì đi, làm thì làm cho đủ vào".
+      //
+      // TRƯỚC ĐÂY prompt in `t.preview.totalDmg` = tổng dmg CẢ ĐÒN lúc chưa ai
+      // phòng thủ gì. Sang nhóm 2, 3… con số đó ĐỨNG YÊN dù đã phòng thủ mấy
+      // nhóm rồi → vô dụng để quyết định. Bản sửa đầu của tôi mới trừ Evade/Parry
+      // và CỐ Ý bỏ Guard — thiếu, vì Guard mới là thứ dùng nhiều nhất.
+      //
+      // BA LOẠI PHÒNG THỦ, BA CÁCH TÍNH KHÁC HẲN NHAU (đọc từ resolve-pending-action.js,
+      // KHÔNG đoán):
+      //   • Evade / Counter thắng → `perHitMult = 0`, CHẮC CHẮN, né trọn hit.
+      //   • Guard              → `perHitMult = 1 - guardReductionPct`, TẤT ĐỊNH.
+      //       guardReductionPct = (Fortified Resolve ? 0.99 : 0.9)
+      //                           + (defenseUp*1 - defenseDown*5)/100
+      //                           × 0.5 nếu ATTACKER mặc Blade Lineage và có ≥10 Poise
+      //   • Parry              → XÁC SUẤT: defRoll vs d20 của attacker. Thắng thì
+      //       né trọn, THUA thì ăn FULL + mất 30/40 Sta.
+      // → Parry KHÔNG được tính như đã né chắc (bản trước của tôi tính vậy là
+      //   HỨA LỐ). Hiện riêng thành "nếu Parry thắng" để người chơi tự cân nhắc.
+      const perHitDmg = t.preview?.dmgValues ?? [];
+      const totalRaw = t.preview?.totalDmg ?? 0;
+      const dmgAt = (h1) => { const v = perHitDmg[h1 - 1]; return typeof v === "number" ? v : (v?.dmg ?? 0); };
+
+      // Guard % — sao nguyên công thức của resolve-pending-action.js. Lệch công
+      // thức ở đây là báo sai số cho người chơi, nên nếu bên kia đổi thì SỬA CẢ HAI.
+      const baseGuardPct = hasPerk(target, "Fortified Resolve") ? 0.99 : 0.9;
+      const defenseUpDownPct = ((target.defenseUp ?? 0) * 1 - (target.defenseDown ?? 0) * 5) / 100;
+      const guardPctBase = Math.min(1, Math.max(0, baseGuardPct + defenseUpDownPct));
+      const guardPct = (attacker.combatant.equippedOutfit === "Blade Lineage" && (attacker.combatant.poise ?? 0) >= 10)
+        ? guardPctBase * 0.5
+        : guardPctBase;
+
+      const evadeSet = new Set(target.evadeHitSelections ?? []);   // Counter thắng cũng đẩy vào đây
+      const guardSet = new Set(target.guardHitSelections ?? []);
+
+      // ── PARRY: tính CẢ trường hợp THẮNG lẫn THUA ─────────────────────────
+      // Fragaria: "nếu thế thì hãy tính cả trường hợp phần parry thất bại là được mà?"
+      // Làm được, vì `parryRolls` ĐÃ được roll ngay lúc người chơi bấm Parry
+      // (interaction-handlers.js) chứ không phải lúc resolve — nên tại thời điểm
+      // dựng prompt ta BIẾT chính xác defRoll. Attacker roll d20 đều 1..20 nên
+      //   P(thắng) = P(atkRoll ≤ defRoll) = clamp(defRoll, 0, 20) / 20.
+      //
+      // GHÉP ROLL VỚI HIT THEO ĐÚNG resolve-pending-action.js: MỘT roll quyết
+      // định cho CẢ CỤM `hitsPerCharge` hit (Fragaria xác nhận: "1 charge parry
+      // vẫn hoạt động như evade và guard là chặn được 1 group hit m1").
+      // Công thức chunk phải khớp bên resolve — lệch là báo sai số.
+      const parrySelected = (target.parryHitSelections ?? []).filter(h => h >= 1 && h <= hitCount);
+      const parryRolls = target.parryRolls ?? [];
+      const parryAttempts = [];   // { hits: [...], dmg, winPct }
+      let parryNoRollDmg = 0;     // cụm đã chọn Parry nhưng HẾT roll (không nên xảy ra)
+      for (let ci = 0, ri = 0; ci < parrySelected.length; ci += hitsPerCharge, ri++) {
+        const chunk = parrySelected.slice(ci, ci + hitsPerCharge)
+          .filter(h => !evadeSet.has(h) && !guardSet.has(h)); // lựa chọn khác đã phủ hit này
+        if (chunk.length === 0) continue;
+        const chunkDmg = chunk.reduce((a, h) => a + dmgAt(h), 0);
+        if (ri < parryRolls.length) {
+          parryAttempts.push({ hits: chunk, dmg: chunkDmg, winPct: Math.min(1, Math.max(0, (parryRolls[ri] ?? 0) / 20)) });
+        } else {
+          parryNoRollDmg += chunkDmg;
+        }
+      }
+      const parryHitPct = new Map();  // hit → winPct, để tính dmg riêng của nhóm đang hỏi
+      for (const a of parryAttempts) for (const h of a.hits) parryHitPct.set(h, a.winPct);
+      const parryHitCount = parryAttempts.reduce((a, x) => a + x.hits.length, 0);
+
+      let avoidedSure = 0, guardSaved = 0;
+      for (let h = 1; h <= hitCount; h++) {
+        const d = dmgAt(h);
+        if (evadeSet.has(h)) { avoidedSure += d; continue; }
+        if (guardSet.has(h)) { guardSaved += d * guardPct; continue; }
+      }
+      // "Còn lại" = tổng gốc − né chắc − phần Guard giảm. Hit đang chờ Parry vẫn
+      // nằm NGUYÊN trong con số này (chưa biết thắng thua) — đó CHÍNH LÀ trường
+      // hợp thua hết, nên nó cũng là cận TRÊN.
+      const remainingDmg = Math.max(0, totalRaw - avoidedSure - guardSaved);
+      const parryMaxSave = parryAttempts.reduce((a, x) => a + x.dmg, 0);
+      const remainingIfParryWins = Math.max(0, remainingDmg - parryMaxSave);
+      const remainingIfParryLoses = remainingDmg;
+      // Kỳ vọng — con số đáng tin nhất để so với 2 lựa chọn khác.
+      const parryExpectedSave = parryAttempts.reduce((a, x) => a + x.dmg * x.winPct, 0);
+      const remainingExpected = Math.max(0, remainingDmg - parryExpectedSave);
+      // Thua thì mất Stamina: 30 nếu có Mastered Breaths, 40 mặc định; GẤP ĐÔI
+      // khi đang "Gãy tay" (sao nguyên từ resolve-pending-action.js).
+      const parryFailBase = hasPerk(target, "Mastered Breaths") ? 30 : 40;
+      const parryFailCost = (target.injuries ?? []).includes("Gãy tay") ? parryFailBase * 2 : parryFailBase;
+      const parryStaWorst = parryAttempts.length * parryFailCost;
+      const parryAvgWinPct = parryAttempts.length > 0
+        ? Math.round((parryAttempts.reduce((a, x) => a + x.winPct, 0) / parryAttempts.length) * 100)
+        : 0;
+
+      // Dmg của RIÊNG nhóm đang hỏi — thứ người chơi thực sự cân nhắc lúc này.
+      // groupStartHit (0-based) dùng CÙNG công thức với realHitIndices ở
+      // interaction-handlers.js — lệch là báo sai nhóm.
+      const groupStartHit = currentGroupIdx * hitsPerCharge;
+      let thisGroupDmg = 0;
+      for (let h = groupStartHit + 1; h <= Math.min(groupStartHit + hitsInThisGroup, hitCount); h++) {
+        if (evadeSet.has(h)) continue;
+        // Nhóm đang hỏi: Guard trừ tất định; Parry trừ theo KỲ VỌNG (đã biết
+        // defRoll nên ước lượng được, sát thực tế hơn là bỏ qua hẳn).
+        const pPct = parryHitPct.get(h);
+        const mult = guardSet.has(h) ? (1 - guardPct) : (pPct !== undefined ? (1 - pPct) : 1);
+        thisGroupDmg += dmgAt(h) * mult;
+      }
+      const dmgPreview = remainingDmg.toFixed(1); // 1 số lẻ — đang hiện nhiều con số cùng lúc, 3 số lẻ chỉ gây rối
       const tagNote = [thisGroupBypass.blockGuard && "Unblockable", thisGroupBypass.blockEvade && "Undodgeable", thisGroupBypass.blockParry && "Unparriable", thisGroupBypass.guardBreak && "Guard Break"].filter(Boolean);
       const groupHitRangeStart = currentGroupIdx * hitsPerCharge + 1;
       const groupHitRangeEnd = groupHitRangeStart + hitsInThisGroup - 1;
@@ -794,7 +899,33 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
         content: mentionText,
         embeds: [{
           title: `⚔️ Đang bị tấn công! — ${hitRangeLabel}/${hitCount} (Nhóm ${currentGroupIdx + 1}/${groupCount})`,
-          description: `${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\` (dự kiến **${dmgPreview}** dmg tổng nếu không phòng thủ)${tagNote.length > 0 ? `\n> Nhóm này có tag: ${tagNote.join(", ")}` : ""}\n> ${isEnemyTarget ? "Enemy" : "Bạn"} có **${target.currentStamina} Stamina**. Chọn phòng thủ cho nhóm hit này:`,
+          description: (() => {
+            // Chỉ hiện dòng nào CÓ SỐ — không thì chỉ là nhiễu.
+            const rows = [`${attacker.label} tấn công ${targetResolved.label} với \`${p.dmgStr}\``];
+            rows.push(`> 💥 **Nhóm này**: ~**${thisGroupDmg.toFixed(1)}** dmg`);
+            const saved = [];
+            if (avoidedSure > 0) saved.push(`💨 né trọn **${avoidedSure.toFixed(1)}**`);
+            if (guardSaved > 0) saved.push(`🛡️ Guard chặn **${guardSaved.toFixed(1)}** *(giảm ${Math.round(guardPct * 100)}%)*`);
+            if (saved.length > 0) {
+              rows.push(`> ${saved.join(" · ")}`);
+              rows.push(`> 📊 Còn lại cả đòn: **${dmgPreview}** / ${totalRaw.toFixed(1)} gốc`);
+            } else {
+              rows.push(`> 📊 Cả đòn nếu không phòng thủ gì: **${dmgPreview}**`);
+            }
+            // Parry là XÁC SUẤT — hiện ĐỦ cả 3 mốc (thắng hết / kỳ vọng / thua
+            // hết) kèm giá phải trả khi thua, thay vì chỉ nói "nếu thắng".
+            if (parryAttempts.length > 0) {
+              rows.push(`> 🗡️ **Parry ${parryAttempts.length} roll / ${parryHitCount} hit** (~${parryAvgWinPct}% mỗi roll) — thắng hết: **${remainingIfParryWins.toFixed(1)}** · kỳ vọng: **${remainingExpected.toFixed(1)}** · thua hết: **${remainingIfParryLoses.toFixed(1)}** *(+${parryStaWorst} Sta)*`);
+            }
+            // Lưới an toàn: về nguyên tắc số roll luôn đủ (1 roll/charge, 1 charge
+            // phủ 1 cụm). Nếu vẫn lệch thì phải nói ra chứ không nuốt im lặng.
+            if (parryNoRollDmg > 0) {
+              rows.push(`> ⚠️ Có hit đã chọn Parry nhưng **hết roll** — ăn full **${parryNoRollDmg.toFixed(1)}**, không có lần thử nào`);
+            }
+            if (tagNote.length > 0) rows.push(`> ⚠️ Nhóm này có tag: ${tagNote.join(", ")}`);
+            rows.push(`> ${isEnemyTarget ? "Enemy" : "Bạn"} có **${target.currentStamina} Stamina**. Chọn phòng thủ cho nhóm hit này:`);
+            return rows.join("\n");
+          })(),
           color: 0xe67e22,
         }],
         components: [row, ...counterRows],

@@ -207,7 +207,7 @@ const WEAPONS = {
     name: "Atelier Logic", weight: "heavy", type: "Blunt", baseDamage: 26,
     passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }, {
       name: "2 dạng vũ khí",
-      desc: "Vũ khí có 2 form: Shotgun (Heavy/Blunt/26, metadata mặc định ở đây) và Pistols (Light/Pierce/6.5) — GM/player tự chọn form đang dùng khi tính M1, hệ thống chỉ lưu 1 baseDamage cố định (form Shotgun). Critical Pistols: roll qua `-skill atelier logic pistols` riêng.",
+      desc: "Vũ khí có 2 form: Shotgun (Heavy · Blunt · 26 dmg) và Pistols (Light · Pierce · 6.5 dmg). Dùng Critical của form nào thì đổi sang form còn lại — chỉ số M1, chi phí Stamina và số hit mỗi nhóm phòng thủ đổi theo.",
     }],
     criticalSkillKey: "atelier logic shotgun",
   },
