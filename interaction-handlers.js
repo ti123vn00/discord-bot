@@ -3381,6 +3381,72 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+// ─── LOADOUT CONSUMABLE (balequipconsumable: / balunequipconsumable:) ───────
+// Fragaria: "-balance chưa có chỗ để equip consumable item đem vào encounter".
+// LUẬT: tối đa **4 item/trận**, và **mỗi turn chỉ dùng được 1 item**.
+// Vế "1 lần/turn" đã có sẵn (`usedItemThisTurn` ở encounter-actions.js, reset ở
+// turn-advance.js) — ở đây chỉ lo phần XẾP LOADOUT.
+//
+// Loadout lưu trên PROFILE (`data.equippedConsumables`) chứ không phải trên
+// encounter: đặt 1 lần dùng cho mọi trận, giống weapon/outfit/accessory/page.
+// `player-join-builder.js` chép sang `combatant.consumablesLoadout` lúc join và
+// LỌC LẠI theo kho thật (có thể đã bán/dùng hết từ lúc xếp).
+// KHÔNG trừ item lúc equip — item chỉ tiêu lúc DÙNG trong trận.
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  const isEquip = interaction.customId.startsWith("balequipconsumable:");
+  const isUnequip = interaction.customId.startsWith("balunequipconsumable:");
+  if (!isEquip && !isUnequip) return;
+  const ownerId = interaction.customId.split(":")[1];
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới sửa được loadout.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferUpdate().catch(() => {});
+  try {
+    let note = "";
+    await withLock(ownerId, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(ownerId);
+      data.equippedConsumables = data.equippedConsumables ?? [];
+      if (isUnequip) {
+        // value = "<index>|<tên>" — cần index vì có thể xếp NHIỀU món TRÙNG TÊN,
+        // gỡ theo tên sẽ không biết gỡ cái nào.
+        const raw = interaction.values[0] ?? "";
+        const sep = raw.indexOf("|");
+        const idx = parseInt(raw.slice(0, sep), 10);
+        const name = raw.slice(sep + 1);
+        if (!Number.isInteger(idx) || data.equippedConsumables[idx] !== name) {
+          throw new Error("Loadout đã thay đổi — mở lại `-balance` rồi thử lại.");
+        }
+        data.equippedConsumables.splice(idx, 1);
+        note = `🗑️ Đã gỡ **${name}** khỏi loadout (còn ${data.equippedConsumables.length}/4).`;
+      } else {
+        const added = [], skipped = [];
+        for (const raw of interaction.values) {
+          const name = raw.split(":").slice(1).join(":");
+          if (data.equippedConsumables.length >= 4) { skipped.push(`${name} (đã đủ 4 slot)`); continue; }
+          const owned = data.items?.[name] ?? 0;
+          const alreadyIn = data.equippedConsumables.filter(n => n === name).length;
+          // Cùng luật với `-encounter additem`: xếp bao nhiêu cái cùng tên cũng
+          // được, miễn KHÔNG vượt số đang sở hữu.
+          if (alreadyIn >= owned) { skipped.push(`${name} (chỉ có ${owned} cái, đã xếp đủ)`); continue; }
+          data.equippedConsumables.push(name);
+          added.push(name);
+        }
+        if (added.length === 0 && skipped.length > 0) throw new Error(`Không xếp được: ${skipped.join(", ")}.`);
+        note = `🎒 Đã xếp **${added.join("**, **")}** vào loadout (${data.equippedConsumables.length}/4).`
+          + (skipped.length ? `\n> ⚠️ Bỏ qua: ${skipped.join(", ")}` : "");
+      }
+      await savePlayerData(ownerId, data, slot);
+    });
+    await interaction.editReply({
+      content: `${note}\n> Mỗi turn trong trận chỉ dùng được **1 item**. Dùng lại \`-balance\` để xem cập nhật.`,
+      components: [],
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}`, components: [] }).catch(() => {});
+  }
+});
+
 // ─── BƯỚC 2: chọn SLOT cho Page thường (balpageslot:) ───────────────────────
 // Tách riêng khỏi "balequippage:" vì Discord không phân biệt được 2 dropdown
 // trùng customId trong cùng message, và vì bước này cần biết page đã chọn.

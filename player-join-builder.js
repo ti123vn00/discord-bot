@@ -104,6 +104,21 @@ module.exports = function ({
     // Slot SINGULARITY (1 slot riêng) + E.G.O RIÊNG của từng nhân vật — xem
     // singularity.js / ego.js. Chép sang combatant để panel encounter chỉ hiện
     // ĐÚNG Critical của người đó, không xài chung kho như trước.
+    // Loadout consumable đặt sẵn ở -balance → mang thẳng vào trận.
+    // LỌC LẠI theo kho THẬT lúc join: người chơi có thể đã bán/dùng hết món đã
+    // xếp từ trước, mang vào rồi mới báo "không còn trong inventory" lúc dùng là
+    // quá muộn. Cap 4 (luật: tối đa 4 item/trận) và tôn trọng số lượng sở hữu
+    // (xếp 2 Chuối mà chỉ còn 1 thì chỉ mang 1).
+    {
+      const remaining = { ...(profileData.items ?? {}) };
+      joined.consumablesLoadout = [];
+      for (const n of (profileData.equippedConsumables ?? [])) {
+        if (joined.consumablesLoadout.length >= 4) break;
+        if ((remaining[n] ?? 0) <= 0) continue;
+        remaining[n] -= 1;
+        joined.consumablesLoadout.push(n);
+      }
+    }
     joined.equippedSingularity = profileData.equippedSingularity ?? null;
     joined.manifestedEgoKey = profileData.ManifestedEGO ?? null;
     // ── ACCESSORY passive lúc VÀO TRẬN (GAP ĐÃ SỬA — Fragaria: "toàn bộ

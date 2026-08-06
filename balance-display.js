@@ -107,6 +107,14 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
             (isSelf ? "\n> Dùng **Fixer's Note** (`-usenote`) để +10 Shin Lvl và +1 Mang Lvl" : ""),
           inline: false,
         }] : []),
+        // Loadout consumable — hiện LUÔN khi có, để người chơi biết mình mang gì
+        // trước khi vào trận (trước đây chỉ thấy được sau khi encounter đã chạy).
+        ...((data.equippedConsumables ?? []).length > 0 ? [{
+          name: "🎒 Item mang vào trận",
+          value: `${data.equippedConsumables.map((n, i) => `**#${i + 1}** ${n}`).join(" · ")}` +
+            `\n> ${data.equippedConsumables.length}/4 slot · **mỗi turn chỉ dùng được 1 item**`,
+          inline: false,
+        }] : []),
       ],
       footer: { text: INVENTORY_HINT_TEXT },
     };
@@ -201,6 +209,56 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
             .setPlaceholder("⚔️ Equip Weapon/Outfit/Accessory (chọn nhiều được)...")
             .setMinValues(1).setMaxValues(gearOptions.length)
             .addOptions(gearOptions)
+        ));
+      }
+      // ── CONSUMABLE LOADOUT (Fragaria: "-balance chưa có chỗ để equip
+      // consumable item đem vào encounter") ────────────────────────────────
+      // LUẬT: "một trận chỉ có thể mang 4 consumable vào trận, và mỗi turn chỉ
+      // được sử dụng một lần một consumable item".
+      // Cả 2 vế ĐÃ có sẵn trong code (`consumablesLoadout` cap 4 ở
+      // -encounter additem; `usedItemThisTurn` chặn 1 lần/turn ở
+      // encounter-actions.js, reset ở turn-advance.js) — chỉ THIẾU đường đặt
+      // trước từ -balance, nên người chơi buộc phải gõ `-encounter additem`
+      // từng món SAU khi trận đã bắt đầu.
+      //
+      // Cách làm: lưu `data.equippedConsumables` (mảng ≤4) trên PROFILE, rồi
+      // player-join-builder chép sang `combatant.consumablesLoadout` lúc join —
+      // cùng mô hình với weapon/outfit/accessory/page, đặt 1 lần dùng mãi.
+      // KHÔNG trừ item lúc equip: item chỉ bị tiêu lúc DÙNG trong trận
+      // (encounter-actions.js đã trừ), equip chỉ là danh sách mang theo.
+      const equippedConsumables = data.equippedConsumables ?? [];
+      // Item được coi là consumable = có trong kho, KHÔNG phải accessory
+      // (accessory đeo 3 slot riêng, không phải đồ dùng 1 lần).
+      const consumableCounts = {};
+      for (const n of equippedConsumables) consumableCounts[n] = (consumableCounts[n] ?? 0) + 1;
+      const ownedConsumables = Object.keys(data.items ?? {}).filter(n =>
+        (data.items[n] ?? 0) > 0 && !findAccessory(n)
+        // Chỉ hiện món CÒN DƯ so với số đã xếp vào loadout — mang 2 Chuối thì
+        // phải sở hữu ≥2, đúng luật của `-encounter additem`.
+        && (consumableCounts[n] ?? 0) < data.items[n]);
+      if (ownedConsumables.length > 0 && equippedConsumables.length < 4) {
+        const consumableOptions = ownedConsumables.slice(0, 25).map(n =>
+          new StringSelectMenuOptionBuilder()
+            .setLabel(`${n} (có ${data.items[n]})`.slice(0, 100))
+            .setDescription(`Mang vào trận — đang xếp ${equippedConsumables.length}/4`.slice(0, 100))
+            .setValue(`consumable:${n}`).setEmoji("🎒"));
+        components.push(new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`balequipconsumable:${targetUser.id}`)
+            .setPlaceholder(`🎒 Item mang vào trận (${equippedConsumables.length}/4) — chọn thêm...`)
+            .setMinValues(1).setMaxValues(Math.min(consumableOptions.length, 4 - equippedConsumables.length))
+            .addOptions(consumableOptions)
+        ));
+      }
+      if (equippedConsumables.length > 0) {
+        // Dropdown GỠ riêng — trùng tên vẫn gỡ đúng 1 cái nhờ value kèm index.
+        components.push(new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`balunequipconsumable:${targetUser.id}`)
+            .setPlaceholder(`🗑️ Gỡ item khỏi loadout (${equippedConsumables.length}/4)...`)
+            .setMinValues(1).setMaxValues(1)
+            .addOptions(equippedConsumables.slice(0, 25).map((n, i) =>
+              new StringSelectMenuOptionBuilder().setLabel(`#${i + 1} ${n}`.slice(0, 100)).setValue(`${i}|${n}`.slice(0, 100)).setEmoji("🗑️")))
         ));
       }
       // Page/E.G.O Page: cùng logic "số dư" như accessory (có thể sở hữu
