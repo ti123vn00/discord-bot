@@ -1781,9 +1781,10 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         tremorHemorrhageActive: !!player.tremorHemorrhage,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
-        // Địch KHÔNG có thanh Sanity (maxSanity 0, VD boss Nothing There) → Sinking
-        // ăn dmg NGAY từ hit đầu thay vì phải bào 45 Sanity. Xem damage-calc.js.
-        noSanity: (t.combatant.maxSanity ?? 0) <= 0,
+        // Địch khai `noSanity` (CHỈ boss Nothing There) → Sinking ăn dmg NGAY từ
+        // hit đầu thay vì phải bào 45 Sanity. Xem damage-calc.js.
+        // KHÔNG suy từ maxSanity — Rats/Hook Gang/Amon vẫn CÓ Sanity (start 0).
+        noSanity: t.combatant.noSanity === true,
       };
       const preview = calcMathCore(calcOpts);
       // Defender reduction (Smoldering Resolve) áp NGAY ở preview để hiển thị đúng
@@ -2019,9 +2020,10 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         tremorHemorrhageActive: !!player.tremorHemorrhage,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
-        // Địch KHÔNG có thanh Sanity (maxSanity 0, VD boss Nothing There) → Sinking
-        // ăn dmg NGAY từ hit đầu thay vì phải bào 45 Sanity. Xem damage-calc.js.
-        noSanity: (t.combatant.maxSanity ?? 0) <= 0,
+        // Địch khai `noSanity` (CHỈ boss Nothing There) → Sinking ăn dmg NGAY từ
+        // hit đầu thay vì phải bào 45 Sanity. Xem damage-calc.js.
+        // KHÔNG suy từ maxSanity — Rats/Hook Gang/Amon vẫn CÓ Sanity (start 0).
+        noSanity: t.combatant.noSanity === true,
       };
       const preview = calcMathCore(calcOpts);
       const finalDmgAfterReduction = preview.totalDmg * saturateDR(1 - defReductionPct / 100);
@@ -2210,9 +2212,10 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
         tremorHemorrhageActive: !!enemy.tremorHemorrhage,
         burnInit: t.combatant.burn, bleedInit: t.combatant.bleed, tremorInit: t.combatant.tremor,
         sanityInit: t.combatant.currentSanity,
-        // Địch KHÔNG có thanh Sanity (maxSanity 0, VD boss Nothing There) → Sinking
-        // ăn dmg NGAY từ hit đầu thay vì phải bào 45 Sanity. Xem damage-calc.js.
-        noSanity: (t.combatant.maxSanity ?? 0) <= 0,
+        // Địch khai `noSanity` (CHỈ boss Nothing There) → Sinking ăn dmg NGAY từ
+        // hit đầu thay vì phải bào 45 Sanity. Xem damage-calc.js.
+        // KHÔNG suy từ maxSanity — Rats/Hook Gang/Amon vẫn CÓ Sanity (start 0).
+        noSanity: t.combatant.noSanity === true,
       };
       const preview = calcMathCore(calcOpts);
       const finalDmgAfterReduction = preview.totalDmg * saturateDR(1 - defReductionPct / 100);

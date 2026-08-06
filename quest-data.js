@@ -73,10 +73,18 @@ const CONTRACTS = {
 // y hệt -encounter addenemy's skills: list) — ĐÃ VERIFY đủ 9/10 skill nêu ra đã có
 // sẵn trong database, CHỈ THIẾU "Borrowed Eyes" (Fragaria báo sẽ gửi sau — Eye
 // Gouger tạm chưa có skill này trong list, thêm sau khi có dice/light cost thật).
+// ⚠️ maxSanity: Fragaria xác nhận trực tiếp — "Rats, Hook Gang, Amon Syndicate ĐỀU
+// CÓ Sanity, chúng start với 0 Sanity và tùy tình huống có thể xuống -45 hoặc lên 45".
+// Nên `maxSanity: 45` (mọi combatant đều bắt đầu ở currentSanity 0, xem
+// combatant-factory.js). TRƯỚC ĐÂY để 0 — chỉ có nghĩa "khởi điểm 0" trong ý đồ ban
+// đầu, nhưng code đọc thành "KHÔNG CÓ thanh Sanity" nên mob không hiện Sanity và bị
+// kẹp về 0 ở vài chỗ Math.min(maxSanity, …).
+// "Không có Sanity" GIỜ khai bằng cờ RIÊNG `noSanity: true` (chỉ Nothing There) —
+// KHÔNG suy từ maxSanity nữa, để 2 khái niệm này không lẫn vào nhau lần nữa.
 const QUEST_MOBS = {
   rats: {
     name: "Rats",
-    maxHp: 60, maxStamina: 60, maxLight: 0, maxSanity: 0,
+    maxHp: 60, maxStamina: 60, maxLight: 0, maxSanity: 45,
     weaponWeight: "light",
     resistance: { B: 1.5, P: 1.5, S: 1.5 },
     m1DmgStr: "4P",
@@ -84,7 +92,7 @@ const QUEST_MOBS = {
   },
   hookgang: {
     name: "Thành viên nhóm lưỡi câu",
-    maxHp: 140, maxStamina: 100, maxLight: 4, maxSanity: 0,
+    maxHp: 140, maxStamina: 100, maxLight: 4, maxSanity: 45,
     weaponWeight: "light",
     resistance: { B: 1, P: 1.2, S: 1 },
     m1DmgStr: "5S",
@@ -92,7 +100,7 @@ const QUEST_MOBS = {
   },
   amonsyndicate: {
     name: "Amon Syndicate Member",
-    maxHp: 560, maxStamina: 400, maxLight: 5, maxSanity: 0,
+    maxHp: 560, maxStamina: 400, maxLight: 5, maxSanity: 45,
     // Xác nhận trực tiếp: "Amon xài light weapon".
     weaponWeight: "light",
     resistance: { B: 0.8, P: 1.3, S: 0.8 },
@@ -107,7 +115,7 @@ const QUEST_MOBS = {
   },
   eyegouger: {
     name: "Eye Gouger",
-    maxHp: 600, maxStamina: 450, maxLight: 6, maxSanity: 0,
+    maxHp: 600, maxStamina: 450, maxLight: 6, maxSanity: 45,
     weaponWeight: "light", // xác nhận trực tiếp: "Eyegouger... xài light weapon"
     resistance: { B: 0.8, P: 1.3, S: 1 },
     m1DmgStr: "6P",
@@ -122,8 +130,11 @@ const QUEST_MOBS = {
     name: "Nothing There",
     isWeeklyBoss: true,
     maxHp: 3000, maxStamina: 500, maxLight: 0,
-    // "Không có Sanity" — maxSanity 0 nên mọi cơ chế Sanity/Panic bỏ qua.
-    maxSanity: 0,
+    // "Không có Sanity" (Fragaria) — CỜ TƯỜNG MINH, không suy từ maxSanity.
+    // Hệ quả: Sinking ăn dmg NGAY từ hit đầu (coi như luôn ở đáy Sanity),
+    // The Departed dùng cap 15, và MỌI nguồn Sanity trượt hết ⇒ không bao giờ
+    // Panic. Xem damage-calc.js + sanity-emotion.js.
+    maxSanity: 0, noSanity: true,
     resistance: { B: 1, P: 1, S: 1 },
     // "M1 (Không có)" — boss KHÔNG đánh thường, chỉ dùng page theo pattern.
     m1DmgStr: null, noM1: true,

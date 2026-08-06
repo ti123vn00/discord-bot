@@ -255,6 +255,18 @@ module.exports = function ({
         mob.m1DmgStr = mobData.m1DmgStr;
         if (mobData.m1DmgStrAlt) mob.m1DmgStrAlt = mobData.m1DmgStrAlt;
         if (mobData.ammoImmune) mob.ammoImmune = true;
+        // Cờ "không có Sanity" — PHẢI chuyển sang combatant, nếu không
+        // damage-calc/applySanityGain không thấy (chúng đọc combatant, không đọc
+        // QUEST_MOBS).
+        if (mobData.noSanity) mob.noSanity = true;
+        if (mobData.defenseImmune) mob.defenseImmune = true;
+        if (mobData.noStaminaCost) mob.noStaminaCost = true;
+        if (mobData.noM1) mob.noM1 = true;
+        if (mobData.aiSpreadTargets) mob.aiSpreadTargets = true;
+        if (Array.isArray(mobData.attackPattern)) {
+          mob.attackPattern = mobData.attackPattern;
+          mob.bossPatternIdx = 0;
+        }
         if (mobData.permanentDiceUp) {
           mob.diceUp = (mob.diceUp ?? 0) + mobData.permanentDiceUp;
           mob.permanentDiceUp = mobData.permanentDiceUp;

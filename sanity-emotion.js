@@ -14,18 +14,29 @@ module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, E
   }
   
   function applySanityGain(combatant, amount) {
-    // Địch KHÔNG CÓ chỉ số Sanity (maxSanity 0 — VD boss "Nothing There",
-    // Rats, Eye Gouger…) thì mọi nguồn Sanity phải TRƯỢT hoàn toàn.
+    // Địch khai `noSanity: true` (CHỈ boss "Nothing There") thì mọi nguồn Sanity
+    // phải TRƯỢT hoàn toàn.
+    // ⚠️ KHÔNG suy từ `maxSanity <= 0` — Fragaria xác nhận Rats/Hook Gang/Amon
+    // ĐỀU CÓ Sanity, chỉ là START ở 0 rồi trôi tới ±45. Suy từ maxSanity sẽ vô
+    // hiệu hoá Sanity của cả 4 mob đó (tôi đã sai đúng chỗ này 1 lần).
     // TRƯỚC ĐÂY vẫn cộng/trừ bình thường vào `currentSanity`, nên đủ nguồn thì
     // chỉ số này trôi tới ±45 và `checkStaggerPanic` cho boss **PANIC** — trạng
     // thái mà một sinh vật "không có Sanity" đáng lẽ miễn nhiễm.
     // Chặn Ở ĐÂY (nguồn duy nhất cộng Sanity) thay vì vá từng nơi gọi.
-    if ((combatant.maxSanity ?? 0) <= 0) return;
-    if (hasPerk(combatant, "Negative Thoughts")) {
-      combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, combatant.currentSanity - amount);
-    } else {
-      combatant.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, combatant.currentSanity + amount);
-    }
+    if (combatant.noSanity === true) return;
+    // BUG ĐÃ SỬA (test tự bắt): mỗi nhánh TRƯỚC ĐÂY chỉ kẹp MỘT phía —
+    // nhánh thường chỉ `Math.min(+45, …)`, nhánh Negative Thoughts chỉ
+    // `Math.max(-45, …)`. Gọi với `amount` ÂM ở nhánh thường (hoặc DƯƠNG ở nhánh
+    // Negative Thoughts) là trôi vượt biên: đo được **-200** sau 20 lần
+    // `applySanityGain(mob, -10)`.
+    // Fragaria xác nhận biên đúng là **-45 … +45**. Kẹp CẢ HAI phía ở CẢ HAI
+    // nhánh — không phụ thuộc vào việc caller có truyền số âm hay không.
+    // (Hiện mọi caller đều truyền số dương nên chưa lộ, nhưng đây là hàm dùng
+    // chung, không được để bẫy sẵn.)
+    const raw = hasPerk(combatant, "Negative Thoughts")
+      ? combatant.currentSanity - amount
+      : combatant.currentSanity + amount;
+    combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, Math.min(ENCOUNTER_SANITY_MAX, raw));
   }
   
   /**
