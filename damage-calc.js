@@ -110,6 +110,9 @@ function calcMathCore(opts) {
     critDiv = 0,
     sanityInit = 0,
     diceMul = 1,
+    // noSanity — địch KHÔNG CÓ chỉ số Sanity (maxSanity === 0), VD boss
+    // "Nothing There". Xem khối Sinking bên dưới để biết vì sao cần cờ này.
+    noSanity = false,
     sinkingInit = 0,
     ruptureInit = 0,
     theLiving = 0,
@@ -294,7 +297,20 @@ function calcMathCore(opts) {
       const sanityBefore = sanity;
       const sanityLoss = Math.max(1, Math.floor(enemySinking / 15));
       sanity = Math.max(sanity - sanityLoss, SANITY_MIN);
-      if (sanityBefore <= SANITY_MIN || sanity <= SANITY_MIN) {
+      // BUG ĐÃ SỬA (Fragaria: "boss Nothing There KHÔNG có sanity, tức nghĩa là
+      // lúc nào Sinking cũng hoạt động phần dmg — cái này có đúng chưa?").
+      // CHƯA ĐÚNG. Sinking chỉ gây dmg khi Sanity CHẠM ĐÁY (`<= SANITY_MIN`, tức
+      // -45). Địch không có Sanity được tạo với `currentSanity: 0` — mà 0 KHÔNG
+      // phải đáy ⇒ phải bào 45 lần mất Sanity mới bắt đầu ăn dmg.
+      // ĐO THẬT trước khi sửa: Sinking 10 · 5 hit 20B →
+      //   sanity 0   = 100 dmg   (y HỆT khi Sinking = 0 ⇒ phần dmg KHÔNG chạy)
+      //   sanity -45 = 140 dmg   (đáy, Sinking ăn dmg đủ 5 hit)
+      // → Với địch KHÔNG CÓ Sanity, coi như LUÔN ở đáy: không có thanh Sanity thì
+      // không có gì để bào, phần dmg phải áp ngay từ hit đầu.
+      // Lưu ý: đây KHÁC với "người có Sanity đang ở mức 0" — người đó vẫn còn 45
+      // điểm để bào, nên vẫn phải bào như cũ. Phân biệt bằng cờ `noSanity`
+      // (maxSanity === 0), KHÔNG phải bằng `sanity === 0`.
+      if (noSanity || sanityBefore <= SANITY_MIN || sanity <= SANITY_MIN) {
         instanceDmg += enemySinking;
         sinkingBonus = enemySinking;
       }
@@ -314,7 +330,9 @@ function calcMathCore(opts) {
     let departedBonus = 0;
     if (departedStacks > 0) {
       const departedRaw = Math.floor(sinkingBeforeProc / 2) + departedStacks;
-      const departedCap = sanity > SANITY_MIN ? 30 : 15;
+      // Cùng lý do với Sinking ở trên: địch KHÔNG CÓ Sanity thì coi như đã ở
+      // đáy (không có thanh nào để bào) ⇒ dùng cap 15, không phải 30.
+      const departedCap = (!noSanity && sanity > SANITY_MIN) ? 30 : 15;
       departedBonus = Math.min(departedRaw, departedCap);
       instanceDmg += departedBonus;
       totalDepartedDmg += departedBonus;

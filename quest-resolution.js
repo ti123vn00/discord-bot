@@ -55,7 +55,13 @@ module.exports = function ({
       const parsed = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
       const data = (parsed && parsed.date === today) ? parsed : { date: today, count: 0 };
       // ── WEEKLY BOSS: 1 lần/tuần, KHÔNG tính vào hạn mức 4 contract/ngày ────
-      // Fragaria: "một tuần chỉ nhận thưởng được một lần".
+      // Fragaria chốt: "một tuần chỉ nhận thưởng được một lần, RESET VÀO
+      // 0h00 AM SÁNG MỖI THỨ HAI" (giờ VN).
+      // VN = UTC+7 nên mốc thật là 17:00 CHỦ NHẬT UTC. `getVNNow()` đã cộng sẵn
+      // 7 tiếng nên `getUTCDay()` trên nó CHÍNH LÀ thứ theo giờ VN — không được
+      // thay bằng `new Date().getUTCDay()`, sẽ lệch mốc 7 tiếng mỗi tuần.
+      // Có test khoá mốc: t-weekly-reset.js (CN 23:59:59 và T2 00:00:00 phải ra
+      // 2 key KHÁC nhau; quét cả 365 ngày mốc luôn rơi đúng Thứ Hai).
       // Dùng key riêng có sẵn ngày THỨ HAI của tuần ⇒ tuần mới = key mới, tự
       // reset, không cần job dọn (cùng cách với hạn ngạch shop K-Corp Ampule).
       // Đặt TTL 8 ngày để key cũ tự biến mất.

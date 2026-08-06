@@ -14,6 +14,13 @@ module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, E
   }
   
   function applySanityGain(combatant, amount) {
+    // Địch KHÔNG CÓ chỉ số Sanity (maxSanity 0 — VD boss "Nothing There",
+    // Rats, Eye Gouger…) thì mọi nguồn Sanity phải TRƯỢT hoàn toàn.
+    // TRƯỚC ĐÂY vẫn cộng/trừ bình thường vào `currentSanity`, nên đủ nguồn thì
+    // chỉ số này trôi tới ±45 và `checkStaggerPanic` cho boss **PANIC** — trạng
+    // thái mà một sinh vật "không có Sanity" đáng lẽ miễn nhiễm.
+    // Chặn Ở ĐÂY (nguồn duy nhất cộng Sanity) thay vì vá từng nơi gọi.
+    if ((combatant.maxSanity ?? 0) <= 0) return;
     if (hasPerk(combatant, "Negative Thoughts")) {
       combatant.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, combatant.currentSanity - amount);
     } else {

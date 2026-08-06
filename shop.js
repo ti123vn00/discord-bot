@@ -45,8 +45,11 @@ module.exports = function ({
 
   /** weeklyStockKey — key Redis đếm số đã bán TOÀN SERVER trong tuần.
    *
-   *  Mốc tuần tính theo GIỜ VN, bắt đầu THỨ HAI 00:00 — dùng chung ý tưởng với
-   *  mốc reset ngày của -daily để người chơi không phải nhớ 2 loại mốc khác nhau.
+   *  Mốc tuần: **00:00 sáng THỨ HAI giờ VN** — DÙNG CHUNG mốc với weekly boss
+   *  (quest-resolution.js) để người chơi chỉ phải nhớ MỘT mốc duy nhất.
+   *  VN = UTC+7 nên mốc thật là 17:00 Chủ Nhật UTC. `getVNNow()` đã cộng sẵn 7
+   *  tiếng nên `getUTCDay()` trên nó chính là thứ theo giờ VN.
+   *  Có test khoá mốc + đối chiếu KHỚP với weekly boss: t-weekly-reset.js.
    *  Key có sẵn ngày bắt đầu tuần nên tuần mới = key mới ⇒ "reset theo tuần" là
    *  TỰ NHIÊN, không cần job dọn dẹp. Đặt TTL 8 ngày để key cũ tự biến mất.
    */
