@@ -2338,6 +2338,16 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 
 
 // ─── SKILL DATA (tách sang skills.js) ───────────────────────────────────────
+// BUG DEPLOY ĐÃ SỬA — TDZ: "ReferenceError: Cannot access 'findSingularity' before
+// initialization" (Render exit status 1). Hai require này TRƯỚC ĐÂY đặt cạnh
+// `require("./accessory")` ở dòng ~2383, tức SAU chỗ dùng ở dòng 2342
+// (`require("./encounter-panels")({ ..., findSingularity, egoSkillKeysFor })`).
+// `const` trong TDZ → crash NGAY lúc boot, không phải lỗi logic nên `node --check`
+// (chỉ kiểm cú pháp) hoàn toàn không thấy.
+// Cả singularity.js lẫn ego.js là DỮ LIỆU THUẦN, không phụ thuộc gì trong index.js,
+// nên đặt sớm là an toàn tuyệt đối. Xem thêm test t-boot.js.
+const { SINGULARITIES, findSingularity } = require("./singularity");
+const { MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor } = require("./ego");
 const { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll } = require("./skills");
 const { buildEncounterActionPanel, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildBossActionPanel } = require("./encounter-panels")({
   findSkill, resolveSkillKey, cdKeyFor, findSingularity, egoSkillKeysFor, hasPerk, hasShinAccess,
@@ -2381,10 +2391,6 @@ function findWeaponAnywhere(raw) {
 }
 const { findOutfit } = require("./outfit");
 const { findAccessory } = require("./accessory");
-// MỚI — slot Singularity RIÊNG (đúng 1 slot/người, tách khỏi weapon/outfit/accessory)
-const { SINGULARITIES, findSingularity } = require("./singularity");
-// MỚI — Manifested E.G.O RIÊNG từng nhân vật (không dùng chung kho như trước)
-const { MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor } = require("./ego");
 const { findSfx, pickRandomBgm } = require("./sfx-config");
 const { buildBalanceEmbed } = require("./balance-display")({ getPlayerData, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS, getActiveProfileSlot, getProfileNames }); // ĐÃ TÁCH sang file riêng (balance-display.js) — đặt SAU findOutfit/findAccessory (const, TDZ)
 const { buildJoinedCombatant } = require("./player-join-builder")({ createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, validateAndRerollPrescriptRound, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_SANITY_MAX }); // module MỚI — TÁCH logic "-encounter join" để dùng chung với auto-join từ Party Board (quest system) — đặt SAU findOutfit (const, TDZ)
