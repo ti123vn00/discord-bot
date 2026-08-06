@@ -16,7 +16,7 @@
 // cập nhật nếu weapon.js thêm vũ khí có cùng mechanicId.
 const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 
-module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ applyHpLoss, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -845,18 +845,11 @@ async function resolveOnePendingAction(encounter, p) {
                 finalDmg -= absorbed;
                 shieldHpNote = ` 🛡️[Shield HP hấp thụ ${absorbed.toFixed(3)}, còn ${target.shieldHp.toFixed(3)}]`;
               }
-              target.currentHp = Math.max(0, target.currentHp - finalDmg);
-              // "Hana Association": "+1 Dice Up mỗi 10 HP mất trong turn" — tích
-              // luỹ hpLostThisTurn, so sánh ngưỡng 10 TRƯỚC/SAU để chỉ cộng phần
-              // CHÊNH LỆCH (không ghi đè diceUp có thể đã tăng từ nguồn khác).
-              if (target.hasHanaAssociation && finalDmg > 0) {
-                const thresholdBefore = Math.floor((target.hpLostThisTurn ?? 0) / 10);
-                target.hpLostThisTurn = (target.hpLostThisTurn ?? 0) + finalDmg;
-                const thresholdAfter = Math.floor(target.hpLostThisTurn / 10);
-                if (thresholdAfter > thresholdBefore) {
-                  target.diceUp = (target.diceUp ?? 0) + (thresholdAfter - thresholdBefore);
-                }
-              }
+              // "Hana Association": "+1 Dice Up mỗi 10 HP mất trong turn".
+              // Logic đã GOM vào applyHpLoss (combat-utils.js) để MỌI nguồn mất
+              // HP đều được đếm — trước đây CHỈ dòng này đếm, 19 chỗ trừ HP còn
+              // lại (dmg phản, Bleed tự cắn, Tremor Burst…) hoàn toàn không.
+              applyHpLoss(target, finalDmg);
               // "Dieci Association": "Khi bị tấn công và bạn có Shield HP, kẻ
               // địch sẽ nhận 2 Sinking" — target (bị tấn công) có outfit này VÀ
               // shieldHp > 0 → attacker (kẻ đang tấn công target) nhận 2 Sinking.
@@ -884,7 +877,7 @@ async function resolveOnePendingAction(encounter, p) {
                 if (hasPayback) {
                   target.paybackUsedThisTurn = true;
                   const reflectedDmg = finalDmg * 0.5;
-                  attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - reflectedDmg);
+                  applyHpLoss(attacker.combatant, reflectedDmg); // đếm vào hpLostThisTurn (Hana)
                   attacker.combatant.fragile = Math.min(99, (attacker.combatant.fragile ?? 0) + 5);
                   attacker.combatant.vengeanceMark = (attacker.combatant.vengeanceMark ?? 0) + 1;
                   paybackNote = ` 🔗**Payback** — phản ${reflectedDmg.toFixed(3)} Dmg [Blunt] lên ${attacker.label}, gây 5 Fragile + 1 Vengeance Mark.`;
@@ -1061,7 +1054,7 @@ async function resolveOnePendingAction(encounter, p) {
                 const haouSinkingTriggered = (target.haouSinking ?? 0) > 0 && target.currentSanity <= 0;
                 target.currentSanity = t.preview.finalSanity;
                 if (haouSinkingTriggered) {
-                  target.currentHp = Math.max(0, target.currentHp - target.haouSinking);
+                  applyHpLoss(target, target.haouSinking);
                   target.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, target.currentSanity - 1);
                   checkStaggerPanic(target);
                 }
@@ -1176,7 +1169,7 @@ async function resolveOnePendingAction(encounter, p) {
                 // CHỈ tính đúng 1 lần cho action đó — kiểm tra targetIdx===0 để
                 // tránh trừ lặp lại theo số target.
                 if (p.targets.indexOf(t) === 0 && (attacker.combatant.fairy ?? 0) > 0) {
-                  attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - Math.floor(attacker.combatant.fairy / 3));
+                  applyHpLoss(attacker.combatant, Math.floor(attacker.combatant.fairy / 3));
                 }
                 // Ammo system — Frost/Incendiary Ammo (xác nhận trực tiếp): "Frost
                 // Ammo: gây 1 Paralyze. Incendiary Ammo: gây 2 Burn." — áp lên
@@ -1322,7 +1315,7 @@ async function resolveOnePendingAction(encounter, p) {
               const bleedSelfDmgPerHit = Math.floor((attacker.combatant.bleed / 4) * (attacker.combatant.sizzlingWound ? 1.5 : 1) * hemorrhageMult);
               const bleedSelfDmg = bleedSelfDmgPerHit * totalHitsThisActionAny;
               if (bleedSelfDmg > 0) {
-                attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - bleedSelfDmg);
+                applyHpLoss(attacker.combatant, bleedSelfDmg);
                 checkStaggerPanic(attacker.combatant);
                 bleedSelfNote = ` [🩸Bleed tự gây ${bleedSelfDmgPerHit} dmg × ${totalHitsThisActionAny} hit = ${bleedSelfDmg} dmg lên ${attacker.label}]`;
               }
@@ -1333,7 +1326,7 @@ async function resolveOnePendingAction(encounter, p) {
             // như Bleed thường ở trên (nhân totalHitsThisActionAny).
             if ((attacker.combatant.haouBleed ?? 0) > 0 && totalHitsThisActionAny > 0) {
               const haouBleedSelfDmg = attacker.combatant.haouBleed * totalHitsThisActionAny;
-              attacker.combatant.currentHp = Math.max(0, attacker.combatant.currentHp - haouBleedSelfDmg);
+              applyHpLoss(attacker.combatant, haouBleedSelfDmg);
               checkStaggerPanic(attacker.combatant);
               bleedSelfNote += ` [🩸Haou Bleed tự gây ${attacker.combatant.haouBleed} dmg × ${totalHitsThisActionAny} hit = ${haouBleedSelfDmg} dmg lên ${attacker.label}]`;
             }
@@ -1512,7 +1505,7 @@ async function resolveOnePendingAction(encounter, p) {
                   const dcExplodeDmgPerHit = Math.floor((dcTarget.bleed / 4) * (dcTarget.sizzlingWound ? 1.5 : 1) * dcHemMult);
                   const dcTotalDmg = dcExplodeDmgPerHit * darkCloudExplodeGain;
                   if (dcTotalDmg > 0) {
-                    dcTarget.currentHp = Math.max(0, dcTarget.currentHp - dcTotalDmg);
+                    applyHpLoss(dcTarget, dcTotalDmg);
                     checkStaggerPanic(dcTarget);
                     resultLines.push(`🩸 **Dark Cloud** — ${tResolved.label} bị nổ Bleed ${darkCloudExplodeGain} lần, mất ${dcTotalDmg} HP.`);
                   }
@@ -1703,7 +1696,7 @@ async function resolveOnePendingAction(encounter, p) {
                 // Propellant Round bên dưới) — KHÔNG bịa field cờ mới, vì cờ tự
                 // chế sẽ không có ai đọc (lỗi "cờ mồ côi" đã mắc trước đây).
                 const tbRes = calcMathCore({ dmgStr: "0B+TremorBurst", resStr: combatantResStr(tr.combatant), tremorInit: tr.combatant.tremor ?? 0 });
-                tr.combatant.currentHp = Math.max(0, tr.combatant.currentHp - tbRes.totalDmg);
+                applyHpLoss(tr.combatant, tbRes.totalDmg);
                 tr.combatant.currentStamina = Math.max(0, (tr.combatant.currentStamina ?? 0) - tbRes.totalTremorStaminaLoss);
                 tr.combatant.tremor = tbRes.finalTremor;
                 checkStaggerPanic(tr.combatant);
@@ -2040,7 +2033,7 @@ async function resolveOnePendingAction(encounter, p) {
                   diceUpGain(3 * stackBeforeDump);
                   if (stackBeforeDump >= 15) {
                     const tbResult = calcMathCore({ dmgStr: "0B+TremorBurst", resStr: combatantResStr(scorchTarget), tremorInit: scorchTarget.tremor ?? 0 });
-                    scorchTarget.currentHp = Math.max(0, scorchTarget.currentHp - tbResult.totalDmg);
+                    applyHpLoss(scorchTarget, tbResult.totalDmg);
                     scorchTarget.currentStamina = Math.max(0, scorchTarget.currentStamina - tbResult.totalTremorStaminaLoss);
                     scorchTarget.tremor = tbResult.finalTremor;
                   }
@@ -2062,7 +2055,7 @@ async function resolveOnePendingAction(encounter, p) {
               let tsbNote = ` 🐯[Triple Slash Blast: tiêu ${consumed} Tigermark Round → +${consumed} Burn/+${consumed} Tremor]`;
               if (consumed >= 6) {
                 const tbR = calcMathCore({ dmgStr: "0B+TremorBurst", resStr: combatantResStr(scorchTarget), tremorInit: scorchTarget.tremor ?? 0 });
-                scorchTarget.currentHp = Math.max(0, scorchTarget.currentHp - tbR.totalDmg);
+                applyHpLoss(scorchTarget, tbR.totalDmg);
                 scorchTarget.currentStamina = Math.max(0, scorchTarget.currentStamina - tbR.totalTremorStaminaLoss);
                 scorchTarget.tremor = tbR.finalTremor;
                 tsbNote += ` + Tremor Burst (-${tbR.totalTremorStaminaLoss} Sta/-${tbR.totalDmg.toFixed(3)} HP)`;

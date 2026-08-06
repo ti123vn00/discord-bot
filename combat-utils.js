@@ -246,6 +246,74 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     return notes;
   }
 
+  /** computeDiceModifier — Dice Up/Down NET của một combatant.
+   *
+   *  BUG GỐC ĐÃ SỬA (Fragaria: "passive của Hana Outfit có vẻ hoạt động không
+   *  đúng, player báo là nó không hoạt động").
+   *
+   *  Hana Association CHỈ có một hiệu ứng duy nhất: "+1 Dice Up với mỗi 10 HP
+   *  mất trong turn". Phần CỘNG Dice Up chạy đúng (resolve-pending-action.js,
+   *  có ngưỡng 10, không ghi đè nguồn khác). Cái sai nằm ở phần TIÊU THỤ:
+   *  `combatant.diceUp` TRƯỚC ĐÂY chỉ được đọc ở ĐÚNG MỘT chỗ —
+   *  `skill-verification.js` khi roll dice của SKILL/PAGE. **Đánh thường (M1)
+   *  dựng dmgStr thẳng từ `weaponBaseDamage` và KHÔNG đọc diceUp một lần nào.**
+   *  → Người chơi mặc Hana, ăn 40 dmg, được +4 Dice Up, rồi đánh thường: con số
+   *  y hệt lúc chưa có buff. Nhìn từ ngoài đúng là "outfit không hoạt động".
+   *
+   *  Không phải lỗi riêng Hana: Dice Down / Freeble / Tremor Chain cũng KHÔNG
+   *  ảnh hưởng M1 — debuff giảm dice của địch vô hiệu trước đánh thường.
+   *  Nên sửa ở TẦNG CHUNG: tách công thức ra đây, cho CẢ skill LẪN M1 dùng, để
+   *  hai đường không bao giờ lệch nhau nữa.
+   *
+   *  `blackSilenceCritBonus` chỉ áp cho Critical nên nhận qua tham số, không
+   *  nhét vào đây.
+   */
+  function computeDiceModifier(combatant, { blackSilenceCritBonus = 0 } = {}) {
+    if (!combatant) return 0;
+    const tremorChainPenalty = (combatant.tremorChain ?? 0) > 0 ? Math.floor((combatant.tremor ?? 0) / 10) : 0;
+    return (combatant.diceUp ?? 0) - (combatant.diceDown ?? 0) - (combatant.freeble ?? 0)
+      - tremorChainPenalty + blackSilenceCritBonus;
+  }
+
+  /** applyHpLoss — trừ HP và ĐẾM vào `hpLostThisTurn` (Hana Association).
+   *
+   *  GAP ĐÃ SỬA (Fragaria: "passive của Hana Outfit có vẻ hoạt động không đúng,
+   *  player báo là nó không hoạt động").
+   *
+   *  Keypage Hana: "+1 Dice Up với mỗi 10 HP **BẠN MẤT** trong turn" — tức MỌI
+   *  nguồn mất HP. Nhưng `hpLostThisTurn` TRƯỚC ĐÂY chỉ được cộng ở ĐÚNG MỘT
+   *  chỗ: dòng trừ HP của đòn đánh chính (resolve-pending-action.js). Rà cả repo
+   *  thì có **20 chỗ trừ `currentHp`** — 19 chỗ còn lại KHÔNG đếm gì:
+   *  dmg phản (counter/Dullahan/thua clash), dmg dội ngược, Bleed tự cắn,
+   *  haouSinking, Tremor Burst, Fairy… Người chơi Hana ăn dmg từ mấy nguồn đó
+   *  thì không được Dice Up nào — đúng cảnh "outfit không hoạt động".
+   *
+   *  ⚠️ CỐ Ý KHÔNG áp cho tick cuối turn (Burn/Bleed/Airborne trong
+   *  turn-advance.js): Dice Up bị reset NGAY sau đó trong cùng hàm, cộng vào chỉ
+   *  để xoá đi — vô nghĩa và gây hiểu nhầm khi đọc log.
+   *
+   *  Dùng hàm này thay cho `c.currentHp = Math.max(0, c.currentHp - n)` ở MỌI
+   *  chỗ mất HP TRONG vòng đấu.
+   */
+  function applyHpLoss(combatant, amount) {
+    if (!combatant || !(amount > 0)) return 0;
+    const before = combatant.currentHp ?? 0;
+    combatant.currentHp = Math.max(0, before - amount);
+    const lost = before - combatant.currentHp;
+    if (lost <= 0) return 0;
+    if (combatant.hasHanaAssociation) {
+      const thresholdBefore = Math.floor((combatant.hpLostThisTurn ?? 0) / 10);
+      combatant.hpLostThisTurn = (combatant.hpLostThisTurn ?? 0) + lost;
+      const thresholdAfter = Math.floor(combatant.hpLostThisTurn / 10);
+      if (thresholdAfter > thresholdBefore) {
+        combatant.diceUp = (combatant.diceUp ?? 0) + (thresholdAfter - thresholdBefore);
+      }
+    } else {
+      combatant.hpLostThisTurn = (combatant.hpLostThisTurn ?? 0) + lost;
+    }
+    return lost;
+  }
+
   function advanceToNextTurnHolder(encounter) {
     const order = encounter.turnOrder ?? [];
     if (order.length === 0) return { wrapped: false, prescriptNotes: [] };
@@ -430,7 +498,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     }
     let vendettaNote = "";
     if (hasPerk(combatant, "Electrifying Vendetta") && (combatant.charge ?? 0) >= 15 && attackerCombatant) {
-      attackerCombatant.currentHp = Math.max(0, attackerCombatant.currentHp - 10);
+      applyHpLoss(attackerCombatant, 10);
       vendettaNote = " ⚡-10 HP (Electrifying Vendetta — phần 'ngắt đòn tiếp theo' GM tự xử lý)";
     }
     // "The Middle Little/Big Sibling" (outfit) — GAP MỚI (xác nhận trực tiếp):
@@ -453,7 +521,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
    *  được, GM tự xử lý. */
   function applyEvadeSuccessPerks(combatant, attackerCombatant) {
     if (hasPerk(combatant, "Short Circuit Trip") && (combatant.charge ?? 0) >= 15 && attackerCombatant) {
-      attackerCombatant.currentHp = Math.max(0, attackerCombatant.currentHp - 10);
+      applyHpLoss(attackerCombatant, 10);
       return " ⚡-10 HP (Short Circuit Trip — phần 'ngắt đòn tiếp theo' GM tự xử lý)";
     }
     return "";
@@ -626,6 +694,8 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     isCurrentTurnHolder,
     validateAndRerollPrescript,
     validateAndRerollPrescriptRound,
+    computeDiceModifier,
+    applyHpLoss,
     hasEncounterStarted,
     insertIntoTurnOrderMidRound,
     advanceToNextTurnHolder,

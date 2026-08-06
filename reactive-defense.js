@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
+module.exports = function ({ applyHpLoss, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -424,7 +424,7 @@ function applyDullahanParryCounter(target, attackerCombatant) {
   const typeChar = { Slash: "S", Blunt: "B", Pierce: "P" }[target.weaponType] ?? "S";
   const resStr = combatantResStr(attackerCombatant);
   const preview = calcMathCore({ dmgStr: `${target.weaponBaseDamage}${typeChar}`, resStr, poiseInit: target.poise, chargeInit: target.charge });
-  attackerCombatant.currentHp = Math.max(0, attackerCombatant.currentHp - preview.totalDmg);
+  applyHpLoss(attackerCombatant, preview.totalDmg); // đếm vào hpLostThisTurn (Hana)
   return preview.totalDmg;
 }
 

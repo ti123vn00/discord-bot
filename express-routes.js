@@ -13,7 +13,7 @@
 // "botReady" → "getBotReady()" ở route "/" — đây là thay đổi CẦN THIẾT để
 // giữ đúng hành vi gốc qua ranh giới module, không phải sửa logic).
 
-module.exports = function ({ RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, saveEncounter, sendReactiveDefensePrompt, webParrySessions, withLock, deleteEncounter }) {
+module.exports = function ({ applyHpLoss, RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, saveEncounter, sendReactiveDefensePrompt, webParrySessions, withLock, deleteEncounter }) {
 
 app.get("/", (req, res) => getBotReady() ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
 
@@ -259,7 +259,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
               }
               const counterResStr = combatantResStr(attackerResolved.combatant);
               const counterPreview = calcMathCore({ dmgStr: counterDmgStr, resStr: counterResStr, poiseInit: target.poise, chargeInit: target.charge });
-              attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - counterPreview.totalDmg);
+              applyHpLoss(attackerResolved.combatant, counterPreview.totalDmg);
               if (effect.smokePerHit) {
                 const hits = effect.customHitMultiplier ?? 1;
                 attackerResolved.combatant.smoke = (attackerResolved.combatant.smoke ?? 0) + effect.smokePerHit * hits;

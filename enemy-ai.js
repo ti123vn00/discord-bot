@@ -32,7 +32,7 @@
 // (lúc CONSTRUCT factory) — an toàn vì mọi require() chạy xong TRƯỚC khi bot
 // bắt đầu nhận message/interaction thật.
 
-module.exports = function ({ cdKeyFor,
+module.exports = function ({ applyHpLoss, cdKeyFor,
   withLock, encounterKey, getEncounter, saveEncounter, resolveCombatant,
   computeDefenseOptions, getParryClashPenalty, aiHooks,
   parsePerHitBypass, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, client, log,
@@ -171,7 +171,7 @@ module.exports = function ({ cdKeyFor,
         if (built.dmgStr) {
           const counterResStr = combatantResStr(attackerResolved.combatant);
           const counterPreview = calcMathCore({ dmgStr: built.dmgStr, resStr: counterResStr, poiseInit: target.poise, chargeInit: target.charge });
-          attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - counterPreview.totalDmg);
+          applyHpLoss(attackerResolved.combatant, counterPreview.totalDmg);
           note += ` Phản công gây -${counterPreview.totalDmg.toFixed(3)} HP.`;
         }
       }

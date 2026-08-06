@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
+module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceModifier, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -375,12 +375,14 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, resolveReuseT
       // Tremor Chain (xác nhận trực tiếp): "giảm 1 điểm Dice với mỗi 10 Tremor có
       // trên bản thân" — LIÊN TỤC, dựa trên Tremor HIỆN TẠI của CHÍNH người đang
       // roll skill (không phải target).
-      const tremorChainPenalty = (attacker.tremorChain ?? 0) > 0 ? Math.floor((attacker.tremor ?? 0) / 10) : 0;
+      // Công thức đã TÁCH sang combat-utils.js's computeDiceModifier để M1 dùng
+      // CHUNG — trước đây chỉ đường skill này biết tới diceUp (xem comment đầy
+      // đủ ở đó: chính là lý do Hana Association trông như không hoạt động).
       // BlackSilence/Struggling (xác nhận trực tiếp): "+4 Dice Up cho Critical của
       // vũ khí" — CHỈ áp khi đây là Critical (isCritical=true), không áp cho Page
       // thường.
       const blackSilenceCritBonus = isCritical && attacker.blackSilence ? 4 : 0;
-      const diceModifier = (attacker.diceUp ?? 0) - (attacker.diceDown ?? 0) - (attacker.freeble ?? 0) - tremorChainPenalty + blackSilenceCritBonus;
+      const diceModifier = computeDiceModifier(attacker, { blackSilenceCritBonus });
       // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận qua ảnh chụp thật của user, LẦN 2 — lần
       // đầu chỉ sửa cho Critical, giờ áp dụng luôn cho Page thường): "dù Blade
       // Flourish đã roll sẵn... nhưng vẫn bắt tôi nhập dmg... tôi có thể thử nhập
@@ -490,7 +492,7 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, resolveReuseT
         const resMatch = combatantResStr(attacker).match(/([\d.]+)xB/);
         const resB = resMatch ? parseFloat(resMatch[1]) : 1;
         const fuaDmg = Math.round(fuaRaw * resB * 1000) / 1000;
-        attacker.currentHp = Math.max(0, attacker.currentHp - fuaDmg);
+        attacker.currentHp = Math.max(0, attacker.currentHp - fuaDmg); // (skill-verification không có applyHpLoss — xem ghi chú HANDOFF)
         attacker.busyAsTribbieTriggeredThisTurn = true;
         busyAsTribbieNote = ` [💢Busy as Tribbie — FUA ${fuaDmg} dmg]`;
       }

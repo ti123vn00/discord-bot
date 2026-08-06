@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ applyHpLoss, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -1098,7 +1098,7 @@ client.on("interactionCreate", async (interaction) => {
               dmgStr: "0B+TremorBurst", resStr: combatantResStr(tsAtk),
               tremorInit: tsAtk.tremor ?? 0, tremorReverbStacks: tsAtk.tremorReverb ?? 0,
             });
-            tsAtk.currentHp = Math.max(0, tsAtk.currentHp - tsResult.totalDmg);
+            applyHpLoss(tsAtk, tsResult.totalDmg); // đếm vào hpLostThisTurn (Hana)
             tsAtk.currentStamina = Math.max(0, tsAtk.currentStamina - tsResult.totalTremorStaminaLoss);
             tsAtk.tremor = tsResult.finalTremor;
             tsAtk.tremorReverb = Math.min(TREMOR_VARIANT_MAX, (tsAtk.tremorReverb ?? 0) + 1);
@@ -1497,7 +1497,7 @@ client.on("interactionCreate", async (interaction) => {
               }
               const counterResStr = combatantResStr(attackerResolved.combatant);
               const counterPreview = calcMathCore({ dmgStr: counterDmgStr, resStr: counterResStr, poiseInit: clasher.poise, chargeInit: clasher.charge });
-              attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - counterPreview.totalDmg);
+              applyHpLoss(attackerResolved.combatant, counterPreview.totalDmg);
               if (clashCounterEffect.smokePerHit) {
                 const hits = clashCounterEffect.customHitMultiplier ?? 1;
                 attackerResolved.combatant.smoke = (attackerResolved.combatant.smoke ?? 0) + clashCounterEffect.smokePerHit * hits;
@@ -1529,7 +1529,7 @@ client.on("interactionCreate", async (interaction) => {
               poiseInit: clasher.poise, chargeInit: clasher.charge,
               sanityBonusPct: clasher.currentSanity ?? 0,
             });
-            attackerResolved.combatant.currentHp = Math.max(0, attackerResolved.combatant.currentHp - winPreview.totalDmg);
+            applyHpLoss(attackerResolved.combatant, winPreview.totalDmg);
             // Poise/Charge tự thân của skill ghi ngược về clasher (cùng cách
             // resolve-pending-action.js làm) để không mất buff của chính page.
             if (Number.isFinite(winPreview.finalPoiseStacks)) clasher.poise = winPreview.finalPoiseStacks;
@@ -1733,6 +1733,13 @@ client.on("interactionCreate", async (interaction) => {
         // và phần "cận chiến" (type/dmg gốc vũ khí, cho các hit CÒN LẠI không
         // đủ đạn) — số đạn tiêu = ĐÚNG số hit thật sự được chuyển đổi.
         var effectiveBulletCountForM1 = 0;
+        // ⚠️ ĐỪNG "SỬA" M1 ĐỂ ĂN DICE UP — đã thử và Fragaria bác thẳng:
+        // "Dice Up chỉ tăng cho critical và page thôi, tức là những thứ CÓ DICE.
+        //  Sanity cũng tương tự. M1 KHÔNG bị ảnh hưởng bởi Dice Up."
+        // M1 dùng `weaponBaseDamage` cố định, KHÔNG phải dice → mọi bonus dạng
+        // dice (diceUp/diceDown/freeble/tremorChain/sanityBonus) đều không áp.
+        // Đây là LUẬT, không phải thiếu sót — xem computeDiceModifier trong
+        // combat-utils.js, hàm đó CHỈ dành cho đường skill/critical.
         if (willUseBulletForType) {
           const bulletsAvailable = combatant.bulletStack ?? 0;
           const bulletedHits = Math.min(hitCount, bulletsAvailable);
@@ -2304,7 +2311,7 @@ client.on("interactionCreate", async (interaction) => {
           dmgStr: built.dmgStr, resStr: combatantResStr(markedResolved.combatant),
           poiseInit: me.poise, chargeInit: me.charge,
         });
-        markedResolved.combatant.currentHp = Math.max(0, markedResolved.combatant.currentHp - preview.totalDmg);
+        applyHpLoss(markedResolved.combatant, preview.totalDmg);
         // Status từ dmgStr (3 Bleed) — đòn này KHÔNG đi qua reactive defense
         // (địch đang bị đánh dấu, không được phòng thủ), nên áp thẳng.
         markedResolved.combatant.bleed = preview.bleedStacksAfter ?? markedResolved.combatant.bleed;
