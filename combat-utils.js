@@ -226,6 +226,26 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     return notes;
   }
 
+  /** validateAndRerollPrescriptRound — chấm + roll lại sắc lệnh cho TOÀN BỘ
+   *  combatant, đúng MỘT LẦN mỗi vòng turn order.
+   *
+   *  Gọi từ `performEndTurn` (mốc hết vòng), cùng chỗ với `advanceCombatantTurn`
+   *  — nhờ vậy người đang Stagger vẫn được chấm/roll bình thường thay vì bị
+   *  vòng lặp tìm-người-kế bỏ qua (xem comment trong advanceToNextTurnHolder).
+   *  Chấm HẾT trước rồi mới roll HẾT: nếu xen kẽ, người roll trước có thể ảnh
+   *  hưởng kết quả chấm của người sau qua các cờ dùng chung.
+   */
+  function validateAndRerollPrescriptRound(encounter) {
+    const notes = [];
+    const entries = (encounter.turnOrder ?? []).filter(e => {
+      const c = e.type === "enemy" ? encounter.enemies[e.id] : encounter.players[e.id];
+      return c && c.currentHp > 0;
+    });
+    for (const e of entries) notes.push(...validateAndRerollPrescript(encounter, e, null));
+    for (const e of entries) notes.push(...validateAndRerollPrescript(encounter, null, e));
+    return notes;
+  }
+
   function advanceToNextTurnHolder(encounter) {
     const order = encounter.turnOrder ?? [];
     if (order.length === 0) return { wrapped: false, prescriptNotes: [] };
@@ -240,7 +260,23 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     encounter.currentTurnIndex = idx;
     const wrapped = idx >= order.length; // true = đã hết 1 vòng turnOrder
     const enteringEntry = wrapped ? null : order[idx];
-    const prescriptNotes = validateAndRerollPrescript(encounter, leavingEntry, enteringEntry);
+    // BUG THIẾT KẾ ĐÃ SỬA (Fragaria: "mấy cái prescript/sắc lệnh của outfit Index
+    // cũng đang đếm theo turn NGƯỜI NHẬN thay vì TURNORDER, điều khá sai thiết
+    // kế game").
+    //
+    // TRƯỚC ĐÂY sắc lệnh được CHẤM khi lượt riêng của người đó kết thúc và
+    // ROLL LẠI khi lượt riêng của họ bắt đầu — tức mỗi người 1 sắc lệnh MỖI
+    // LƯỢT CỦA CHÍNH HỌ, lệch hẳn khỏi nhịp vòng turn order.
+    // Tệ hơn: vòng lặp ngay trên BỎ QUA người đang Stagger/đã chết
+    // (`if (c && c.currentHp > 0 && !c.staggered) break`) → người bị Stagger
+    // KHÔNG BAO GIỜ là leavingEntry lẫn enteringEntry ⇒ sắc lệnh của họ
+    // **treo vĩnh viễn**: không được chấm, không được roll mới, và
+    // Grace/Karmic đứng im cho tới khi hết Stagger.
+    //
+    // SỬA: bỏ hẳn khỏi đây, chuyển sang `validateAndRerollPrescriptRound()`
+    // chạy MỘT LẦN cho MỌI combatant ở mốc kết thúc vòng (performEndTurn) —
+    // cùng chỗ với `advanceCombatantTurn`, tức đúng nhịp turn order.
+    const prescriptNotes = [];
     // Task yêu cầu trực tiếp: "sửa lại prescript chỉ tổng kết khi turnorder end
     // chứ không phải endturn của player" — TRƯỚC ĐÂY prescriptNotes hiện NGAY
     // trong reply của TỪNG lần pass/endmyturn cá nhân (ồn ào, rải rác) — giờ
@@ -589,6 +625,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     determineTurnOrder,
     isCurrentTurnHolder,
     validateAndRerollPrescript,
+    validateAndRerollPrescriptRound,
     hasEncounterStarted,
     insertIntoTurnOrderMidRound,
     advanceToNextTurnHolder,

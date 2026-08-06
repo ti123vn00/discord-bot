@@ -58,8 +58,23 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // turn này KHÔNG có Bleed mới được áp (hemorrhageAppliedThisTurn vẫn false),
     // reset hẳn về 0. Luôn reset flag về false cho turn tiếp theo (dù có hay
     // không), để turn kế tiếp phải tự áp Bleed mới lại từ đầu mới giữ được stack.
+    // Luật reset (Fragaria đưa nguyên văn): "reset sau 1 turn KHÔNG áp Bleed,
+    // HOẶC khi 5 điểm Hemorrhage tồn tại trong 1 turn".
+    // Vế 2 TRƯỚC ĐÂY thiếu hẳn — Hemorrhage 5 stack cứ thế đứng mãi.
+    if ((combatant.hemorrhage ?? 0) >= 5) {
+      if (combatant.hemorrhageMaxHeldTurn) {
+        combatant.hemorrhage = 0;
+        combatant.hemorrhageMaxHeldTurn = false;
+      } else {
+        // Turn ĐẦU chạm 5 — chưa reset, phải "tồn tại trong 1 turn" đã.
+        combatant.hemorrhageMaxHeldTurn = true;
+      }
+    } else {
+      combatant.hemorrhageMaxHeldTurn = false;
+    }
     if (!combatant.hemorrhageAppliedThisTurn) {
       combatant.hemorrhage = 0;
+      combatant.hemorrhageMaxHeldTurn = false;
     }
     combatant.hemorrhageAppliedThisTurn = false;
     // Busy as Tribbie: "Một turn chỉ kích một lần" — reset cho turn mới.

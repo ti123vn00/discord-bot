@@ -101,6 +101,11 @@ module.exports = function ({
     joined.unlockedPagesSnapshot = (profileData.equippedPages ?? []).filter(Boolean);
     joined.unlockedEgoPagesSnapshot = (profileData.equippedEgoPages ?? []).filter(Boolean);
     joined.equippedAccessoriesSnapshot = (profileData.equippedAccessories ?? []).filter(Boolean);
+    // Slot SINGULARITY (1 slot riêng) + E.G.O RIÊNG của từng nhân vật — xem
+    // singularity.js / ego.js. Chép sang combatant để panel encounter chỉ hiện
+    // ĐÚNG Critical của người đó, không xài chung kho như trước.
+    joined.equippedSingularity = profileData.equippedSingularity ?? null;
+    joined.manifestedEgoKey = profileData.ManifestedEGO ?? null;
     // ── ACCESSORY passive lúc VÀO TRẬN (GAP ĐÃ SỬA — Fragaria: "toàn bộ
     // accessory ở trong accessory.js đều chưa được implement"). Audit lại thì
     // Giày Wan MK3 (Resourceful/Chain-Dashes/Quickstep) và Composition Tool

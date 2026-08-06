@@ -16,7 +16,7 @@
 // cập nhật nếu weapon.js thêm vũ khí có cùng mechanicId.
 const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 
-module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -218,6 +218,8 @@ async function resolveOnePendingAction(encounter, p) {
               const bleedBeforeHit = target.bleed; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
               burnBeforeMap[t.targetId] = target.burn ?? 0;
               let finalDmg = t.preview.totalDmg;
+              // Borrowed Eyes: dice CHỈ để đếm charge né, KHÔNG gây dmg.
+              if (p.skillKey === "borrowed eyes") finalDmg = 0;
               // [Unbreakable Dice] (Furioso rework) — người phòng thủ THẮNG clash
               // nhưng đòn có tag này thì KHÔNG bị huỷ, chỉ còn 50% dmg gốc. Cờ do
               // interaction-handlers.js đặt lúc xử lý clash thắng (thay vì cộng
@@ -1022,8 +1024,15 @@ async function resolveOnePendingAction(encounter, p) {
                 // phát hiện bằng cách so sánh Bleed TRƯỚC/SAU đòn này (tăng = có áp
                 // Bleed mới). Reset check ("không áp Bleed trong 1 turn") xử lý ở
                 // turn-advance.js dựa vào hemorrhageAppliedThisTurn.
-                if (target.bleed > bleedBeforeThisHit) {
-                  target.hemorrhage = Math.min(HEMORRHAGE_MAX, (target.hemorrhage ?? 0) + 1);
+                // BUG LUẬT ĐÃ SỬA (Fragaria: "AI Eye Gouger kích Hemorrhage VÔ TỘI
+                // VẠ dù không có bất kỳ thứ gì có thể inflict nó").
+                // TRƯỚC ĐÂY: hễ Bleed tăng là +1 Hemorrhage, KỂ CẢ khi đang 0 —
+                // nên mọi đòn có Bleed đều tự sinh Hemorrhage từ hư không.
+                // LUẬT ĐÚNG: phải INFLICT Hemorrhage trước (nguồn riêng, xem
+                // sfx.hemorrhage bên dưới) thì mới có; Bleed chỉ TĂNG TIẾN lvl
+                // của cái đã có. `> 0` chính là cái gate đã thiếu.
+                if (target.bleed > bleedBeforeThisHit && (target.hemorrhage ?? 0) > 0) {
+                  target.hemorrhage = Math.min(HEMORRHAGE_MAX, target.hemorrhage + 1);
                   target.hemorrhageAppliedThisTurn = true;
                 }
                 target.tremor = t.preview.finalTremor;
@@ -1573,7 +1582,7 @@ async function resolveOnePendingAction(encounter, p) {
             let verifyNote = "";
             if (p.skillKey && p.cooldownTurns > 0) {
               attacker.combatant.skillCooldowns = attacker.combatant.skillCooldowns ?? {};
-              attacker.combatant.skillCooldowns[p.skillKey] = p.cooldownTurns + 1;
+              attacker.combatant.skillCooldowns[cdKeyFor(p.skillKey)] = p.cooldownTurns + 1; // cdKeyFor: skill khai cdGroup dùng CHUNG ô đếm (Atelier Logic Shotgun/Pistols)
               verifyNote += ` [CD ${p.skillKey}: ${p.cooldownTurns}T]`;
             }
             // Task yêu cầu trực tiếp: "page unlock... đáng lẽ dù nó có là cd 0
@@ -1591,7 +1600,7 @@ async function resolveOnePendingAction(encounter, p) {
               // Xoá SẠCH CD cũ (nếu có) — "miễn CD" nghĩa là hoàn toàn không bị
               // ảnh hưởng, không chỉ bỏ qua check 1 lần rồi vẫn giữ CD cũ lại.
               if (attacker.combatant.skillCooldowns && p.skillKey) {
-                attacker.combatant.skillCooldowns[p.skillKey] = 0;
+                attacker.combatant.skillCooldowns[cdKeyFor(p.skillKey)] = 0;
               }
               verifyNote += ` ⚡[Orlando Furioso đã tiêu thụ]`;
             }
@@ -1786,6 +1795,14 @@ async function resolveOnePendingAction(encounter, p) {
                   // `airborne: false`), KHÔNG phải bộ đếm — turn-advance.js đọc
                   // nó dạng cờ rồi set false + gây 10 dmg rơi. Cộng dồn số vào
                   // đây là sai mô hình dữ liệu (đúng lỗi #1 trong HANDOFF).
+                  if (sfx.hemorrhage > 0) {
+                    // NGUỒN INFLICT duy nhất của Hemorrhage. Đánh dấu
+                    // hemorrhageAppliedThisTurn để turn-advance không reset ngay
+                    // trong chính turn vừa gắn.
+                    tr2.combatant.hemorrhage = Math.min(5, (tr2.combatant.hemorrhage ?? 0) + sfx.hemorrhage);
+                    tr2.combatant.hemorrhageAppliedThisTurn = true;
+                    parts.push(`+${sfx.hemorrhage} Hemorrhage (lv ${tr2.combatant.hemorrhage})`);
+                  }
                   if (sfx.airborne > 0 && !tr2.combatant.airborne) {
                     tr2.combatant.airborne = true;
                     parts.push("Airborne");
@@ -1818,6 +1835,40 @@ async function resolveOnePendingAction(encounter, p) {
                   selfParts.push(`+${(attacker.combatant.currentHp - beforeH).toFixed(0)} HP`);
                 }
                 if (selfParts.length) verifyNote += ` 💠[${selfParts.join(", ")}]`;
+              }
+            }
+            // ── INFLICT HEMORRHAGE CÓ ĐIỀU KIỆN ──────────────────────────────
+            // "Take This, Kid" / "Learn Again, Kid": *Nếu địch có Bleed: gắn 1
+            // Hemorrhage*. Dòng CÓ ĐIỀU KIỆN nên parser chung cố ý bỏ qua (đúng
+            // gotcha trong HANDOFF) → phải code riêng.
+            // Đây là 2 nguồn INFLICT Hemorrhage duy nhất hiện có; không có chúng
+            // thì Bleed không tự sinh Hemorrhage nữa (xem gate `hemorrhage > 0`).
+            if (p.skillKey === "take this kid" || p.skillKey === "learn again kid") {
+              const hemoLabels = [];
+              for (const t2 of p.targets ?? []) {
+                const tr2 = resolveCombatant(encounter, t2.targetId);
+                if (!tr2 || (tr2.combatant.bleed ?? 0) <= 0) continue;
+                tr2.combatant.hemorrhage = Math.min(HEMORRHAGE_MAX, (tr2.combatant.hemorrhage ?? 0) + 1);
+                tr2.combatant.hemorrhageAppliedThisTurn = true;
+                hemoLabels.push(`${tr2.label} → Hemorrhage lv ${tr2.combatant.hemorrhage}`);
+              }
+              if (hemoLabels.length) verifyNote += ` 🩸[Gắn Hemorrhage: ${hemoLabels.join(", ")}]`;
+            }
+            // ── BORROWED EYES (Singularity của Eye Gouger) ───────────────────
+            // GAP ĐÃ SỬA (Fragaria: "Borrowed Eyes của Eye Gouger chưa hoạt động
+            // đúng"). Text mô tả đúng nhưng KHÔNG có mã nào đọc: dice vẫn gây dmg
+            // bình thường và không ai được charge né nào.
+            // Luật: dice [5~10] KHÔNG gây dmg; sau khi dùng, người dùng nhận số
+            // charge né BẰNG ĐÚNG giá trị dice. Charge né không chặn [Undodgeable]
+            // — điều này đã đúng sẵn ở nhánh tiêu charge (kiểm blockEvade).
+            if (p.skillKey === "borrowed eyes") {
+              // Lấy giá trị dice từ dmgStr ĐÃ ROLL (không roll lại — roll lại thì
+              // số charge sẽ lệch khỏi con số vừa hiện cho người chơi).
+              const diceVal = Math.round(parseFloat(String(p.dmgStr ?? "0").match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0"));
+              if (diceVal > 0) {
+                attacker.combatant.evadeCharges = (attacker.combatant.evadeCharges ?? 0) + diceVal;
+                attacker.combatant.borrowedEyeCharges = diceVal;
+                verifyNote += ` 👁️[Borrowed Eye: +${diceVal} charge né (tổng ${attacker.combatant.evadeCharges})]`;
               }
             }
             // ── RESONATE ─────────────────────────────────────────────────────

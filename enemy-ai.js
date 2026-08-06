@@ -32,7 +32,7 @@
 // (lúc CONSTRUCT factory) — an toàn vì mọi require() chạy xong TRƯỚC khi bot
 // bắt đầu nhận message/interaction thật.
 
-module.exports = function ({
+module.exports = function ({ cdKeyFor,
   withLock, encounterKey, getEncounter, saveEncounter, resolveCombatant,
   computeDefenseOptions, getParryClashPenalty, aiHooks,
   parsePerHitBypass, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, client, log,
@@ -61,7 +61,7 @@ module.exports = function ({
       if (!skill || skill.promptArg) continue;
       const cost = parseSkillCost(skill.cost);
       if ((cost.light ?? 0) > (target.currentLight ?? 0)) continue;
-      const cdLeft = target.skillCooldowns?.[skillName.toLowerCase()] ?? 0;
+      const cdLeft = target.skillCooldowns?.[cdKeyFor(skillName)] ?? 0;
       if (cdLeft > 0) continue;
       const rolled = buildSkillRollResult({ skill });
       if (rolled.error || rolled.firstDiceValue === null) continue; // không có Dice thì không Clash được
@@ -81,7 +81,7 @@ module.exports = function ({
       if (!skill || !skill.counterEffect) continue;
       const cost = parseSkillCost(skill.cost);
       if ((cost.light ?? 0) > (target.currentLight ?? 0)) continue;
-      const cdLeft = target.skillCooldowns?.[skillName.toLowerCase()] ?? 0;
+      const cdLeft = target.skillCooldowns?.[cdKeyFor(skillName)] ?? 0;
       if (cdLeft > 0) continue;
       candidates.push({ skillKey: skillName.toLowerCase(), skill, lightCost: cost.light ?? 0 });
     }
@@ -112,7 +112,7 @@ module.exports = function ({
       target.currentLight = Math.max(0, (target.currentLight ?? 0) - (cost.light ?? 0));
       const cdTurns = parseSkillCooldownTurns(clashPick.skill.cd);
       target.skillCooldowns = target.skillCooldowns ?? {};
-      target.skillCooldowns[clashPick.skillKey] = cdTurns + 1;
+      target.skillCooldowns[cdKeyFor(clashPick.skillKey)] = cdTurns + 1;
       const myPenalty = getParryClashPenalty(target);
       const oppPenalty = getParryClashPenalty(attackerResolved.combatant);
       const myEffectiveDice = clashPick.rolled.firstDiceValue - myPenalty + (target.clashAttackBoost ?? 0) + (target.clashPowerUp ?? 0);

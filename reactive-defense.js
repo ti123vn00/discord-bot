@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, withLock }) {
+module.exports = function ({ ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -94,6 +94,12 @@ async function performEndTurn(channelId, userId, isAdmin) {
     }
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
+    // Sắc lệnh (Index) — chấm + roll lại theo VÒNG TURN ORDER, không theo lượt
+    // riêng từng người (xem validateAndRerollPrescriptRound trong combat-utils.js).
+    const roundPrescriptNotes = validateAndRerollPrescriptRound(encounter);
+    if (roundPrescriptNotes.length > 0) {
+      encounter.pendingPrescriptNotes = (encounter.pendingPrescriptNotes ?? []).concat(roundPrescriptNotes);
+    }
     // "You're Too Slow" — ĐỔI LUỒNG (Fragaria yêu cầu: đánh dấu → hiện option ở
     // Moves → tự bấm để đâm → LÚC ĐÓ mới vào CD). Bản cũ tự bắn lại ở turn kế
     // (youreTooSlowPending) đã bỏ — xem express-routes.js.
@@ -808,7 +814,19 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       //   HỨA LỐ). Hiện riêng thành "nếu Parry thắng" để người chơi tự cân nhắc.
       const perHitDmg = t.preview?.dmgValues ?? [];
       const totalRaw = t.preview?.totalDmg ?? 0;
-      const dmgAt = (h1) => { const v = perHitDmg[h1 - 1]; return typeof v === "number" ? v : (v?.dmg ?? 0); };
+      // dmgValues là mảng OBJECT do damage-calc.js sinh, KHÔNG phải mảng số.
+      // `.finalDmg` = dmg thật sau Res/DR/crit (thứ ta cần). `.value` chỉ là số
+      // dice THÔ — dùng nhầm sẽ ra số nhỏ hơn thực tế rất nhiều.
+      // Fallback theo tỉ lệ `.value` khi encounter cũ (lưu trước bản này) chưa
+      // có finalDmg, để không hiện 0 cho người đang chơi dở.
+      const rawSum = perHitDmg.reduce((a, v) => a + (typeof v === "number" ? v : (v?.value ?? 0)), 0);
+      const dmgAt = (h1) => {
+        const v = perHitDmg[h1 - 1];
+        if (typeof v === "number") return v;
+        if (typeof v?.finalDmg === "number") return v.finalDmg;
+        const raw = v?.value ?? 0;
+        return rawSum > 0 ? (t.preview?.totalDmg ?? 0) * (raw / rawSum) : 0;
+      };
 
       // Guard % — sao nguyên công thức của resolve-pending-action.js. Lệch công
       // thức ở đây là báo sai số cho người chơi, nên nếu bên kia đổi thì SỬA CẢ HAI.

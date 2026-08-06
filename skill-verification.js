@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, resolveSkillKey, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
+module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -256,7 +256,7 @@ module.exports = function ({ findSkill, resolveSkillKey, resolveReuseTimes, hasP
       if (skill.promptArg && autoPromptArg === null) {
         throw new Error(`Skill "${skill.name}" cần input do người chơi tự quyết — chưa roll trực tiếp qua encounter được. Dùng \`-skill ${skillNameRaw}\` riêng rồi dán link message đó vào ref: thay vào đó.`);
       }
-      const existingCd = attacker.skillCooldowns?.[skillKey] ?? 0;
+      const existingCd = attacker.skillCooldowns?.[cdKeyFor(skillKey)] ?? 0;
       // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp, dự án tự động hoá
       // toàn bộ weapon/outfit): "Orlando Furioso" — swap vũ khí xong, Critical
       // NGAY SAU đó miễn CD (dùng 1 lần) — chỉ áp dụng cho ĐÚNG Critical của vũ

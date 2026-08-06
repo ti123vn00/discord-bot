@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ ADMIN_IDS, buildReuseVariants, resolveSkillKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -905,7 +905,7 @@ client.on("interactionCreate", async (interaction) => {
           if (!sk || sk.promptArg) continue; // promptArg cần input đặc biệt, giống hạn chế của "-encounter clash" gốc
           const key = name.trim().toLowerCase();
           if (addedClashKeys.has(key)) continue; // GAP ĐÃ SỬA: tránh 2 option TRÙNG value nếu equip cùng tên vào 2 slot
-          if ((clasher.skillCooldowns?.[key] ?? 0) > 0) continue;
+          if ((clasher.skillCooldowns?.[cdKeyFor(key)] ?? 0) > 0) continue;
           const cost = parseSkillCost(sk.cost);
           if ((clasher.currentLight ?? 0) < (cost.light ?? 0)) continue;
           addedClashKeys.add(key);
@@ -1181,8 +1181,8 @@ client.on("interactionCreate", async (interaction) => {
             ...(target.unlockedEgoPagesSnapshot ?? []),
           ].filter(Boolean).map(n => n.trim().toLowerCase()));
           if (!ownedDash.has(dashKeyNorm)) throw new Error(`Bạn chưa mở khoá page "${dashSkill.name}".`);
-          if ((target.skillCooldowns?.[dashKeyNorm] ?? 0) > 0) {
-            throw new Error(`"${dashSkill.name}" đang cooldown — còn ${target.skillCooldowns[dashKeyNorm]} turn.`);
+          if ((target.skillCooldowns?.[cdKeyFor(dashKeyNorm)] ?? 0) > 0) {
+            throw new Error(`"${dashSkill.name}" đang cooldown — còn ${target.skillCooldowns[cdKeyFor(dashKeyNorm)]} turn.`);
           }
           const dashCost = parseSkillCost(dashSkill.cost);
           if ((target.currentLight ?? 0) < (dashCost.light ?? 0)) {
@@ -1192,7 +1192,7 @@ client.on("interactionCreate", async (interaction) => {
           const dashCd = parseSkillCooldownTurns(dashSkill.cd);
           if (dashCd > 0) {
             target.skillCooldowns = target.skillCooldowns ?? {};
-            target.skillCooldowns[dashKeyNorm] = dashCd;
+            target.skillCooldowns[cdKeyFor(dashKeyNorm)] = dashCd;
           }
           // Né THẬT cho nhóm hit này — cùng field với nhánh "evade" (evadeCharges
           // + evadeHitSelections) để resolveOnePendingAction xử lý y hệt, KHÔNG
@@ -1412,7 +1412,7 @@ client.on("interactionCreate", async (interaction) => {
       clasher.currentLight = Math.max(0, (clasher.currentLight ?? 0) - (cost.light ?? 0));
       const cdTurns = parseSkillCooldownTurns(chosenSkill.cd);
       clasher.skillCooldowns = clasher.skillCooldowns ?? {};
-      clasher.skillCooldowns[chosenKey] = cdTurns + 1;
+      clasher.skillCooldowns[cdKeyFor(chosenKey)] = cdTurns + 1;
 
       const clasherLabel = clasherId === targetId ? "Bạn" : clasherResolved.label;
       let choiceNote;
@@ -1485,7 +1485,7 @@ client.on("interactionCreate", async (interaction) => {
           // "You're Too Slow" thắng Clash — cùng luồng MỚI với counter qua rtparry
           // (đánh dấu → option ở Moves → đâm → mới vào CD). Xem express-routes.js.
           if (chosenKey === "you're too slow") {
-            delete clasher.skillCooldowns?.[chosenKey];
+            delete clasher.skillCooldowns?.[cdKeyFor(chosenKey)];
             clasher.youreTooSlowMark = { markedTargetId: p.attackerId, markedLabel: attackerResolved.label };
             choiceNote += ` ⚡ **You're Too Slow** đánh dấu ${attackerResolved.label} — mở **Moves** để tung đòn đâm (CD chỉ bắt đầu sau khi đâm).`;
           } else if (!clashCounterEffect.noDirectDamage) {
@@ -3286,7 +3286,31 @@ client.on("interactionCreate", async (interaction) => {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
+    // BƯỚC 1 cho Page THƯỜNG: chỉ chọn page, CHƯA equip — hỏi slot ở bước 2.
+    // (E.G.O Page bỏ qua bước này: slot của nó do Tier quyết định, không chọn tay.)
+    // Fragaria: "nên cho dropdown ở balance cho equip page theo slot 1/2/3/4/5
+    // vì giờ nó chỉ cho equip page vào slot 1".
+    if (interaction.customId.startsWith("balequippage:")) {
+      const rawPick = interaction.values[0] ?? "";
+      const pickedName = rawPick.split(":").slice(1).join(":");
+      const { data: dataForSlots } = await getPlayerDataWithSlot(ownerId);
+      const cur = dataForSlots.equippedPages ?? [null, null, null, null, null];
+      const slotOptions = [0, 1, 2, 3, 4].map(i =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(`Slot #${i + 1}`)
+          .setDescription((cur[i] ? `Đang có: ${cur[i]} — sẽ bị thay` : "Đang trống").slice(0, 100))
+          .setValue(`${i}|${pickedName}`.slice(0, 100))
+          .setEmoji(cur[i] ? "♻️" : "▫️"));
+      return interaction.editReply({
+        content: `📖 Đưa **${pickedName}** vào slot nào?`,
+        components: [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder().setCustomId(`balpageslot:${ownerId}`)
+            .setPlaceholder("Chọn slot 1–5...").setMinValues(1).setMaxValues(1)
+            .addOptions(slotOptions))],
+      });
+    }
     // GAP ĐÃ SỬA (multi-select) — LOOP TUẦN TỰ qua từng Page đã chọn.
+    const pickedSlot = 0; // chỉ E.G.O đi tới đây; slot thật do Tier quyết định
     const results = [];
     await withLock(ownerId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
@@ -3322,6 +3346,44 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply({ content: `${results.join("\n")}\n> Dùng lại \`-balance\`/\`-pages\` để xem cập nhật.` });
   } catch (err) {
     await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
+  }
+});
+
+// ─── BƯỚC 2: chọn SLOT cho Page thường (balpageslot:) ───────────────────────
+// Tách riêng khỏi "balequippage:" vì Discord không phân biệt được 2 dropdown
+// trùng customId trong cùng message, và vì bước này cần biết page đã chọn.
+// Giá trị mang cả slot lẫn tên page: "<slotIdx>|<tên page>".
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("balpageslot:")) return;
+  const [, ownerId] = interaction.customId.split(":");
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferUpdate().catch(() => {});
+  try {
+    const raw = interaction.values[0] ?? "";
+    const sep = raw.indexOf("|");
+    const slotIdx = parseInt(raw.slice(0, sep), 10);
+    const chosenName = raw.slice(sep + 1);
+    if (!Number.isInteger(slotIdx) || slotIdx < 0 || slotIdx > 4) throw new Error("Slot không hợp lệ.");
+    let note = "";
+    await withLock(ownerId, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(ownerId);
+      // Tra sở hữu theo ĐỊNH DANH SKILL (xem findOwnedPageKey trong skills.js) —
+      // kho có thể lưu tên cũ lệch với skill.name.
+      const skill = findSkill(chosenName);
+      if (!skill) throw new Error(`Không tìm thấy Page "${chosenName}".`);
+      if (!findOwnedPageKey(data.pages, skill)) throw new Error("Không còn sở hữu — dùng lại `-balance`.");
+      data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
+      const replaced = data.equippedPages[slotIdx];
+      data.equippedPages[slotIdx] = skill.name;
+      await savePlayerData(ownerId, data, slot);
+      note = `✅ Đã equip **${skill.name}** vào slot #${slotIdx + 1}${replaced ? ` (thay **${replaced}**)` : ""}.`;
+    });
+    await interaction.editReply({ content: `${note}\n> Dùng lại \`-balance\` để xem cập nhật.`, components: [] });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}`, components: [] }).catch(() => {});
   }
 });
 

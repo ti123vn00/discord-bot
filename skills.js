@@ -648,6 +648,11 @@ const SKILLS = {
   },
   "raging storm": {
     name: "Raging Storm", cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    // [Khuếch tán N mục tiêu] — KHÁC AOE (Fragaria chốt trực tiếp): mục tiêu
+    // CHÍNH chịu 100% dmg, các mục tiêu CÒN LẠI chỉ chịu 50%. AOE thì mọi mục
+    // tiêu đều 100%. Tag này TRƯỚC ĐÂY chỉ là chữ trong text, không có mã nào
+    // đọc → khuếch tán chạy y hệt AOE.
+    spreadTargets: 3, spreadFalloffPct: 0.5,
     roll() {
       const d1=r(5,9),d2=r(10,16);
       return [
@@ -1064,6 +1069,11 @@ const SKILLS = {
   "blade whirl": {
     name: "Blade Whirl",
     cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "0.5x",
+    // [Khuếch tán N mục tiêu] — KHÁC AOE (Fragaria chốt trực tiếp): mục tiêu
+    // CHÍNH chịu 100% dmg, các mục tiêu CÒN LẠI chỉ chịu 50%. AOE thì mọi mục
+    // tiêu đều 100%. Tag này TRƯỚC ĐÂY chỉ là chữ trong text, không có mã nào
+    // đọc → khuếch tán chạy y hệt AOE.
+    spreadTargets: 3, spreadFalloffPct: 0.5,
     roll() {
       const d1 = r(4,7), d2 = r(4,8), d3 = r(4,9), d4 = r(9,14);
       return [
@@ -1153,7 +1163,10 @@ const SKILLS = {
     roll() {
       const d1 = r(5, 10);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** — Bạn được tự động né những đòn kế tiếp sắp phải dính tương ứng với số dice gieo ra [Không thể né được Undodgeable]`,
+        // Dice này KHÔNG GÂY DMG — chỉ dùng để quyết định SỐ CHARGE NÉ.
+        // Xử lý thật ở resolve-pending-action.js (`p.skillKey === "borrowed eyes"`):
+        // zero toàn bộ dmg rồi cộng đúng d1 charge né.
+        `<:Dice1:1508173590078558369> **${d1}** — Dice này KHÔNG gây dmg. Nhận buff **Borrowed Eye**: tự động nhận **${d1}** charge né cho các đòn kế tiếp [Không né được Undodgeable]`,
       ];
     },
   },
@@ -2406,7 +2419,9 @@ roll(v = "no") {
   "degraded fairy": {
     name: "Degraded Fairy",
     tags: "Fairy <:Fairy:1513782007602216960>",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    // BUFF (bảng Fragaria đưa trực tiếp): Cost 2 → **0 Light**. Dice/CD/hiệu ứng
+    // giữ nguyên như bảng.
+    cost: "0 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8), d2 = r(4,8);
       return [
@@ -2420,10 +2435,14 @@ roll(v = "no") {
     name: "Degraded Pillar",
     tags: "Fairy <:Fairy:1513782007602216960>",
     cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    // BUFF (bảng Fragaria đưa trực tiếp): từ 1 dice [7~11] gây 4 Fairy →
+    // **2 dice**: [8~12] và [7~11], mỗi dice 3 Fairy. Dice 1 [Undodgeable],
+    // dice 2 [Undodgeable][Guard Break] — Guard Break CHỈ ở dice 2 theo bảng.
     roll() {
-      const d1 = r(7,11);
+      const d1 = r(8,12), d2 = r(7,11);
       return [
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] — Triệu hồi cây cột đập mặt kẻ thù gây 4 <:Fairy:1513782007602216960>Fairy`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — Triệu hồi cây cột đập mặt kẻ thù, gây 3 <:Fairy:1513782007602216960>Fairy`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Guard Break] — Cây cột phát nổ gây sát thương lên kẻ thù, gây 3 <:Fairy:1513782007602216960>Fairy`,
       ];
     },
   },
@@ -2898,6 +2917,13 @@ roll(v = "no") {
   },
   "atelier logic shotgun": {
     name: "Atelier Logic: Shotgun", weaponOf: "Atelier Logic", tags: "Weapon",
+    // BUG ĐÃ SỬA (Fragaria: "Critical của Atelier Logic Shotgun và Atelier Logic
+    // Pistols phải SHARE CHUNG cd, hai cái CD riêng lẻ là sai với ý định thiết
+    // kế và logic"). Cùng MỘT khẩu súng, bấm Critical là ĐỔI FORM — nên bắn
+    // Shotgun rồi bắn tiếp Pistols ngay turn sau là né cooldown.
+    // `cdGroup` hoạt động y hệt `pityGroup` của banner gacha: khai cùng nhóm thì
+    // dùng CHUNG một ô đếm. Skill KHÔNG khai giữ nguyên hành vi cũ.
+    cdGroup: "atelier logic",
     cost: "—", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,14);
@@ -2908,6 +2934,13 @@ roll(v = "no") {
   },
   "atelier logic pistols": {
     name: "Atelier Logic: Pistols", weaponOf: "Atelier Logic", tags: "Weapon",
+    // BUG ĐÃ SỬA (Fragaria: "Critical của Atelier Logic Shotgun và Atelier Logic
+    // Pistols phải SHARE CHUNG cd, hai cái CD riêng lẻ là sai với ý định thiết
+    // kế và logic"). Cùng MỘT khẩu súng, bấm Critical là ĐỔI FORM — nên bắn
+    // Shotgun rồi bắn tiếp Pistols ngay turn sau là né cooldown.
+    // `cdGroup` hoạt động y hệt `pityGroup` của banner gacha: khai cùng nhóm thì
+    // dùng CHUNG một ô đếm. Skill KHÔNG khai giữ nguyên hành vi cũ.
+    cdGroup: "atelier logic",
     cost: "—", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,9), d2 = r(7,10);
@@ -3242,6 +3275,11 @@ roll(v = "no") {
   "breakam slash": {
     name: "Breakam Slash", weaponOf: "Breakam Zeztzer", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "2x",
+    // [Khuếch tán N mục tiêu] — KHÁC AOE (Fragaria chốt trực tiếp): mục tiêu
+    // CHÍNH chịu 100% dmg, các mục tiêu CÒN LẠI chỉ chịu 50%. AOE thì mọi mục
+    // tiêu đều 100%. Tag này TRƯỚC ĐÂY chỉ là chữ trong text, không có mã nào
+    // đọc → khuếch tán chạy y hệt AOE.
+    spreadTargets: 3, spreadFalloffPct: 0.5,
     roll() {
       const d1 = r(8,20);
       return [
@@ -3395,6 +3433,11 @@ roll(v = "no") {
   "kaen jujizan": {
     name: "Kaen Jūjizan", weaponOf: "Kaenken Rekka", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "1x (2x nếu địch >10 <:Fix_Burn:1513762753691652177>Burn)",
+    // [Khuếch tán N mục tiêu] — KHÁC AOE (Fragaria chốt trực tiếp): mục tiêu
+    // CHÍNH chịu 100% dmg, các mục tiêu CÒN LẠI chỉ chịu 50%. AOE thì mọi mục
+    // tiêu đều 100%. Tag này TRƯỚC ĐÂY chỉ là chữ trong text, không có mã nào
+    // đọc → khuếch tán chạy y hệt AOE.
+    spreadTargets: 3, spreadFalloffPct: 0.5,
     roll() {
       const d1 = r(6,20);
       return [
@@ -5184,7 +5227,7 @@ function autoExtractDiceSideEffects(lines) {
  *  @returns {{fragile:number, paralyze:number, drainStamina:number, selfImitation:number, selfLight:number, healHp:number}}
  */
 function extractNonDmgStrEffects(lines) {
-  const out = { fragile: 0, paralyze: 0, airborne: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0 };
+  const out = { fragile: 0, paralyze: 0, airborne: 0, hemorrhage: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0 };
   const stripEmoji = (t) => t.replace(/<a?:[^:>]+:\d+>/g, "");
   for (const raw of lines ?? []) {
     const line = stripEmoji(String(raw));
@@ -5197,12 +5240,20 @@ function extractNonDmgStrEffects(lines) {
       return total;
     };
     out.fragile      += sum(/(\d+)\s*Fragile/i);
+    // Hemorrhage — PHẢI có nguồn INFLICT riêng thì mới bắt đầu có (Fragaria:
+    // "cần phải inflict Hemorrhage TRƯỚC thì mới bắt đầu có Hemorrhage chứ
+    // không phải cứ inflict Bleed là có; Bleed chỉ là thứ để TĂNG TIẾN lvl").
+    // Bắt cả "gắn 1 Hemorrhage" lẫn "gây 2 Hemorrhage".
+    out.hemorrhage   += sum(/(?:g[âaăằ]y|g[ắa]n|áp)\s*(\d+)\s*<?[^>\s]*>?\s*Hemorrhage/i);
     out.paralyze     += sum(/(\d+)\s*Paralyze/i);
     // "giảm 40 Stamina địch" / "-40 Stamina của địch" — BẮT BUỘC có chữ "địch"
     // để không nhầm với chi phí Stamina của CHÍNH MÌNH.
     out.drainStamina += sum(/gi[ảa]m\s*(\d+)\s*Stamina\s*(?:c[ủu]a\s*)?[đd][ị i]ch/i);
     out.selfImitation += sum(/nh[ậa]n\s*(\d+)\s*Imitation/i);
-    out.selfLight     += sum(/nh[ậa]n\s*(\d+)\s*Light/i);
+    // "hồi lại N Light" / "hồi N Light" cũng phải bắt — Fragaria: "Extract Fuel
+    // có vẻ không hồi light sau khi sử dụng". Text của nó ghi "hồi lại 2 Light"
+    // chứ không phải "nhận 2 Light" nên regex cũ trượt sạch.
+    out.selfLight     += sum(/(?:nh[ậa]n|h[ồo]i(?:\s*l[ạa]i)?)\s*(\d+)\s*<?[^>\s]*>?\s*Light/i);
     out.healHp        += sum(/h[ồo]i(?:\s*ph[ụu]c)?\s*(\d+)\s*(?:HP|M[áa]u)/i);
     // Haste — BẮT BUỘC động từ "nhận" NGAY trước số (cùng nguyên tắc gainOnly của
     // Poise/Charge trong AUTO_STATUS_TAGS). Cố ý BỎ SÓT các dạng mập mờ hơn:
@@ -5442,6 +5493,54 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
  *  dò ngược ra key theo THAM CHIẾU object — chính xác tuyệt đối, kể cả 2 skill
  *  trùng tên hiển thị nhưng khác key (VD "Dimensional Rift" có bản dagger và
  *  bản gauntlets). Trả null nếu không tìm ra skill nào. */
+/** cdKeyFor — ô đếm cooldown THẬT của một skillKey.
+ *
+ *  Skill khai `cdGroup` thì dùng CHUNG ô đếm với mọi skill cùng nhóm (Fragaria:
+ *  2 Critical của Atelier Logic phải share CD vì chúng là cùng một khẩu súng,
+ *  bấm Critical chỉ là đổi form). Skill không khai → giữ nguyên hành vi cũ,
+ *  đúng cách `pityGroup` làm với banner gacha.
+ *
+ *  ⚠️ MỌI chỗ đọc/ghi `skillCooldowns[...]` PHẢI đi qua hàm này, nếu không sẽ
+ *  có chỗ ghi vào ô nhóm còn chỗ khác đọc ô riêng → CD hiện 0 dù đang cooldown.
+ */
+/** findOwnedPageKey — tìm KEY THẬT của một page trong kho `data.pages`.
+ *
+ *  BUG ĐÃ SỬA (Fragaria: "bug moon splitting draw không equip được dù đã có,
+ *  1 số page cũng bị như vậy, có khả năng là nhiều page nữa").
+ *
+ *  NGUYÊN NHÂN GỐC: kho `data.pages` được GHI bằng chuỗi khai trong
+ *  `book-system.js` (BOOK_GRANTS), nhưng lúc equip lại TRA bằng `skill.name`.
+ *  Hai chuỗi này lệch nhau ở **5 page** — dò cả 173 tên page trong sách:
+ *    "Moon Splitting Draw"              ≠ "Moon-Splitting Draw"      (dấu gạch)
+ *    "Complete and Total Extermination!" ≠ "Complete and Total Extermination" (dấu !)
+ *    "Waltz in White" / "Waltz in Black" ≠ "Waltz In White/Black"     (hoa/thường)
+ *    "My Hair Coupon"                   ≠ "MY HAIR COUPOOOOOOONS!"
+ *  → đọc sách xong kho có page, mà equip vẫn báo "chưa sở hữu".
+ *
+ *  Sửa chuỗi trong sách là CHƯA ĐỦ: dữ liệu người chơi ĐANG lưu key cũ, sửa
+ *  BOOK_GRANTS sẽ làm họ mất sạch page đã học. Nên tra theo ĐỊNH DANH SKILL:
+ *  thử key chuẩn trước (nhanh), không có thì quét kho và so bằng `findSkill`.
+ *  Trả về key thật (để còn trừ/xoá đúng ô) hoặc null.
+ */
+function findOwnedPageKey(pagesObj, skillOrName) {
+  if (!pagesObj) return null;
+  const skill = typeof skillOrName === "string" ? findSkill(skillOrName) : skillOrName;
+  if (!skill) return null;
+  if ((pagesObj[skill.name] ?? 0) > 0) return skill.name;
+  for (const k of Object.keys(pagesObj)) {
+    if ((pagesObj[k] ?? 0) <= 0) continue;
+    if (findSkill(k) === skill) return k;
+  }
+  return null;
+}
+
+function cdKeyFor(skillKeyOrName) {
+  if (!skillKeyOrName) return skillKeyOrName;
+  const key = String(skillKeyOrName).trim().toLowerCase();
+  const sk = SKILLS[key] ?? findSkill(key);
+  return sk?.cdGroup ?? key;
+}
+
 function resolveSkillKey(raw) {
   const skill = findSkill(raw);
   if (!skill) return null;
@@ -5453,4 +5552,4 @@ function resolveSkillKey(raw) {
   return null;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };

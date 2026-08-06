@@ -95,7 +95,10 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
         // Người chưa mở khoá không cần thấy ô này (đỡ rối + không lộ cơ chế chưa
         // tới lượt họ). `?? mặc định` để profile cũ thiếu field không hiện NaN.
         ...(data.ShinUnlock ? [{
-          name: "<:Fix_Shin:1507591140180754588> Shin / <:Fix_Mang:1507591172770631822> Mang",
+          // Fragaria: "phần Shin / Mang ở đầu nó quá thừa" — 2 dòng bên dưới đã
+          // ghi rõ "Shin Lvl …" và "Mang Lvl …" rồi, tiêu đề chỉ lặp lại.
+          // Discord bắt buộc field phải có name → dùng ZWSP để ẩn hẳn dòng tiêu đề.
+          name: "\u200b",
           value:
             `<:Fix_Shin:1507591140180754588> **Shin Lvl ${data.ShinLevel ?? 10}** / 50` +
             ` — giảm 0,2x mọi Res khi kích hoạt` +
@@ -218,14 +221,22 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
         return (equippedEgoPageCounts[n] ?? 0) < data.pages[n];
       });
       if (ownedRegularPages.length > 0) {
+        // BUG ĐÃ SỬA (Fragaria: "nên cho dropdown ở balance cho equip page theo
+        // slot 1/2/3/4/5 vì giờ nó chỉ cho equip page vào slot 1").
+        // TRƯỚC ĐÂY slot được CHỌN HỘ: `findIndex(s => !s)` = ô trống đầu tiên,
+        // và khi ĐÃ ĐẦY 5 slot thì rơi vào `targetSlot = 0` → mọi lần equip sau
+        // đều GHI ĐÈ slot 1. Người chơi không có cách nào đưa page vào slot 3.
+        // Giờ chọn 1 page → hiện tiếp dropdown 5 slot (kèm page đang nằm trong
+        // mỗi slot) để tự chọn. E.G.O Page vẫn tự động vì slot của nó do Tier
+        // quyết định, không được chọn tay.
         const pageOptions = ownedRegularPages.slice(0, 25).map(n =>
-          new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Page — tự chọn slot trống đầu tiên").setValue(`page:${n}`).setEmoji("📖")
+          new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Chọn xong sẽ hỏi slot 1–5").setValue(`page:${n}`).setEmoji("📖")
         );
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`balequippage:${targetUser.id}`)
-            .setPlaceholder("📖 Equip Page thường (chọn nhiều được)...")
-            .setMinValues(1).setMaxValues(pageOptions.length)
+            .setPlaceholder("📖 Equip Page thường — chọn 1 page...")
+            .setMinValues(1).setMaxValues(1)
             .addOptions(pageOptions)
         ));
       }

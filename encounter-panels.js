@@ -49,7 +49,7 @@ const EXTRA_CRITICALS = [
   },
 ];
 
-module.exports = function ({ findSkill, resolveSkillKey, parseSkillCost, hasPerk, hasShinAccess }) {
+module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, findSingularity, egoSkillKeysFor, parseSkillCost, hasPerk, hasShinAccess }) {
 
   /** describePageOption — dòng mô tả phụ (setDescription) cho mỗi Page trong
    *  dropdown Moves.
@@ -76,7 +76,7 @@ module.exports = function ({ findSkill, resolveSkillKey, parseSkillCost, hasPerk
     // KHÔNG phải tên hiển thị. Tra bằng tên sẽ luôn trượt, hiện "sẵn sàng" cho
     // page đang cooldown.
     const key = resolveSkillKey ? resolveSkillKey(pageName) : null;
-    const cdLeft = key ? (combatant.skillCooldowns?.[key] ?? 0) : 0;
+    const cdLeft = key ? (combatant.skillCooldowns?.[cdKeyFor(key)] ?? 0) : 0;
     if (cdLeft > 0) { parts.push(`⏳ CD còn ${cdLeft} turn`); blocked = true; }
 
     // ── Chi phí Light / Sanity ────────────────────────────────────────────
@@ -194,6 +194,38 @@ module.exports = function ({ findSkill, resolveSkillKey, parseSkillCost, hasPerk
         .setLabel(`⚡ You're Too Slow — Đâm ${combatant.youreTooSlowMark.markedLabel ?? "mục tiêu đã đánh dấu"}`.slice(0, 100))
         .setValue("ytsfollowup"));
     }
+    // ── SINGULARITY + MANIFESTED E.G.O ────────────────────────────────────
+    // Fragaria: slot Singularity TÁCH BIỆT weapon/outfit/accessory; và
+    // "Manifested E.G.O thì MỖI NGƯỜI SẼ CÓ 1 CÁI KHÁC NHAU nên không thể dùng
+    // chung như hiện tại được".
+    // TRƯỚC ĐÂY Critical của Singularity không hiện ở đâu cả, còn Critical E.G.O
+    // (falco berigora / wedjat / beam of nihil…) nằm chung một kho — ai Manifest
+    // cũng bấm được hết. Giờ Singularity đọc từ slot đã equip, E.G.O đọc qua
+    // egoSkillKeysFor (ego.js) nên chỉ ra ĐÚNG bộ của nhân vật đó.
+    if (combatant.equippedSingularity && findSingularity) {
+      const sing = findSingularity(combatant.equippedSingularity);
+      const singSkill = sing?.criticalSkillKey ? findSkill(sing.criticalSkillKey) : null;
+      if (singSkill) {
+        const info = describePageOption(combatant, singSkill.name);
+        const opt = new StringSelectMenuOptionBuilder()
+          .setLabel(`${info.blocked ? "⛔ " : ""}🌌 Singularity: ${singSkill.name}`.slice(0, 100))
+          .setValue(`critical:${singSkill.name}`);
+        if (info.desc) opt.setDescription(info.desc);
+        options.push(opt);
+      }
+    }
+    if (combatant.manifestedEGO && egoSkillKeysFor) {
+      for (const key of egoSkillKeysFor(combatant)) {
+        const sk = findSkill(key);
+        if (!sk) continue;
+        const info = describePageOption(combatant, sk.name);
+        const opt = new StringSelectMenuOptionBuilder()
+          .setLabel(`${info.blocked ? "⛔ " : ""}😈 E.G.O: ${sk.name}`.slice(0, 100))
+          .setValue(`critical:${sk.name}`);
+        if (info.desc) opt.setDescription(info.desc);
+        options.push(opt);
+      }
+    }
     const addedPageNames = new Set();
     // GAP ĐÃ SỬA (Fragaria báo trực tiếp: "counter page và light dash/fleetfoot
     // steps sử dụng tùy ý được ở moves — nên xóa ra ở moves, đáng lẽ phải chỉ
@@ -262,7 +294,9 @@ module.exports = function ({ findSkill, resolveSkillKey, parseSkillCost, hasPerk
     // TRƯỚC ĐÂY không tồn tại trong PERK_POINT_COSTS/PERK_BRANCH nên không ai
     // cấp được, và người đã có perk NHÁNH shin vẫn bị chặn. Xem skill-tree.js.
     if (hasShinAccess(combatant)) {
-      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1507591140180754588", name: "Fix_Shin" }));
+      // Dropdown ENCOUNTER → emoji <:Shin:1528452250861699215>, KHÔNG phải
+      // Fix_Shin (Fix_Shin chỉ dùng ở -balance và phần mô tả).
+      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1528452250861699215", name: "Shin" }));
     }
     if ((combatant.emotionLevel ?? 0) >= 1) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("😈 Manifest E.G.O (-30 Sanity)").setValue("manifestego"));

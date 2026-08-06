@@ -17,7 +17,7 @@
 
 const { StringSelectMenuOptionBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
 
-module.exports = function ({ findBook, getPlayerDataWithSlot, savePlayerData }) {
+module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDataWithSlot, savePlayerData }) {
 
   const BOOK_GRANTS = {
     // "Book Thường" = "Book of Fixer" theo cách gọi ngoài đời (xác nhận trực tiếp từ
@@ -261,14 +261,20 @@ module.exports = function ({ findBook, getPlayerDataWithSlot, savePlayerData }) 
     // duplicate tránh lãng phí sách") — CHỈ áp dụng cho page (weapon/outfit không
     // bị chặn tương tự, không có yêu cầu tương ứng cho 2 loại đó). Chặn TRƯỚC khi
     // trừ sách, để không lãng phí nếu chọn nhầm page đã có.
-    if (chosenType === "page" && (profileData.pages?.[chosenName] ?? 0) >= 1) {
+    // Ghi kho bằng KEY CHUẨN (skill.name) để lần sau equip tra được ngay — xem
+    // findOwnedPageKey trong skills.js. Dữ liệu CŨ vẫn dùng được vì hàm đó tra
+    // theo định danh skill chứ không so chuỗi.
+    const canonicalPageName = chosenType === "page"
+      ? (findSkill(chosenName)?.name ?? chosenName)
+      : chosenName;
+    if (chosenType === "page" && findOwnedPageKey(profileData.pages, chosenName)) {
       throw new Error(`Bạn ĐÃ sở hữu **${chosenName}** rồi — mỗi page chỉ cần 1 bản, không học trùng được. Xem \`-inventory\` để biết các page đang có, chọn page khác.`);
     }
     profileData.books[bookName] = owned - 1;
     if (profileData.books[bookName] <= 0) delete profileData.books[bookName];
     if (chosenType === "page") {
       profileData.pages = profileData.pages ?? {};
-      profileData.pages[chosenName] = (profileData.pages[chosenName] ?? 0) + 1;
+      profileData.pages[canonicalPageName] = (profileData.pages[canonicalPageName] ?? 0) + 1;
     } else {
       profileData.items = profileData.items ?? {};
       profileData.items[chosenName] = (profileData.items[chosenName] ?? 0) + 1;

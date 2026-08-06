@@ -11,7 +11,7 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-module.exports = function ({ ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ findOwnedPageKey, findSingularity, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -487,13 +487,24 @@ client.on("messageCreate", async (message) => {
         const missingHp = effectiveMaxHp - currentHp;
         if (missingHp <= 0) throw new Error("Bạn đã đầy HP rồi, không cần hồi.");
         const actualHeal = Math.min(hpAmountRaw, missingHp);
-        const HP_HEAL_RATE_AHN = 500; // GIẢ ĐỊNH — xem note ở trên
+        // Fragaria: "gia tăng GẤP 3 giá Ahn để heal hp và CHỈ HEAL ĐƯỢC 1 LẦN
+        // thông qua cách này (reset mỗi 12h theo mốc reset hp daily)".
+        // 500 → 1500 Ahn/HP.
+        const HP_HEAL_RATE_AHN = 1500;
+        // Giới hạn 1 lần/chu kỳ: dùng CHUNG mốc 0h/12h giờ VN với reset HP
+        // (mostRecentHpResetBoundaryUtc) thay vì tự đếm 12 tiếng từ lần heal —
+        // nếu tự đếm sẽ lệch dần khỏi mốc reset HP và người chơi không đoán được.
+        const healBoundary = mostRecentHpResetBoundaryUtc(Date.now());
+        if ((profileData.lastPaidHealAt ?? 0) >= healBoundary) {
+          throw new Error(`Bạn đã dùng lượt hồi HP bằng Ahn của chu kỳ này rồi — mỗi chu kỳ **1 lần**, làm mới ở mốc **0h/12h giờ VN** (cùng mốc reset HP).`);
+        }
         const cost = actualHeal * HP_HEAL_RATE_AHN;
-        if ((profileData.ahn ?? 0) < cost) throw new Error(`Cần ${formatNumber(cost)} Ahn để hồi ${actualHeal} HP (rate ${HP_HEAL_RATE_AHN} Ahn/HP) — bạn chỉ có ${formatNumber(profileData.ahn ?? 0)} Ahn.`);
+        if ((profileData.ahn ?? 0) < cost) throw new Error(`Cần ${formatNumber(cost)} Ahn để hồi ${actualHeal} HP (rate ${formatNumber(HP_HEAL_RATE_AHN)} Ahn/HP) — bạn chỉ có ${formatNumber(profileData.ahn ?? 0)} Ahn.`);
         profileData.ahn = (profileData.ahn ?? 0) - cost;
         profileData.currentHp = currentHp + actualHeal;
+        profileData.lastPaidHealAt = Date.now();
         await savePlayerData(userId, profileData, slot);
-        message.reply(`❤️ Đã hồi **${actualHeal} HP** (${currentHp} → ${profileData.currentHp}/${effectiveMaxHp}) — tốn ${formatNumber(cost)} Ahn (còn ${formatNumber(profileData.ahn)} Ahn).`);
+        message.reply(`❤️ Đã hồi **${actualHeal} HP** (${currentHp} → ${profileData.currentHp}/${effectiveMaxHp}) — tốn ${formatNumber(cost)} Ahn (còn ${formatNumber(profileData.ahn)} Ahn).\n> ⚠️ Đây là **lượt hồi duy nhất** của chu kỳ này — làm mới ở mốc 0h/12h giờ VN.`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);
@@ -1383,7 +1394,9 @@ client.on("messageCreate", async (message) => {
       // trước đây Page hoàn toàn tự do không cần sở hữu — theo yêu cầu trực tiếp:
       // "equip weapon/outfit/page đều phải SỞ HỮU trước").
       const isAdminAction = targetLabel !== null;
-      if (!isAdminAction && (data.pages?.[skill.name] ?? 0) < 1) {
+      // Tra theo ĐỊNH DANH SKILL, không so chuỗi thô — xem findOwnedPageKey
+      // trong skills.js (5 page có tên trong sách lệch với skill.name).
+      if (!isAdminAction && !findOwnedPageKey(data.pages, skill)) {
         throw new Error(`Bạn chưa sở hữu Page **${skill.name}** — cần đọc sách tương ứng để nhận (xem \`-readbook\`), hoặc nhờ GM cấp.`);
       }
       const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
@@ -1518,6 +1531,43 @@ client.on("messageCreate", async (message) => {
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }
+    return;
+  }
+
+  // ── -equipsingularity / -unequipsingularity ────────────────────────────────
+  // Slot SINGULARITY: ĐÚNG 1 slot mỗi người (Fragaria: "mỗi người có 1 slot
+  // Singularity TÁCH BIỆT với weapon/outfit/accessory"). Vì chỉ 1 slot nên cú
+  // pháp KHÔNG có tham số slot — khác page (5 slot) và accessory (3 slot).
+  if (message.content.startsWith("-equipsingularity")) {
+    const rawInputFull = message.content.replace("-equipsingularity", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
+    if (!rawInput.trim()) { message.reply("⚠️ Cú pháp: `-equipsingularity [@user] <tên singularity>` (VD: `-equipsingularity borrowed eyes`)"); return; }
+    try {
+      const sing = findSingularity(rawInput.trim());
+      if (!sing) throw new Error(`Không tìm thấy Singularity "${rawInput.trim()}" trong singularity.js.`);
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      const isAdminAction = targetLabel !== null;
+      if (!isAdminAction && (data.items?.[sing.name] ?? 0) < 1) {
+        throw new Error(`Bạn chưa sở hữu **${sing.name}** — nó rơi từ **${sing.source ?? "boss tương ứng"}**, hoặc nhờ GM cấp.`);
+      }
+      const replaced = data.equippedSingularity;
+      data.equippedSingularity = sing.name;
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(`✅ Đã equip Singularity **${sing.name}**${replaced ? ` (thay **${replaced}**)` : ""}${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
+    } catch (err) { message.reply(`❌ ${err.message}`); }
+    return;
+  }
+  if (message.content.startsWith("-unequipsingularity")) {
+    const rawInputFull = message.content.replace("-unequipsingularity", "").trim();
+    const { targetUserId, targetLabel } = resolveEquipTarget(message, rawInputFull);
+    try {
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      const removed = data.equippedSingularity;
+      if (!removed) throw new Error("Slot Singularity đang trống.");
+      data.equippedSingularity = null;
+      await savePlayerData(targetUserId, data, slot);
+      message.reply(`✅ Đã tháo Singularity **${removed}**${targetLabel ? ` của **${targetLabel}**` : ""}.`);
+    } catch (err) { message.reply(`❌ ${err.message}`); }
     return;
   }
 

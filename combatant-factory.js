@@ -414,7 +414,9 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
     // nhận Bleed MỚI (max 5), mỗi stack ứng 1 tier (+10%/tier dmg nhận, và Bleed
     // dmg tự gây nhân /3|/2|x1|x1.5|x2 theo tier 1-5). Reset về 0 nếu KHÔNG có
     // Bleed mới trong 1 turn — appliedThisTurn track để biết reset hay không.
-    hemorrhage: 0, hemorrhageAppliedThisTurn: false,
+    // hemorrhageMaxHeldTurn — đã ĐẦY 5 stack qua trọn 1 turn chưa (luật reset
+    // vế 2: "hoặc khi 5 điểm Hemorrhage tồn tại trong 1 turn").
+    hemorrhage: 0, hemorrhageAppliedThisTurn: false, hemorrhageMaxHeldTurn: false,
     // Burning Sensation (xác nhận trực tiếp): "gây x3 sát thương burn (Có thể mul
     // dmg), giảm 1/2 lượng hồi phục" — flag boolean (không stack, mô tả gốc không
     // nêu số lượng).

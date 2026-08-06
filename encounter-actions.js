@@ -242,7 +242,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
         : "";
       const cappedNote = mangLevel >= MANG_MAX_LEVEL ? ` *(đã ở cap)*` : "";
       result =
-        `<:Fix_Shin:1507591140180754588> **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
+        `<:Shin:1528452250861699215> **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
         `Mang Lvl ${mangLevel}/${MANG_MAX_LEVEL}${cappedNote}: +${mangLevel * 10}% Dmg, +${mangLevel} Dice Up, +${mangLevel} Clash Power Up, gây True Dmg (M1+skill turn này).`;
       appendActionLog(encounter, result);
       await saveEncounter(channelId, encounter);
@@ -299,7 +299,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
     data.MangLevel = data.MangLevel ?? 1;
     if (!data.ShinUnlock) {
       data.ShinUnlock = true;
-      return `<:Fix_Shin:1507591140180754588> **Fixer's Note** — đã MỞ KHOÁ Shin! Khởi điểm Shin Lvl ${data.ShinLevel}, Mang Lvl ${data.MangLevel}.`;
+      return `<:Shin:1528452250861699215> **Fixer's Note** — đã MỞ KHOÁ Shin! Khởi điểm Shin Lvl ${data.ShinLevel}, Mang Lvl ${data.MangLevel}.`;
     }
     const beforeShin = data.ShinLevel, beforeMang = data.MangLevel;
     data.ShinLevel = Math.min(SHIN_MAX_LEVEL, beforeShin + 10);
@@ -309,7 +309,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
     else parts.push(`Shin Lvl đã ở cap ${SHIN_MAX_LEVEL}`);
     if (data.MangLevel > beforeMang) parts.push(`Mang Lvl ${beforeMang} → **${data.MangLevel}**`);
     else parts.push(`Mang Lvl đã ở cap ${MANG_MAX_LEVEL}`);
-    return `<:Fix_Shin:1507591140180754588> **Fixer's Note** — ${parts.join(", ")}.`;
+    return `<:Shin:1528452250861699215> **Fixer's Note** — ${parts.join(", ")}.`;
   }
 
   async function performUseItem(channelId, userId, itemNameRaw) {

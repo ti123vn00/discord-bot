@@ -329,6 +329,16 @@ function calcMathCore(opts) {
     effectiveSanityBonus += livingHeal;
 
     totalDmg += instanceDmg;
+    // finalDmg — DMG THẬT của riêng hit này (đã qua Res/DR/crit/bonus), gắn
+    // NGƯỢC vào chính phần tử dmgValues.
+    // BUG ĐÃ SỬA (Fragaria, ảnh "Nhóm này: ~0.0 dmg" trong khi cả đòn 491.4):
+    // prompt phòng thủ cần dmg TỪNG HIT để tính "còn lại sau khi né/guard".
+    // `dmgValues[i].value` chỉ là SỐ DICE THÔ (chưa nhân Res/DR/crit) nên KHÔNG
+    // dùng thay được, mà dmg cuối trước đây chỉ tồn tại dưới dạng biến cục bộ
+    // `instanceDmg` rồi cộng dồn vào `totalDmg` — không ai lấy lại được từng hit.
+    // → reactive-defense.js đọc `.dmg`/số nguyên đều trượt, ra 0 cho mọi hit.
+    // Gắn thêm field là thay đổi CỘNG THÊM, không phá gì đang đọc dmgValues.
+    dmgObj.finalDmg = instanceDmg;
 
     // Apply stack mới từ đòn này sau khi đã tính dmg xong. Poise/Charge/Burn/Bleed áp
     // GAIN trước (cộng, clamp max) RỒI MỚI CONSUME (trừ, không cho âm) — khớp đúng
