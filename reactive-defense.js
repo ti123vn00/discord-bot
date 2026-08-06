@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ applyHpLoss, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
+module.exports = function ({ applyHpLoss, cdKeyFor, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -658,7 +658,17 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
           if (!pageSkill || !pageSkill.counterEffect) continue;
           const pageKey = pageName.trim().toLowerCase();
           if (addedCounterKeys.has(pageKey)) continue;
-          if ((target.skillCooldowns?.[pageKey] ?? 0) > 0) continue;
+          if ((target.skillCooldowns?.[cdKeyFor ? cdKeyFor(pageKey) : pageKey] ?? 0) > 0) continue;
+          // BUG ĐÃ SỬA (Fragaria, kèm ảnh: "You're Too Slow bị bug xài liên tục 2
+          // lần ở reactive defense được, có vẻ là không đếm CD").
+          // Đúng là không đếm — nhưng CỐ Ý: counter thành công thì
+          // express-routes.js XOÁ CD vừa set, vì "CD chỉ tính SAU khi đâm xong"
+          // (đòn đâm nằm ở dropdown Moves, nhánh ytsfollowup). Hệ quả không lường
+          // trước: trong lúc DẤU còn treo (đã counter, chưa đâm), skill vừa không
+          // có CD vừa không có gì chặn → nhóm hit kế tiếp lại hiện nút counter,
+          // bấm được vô hạn.
+          // → Chặn bằng chính cái DẤU: còn dấu chưa tiêu thì không counter lại.
+          if (pageKey === "you're too slow" && target.youreTooSlowMark?.markedTargetId) continue;
           const cost = parseSkillCost(pageSkill.cost);
           if ((target.currentLight ?? 0) < (cost.light ?? 0)) continue;
           addedCounterKeys.add(pageKey);

@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ applyHpLoss, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ applyHpLoss, shopWeeklyStockMap, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -340,7 +340,7 @@ client.on("interactionCreate", async (interaction) => {
         const { data } = await getPlayerDataWithSlot(ownerId);
         // content: "" — xoá dòng kết quả của lần mua trước, nếu không nó treo
         // lại phía trên embed mãi (đúng cảnh Fragaria chụp: text cũ + "(edited)").
-        return interaction.update({ content: "", embeds: [buildShopEmbed(data)], components: buildShopComponents(ownerId) }).catch(() => {});
+        return interaction.update({ content: "", embeds: [buildShopEmbed(data, await shopWeeklyStockMap())], components: buildShopComponents(ownerId) }).catch(() => {});
       }
       // shopqty / shopreset — có I/O (đọc + ghi profile) nên defer trước cho an
       // toàn với hạn 3 giây của Discord (bài học từ bug treo contract begin).
@@ -358,7 +358,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.editReply({
         content: "",
         embeds: [
-          buildShopEmbed(freshData),
+          buildShopEmbed(freshData, await shopWeeklyStockMap()),
           { description: result.message, color: result.ok ? 0x2ecc71 : 0xe74c3c },
         ],
         components: buildShopComponents(ownerId),
@@ -830,6 +830,31 @@ client.on("interactionCreate", async (interaction) => {
         if (!counterSkill || !counterSkill.counterEffect) {
           await interaction.reply({ content: "❌ Không tìm thấy page counter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
           return;
+        }
+        // KIỂM LẠI Ở SERVER — nút đã gửi ra rồi thì vẫn bấm được kể cả khi điều
+        // kiện đã đổi (message cũ, hoặc nhóm hit trước vừa tiêu mất tài nguyên).
+        // Lọc lúc DỰNG nút (reactive-defense.js) là chưa đủ; đây là chốt chặn thật.
+        {
+          const encCounterCheck = await getEncounter(channelId);
+          const meCounter = encCounterCheck?.players?.[targetId] ?? encCounterCheck?.enemies?.[targetId];
+          if (meCounter) {
+            const cdLeftCounter = meCounter.skillCooldowns?.[cdKeyFor(counterSkillKey)] ?? 0;
+            if (cdLeftCounter > 0) {
+              await interaction.reply({ content: `⚠️ **${counterSkill.name}** đang cooldown — còn ${cdLeftCounter} turn.`, flags: MessageFlags.Ephemeral }).catch(() => {});
+              return;
+            }
+            // You're Too Slow: còn DẤU chưa đâm thì không được counter tiếp
+            // (xem comment đầy đủ ở reactive-defense.js).
+            if (counterSkillKey === "you're too slow" && meCounter.youreTooSlowMark?.markedTargetId) {
+              await interaction.reply({ content: "⚠️ Bạn đang còn **dấu You're Too Slow** chưa dùng — mở dropdown **Moves** để tung đòn đâm trước đã.", flags: MessageFlags.Ephemeral }).catch(() => {});
+              return;
+            }
+            const counterCost = parseSkillCost(counterSkill.cost);
+            if ((meCounter.currentLight ?? 0) < (counterCost.light ?? 0)) {
+              await interaction.reply({ content: `⚠️ Không đủ Light cho **${counterSkill.name}** (cần ${counterCost.light}, đang có ${meCounter.currentLight ?? 0}).`, flags: MessageFlags.Ephemeral }).catch(() => {});
+              return;
+            }
+          }
         }
         await interaction.reply({
           embeds: [{ title: `⚔️ ${counterSkill.name} — Counter`, description: "Bấm nút dưới để mở Parry Real Time. Thắng = counter thành công, thua = không phòng thủ được (ăn dmg thường).", color: 0xf39c12 }],

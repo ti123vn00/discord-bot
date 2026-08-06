@@ -235,6 +235,12 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // đã tích. Đang tích mà bị Stagger hay bị đánh sẽ KHÔNG mất."
       // null = không tích gì. Xem CHARGE_SPEC_CONTRACT trong skills.js.
       chargingSkillKey: null, chargingTurns: 0,
+      // Số lần vừa bị AI nhắm — trọng số chọn mục tiêu CHIA cho (1 + số này),
+      // giảm 1 mỗi turn. Đây là cơ chế RẢI sát thương (xem enemy-ai.js).
+      aiRecentTargetCount: 0,
+      // Boss có `attackPattern` (Nothing There): đếm TỔNG số đòn đã tung để suy
+      // ra turn nào / đòn thứ mấy trong kịch bản (xem pickPatternSkill).
+      bossPatternIdx: 0,
       // realizationStacks — "A Prayer For Loving Sorrow" (Găng Tay Câm Lặng):
       // "Mỗi lần đổi vũ khí Black Silence bằng Dimension Pocket VÀ sử dụng
       // Critical của chúng bạn nhận được 1 Realization [mỗi vũ khí 1 lần]".

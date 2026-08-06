@@ -13,7 +13,7 @@
 // "botReady" → "getBotReady()" ở route "/" — đây là thay đổi CẦN THIẾT để
 // giữ đúng hành vi gốc qua ranh giới module, không phải sửa logic).
 
-module.exports = function ({ applyHpLoss, RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, saveEncounter, sendReactiveDefensePrompt, webParrySessions, withLock, deleteEncounter }) {
+module.exports = function ({ applyHpLoss, cdKeyFor, RTPARRY_MIN_HUMAN_MS, WEAPON_DEFENSE_HITS, app, autoBuildDmgStrFromSkillRoll, getBotReady, calcMathCore, client, combatantResStr, encounterKey, finalizeReactiveChoice, findSkill, getEncounter, log, parseSkillCooldownTurns, parseSkillCost, renderParryWebPage, resolveCombatant, saveEncounter, sendReactiveDefensePrompt, webParrySessions, withLock, deleteEncounter }) {
 
 app.get("/", (req, res) => getBotReady() ? res.send("Bot is alive and kicking!") : res.status(503).send("Bot is starting up..."));
 
@@ -118,7 +118,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
           target.currentLight = Math.max(0, (target.currentLight ?? 0) - (cost.light ?? 0));
           const cdTurns = parseSkillCooldownTurns(counterSkill.cd);
           target.skillCooldowns = target.skillCooldowns ?? {};
-          target.skillCooldowns[counterSkillKey] = cdTurns + 1;
+          target.skillCooldowns[cdKeyFor(counterSkillKey)] = cdTurns + 1;
         }
         // Hiệu ứng phụ (Light hồi, Protection, mở khoá follow-up, nạp đạn...) —
         // vẫn CHỈ khi thành công, TRỪ "alwaysUnlocks" (Yield My Flesh: mở khoá
@@ -247,7 +247,7 @@ app.post("/rtparry/:token/result", async (req, res) => {
           // không cho người chơi chọn thời điểm và cũng không khớp mô tả.
           if (counterSkillKey === "you're too slow") {
             // Huỷ CD vừa set ở khối trên — CD chỉ tính sau khi đâm xong.
-            delete target.skillCooldowns[counterSkillKey];
+            delete target.skillCooldowns[cdKeyFor(counterSkillKey)];
             target.youreTooSlowMark = { markedTargetId: p.attackerId, markedLabel: attackerResolved.label };
             choiceNote = `⚡ **You're Too Slow** — né sạch đòn và ĐÁNH DẤU ${attackerResolved.label}! Mở dropdown **Moves** để tung đòn đâm (skill chỉ vào cooldown sau khi đâm).`;
           } else if (!effect.noDirectDamage) {

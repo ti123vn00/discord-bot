@@ -2285,8 +2285,85 @@ roll(v = "no") {
         `*Khi dùng: <:Bleed:1513762688226955285>Bleed tồn tại thêm 1 turn*`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt]`,
-        `<:Dice3:1508173643518050395> **${hasBleed ? d3*2 : d3}** [<:Blunt:1513768529718022254>Blunt]${hasBleed ? " *(địch có Bleed: dmg x2)*" : " *(địch không có Bleed)*"}`,
+        // Fragaria sửa mô tả (nguyên văn):
+        //   cũ: "gây sát thương BẰNG SỐ DICE roll ra + Bleed nhân 2"
+        //   mới: "Lao vào đập kẻ thù, SỐ DICE sẽ bằng số roll ra + Bleed nhân 2"
+        // Khác biệt là ở CHỖ nhân đôi: nhân vào chính GIÁ TRỊ DICE (nên nó tham
+        // gia clash, Dice Up, Res… như một dice bình thường), KHÔNG phải nhân
+        // dmg sau cùng. Code vốn đã nhân đúng vào dice (`d3*2`) — chỉ chữ mô tả
+        // sai. Sửa chữ cho khớp để không ai đọc rồi "sửa" code theo nghĩa cũ.
+        `<:Dice3:1508173643518050395> **${hasBleed ? d3 * 2 : d3}** [<:Blunt:1513768529718022254>Blunt] — Lao vào đập kẻ thù, số Dice sẽ bằng số roll ra${hasBleed ? " ×2 *(địch có <:Bleed:1513762688226955285>Bleed)*" : " *(địch không có <:Bleed:1513762688226955285>Bleed)*"}`,
       ];
+    },
+  },
+
+  // ── NOTHING THERE — Weekly Boss (data Fragaria đưa nguyên văn) ──────────
+  // 5 page dưới đây CHỈ boss dùng; không rơi vào kho page người chơi.
+  // Attack Pattern (xem `attackPattern` trong quest-data.js):
+  //   Turn 1: Jump Attack · Triple Swing · Swing
+  //   Turn 2: Running Attack · Jump Attack · Triple Swing
+  //   Turn 3: HELP · Triple Swing · Goodbye
+  //   Turn 4: lặp lại từ Turn 1
+  "nt swing": {
+    name: "Swing", tags: "Nothing There", bossOnly: true,
+    cost: "—", cd: "—", diceMul: "1x",
+    roll() {
+      return [`${D1} **50** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung 1 đòn`];
+    },
+  },
+  "nt triple swing": {
+    name: "Triple Swing", tags: "Nothing There", bossOnly: true,
+    cost: "—", cd: "—", diceMul: "1x",
+    roll() {
+      // 3 đòn LIÊN TỤC, mỗi đòn 30 — viết thành 3 dice riêng để hệ thống chia
+      // nhóm phòng thủ đúng (mỗi hit là 1 nhóm với vũ khí heavy).
+      return [
+        `${D1} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung đòn 1/3`,
+        `${D2} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung đòn 2/3`,
+        `${D3} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung đòn 3/3`,
+      ];
+    },
+  },
+  "nt jump attack": {
+    name: "Jump Attack", tags: "Nothing There", bossOnly: true,
+    cost: "—", cd: "—", diceMul: "1x",
+    roll() {
+      return [`${D1} **100** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — Nhảy vụt lên rồi bổ xuống`];
+    },
+  },
+  "nt running attack": {
+    name: "Running Attack", tags: "Nothing There", bossOnly: true,
+    cost: "—", cd: "—", diceMul: "1x",
+    roll() {
+      // Fragaria bổ sung số chính thức: "Chạy lại rồi vung chùy vào kẻ địch gây
+      // 80 Dmg Blunt [Unblockable]". (Trước đó tôi để tạm 50 = bằng Swing.)
+      return [`${D1} **80** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Chạy lại rồi vung chùy vào kẻ địch`];
+    },
+  },
+  "nt help": {
+    name: "HELP", tags: "Nothing There", bossOnly: true,
+    cost: "—", cd: "—", diceMul: "1x",
+    roll() {
+      // "Hú một cái khiến 1 TRONG 10 ĐÒN tiếp theo sắp vung sẽ trở thành
+      // [Unblockable, Undodgeable, Unparriable]. Sau đó liên tục tung 10 đòn
+      // mỗi đòn 10 Dmg Blunt [Unblockable]."
+      // → Chọn NGẪU NHIÊN 1 trong 10 hit để gắn thêm 2 tag chặn phòng thủ.
+      const cursedIdx = Math.floor(Math.random() * 10);
+      const lines = [`*Nothing There hú lên — đòn thứ **${cursedIdx + 1}** không thể chặn/né/parry*`];
+      for (let i = 0; i < 10; i++) {
+        const tags = i === cursedIdx
+          ? "[Unblockable] [Undodgeable] [Unparriable]"
+          : "[Unblockable]";
+        lines.push(`${i === 0 ? D1 : D2} **10** [<:Blunt:1513768529718022254>Blunt] ${tags} — đòn ${i + 1}/10`);
+      }
+      return lines;
+    },
+  },
+  "nt goodbye": {
+    name: "Goodbye", tags: "Nothing There", bossOnly: true,
+    cost: "—", cd: "—", diceMul: "1x",
+    roll() {
+      return [`${D1} **200** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] [AOE] [True] — Biến một cánh tay thành lưỡi hái rồi vung vào kẻ địch`];
     },
   },
 
@@ -3760,6 +3837,16 @@ roll(v = "no") {
   "alleyway counter": {
     name: "Alleyway Counter",
     tags: "Fragile",
+    // BUG ĐÃ SỬA (Fragaria: "Alleyway Counter đang là page thường có thể sử dụng
+    // được ở Moves thay vì được xét là counter ở reactive defense").
+    // Text ghi rõ "NGẮT và counter một đòn của kẻ địch" — đó là hành vi phản ứng,
+    // không phải đòn chủ động. Thiếu `counterEffect` nên nó vừa lọt vào dropdown
+    // Moves (isReactiveOnlyPage trả false) vừa KHÔNG hiện nút counter lúc bị đánh.
+    // Khai `counterEffect` là sửa CẢ HAI cùng lúc: encounter-panels.js loại nó
+    // khỏi Moves, reactive-defense.js đưa nó vào danh sách nút Counter.
+    // `{}` = counter chuẩn: thắng thì ngắt đòn + gây dmg phản (dice + 5 Fragile
+    // do parser tự gắn), không có hiệu ứng phụ đặc biệt.
+    counterEffect: {},
     cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,15);

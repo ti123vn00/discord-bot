@@ -330,7 +330,38 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
 
   /** pickOffensiveSkill — chọn skill TỐN NHẤT trong số đủ Light + hết cooldown
    *  + không cần promptArg. Trả về {name, skill, key, lightCost} hoặc null. */
+  /** pickPatternSkill — đòn KẾ TIẾP theo `attackPattern` của boss.
+   *
+   *  Fragaria: pattern Nothing There là "Turn 1: Jump Attack, Triple Swing,
+   *  Swing / Turn 2: … / Turn 3: … / Turn 4: lặp lại từ đầu", và **"cả 3 đòn thì
+   *  đều nên chia lẻ ra, và MỖI LẦN đều có aggro targeting KHÁC NHAU chứ không
+   *  dồn hết cả 3 vào 1 người liên tục được"**.
+   *
+   *  → Trả về ĐÚNG MỘT đòn mỗi lần gọi, không gộp. `attemptOneMobAction` gọi lại
+   *  cho từng đòn, và mỗi lần đều chạy `pickAiTargets` mới ⇒ 3 đòn = 3 lần rút
+   *  mục tiêu ĐỘC LẬP. Xui thì vẫn có thể trúng cùng 1 người cả 3 lần — Fragaria
+   *  xác nhận "nếu có người xui cả 3 lần random đó đều dính thì không sao".
+   *
+   *  `bossPatternIdx` đếm TỔNG số đòn đã tung, chia lấy dư theo độ dài turn để
+   *  suy ra turn nào / đòn thứ mấy. Lưu trên combatant nên sống qua save/load.
+   */
+  function pickPatternSkill(mob) {
+    const pattern = mob.attackPattern;
+    if (!Array.isArray(pattern) || pattern.length === 0) return null;
+    const perTurn = pattern[0].length || 1;
+    const idx = mob.bossPatternIdx ?? 0;
+    const turnRow = pattern[Math.floor(idx / perTurn) % pattern.length];
+    const name = turnRow[idx % perTurn];
+    const skill = findSkill(name);
+    if (!skill) return null;
+    // Boss KHÔNG tốn Light/CD cho pattern — đây là kịch bản cố định, không phải
+    // lựa chọn tài nguyên. `lightCost: 0` để nhánh trừ Light phía dưới bỏ qua.
+    return { name, skill, key: name.trim().toLowerCase(), lightCost: 0, fromPattern: true };
+  }
+
   function pickOffensiveSkill(mob) {
+    // Boss có kịch bản cố định thì KHÔNG tự chọn skill theo Light nữa.
+    if (Array.isArray(mob.attackPattern) && mob.attackPattern.length > 0) return pickPatternSkill(mob);
     const candidates = [];
     for (const name of mob.unlockedPagesSnapshot ?? []) {
       const skill = findSkill(name);
@@ -380,6 +411,17 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
    *  Trả về mảng ĐÃ SẮP theo độ ưu tiên (mục tiêu khoá đứng đầu) — caller vẫn
    *  giữ nguyên cách dùng cũ (lặp từ đầu, ai khả dụng thì đánh). */
   const AI_AGGRO_TURNS = 2;
+  // Xác suất GIỮ mục tiêu đang khoá thay vì rút lại. Fragaria: "AI chỉ đang
+  // target duy nhất một người, như vậy khá khó cho player... tôi cần một chút
+  // RNG randomness hơn" — và giao tôi tự quyết con số.
+  // Khoá cứng 2 turn = 1 người ăn TOÀN BỘ đòn trong 2 turn; với boss như Nothing
+  // There (3 đòn/turn, có đòn 200 True AOE) là wipe chắc chắn. 0.6 giữ được cảm
+  // giác "boss bám 1 người" nhưng vẫn có 40% đổi mục tiêu mỗi lần đánh.
+  const AI_AGGRO_KEEP_CHANCE = 0.6;
+  // Mỗi lần bị nhắm, người đó nặng thêm 1 điểm "vừa bị đánh" → trọng số CHIA cho
+  // (1 + số điểm). Bị đánh 1 lần còn 1/2 cơ hội, 2 lần còn 1/3 — dồn sát thương
+  // lên 1 người trở nên rất khó. Điểm này giảm 1 mỗi turn (turn-advance.js).
+  const AI_RECENT_TARGET_DECAY_PER_TURN = 1;
   function pickAiTargets(encounter, mob) {
     const living = Object.entries(encounter.players)
       .filter(([, p]) => p.currentHp > 0)
@@ -388,9 +430,14 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
 
     const turnNow = encounter.turnNumber ?? 1;
     // Mục tiêu đang khoá còn hiệu lực? (còn sống + chưa hết hạn aggro)
-    const lockedStillValid = mob?.aiTargetId
+    // `aiSpreadTargets` (khai ở quest-data.js) — boss diện rộng KHÔNG khoá mục
+    // tiêu bao giờ; mỗi đòn rút lại từ đầu.
+    const lockedStillValid = !mob?.aiSpreadTargets
+      && mob?.aiTargetId
       && living.some(t => t.pid === mob.aiTargetId)
-      && (turnNow - (mob.aiTargetSetOnTurn ?? 0)) < AI_AGGRO_TURNS;
+      && (turnNow - (mob.aiTargetSetOnTurn ?? 0)) < AI_AGGRO_TURNS
+      // Khoá KHÔNG còn tuyệt đối — 40% mỗi lần vẫn đổi mục tiêu.
+      && Math.random() < AI_AGGRO_KEEP_CHANCE;
 
     // Weighted random shuffle — rút lần lượt không hoàn lại, nên TOÀN BỘ mảng
     // được xáo (không chỉ phần tử đầu). Quan trọng: nếu mục tiêu ưu tiên đang
@@ -399,7 +446,21 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
     const pool = [...living];
     const shuffled = [];
     while (pool.length > 0) {
-      const weights = pool.map(t => 1 + (1 - t.hpPct) * 2);
+      // TRỌNG SỐ ĐÃ ĐỔI (Fragaria yêu cầu thêm RNG, giao tôi quyết con số).
+      //
+      // CÔNG THỨC CŨ `1 + (1 - hpPct) * 2` là NGUỒN GỐC của "AI chỉ target 1
+      // người": máu càng thấp trọng số càng cao (tối đa 3×), mà bị đánh thì máu
+      // lại càng thấp ⇒ VÒNG XOÁY — ai trúng đòn đầu gần như chắc chắn ăn hết
+      // phần còn lại rồi chết, trong khi người đầy máu hầu như không bị đụng.
+      //
+      // CÔNG THỨC MỚI:
+      //   • Nền 1 cho mọi người — RNG công bằng là mặc định.
+      //   • Ưu tiên máu thấp GIẢM từ ×3 xuống tối đa ×1.4 (vẫn còn "AI biết
+      //     kết liễu", nhưng không đủ mạnh để tự khuếch đại).
+      //   • CHIA cho (1 + số lần vừa bị nhắm) — người vừa ăn đòn tụt còn 1/2,
+      //     ăn 2 đòn còn 1/3. Đây là phần THẬT SỰ rải sát thương ra.
+      const weights = pool.map(t =>
+        (1 + (1 - t.hpPct) * 0.4) / (1 + (t.p.aiRecentTargetCount ?? 0)));
       const total = weights.reduce((a, b) => a + b, 0);
       let roll = Math.random() * total;
       let idx = pool.length - 1;
@@ -428,6 +489,11 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
   async function rememberAggroTarget(channelId, mobKey, targetPid) {
     await withLock(encounterKey(channelId), async () => {
       const enc = await getEncounter(channelId);
+      // Cộng điểm "vừa bị nhắm" cho người bị đánh — trọng số lần rút kế tiếp sẽ
+      // CHIA cho (1 + điểm này), nên sát thương tự rải sang người khác.
+      // Ghi ở đây (trong lock, trên object vừa fetch) đúng cảnh báo Sai Lầm #1.
+      const victim = enc?.players?.[targetPid];
+      if (victim) victim.aiRecentTargetCount = Math.min(4, (victim.aiRecentTargetCount ?? 0) + 1);
       const m = enc?.enemies?.[mobKey];
       if (!m) return;
       const turnNow = enc.turnNumber ?? 1;
@@ -473,10 +539,25 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
           mob2.currentLight -= chosen.lightCost;
           const cd = parseSkillCooldownTurns(chosen.skill.cd);
           if (cd > 0) { mob2.skillCooldowns = mob2.skillCooldowns ?? {}; mob2.skillCooldowns[chosen.key] = cd; }
+          // Boss theo kịch bản: TIẾN 1 ô trong pattern. Đặt Ở ĐÂY (trong lock,
+          // trên object vừa fetch) đúng cảnh báo Sai Lầm #1 — gán lên biến `mob`
+          // ngoài lock thì sẽ không được lưu.
+          if (chosen.fromPattern) mob2.bossPatternIdx = (mob2.bossPatternIdx ?? 0) + 1;
           await saveEncounter(channelId, enc2);
         });
         if (stillValid) {
-          for (const t of availableTargets) {
+          // Fragaria: "mỗi lần đều có aggro targeting KHÁC NHAU chứ không dồn hết
+          // cả 3 vào 1 người liên tục được".
+          // `availableTargets` được rút MỘT LẦN ở đầu attemptOneMobAction. Với
+          // boss chạy pattern (mỗi lần gọi = 1 đòn) thì mỗi đòn đã tự đi qua một
+          // vòng attemptOneMobAction mới ⇒ rút lại mục tiêu độc lập. Nhưng đòn
+          // AOE (Goodbye) vẫn phải trúng TẤT CẢ, nên chỉ thu về 1 mục tiêu khi
+          // đòn KHÔNG phải AOE.
+          const isAoeSkill = /\[AOE\]/i.test(rolled.lines.join(" "));
+          const targetsForThisHit = (chosen.fromPattern && !isAoeSkill)
+            ? availableTargets.slice(0, 1)
+            : availableTargets;
+          for (const t of targetsForThisHit) {
             try {
               await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { tags: tagsStr, coin: String(rolled.totalEmotionDelta ?? 0), isAiCall: true });
               // Narrative — doEnemyAttack ở trên chỉ nhận dmgStr THUẦN SỐ (đã tự

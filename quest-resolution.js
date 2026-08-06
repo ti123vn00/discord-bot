@@ -21,7 +21,7 @@ const { CONTRACTS } = require("./quest-data");
 
 module.exports = function ({
   withLock, getPlayerDataWithSlot, savePlayerData, clampExpWithLunacy,
-  redis, withTimeout, getVNDateString, DAILY_KEY_TTL_SECONDS, markContractTaskDone,
+  redis, withTimeout, getVNDateString, getVNNow, DAILY_KEY_TTL_SECONDS, markContractTaskDone,
   applyDeathPenalty, clearUserActiveEncounterChannel, RARE_DROP_BOOK, RARE_DROP_CHANCE, appendActionLog }) {
   function contractCountKey(userId, slot) {
     return `contractcount:${userId}:${slot}`;
@@ -54,10 +54,27 @@ module.exports = function ({
       const raw = await withTimeout(redis.get(key));
       const parsed = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
       const data = (parsed && parsed.date === today) ? parsed : { date: today, count: 0 };
-      if (data.count >= 4) {
+      // ── WEEKLY BOSS: 1 lần/tuần, KHÔNG tính vào hạn mức 4 contract/ngày ────
+      // Fragaria: "một tuần chỉ nhận thưởng được một lần".
+      // Dùng key riêng có sẵn ngày THỨ HAI của tuần ⇒ tuần mới = key mới, tự
+      // reset, không cần job dọn (cùng cách với hạn ngạch shop K-Corp Ampule).
+      // Đặt TTL 8 ngày để key cũ tự biến mất.
+      let weeklyKey = null;
+      if (contract.weeklyReward) {
+        const d = new Date(getVNNow());
+        const day = d.getUTCDay();
+        d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1));
+        const weekStart = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        weeklyKey = `weeklyquest:${userId}:${slot}:${contract.name}:${weekStart}`;
+        const already = await withTimeout(redis.get(weeklyKey));
+        if (already) {
+          return { granted: false, count: data.count, weeklyAlreadyClaimed: true };
+        }
+      } else if (data.count >= 4) {
+        // Hạn mức 4/ngày CHỈ áp cho contract thường — weekly boss có hạn riêng.
         return { granted: false, count: data.count };
       }
-      data.count += 1;
+      if (!contract.weeklyReward) data.count += 1;
       profileData.exp = clampExpWithLunacy(profileData, (profileData.exp ?? 0) + contract.expReward);
       profileData.ahn = (profileData.ahn ?? 0) + contract.ahnReward;
       // ── DROP SÁCH (Fragaria xác nhận trực tiếp) — số lượng theo từng contract,
@@ -73,6 +90,16 @@ module.exports = function ({
           dropNotes.push(`+${count} Random Book`);
         }
       }
+      // Thưởng RIÊNG của weekly boss: Lunacy + book đặc biệt (Sealed Book Cache).
+      if (contract.lunacyReward > 0) {
+        profileData.lunacy = (profileData.lunacy ?? 0) + contract.lunacyReward;
+        dropNotes.push(`+${contract.lunacyReward} Lunacy`);
+      }
+      for (const [bookName, amount] of Object.entries(contract.bookRewards ?? {})) {
+        profileData.books = profileData.books ?? {};
+        profileData.books[bookName] = Math.min(99, (profileData.books[bookName] ?? 0) + amount);
+        dropNotes.push(`+${amount} ${bookName}`);
+      }
       // Drop hiếm 1% — ĐỘC LẬP với book thường, áp cho MỌI contract.
       if (Math.random() < RARE_DROP_CHANCE) {
         profileData.books = profileData.books ?? {};
@@ -81,6 +108,9 @@ module.exports = function ({
       }
       await withTimeout(redis.set(key, JSON.stringify(data), { ex: DAILY_KEY_TTL_SECONDS }));
       await savePlayerData(userId, profileData, slot);
+      // Đánh dấu ĐÃ NHẬN thưởng tuần — ghi SAU khi lưu profile thành công, để
+      // nếu lưu lỗi thì người chơi vẫn còn lượt tuần (thiệt về phía server).
+      if (weeklyKey) await withTimeout(redis.set(weeklyKey, "1", { ex: 8 * 24 * 3600 }));
       return { granted: true, count: data.count, dropNotes };
     });
     // Nhiệm vụ 2 của -daily ("hoàn thành 1 contract bất kỳ") — tính là ĐÃ HOÀN
@@ -182,10 +212,15 @@ module.exports = function ({
       const contract = questOutcome.contract;
       for (const pid of encounter.questMeta?.memberIds ?? []) {
         const rewardResult = await grantContractReward(pid, contract);
+        // Weekly boss có hạn mức RIÊNG (1 lần/tuần) nên không hiển thị "x/4"
+        // của contract thường — hiện sai sẽ khiến người chơi tưởng bị trừ lượt ngày.
+        const quotaNote = contract.weeklyReward ? "weekly boss — 1 lần/tuần" : `contract hôm nay: ${rewardResult.count}/4`;
         resultLines.push(
           rewardResult.granted
-            ? `🎁 <@${pid}> nhận ${contract.expReward} EXP + ${contract.ahnReward.toLocaleString("vi-VN")} Ahn${(rewardResult.dropNotes ?? []).length ? " + " + rewardResult.dropNotes.join(" + ") : ""} (contract hôm nay: ${rewardResult.count}/4)`
-            : `⚠️ <@${pid}> đã dùng hết 4 lượt contract hôm nay — không nhận thưởng lần này (dù trận đã thắng).`
+            ? `🎁 <@${pid}> nhận ${contract.expReward} EXP + ${contract.ahnReward.toLocaleString("vi-VN")} Ahn${(rewardResult.dropNotes ?? []).length ? " + " + rewardResult.dropNotes.join(" + ") : ""} (${quotaNote})`
+            : rewardResult.weeklyAlreadyClaimed
+              ? `⚠️ <@${pid}> đã nhận thưởng **${contract.name}** tuần này rồi — hạ boss vẫn tính nhưng không nhận thưởng lại. Làm mới vào **Thứ Hai**.`
+              : `⚠️ <@${pid}> đã dùng hết 4 lượt contract hôm nay — không nhận thưởng lần này (dù trận đã thắng).`
         );
         if (rewardResult.dailyTaskNote) resultLines.push(`<@${pid}> ${rewardResult.dailyTaskNote}`);
       }

@@ -13,6 +13,7 @@
 module.exports = function ({
   ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
   MessageFlags, withLock, getPlayerDataWithSlot, savePlayerData, formatNumber, ITEM_STACK_MAX, log,
+  redis, withTimeout, getVNNow,
 }) {
   const RESET_COST = 1_000_000;
 
@@ -30,15 +31,51 @@ module.exports = function ({
     { key: "Giày Wan MK3", price: 10_000_000, emoji: "👟", desc: "Accessory — Resourceful / Chain-Dashes / Quickstep" },
     { key: "Composition Tool", price: 10_000_000, emoji: "🧩", desc: "Accessory — Reactive / Shimmering / Energetic" },
     { key: "Perfect Cube", price: 10_000_000, emoji: "🎲", desc: "Accessory — Perfect Start / Mind / Body" },
+    // Fragaria: "Thêm K Corp Ampule với giá 10 triệu Ahn, mỗi tuần chỉ bán 3 cái
+    // duy nhất — này là GLOBAL, tức nếu 1 người mua hết 3 cái thì những người
+    // khác sẽ không mua được. Reset theo tuần."
+    // `weeklyGlobalStock` là cơ chế MỚI: mọi món khác không có trần, món này
+    // đếm chung TOÀN SERVER trong 1 key Redis.
+    {
+      key: "K-Corp Ampule", price: 10_000_000, emoji: "💊", weeklyGlobalStock: 3,
+      desc: "Hồi ĐẦY HP + chữa TOÀN BỘ chấn thương · CD 2 turn · **dùng lần 2 trong cùng trận = CHẾT NGAY**",
+    },
   ];
   const CATALOG_BY_KEY = Object.fromEntries(SHOP_CATALOG.map(i => [i.key, i]));
+
+  /** weeklyStockKey — key Redis đếm số đã bán TOÀN SERVER trong tuần.
+   *
+   *  Mốc tuần tính theo GIỜ VN, bắt đầu THỨ HAI 00:00 — dùng chung ý tưởng với
+   *  mốc reset ngày của -daily để người chơi không phải nhớ 2 loại mốc khác nhau.
+   *  Key có sẵn ngày bắt đầu tuần nên tuần mới = key mới ⇒ "reset theo tuần" là
+   *  TỰ NHIÊN, không cần job dọn dẹp. Đặt TTL 8 ngày để key cũ tự biến mất.
+   */
+  function weeklyStockKey(itemKey) {
+    const now = getVNNow ? getVNNow() : new Date();
+    const d = new Date(now.getTime());
+    // getUTCDay trên đối tượng đã quy đổi giờ VN: 0=CN → lùi 6 ngày; còn lại lùi (day-1)
+    const day = d.getUTCDay();
+    const backToMonday = day === 0 ? 6 : day - 1;
+    d.setUTCDate(d.getUTCDate() - backToMonday);
+    const weekStart = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    return `shopweekly:${itemKey}:${weekStart}`;
+  }
+
+  async function readWeeklySold(itemKey) {
+    if (!redis) return 0;
+    const raw = await (withTimeout ? withTimeout(redis.get(weeklyStockKey(itemKey))) : redis.get(weeklyStockKey(itemKey)));
+    return parseInt(raw, 10) || 0;
+  }
 
   /** Số lượng mua mỗi lần bấm — ammo mua lẻ hay bị bấm nhiều lần nên cho gói sẵn. */
   const QUANTITY_CHOICES = [1, 5, 10];
 
-  function buildShopEmbed(data) {
+  function buildShopEmbed(data, weeklyStock = {}) {
     const lines = SHOP_CATALOG.map(i =>
       `${i.emoji} **${i.key}** — ${formatNumber(i.price)} Ahn\n> ${i.desc}` +
+      // Món có trần tuần TOÀN SERVER: phải hiện số còn lại, nếu không người chơi
+      // bấm mua rồi mới biết hết hàng.
+      `${i.weeklyGlobalStock ? `\n> 📦 **Còn ${Math.max(0, i.weeklyGlobalStock - (weeklyStock[i.key] ?? 0))}/${i.weeklyGlobalStock} tuần này** *(chung toàn server, reset Thứ Hai)*` : ""}` +
       `${(data.items?.[i.key] ?? 0) > 0 ? ` *(đang có ${data.items[i.key]})*` : ""}`
     );
     return {
@@ -106,6 +143,46 @@ module.exports = function ({
     const item = CATALOG_BY_KEY[itemKey];
     if (!item) return { ok: false, message: "❌ Món này không có trong cửa hàng." };
     const qty = Math.max(1, Math.min(99, parseInt(quantity, 10) || 1));
+    // Món có trần tuần: khoá theo KEY MÓN (không phải userId) để 2 người bấm
+    // cùng lúc không cùng đọc "còn 1" rồi cùng mua. Khoá userId là KHÔNG ĐỦ —
+    // đây là hạn ngạch TOÀN SERVER.
+    if (item.weeklyGlobalStock) {
+      return withLock(`shopstock:${itemKey}`, async () => {
+        const sold = await readWeeklySold(itemKey);
+        const remaining = Math.max(0, item.weeklyGlobalStock - sold);
+        if (remaining <= 0) {
+          return { ok: false, message: `❌ **${itemKey}** đã bán hết ${item.weeklyGlobalStock} suất của tuần này (chung toàn server). Hàng mới về **Thứ Hai**.` };
+        }
+        const buyQty = Math.min(qty, remaining);
+        const { data, slot } = await getPlayerDataWithSlot(userId);
+        const total = item.price * buyQty;
+        if ((data.ahn ?? 0) < total) {
+          return { ok: false, message: `❌ Không đủ Ahn — cần **${formatNumber(total)}**, bạn có **${formatNumber(data.ahn ?? 0)}**.` };
+        }
+        data.items = data.items ?? {};
+        const before = data.items[itemKey] ?? 0;
+        if (before >= ITEM_STACK_MAX) {
+          return { ok: false, message: `❌ **${itemKey}** đã đạt giới hạn ${ITEM_STACK_MAX} trong kho.` };
+        }
+        const actualQty = Math.min(buyQty, ITEM_STACK_MAX - before);
+        data.ahn -= item.price * actualQty;
+        data.items[itemKey] = before + actualQty;
+        // GHI TỒN KHO TRƯỚC khi lưu profile: nếu lưu profile xong mới ghi mà lỗi
+        // giữa chừng thì người chơi có hàng miễn phí và suất không bị trừ.
+        // Ngược lại (ghi tồn trước, lưu profile lỗi) chỉ mất 1 suất — thiệt ít hơn.
+        await (withTimeout ? withTimeout(redis.set(weeklyStockKey(itemKey), String(sold + actualQty), { ex: 8 * 24 * 3600 }))
+                           : redis.set(weeklyStockKey(itemKey), String(sold + actualQty), { ex: 8 * 24 * 3600 }));
+        await savePlayerData(userId, data, slot);
+        return {
+          ok: true,
+          message: `✅ Đã mua **${item.emoji} ${itemKey} ×${actualQty}** — trừ ${formatNumber(item.price * actualQty)} Ahn.` +
+            `${actualQty < qty ? ` *(chỉ còn ${remaining} suất trong tuần)*` : ""}\n` +
+            `> Còn lại: **${formatNumber(data.ahn)} Ahn** · **${itemKey}**: ${data.items[itemKey]}\n` +
+            `> 📦 Suất tuần này còn: **${Math.max(0, item.weeklyGlobalStock - sold - actualQty)}/${item.weeklyGlobalStock}**`,
+          data,
+        };
+      });
+    }
     return withLock(userId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(userId);
       const total = item.price * qty;
@@ -183,6 +260,6 @@ module.exports = function ({
   return {
     SHOP_CATALOG, CATALOG_BY_KEY, RESET_COST,
     buildShopEmbed, buildShopComponents, buildQuantityComponents,
-    purchase, resetSkillTree,
+    purchase, resetSkillTree, readWeeklySold, weeklyStockKey,
   };
 };

@@ -42,6 +42,28 @@ const CONTRACTS = {
     mobKey: "eyegouger", killCount: 1, expReward: 20, ahnReward: 500000,
     bookDropMin: 2, bookDropMax: 3,
   },
+  // ── WEEKLY BOSS ─────────────────────────────────────────────────────────
+  // Fragaria: "weekly boss này sẽ hiện trong contract với key là nothingthere.
+  // Tên contract: There Is Nothing There. Phần thưởng: 50 Exp, 5000000 Ahn,
+  // 5 Sealed Book Cache, 10 Random Book, 750 Lunacy. Một tuần chỉ nhận thưởng
+  // được một lần."
+  nothingthere: {
+    name: "There Is Nothing There", description: "Diệt Nothing There (Weekly Boss)",
+    mobKey: "nothingthere", killCount: 1,
+    expReward: 50, ahnReward: 5_000_000,
+    // Thưởng CỐ ĐỊNH 10 Random Book (không random khoảng như contract thường).
+    bookDropMin: 10, bookDropMax: 10,
+    // Thưởng riêng của weekly boss — grantContractReward đọc 2 field này.
+    lunacyReward: 750,
+    // "Sealed Book Cache" nằm trong `data.books` (đường mở cache đọc
+    // `data.books["Sealed Book Cache"]`), KHÔNG phải `data.items` — dùng
+    // bookRewards để cộng đúng kho, nếu không người chơi có 5 cái mà `-openbook`
+    // báo không có.
+    bookRewards: { "Sealed Book Cache": 5 },
+    // `weeklyReward` — chỉ nhận thưởng 1 lần/tuần, VÀ không tính vào hạn mức
+    // 4 contract/ngày (đây là nội dung tuần, không phải cày ngày).
+    weeklyReward: true,
+  },
 };
 
 // QUEST_MOBS — stat block dùng để tạo combatant qua createCombatant + field bổ
@@ -94,6 +116,37 @@ const QUEST_MOBS = {
     // để đảm bảo "vĩnh viễn" đúng nghĩa, không bị consume sau 1 roll).
     permanentDiceUp: 3,
     skills: ["Pistol Draw", "Thrust", "You're Too Slow", "Slash Series", "Sky Clearing Cut", "Borrowed Eyes"],
+  },
+  // ── WEEKLY BOSS (data Fragaria đưa nguyên văn) ──────────────────────────
+  nothingthere: {
+    name: "Nothing There",
+    isWeeklyBoss: true,
+    maxHp: 3000, maxStamina: 500, maxLight: 0,
+    // "Không có Sanity" — maxSanity 0 nên mọi cơ chế Sanity/Panic bỏ qua.
+    maxSanity: 0,
+    resistance: { B: 1, P: 1, S: 1 },
+    // "M1 (Không có)" — boss KHÔNG đánh thường, chỉ dùng page theo pattern.
+    m1DmgStr: null, noM1: true,
+    weaponWeight: "heavy",
+    // "Miễn nhiễm đạn"
+    ammoImmune: true,
+    // "Không thể né, guard hay parry" — mọi page của boss đều đã mang tag
+    // [Unblockable]/[Undodgeable] ở skills.js; cờ này là chốt chặn CẤP BOSS để
+    // page mới thêm sau cũng tự chặn, không phải nhớ gắn tag từng cái.
+    defenseImmune: true,
+    // "Đòn của bản thân không bị giảm stamina"
+    noStaminaCost: true,
+    // Boss 3 đòn/turn + có đòn 200 True AOE → khoá mục tiêu là wipe chắc chắn.
+    // Cờ này tắt hẳn aggro lock: MỖI đòn rút lại mục tiêu từ đầu.
+    aiSpreadTargets: true,
+    skills: ["Swing", "Triple Swing", "Jump Attack", "Running Attack", "HELP", "Goodbye"],
+    // Pattern CỐ ĐỊNH theo turn, lặp lại từ đầu sau turn 3 (Fragaria: "Turn 4:
+    // lặp lại từ đầu"). Mỗi turn tung 3 đòn theo ĐÚNG thứ tự này.
+    attackPattern: [
+      ["Jump Attack", "Triple Swing", "Swing"],
+      ["Running Attack", "Jump Attack", "Triple Swing"],
+      ["HELP", "Triple Swing", "Goodbye"],
+    ],
   },
 };
 
