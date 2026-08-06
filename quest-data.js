@@ -63,6 +63,10 @@ const CONTRACTS = {
     // `weeklyReward` — chỉ nhận thưởng 1 lần/tuần, VÀ không tính vào hạn mức
     // 4 contract/ngày (đây là nội dung tuần, không phải cày ngày).
     weeklyReward: true,
+    // Fragaria: "sửa weekly boss Nothing There thành encounter cho phép tối đa
+    // 5 người thay vì 3 như bình thường do độ khó của nó".
+    // Contract KHÔNG khai field này giữ nguyên trần mặc định (MAX_PARTY_SIZE = 3).
+    maxPartySize: 5,
   },
 };
 

@@ -30,7 +30,20 @@ module.exports = function ({
   validateAndRerollPrescript, appendActionLog, hasPerk, ADMIN_IDS, aiHooks, pickRandomBgm,
   setUserActiveEncounterChannel, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp,
 }) {
+  // Trần MẶC ĐỊNH. Contract có thể ghi đè bằng `maxPartySize` (VD weekly boss
+  // Nothing There cho 5 người vì độ khó) — xem partySizeLimitFor.
   const MAX_PARTY_SIZE = 3;
+
+  /** partySizeLimitFor — số người TỐI ĐA cho contract này.
+   *
+   *  Fragaria: weekly boss Nothing There cho **5 người** thay vì 3.
+   *  Đọc từ chính CONTRACTS thay vì hardcode `contractKey === "nothingthere"` —
+   *  contract khó thêm sau này chỉ cần khai `maxPartySize`, không phải sửa code.
+   *  Contract không khai → giữ nguyên 3 như cũ.
+   */
+  function partySizeLimitFor(contractKey) {
+    return CONTRACTS[contractKey]?.maxPartySize ?? MAX_PARTY_SIZE;
+  }
 
   function partyBoardKey(channelId) {
     return `partyboard:${channelId}`;
@@ -80,7 +93,8 @@ module.exports = function ({
       if (!board) throw new Error("Channel này chưa có Party Board nào — dùng `-contract` để tạo mới.");
       const members = allMemberIds(board);
       if (members.includes(userId)) throw new Error("Bạn đã ở trong party này rồi.");
-      if (members.length >= MAX_PARTY_SIZE) throw new Error(`Party đã đủ ${MAX_PARTY_SIZE} người (tối đa) — không thể join thêm.`);
+      const limit = partySizeLimitFor(board.contractKey);
+      if (members.length >= limit) throw new Error(`Party đã đủ ${limit} người (tối đa cho contract này) — không thể join thêm.`);
       board.guests.push({ id: userId, name: userName });
       await savePartyBoard(channelId, board);
       return board;
@@ -319,6 +333,7 @@ module.exports = function ({
 
   return {
     MAX_PARTY_SIZE,
+    partySizeLimitFor,
     partyBoardKey, getPartyBoard, savePartyBoard, deletePartyBoard,
     createPartyBoard, joinPartyBoard, kickFromPartyBoard, transferHost,
     cancelPartyBoard, leavePartyBoard, startPartyBoard, allMemberIds,

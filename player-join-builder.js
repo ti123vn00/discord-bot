@@ -21,7 +21,7 @@
 const SHIN_MAX_LEVEL = 50;
 const MANG_MAX_LEVEL = 5;
 
-module.exports = function ({
+module.exports = function ({ isConsumableItem,
   createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight,
   calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp,
   getPlayerDataWithSlot, savePlayerData, hasEncounterStarted,
@@ -114,6 +114,9 @@ module.exports = function ({
       joined.consumablesLoadout = [];
       for (const n of (profileData.equippedConsumables ?? [])) {
         if (joined.consumablesLoadout.length >= 4) break;
+        // Lọc 2 lớp: phải LÀ consumable (Fragaria chốt danh sách) VÀ còn hàng.
+        // Loadout cũ lưu từ trước bản này có thể chứa item không hợp lệ.
+        if (isConsumableItem && !isConsumableItem(n)) continue;
         if ((remaining[n] ?? 0) <= 0) continue;
         remaining[n] -= 1;
         joined.consumablesLoadout.push(n);

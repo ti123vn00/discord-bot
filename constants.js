@@ -7,7 +7,22 @@
 // thì chỉ cần sửa ở đây, cả slash command validation (Discord) và logic xử lý
 // (index.js) sẽ tự động đồng bộ, alr.
 
+
+// ── CONSUMABLE ITEMS ──────────────────────────────────────────────────────
+// Fragaria chốt trực tiếp: "CHỈ có consumable items gồm Táo, Chuối, Dưa hấu,
+// Medkit, K-Corp Ampule mới được mang vào loadout — CHẶN toàn bộ còn lại".
+// TRƯỚC ĐÂY loadout suy ngược ("mọi item KHÔNG phải accessory") nên Fixer's
+// Note, Sealed Book Cache, Chipboard Cache… đều xếp được — vô nghĩa vì
+// encounter-actions.js không có nhánh dùng cho chúng.
+// Danh sách TƯỜNG MINH, KHÔNG suy ngược: thêm consumable mới thì thêm vào đây.
+const CONSUMABLE_ITEMS = ["Táo", "Chuối", "Dưa hấu", "Medkit", "K-Corp Ampule"];
+const CONSUMABLE_ITEM_SET = new Set(CONSUMABLE_ITEMS.map(n => n.toLowerCase()));
+function isConsumableItem(name) {
+  return CONSUMABLE_ITEM_SET.has(String(name ?? "").trim().toLowerCase());
+}
+
 module.exports = {
+  CONSUMABLE_ITEMS, isConsumableItem,
   // /math: Sanity ban đầu của địch tối thiểu (dùng để tính Sinking khi địch đạt -45)
   SANITY_MIN: -45,
 

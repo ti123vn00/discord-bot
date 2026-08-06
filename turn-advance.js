@@ -330,6 +330,9 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // — 50-STATUS NHÓM 2 (batch 1, xác nhận trực tiếp từng cái từ tài liệu gốc) —
     // Dice Up/Down: "biến mất sau End Turn" — reset thẳng về 0, giống Nhóm 1.
     combatant.diceUp = 0;
+    // Boss theo kịch bản: reset bộ đếm đòn/turn (điều kiện DỪNG duy nhất của
+    // boss khai `noStaminaCost` — xem attemptOneMobAction trong enemy-ai.js).
+    combatant.bossAttacksThisTurn = 0;
     // "Vừa bị AI nhắm" — giảm dần mỗi turn để người bị dồn đòn turn trước được
     // trở lại vòng quay bình thường (xem enemy-ai.js's pickAiTargets).
     if ((combatant.aiRecentTargetCount ?? 0) > 0) combatant.aiRecentTargetCount -= 1;

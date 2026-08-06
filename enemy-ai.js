@@ -515,6 +515,19 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
     if (!encounter) return false;
     const mob = encounter.enemies[mobKey];
     if (!mob || mob.currentHp <= 0) return false;
+    // ── BOSS THEO KỊCH BẢN: DỪNG SAU ĐÚNG N ĐÒN/TURN ──────────────────────
+    // BUG ĐÃ SỬA (Fragaria: "Nothing There không chịu end turn, tấn công mãi mãi").
+    // NGUYÊN NHÂN GỐC: điều kiện dừng của AI hoàn toàn dựa trên NGÂN SÁCH
+    // STAMINA (`staminaUsedThisTurn` vs `minStaminaReserve`). Nothing There khai
+    // `noStaminaCost: true` — đòn của nó KHÔNG trừ Stamina ⇒ `staminaUsedThisTurn`
+    // đứng yên ở 0 ⇒ **không bao giờ chạm ngưỡng dừng** ⇒ đánh vô hạn.
+    // Boss có `attackPattern` thì số đòn/turn là CỐ ĐỊNH theo kịch bản (Fragaria:
+    // "Turn 1: Jump Attack, Triple Swing, Swing" = 3 đòn), nên đếm ĐÒN thay vì
+    // đếm Stamina. `bossAttacksThisTurn` reset mỗi turn ở turn-advance.js.
+    if (Array.isArray(mob.attackPattern) && mob.attackPattern.length > 0) {
+      const perTurn = mob.attackPattern[0].length || 1;
+      if ((mob.bossAttacksThisTurn ?? 0) >= perTurn) return false;
+    }
     const sortedTargets = pickAiTargets(encounter, mob);
     if (sortedTargets.length === 0) return false;
     const availableTargets = sortedTargets.filter(t => !hasUnresolvedTargetPending(encounter, t.pid));
@@ -525,8 +538,22 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
     if (chosen) {
       const rolled = autoBuildDmgStrFromSkillRoll(chosen.skill);
       if (rolled.dmgStr) {
-        const bypass = extractDefenseBypassTags(rolled.lines.join("\n"));
-        const tagsStr = [bypass.blockGuard && "unblockable", bypass.blockEvade && "undodgeable", bypass.blockParry && "unparriable", bypass.guardBreak && "guardbreak", bypass.unclashable && "unclashable"].filter(Boolean).join(",");
+        // BUG ĐÃ SỬA (Fragaria: "HELP của Nothing There bị sai — nó chỉ làm 1
+        // TRONG 10 đòn thành Unblockable/Undodgeable/Unparriable thôi chứ không
+        // phải TOÀN BỘ group hit").
+        //
+        // NGUYÊN NHÂN GỐC: TRƯỚC ĐÂY gộp `rolled.lines.join()` rồi
+        // `extractDefenseBypassTags` → tag của BẤT KỲ dòng nào cũng bật cờ, sau
+        // đó nhét vào `tags:` = **TAG GÕ TAY**. Mà tag gõ tay theo thiết kế áp
+        // cho MỌI HIT (`parsePerHitBypass` trả `manualBypass` cho toàn bộ hit).
+        // ⇒ 1 dòng dice có [Unparriable] biến cả 10 hit thành Unparriable.
+        // Đúng gotcha đã ghi: "Tag phòng thủ có 2 CẤP — dòng header = cả page,
+        // dòng dice = riêng hit đó". AI đã phá cấp thứ 2.
+        //
+        // SỬA: truyền NGUYÊN VĂN mô tả roll qua `rollDescription`; doEnemyAttack
+        // đưa thẳng vào `parsePerHitBypass` để nó tự tách header vs từng dòng dice.
+        // KHÔNG còn dựng `tags:` từ dice nữa.
+        const rollDescription = rolled.lines.join("\n");
         // Trừ Light + set cooldown THỦ CÔNG ở đây (KHÔNG dùng skill: của
         // doEnemyAttack — verify sẽ TỰ ROLL LẦN NỮA, cho dice KHÁC với
         // rolled ở trên — dùng autoBuildDmgStrFromSkillRoll 1 LẦN DUY NHẤT
@@ -542,7 +569,12 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
           // Boss theo kịch bản: TIẾN 1 ô trong pattern. Đặt Ở ĐÂY (trong lock,
           // trên object vừa fetch) đúng cảnh báo Sai Lầm #1 — gán lên biến `mob`
           // ngoài lock thì sẽ không được lưu.
-          if (chosen.fromPattern) mob2.bossPatternIdx = (mob2.bossPatternIdx ?? 0) + 1;
+          if (chosen.fromPattern) {
+            mob2.bossPatternIdx = (mob2.bossPatternIdx ?? 0) + 1;
+            // Đếm đòn ĐÃ tung trong turn này — điều kiện DỪNG duy nhất của boss
+            // không tốn Stamina (xem gate ở đầu attemptOneMobAction).
+            mob2.bossAttacksThisTurn = (mob2.bossAttacksThisTurn ?? 0) + 1;
+          }
           await saveEncounter(channelId, enc2);
         });
         if (stillValid) {
@@ -559,7 +591,7 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
             : availableTargets;
           for (const t of targetsForThisHit) {
             try {
-              await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { tags: tagsStr, coin: String(rolled.totalEmotionDelta ?? 0), isAiCall: true });
+              await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { rollDescription, coin: String(rolled.totalEmotionDelta ?? 0), isAiCall: true });
               // Narrative — doEnemyAttack ở trên chỉ nhận dmgStr THUẦN SỐ (đã tự
               // build qua autoBuildDmgStrFromSkillRoll, KHÔNG dùng skill:/
               // customskill: để tránh roll đôi — xem comment phía trên) nên

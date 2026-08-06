@@ -14,7 +14,7 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS }) {
+module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, isConsumableItem, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
@@ -211,54 +211,49 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
             .addOptions(gearOptions)
         ));
       }
-      // ── CONSUMABLE LOADOUT (Fragaria: "-balance chưa có chỗ để equip
-      // consumable item đem vào encounter") ────────────────────────────────
-      // LUẬT: "một trận chỉ có thể mang 4 consumable vào trận, và mỗi turn chỉ
-      // được sử dụng một lần một consumable item".
-      // Cả 2 vế ĐÃ có sẵn trong code (`consumablesLoadout` cap 4 ở
-      // -encounter additem; `usedItemThisTurn` chặn 1 lần/turn ở
-      // encounter-actions.js, reset ở turn-advance.js) — chỉ THIẾU đường đặt
-      // trước từ -balance, nên người chơi buộc phải gõ `-encounter additem`
-      // từng món SAU khi trận đã bắt đầu.
+      // ── CONSUMABLE LOADOUT ────────────────────────────────────────────
+      // Fragaria: "-balance chưa có chỗ để equip consumable item đem vào
+      // encounter". LUẬT: tối đa 4/trận, mỗi turn dùng 1 lần (cả 2 vế đã có sẵn
+      // trong code — xem encounter-actions.js/turn-advance.js).
       //
-      // Cách làm: lưu `data.equippedConsumables` (mảng ≤4) trên PROFILE, rồi
-      // player-join-builder chép sang `combatant.consumablesLoadout` lúc join —
-      // cùng mô hình với weapon/outfit/accessory/page, đặt 1 lần dùng mãi.
-      // KHÔNG trừ item lúc equip: item chỉ bị tiêu lúc DÙNG trong trận
-      // (encounter-actions.js đã trừ), equip chỉ là danh sách mang theo.
+      // ⚠️ CHỈ item trong `CONSUMABLE_ITEMS` (constants.js) — Fragaria: "chỉ có
+      // Táo, Chuối, Dưa hấu, Medkit, K-Corp Ampule mới được mang vào loadout,
+      // chặn toàn bộ còn lại". Bản trước tôi suy ngược "mọi item không phải
+      // accessory" nên Fixer's Note / Sealed Book Cache / Chipboard Cache cũng
+      // xếp được — vô nghĩa vì không có nhánh dùng cho chúng.
+      //
+      // ⚠️ GỘP xếp + gỡ vào MỘT dropdown: Discord chặn cứng **5 action row**
+      // mỗi message. Trước đó -balance có tới 6 hàng ⇒ hàng thứ 6 bị NUỐT, và
+      // Fragaria báo đúng hiện tượng: "dropdown ở -balance tận 6, khiến đôi khi
+      // nó làm ẩn mất phần mở khoá perks nếu đang có loadout consumable".
       const equippedConsumables = data.equippedConsumables ?? [];
-      // Item được coi là consumable = có trong kho, KHÔNG phải accessory
-      // (accessory đeo 3 slot riêng, không phải đồ dùng 1 lần).
       const consumableCounts = {};
       for (const n of equippedConsumables) consumableCounts[n] = (consumableCounts[n] ?? 0) + 1;
-      const ownedConsumables = Object.keys(data.items ?? {}).filter(n =>
-        (data.items[n] ?? 0) > 0 && !findAccessory(n)
-        // Chỉ hiện món CÒN DƯ so với số đã xếp vào loadout — mang 2 Chuối thì
-        // phải sở hữu ≥2, đúng luật của `-encounter additem`.
+      const addableConsumables = Object.keys(data.items ?? {}).filter(n =>
+        (data.items[n] ?? 0) > 0 && isConsumableItem(n)
         && (consumableCounts[n] ?? 0) < data.items[n]);
-      if (ownedConsumables.length > 0 && equippedConsumables.length < 4) {
-        const consumableOptions = ownedConsumables.slice(0, 25).map(n =>
-          new StringSelectMenuOptionBuilder()
-            .setLabel(`${n} (có ${data.items[n]})`.slice(0, 100))
-            .setDescription(`Mang vào trận — đang xếp ${equippedConsumables.length}/4`.slice(0, 100))
-            .setValue(`consumable:${n}`).setEmoji("🎒"));
-        components.push(new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`balequipconsumable:${targetUser.id}`)
-            .setPlaceholder(`🎒 Item mang vào trận (${equippedConsumables.length}/4) — chọn thêm...`)
-            .setMinValues(1).setMaxValues(Math.min(consumableOptions.length, 4 - equippedConsumables.length))
-            .addOptions(consumableOptions)
-        ));
+      const consumableOptions = [];
+      if (equippedConsumables.length < 4) {
+        for (const n of addableConsumables) {
+          consumableOptions.push(new StringSelectMenuOptionBuilder()
+            .setLabel(`➕ ${n} (có ${data.items[n]})`.slice(0, 100))
+            .setDescription(`Xếp vào loadout — đang ${equippedConsumables.length}/4`.slice(0, 100))
+            .setValue(`add:${n}`.slice(0, 100)).setEmoji("🎒"));
+        }
       }
-      if (equippedConsumables.length > 0) {
-        // Dropdown GỠ riêng — trùng tên vẫn gỡ đúng 1 cái nhờ value kèm index.
+      equippedConsumables.forEach((n, i) => {
+        consumableOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➖ Gỡ #${i + 1} ${n}`.slice(0, 100))
+          .setDescription("Bỏ khỏi loadout mang vào trận")
+          .setValue(`del:${i}|${n}`.slice(0, 100)).setEmoji("🗑️"));
+      });
+      if (consumableOptions.length > 0) {
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
-            .setCustomId(`balunequipconsumable:${targetUser.id}`)
-            .setPlaceholder(`🗑️ Gỡ item khỏi loadout (${equippedConsumables.length}/4)...`)
+            .setCustomId(`balconsumable:${targetUser.id}`)
+            .setPlaceholder(`🎒 Item mang vào trận (${equippedConsumables.length}/4) — xếp hoặc gỡ...`)
             .setMinValues(1).setMaxValues(1)
-            .addOptions(equippedConsumables.slice(0, 25).map((n, i) =>
-              new StringSelectMenuOptionBuilder().setLabel(`#${i + 1} ${n}`.slice(0, 100)).setValue(`${i}|${n}`.slice(0, 100)).setEmoji("🗑️")))
+            .addOptions(consumableOptions.slice(0, 25))
         ));
       }
       // Page/E.G.O Page: cùng logic "số dư" như accessory (có thể sở hữu
@@ -310,6 +305,16 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
             .addOptions(egoOptions)
         ));
       }
+    }
+    // ⚠️ CHỐT CHẶN CỨNG: Discord chỉ cho **5 action row** mỗi message — hàng
+    // thứ 6 trở đi bị NUỐT IM LẶNG (không báo lỗi), đúng hiện tượng Fragaria
+    // gặp: "dropdown ở -balance tận 6, khiến đôi khi nó làm ẩn mất phần mở khoá
+    // perks nếu đang có loadout consumable".
+    // Cắt Ở ĐÂY thay vì tin rằng mọi nhánh phía trên cộng lại luôn ≤5 — thêm
+    // dropdown mới sau này cũng không bao giờ làm mất hàng khác mà không báo.
+    if (components.length > 5) {
+      embed.footer = { text: `⚠️ Ẩn ${components.length - 5} dropdown (Discord giới hạn 5 hàng) — gỡ bớt loadout hoặc dùng lệnh text.` };
+      components.length = 5;
     }
     return { embeds: [embed], components };
   }

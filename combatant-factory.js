@@ -240,7 +240,7 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       aiRecentTargetCount: 0,
       // Boss có `attackPattern` (Nothing There): đếm TỔNG số đòn đã tung để suy
       // ra turn nào / đòn thứ mấy trong kịch bản (xem pickPatternSkill).
-      bossPatternIdx: 0,
+      bossPatternIdx: 0, bossAttacksThisTurn: 0,
       // realizationStacks — "A Prayer For Loving Sorrow" (Găng Tay Câm Lặng):
       // "Mỗi lần đổi vũ khí Black Silence bằng Dimension Pocket VÀ sử dụng
       // Critical của chúng bạn nhận được 1 Realization [mỗi vũ khí 1 lần]".

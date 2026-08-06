@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ applyHpLoss, shopWeeklyStockMap, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -2173,11 +2173,51 @@ client.on("interactionCreate", async (interaction) => {
       // lưu kết quả vào pendingCriticalRolls để MODAL SUBMIT tái dùng (không roll
       // lại lần 2 — xem comment đầy đủ ở khai báo Map phía trên), rồi pre-fill
       // field dmgStr với công thức đã tính.
-      const critSkillName = value.slice(9);
+      const critRaw = value.slice(9);
+      // BUG ĐÃ SỬA (Fragaria: "Mook workshop và Thrust đang TỰ Ý REUSE thay vì
+      // hỏi ý player muốn reuse mấy lần").
+      // NGUYÊN NHÂN GỐC: dropdown chọn số lần Reuse chỉ được dựng ở nhánh
+      // `hit:` (page thường). **Mook Workshop là CRITICAL của vũ khí** nên đi
+      // nhánh `critical:` này — nhánh đó chưa từng biết tới `reuseSpec`, nên
+      // `resolveReuseTimes` nhận `variantKey = undefined` ⇒ hiểu là "max" ⇒
+      // tự reuse hết mức. Thrust cũng dính khi được dùng qua đường Critical.
+      // Value giờ mang thêm "|<số lần>" y như nhánh page.
+      const critPipeIdx = critRaw.indexOf("|");
+      const critSkillName = critPipeIdx >= 0 ? critRaw.slice(0, critPipeIdx) : critRaw;
+      let critReuseKey = critPipeIdx >= 0 ? critRaw.slice(critPipeIdx + 1) : null;
       const encounter = await getEncounter(channelId);
       const combatant = encounter?.players?.[interaction.user.id];
       if (!combatant) {
         return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+      {
+        const critSkillForReuse = findSkill(critSkillName);
+        if (critSkillForReuse?.reuseSpec && critReuseKey === null) {
+          const opts = buildReuseVariants(critSkillForReuse, combatant.currentLight ?? 0);
+          if (opts && opts.length > 1) {
+            return interaction.update({
+              embeds: [{
+                title: `🔁 ${critSkillForReuse.name} — chọn số lần Reuse`,
+                description:
+                  `Mỗi lần Reuse tiêu tài nguyên thật của bạn, nên bạn tự quyết.\n` +
+                  `> Đang có **${combatant.currentLight ?? 0}** <:Light:1513786082502770719>Light — tối đa **${opts.length - 1}** lần Reuse.`,
+                color: 0x9b59b6,
+              }],
+              components: [new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                  .setCustomId(`encmenumoves:${channelId}:${interaction.user.id}`)
+                  .setPlaceholder("Chọn số lần Reuse...")
+                  .addOptions(
+                    new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"),
+                    ...opts.slice(0, 24).map(v => new StringSelectMenuOptionBuilder()
+                      .setLabel(`${v.emoji ?? "▪"} ${v.label}`.slice(0, 100))
+                      .setValue(`critical:${critSkillName}|${v.key}`.slice(0, 100))),
+                  ),
+              )],
+            }).catch(() => {});
+          }
+          critReuseKey = "0"; // không đủ Light reuse lần nào → đi thẳng đòn gốc
+        }
       }
       if (!hasEncounterStarted(encounter)) {
         return interaction.reply({ content: "⚠️ Encounter chưa bắt đầu — GM cần chạy `-encounter rollspeed` trước.", flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -2203,7 +2243,9 @@ client.on("interactionCreate", async (interaction) => {
       }
       let verify;
       try {
-        verify = await resolveSkillVerification(channelId, combatant, critSkillName, null, true);
+        // Truyền số lần Reuse người chơi vừa chọn (tham số variantKey) — thiếu
+        // nó thì resolveReuseTimes hiểu là "max" và tự reuse hết mức.
+        verify = await resolveSkillVerification(channelId, combatant, critSkillName, null, true, critReuseKey ?? undefined);
       } catch (err) {
         return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
       }
@@ -3394,9 +3436,12 @@ client.on("interactionCreate", async (interaction) => {
 // KHÔNG trừ item lúc equip — item chỉ tiêu lúc DÙNG trong trận.
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
-  const isEquip = interaction.customId.startsWith("balequipconsumable:");
-  const isUnequip = interaction.customId.startsWith("balunequipconsumable:");
-  if (!isEquip && !isUnequip) return;
+  // Một dropdown DUY NHẤT cho cả xếp lẫn gỡ — Discord chặn cứng 5 action row
+  // mỗi message, 2 dropdown riêng đẩy -balance lên 6 hàng và nuốt mất hàng cuối
+  // (Fragaria báo: mất phần mở khoá perk).
+  if (!interaction.customId.startsWith("balconsumable:")) return;
+  const rawPick = interaction.values[0] ?? "";
+  const isUnequip = rawPick.startsWith("del:");
   const ownerId = interaction.customId.split(":")[1];
   if (interaction.user.id !== ownerId) {
     return interaction.reply({ content: "⚠️ Chỉ chủ nhân profile này mới sửa được loadout.", flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -3408,9 +3453,9 @@ client.on("interactionCreate", async (interaction) => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
       data.equippedConsumables = data.equippedConsumables ?? [];
       if (isUnequip) {
-        // value = "<index>|<tên>" — cần index vì có thể xếp NHIỀU món TRÙNG TÊN,
-        // gỡ theo tên sẽ không biết gỡ cái nào.
-        const raw = interaction.values[0] ?? "";
+        // value = "del:<index>|<tên>" — cần index vì có thể xếp NHIỀU món TRÙNG
+        // TÊN, gỡ theo tên sẽ không biết gỡ cái nào.
+        const raw = rawPick.slice(4);
         const sep = raw.indexOf("|");
         const idx = parseInt(raw.slice(0, sep), 10);
         const name = raw.slice(sep + 1);
@@ -3422,7 +3467,10 @@ client.on("interactionCreate", async (interaction) => {
       } else {
         const added = [], skipped = [];
         for (const raw of interaction.values) {
-          const name = raw.split(":").slice(1).join(":");
+          const name = raw.slice(4); // bỏ tiền tố "add:"
+          // CHỈ nhận item có cờ consumable (constants.js) — chặn Fixer's Note,
+          // Sealed Book Cache, Perfect Cube… lọt vào loadout.
+          if (!isConsumableItem(name)) { skipped.push(`${name} (không phải consumable)`); continue; }
           if (data.equippedConsumables.length >= 4) { skipped.push(`${name} (đã đủ 4 slot)`); continue; }
           const owned = data.items?.[name] ?? 0;
           const alreadyIn = data.equippedConsumables.filter(n => n === name).length;
