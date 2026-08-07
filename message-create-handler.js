@@ -11,7 +11,22 @@
 // Factory tự client.on("messageCreate", ...) bên trong (không return gì cả —
 // đăng ký listener là side-effect duy nhất, giống chính index.js gốc).
 
-module.exports = function ({ findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+// bgmAttachment — trả [AttachmentBuilder] nếu file CÓ THẬT trên disk, không thì [].
+//
+// `new AttachmentBuilder(path)` KHÔNG ném lúc dựng — nó chỉ đọc file lúc GỬI.
+// File thiếu ⇒ discord.js ném ENOENT ngay trong message.reply. BGM1–9 và
+// "Red Mist.mp3" đều do Fragaria tự bỏ vào repo, chưa kịp thêm là hỏng lệnh.
+// Thiếu file thì bỏ đính kèm và đi tiếp — mất nhạc còn hơn mất cả bảng trạng thái.
+function bgmAttachment(AttachmentBuilder, name) {
+  if (!name) return [];
+  const path = `./assets/audio/bgm/${name}`;
+  try {
+    if (!require("fs").existsSync(path)) return [];
+    return [new AttachmentBuilder(path)];
+  } catch { return []; }
+}
+
+module.exports = function ({ resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -458,6 +473,18 @@ client.on("messageCreate", async (message) => {
     if (isOnCooldown(message.author.id, "heal", 3000)) { message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 3 giây nhé."); return; }
     const kv = parseKeyValues(message.content.slice("-heal".length));
     const userId = message.author.id;
+    // `-heal` KHÔNG tham số → chỉ nút mở bảng dropdown, khỏi phải gõ tên chấn
+    // thương (Fragaria: "gần như không thể xài để heal injury bằng text").
+    // Cú pháp cũ `-heal hp:` / `-heal injury:` GIỮ NGUYÊN cho ai đã quen.
+    if (!kv["hp"] && !kv["injury"]) {
+      message.reply({
+        content: "🩹 Bấm nút bên dưới để mở bảng chữa trị (chọn từ danh sách, không cần gõ tên).",
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`shophealopen:${userId}`).setLabel("🩹 Mở bảng chữa trị").setStyle(ButtonStyle.Success),
+        )],
+      });
+      return;
+    }
     try {
       await withLock(userId, async () => {
         const { data: profileData, slot } = await getPlayerDataWithSlot(userId);
@@ -999,6 +1026,41 @@ client.on("messageCreate", async (message) => {
     // [Unlock=true] nhưng CHƯA phân bổ điểm nào [branchPoints=0], hoặc ngược lại
     // không thể phân bổ nếu Unlock=false, xem gating ở -allocatepoints).
     const UNLOCK_FLAG_KEYS = { shinunlock: "ShinUnlock", lightskilltreeunlock: "LightSkillTreeUnlock", "50statunlock": "50StatUnlock", manifestedegounlock: "ManifestedEGOUnlock" };
+    // ── `manifestego:` — GÁN Manifested E.G.O nào cho player ─────────────────
+    // GAP ĐÃ SỬA (Fragaria: "Ego Red Mist hiện tại KHÔNG có cách nào gán cho
+    // player"). `-setplayer` từ trước tới nay chỉ có CỜ `manifestedegounlock`
+    // (= "được phép bấm nút Manifest") mà KHÔNG có đường set field `ManifestedEGO`
+    // (= "Manifest ra CÁI NÀO"). Thiếu vế thứ 2 thì ai bật Manifest cũng rơi về
+    // bộ chung `default` trong ego.js — mọi E.G.O riêng đều vô nghĩa.
+    //
+    // ⚠️ TÔI ĐÃ VIẾT SAI TRONG HAND-OFF TRƯỚC: hướng dẫn ghi `-setprofile`, nhưng
+    // repo KHÔNG HỀ có lệnh đó — chỉ có `-setplayer`. Đó là lỗi do tôi không grep
+    // xác nhận tên lệnh trước khi viết hướng dẫn.
+    //
+    // Nhận cả key (`redmist`), tên đầy đủ, lẫn tên chủ nhân — findManifestedEgo
+    // tra được cả 3. `manifestego: none` để gỡ về bộ chung.
+    let manifestedEgoUpdate; // undefined = không đụng tới; null = gỡ
+    {
+      const rawEgo = (kv.manifestego ?? "").trim();
+      if (rawEgo) {
+        if (["none", "null", "clear", "default"].includes(rawEgo.toLowerCase())) {
+          manifestedEgoUpdate = null;
+        } else {
+          const foundEgo = findManifestedEgo(rawEgo);
+          if (!foundEgo) {
+            const egoList = Object.values(MANIFESTED_EGOS)
+              .filter(e => e.key !== "default")
+              .map(e => e.key + " (" + e.name + ")").join(", ");
+            message.reply("❌ Không tìm thấy Manifested E.G.O `" + rawEgo + "`.\n> Hiện có: "
+              + (egoList || "(chưa có E.G.O riêng nào)")
+              + "\n> Dùng `manifestego: none` để gỡ về bộ chung."
+              + "\n> VD: `-setplayer @player manifestego: redmist manifestedegounlock: yes`");
+            return;
+          }
+          manifestedEgoUpdate = foundEgo.key;
+        }
+      }
+    }
     const unlockFlagUpdates = {};
     for (const [paramKey, fieldName] of Object.entries(UNLOCK_FLAG_KEYS)) {
       const raw = (kv[paramKey] ?? "").trim().toLowerCase();
@@ -1025,8 +1087,8 @@ client.on("messageCreate", async (message) => {
       branchUpdates[bKey] = { isAdd, value };
       hasBranchUpdate = true;
     }
-    if (expValue === null && ahnValue === null && lunacyValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null && Object.keys(unlockFlagUpdates).length === 0) {
-      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`lunacy\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}), hoặc 4 cờ điều kiện (\`shinunlock\`/\`lightskilltreeunlock\`/\`50statunlock\`/\`manifestedegounlock\`: yes/no).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
+    if (expValue === null && ahnValue === null && lunacyValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null && Object.keys(unlockFlagUpdates).length === 0 && manifestedEgoUpdate === undefined) {
+      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`lunacy\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}), manifestego (VD manifestego: redmist), hoặc 4 cờ điều kiện (\`shinunlock\`/\`lightskilltreeunlock\`/\`50statunlock\`/\`manifestedegounlock\`: yes/no).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
       return;
     }
 
@@ -1115,6 +1177,20 @@ client.on("messageCreate", async (message) => {
           for (const [fieldName, value] of Object.entries(unlockFlagUpdates)) {
             data[fieldName] = value;
             changes.push(`${fieldName}: ${value ? "✅ TRUE" : "❌ FALSE"}`);
+          }
+          if (manifestedEgoUpdate !== undefined) {
+            if (manifestedEgoUpdate === null) {
+              delete data.ManifestedEGO;
+              changes.push("Manifested E.G.O: 🗑️ gỡ (về bộ chung)");
+            } else {
+              data.ManifestedEGO = manifestedEgoUpdate;
+              const egoFound = findManifestedEgo(manifestedEgoUpdate);
+              // Nhắc luôn cờ còn thiếu — 2 thứ ĐỘC LẬP; gán E.G.O mà quên cờ thì
+              // player vẫn không bấm được nút Manifest và sẽ tưởng là bug.
+              const needFlag = data.ManifestedEGOUnlock !== true && unlockFlagUpdates.ManifestedEGOUnlock !== true;
+              changes.push(`Manifested E.G.O: 😈 **${egoFound?.name ?? manifestedEgoUpdate}**` +
+                (needFlag ? " ⚠️ *chưa có cờ — thêm `manifestedegounlock: yes`*" : ""));
+            }
           }
           if (Object.keys(branchUpdates).length > 0) {
             data.branchPoints = data.branchPoints ?? {};
@@ -2435,7 +2511,7 @@ if (message.content.startsWith("-gacha")) {
           await message.reply({
             content: `✅ Đã tạo encounter **${name}**${permadeath ? " ⚠️**PERMADEATH** (chết = permanent death, không phải Death Penalty thường)" : ""}. Dùng nút bên dưới để mở Bảng điều khiển GM (thêm enemy, chỉnh sửa, điều khiển turn...).\n> 🎵 BGM trận này: **${encounter.currentBgm}** (đính kèm dưới — xem lại bất cứ lúc nào qua \`-encounter status\`).`,
             embeds: [boardPayload1.embed],
-            files: [new AttachmentBuilder(`./assets/audio/bgm/${encounter.currentBgm}`)],
+            files: bgmAttachment(AttachmentBuilder, encounter.currentBgm),
             components: [
               ...boardPayload1.components,
               new ActionRowBuilder().addComponents(
@@ -2799,14 +2875,20 @@ if (message.content.startsWith("-gacha")) {
       // khôi phục sót một đường là trận đó kẹt BGM E.G.O vĩnh viễn.
       const bgmName = resolveEncounterBgm(encounter);
       const isEgoBgm = !!bgmName && bgmName !== encounter.currentBgm;
-      const bgmFiles = bgmName ? [new AttachmentBuilder(`./assets/audio/bgm/${bgmName}`)] : [];
-      message.reply({
-        content: bgmName
+      const bgmFiles = bgmAttachment(AttachmentBuilder, bgmName);
+      const bgmPlayable = bgmFiles.length > 0;
+      // await + catch: trước đây KHÔNG await nên MỌI lỗi gửi đều thành
+      // "lỗi không mong muốn" vô danh, không có manh mối nào để lần ra.
+      await message.reply({
+        content: bgmPlayable
           ? (isEgoBgm ? `🎵 **${bgmName}** — BGM Manifested E.G.O (còn tới khi hết trạng thái)` : `🎵 BGM trận này: **${bgmName}**`)
           : undefined,
         embeds: [boardPayload4.embed],
-        components: [...actionPanelRows, ...boardPayload4.components],
+        components: [...actionPanelRows, ...boardPayload4.components].slice(0, 5),
         files: bgmFiles,
+      }).catch(async (err) => {
+        log("error", "encounterStatus", message.author.id, err.message);
+        await message.reply(`❌ Không gửi được bảng trạng thái: ${err.message}`).catch(() => {});
       });
       return;
     }

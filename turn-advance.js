@@ -8,7 +8,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
+module.exports = function ({ applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
 
   function advanceCombatantTurn(combatant) {
     combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
@@ -36,7 +36,7 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
       // Sizzling Wound (50-Status Nhóm 2, xác nhận trực tiếp): "+50% Dmg từ Burn
       // và Bleed" — nhân trực tiếp vào dmg Burn thật gây ra.
       const burnDmg = combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1) * (combatant.burningSensation ? 3 : 1);
-      combatant.currentHp = Math.max(0, combatant.currentHp - burnDmg);
+      applyHpLoss(combatant, burnDmg, { countHana: false });
     }
     combatant.burn = Math.floor((combatant.burn ?? 0) / 2);
     combatant.bleed = Math.floor((combatant.bleed ?? 0) / 2);
@@ -44,7 +44,7 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
     // nếu đạt về 0,5 thì kết thúc" — CÙNG cấu trúc Burn (dmg TRƯỚC, decay SAU),
     // chỉ khác hệ số (x10 thay vì x2) và field riêng (max 99, không chung "burn").
     if ((combatant.haouFlame ?? 0) > 0) {
-      combatant.currentHp = Math.max(0, combatant.currentHp - combatant.haouFlame * 10);
+      applyHpLoss(combatant, combatant.haouFlame * 10, { countHana: false });
     }
     combatant.haouFlame = Math.floor((combatant.haouFlame ?? 0) / 2);
     // Haou Bleed (xác nhận trực tiếp): dmg tự gây mỗi hành động xử lý riêng ở
@@ -86,7 +86,7 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
       combatant.timeMoratoriumTurnsLeft -= 1;
       if (combatant.timeMoratoriumTurnsLeft <= 0) {
         const explosionDmg = combatant.timeMoratoriumAccumulated * ((combatant.tremor ?? 0) / 2) / 100;
-        combatant.currentHp = Math.max(0, combatant.currentHp - explosionDmg);
+        applyHpLoss(combatant, explosionDmg, { countHana: false });
         combatant.timeMoratorium = false;
         combatant.timeMoratoriumAccumulated = 0;
       }
@@ -278,6 +278,12 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
       // ⇒ chấm ở cuối turn đó. `dmgDealtByTargetThisTurn` bị RESET về 0 ở cuối
       // chính hàm này, nên đọc muộn hơn là luôn ra 0 (đúng cái bẫy đã dính 1 lần
       // với Astral Quantization/Swan Song — xem HANDOFF).
+      // Chấm ngưỡng theo VÒNG TURN ORDER (Fragaria: "turn này là turn order ấy
+      // nhé, không phải là turn sau khi turn end của từng người đâu").
+      // ĐÃ ĐÚNG SẴN, không phải sửa: `advanceCombatantTurn` CHỈ được gọi từ
+      // `performEndTurn` (reactive-defense.js:153-154) — chạy MỘT LẦN cho TOÀN BỘ
+      // combatant khi GM bấm "🔄 Kết thúc Turn", tức đúng nhịp vòng turn order,
+      // KHÔNG phải lúc từng người kết thúc lượt riêng.
       if (combatant.theStrongestActive) {
         const perTarget = combatant.dmgDealtByTargetThisTurn ?? {};
         const enemyMaxHps = combatant.theStrongestEnemyMaxHpSnapshot ?? {};
@@ -293,7 +299,7 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
         if (!reached) {
           const penalty = Math.floor((combatant.maxStamina ?? 0) * 0.5);
           combatant.currentStamina = Math.max(0, (combatant.currentStamina ?? 0) - penalty);
-          combatant.theStrongestPenaltyNote = `🔥 **The Strongest** — turn này không gây đủ 15% Max HP lên kẻ địch nào ⇒ −${penalty} Stamina.`;
+          combatant.theStrongestPenaltyNote = `🔥 **The Strongest** — vòng turn này bạn không TỰ gây đủ 15% Max HP lên kẻ địch nào ⇒ −${penalty} Stamina.`;
         } else {
           combatant.theStrongestPenaltyNote = null;
         }
@@ -393,16 +399,22 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
     }
     // Augury Kick — cộng LẠI bonus còn hiệu lực ngay sau khi diceUp bị reset.
     if ((combatant.auguryKickTurnsLeft ?? 0) > 0) combatant.diceUp += (combatant.auguryKickDiceUpBonus ?? 0);
+    // Dice Up có thời hạn từ PAGE (Focus Spirit…) — cùng khuôn Augury Kick.
+    if ((combatant.pageDiceUpTurnsLeft ?? 0) > 0) combatant.diceUp += (combatant.pageDiceUpBonus ?? 0);
     // "Overcharged Vessel" — BUG ĐÃ SỬA (phát hiện khi làm Augury Kick, cùng cơ
     // chế): `overchargedDiceUpBonus` được GHI (encounter-actions.js), được DECAY
     // (cuối file này) và được HIỂN THỊ (encounter-display.js) — nhưng KHÔNG nơi
     // nào cộng nó vào `diceUp`. Nửa "Dice Up" của perk chưa từng có tác dụng;
     // chỉ nửa `overchargedDmgBonusPct` chạy (qua attacker-perk-context.js).
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) combatant.diceUp += (combatant.overchargedDiceUpBonus ?? 0);
-    // "The Strongest" (Manifested E.G.O: Red Mist) — 10 Dice Up + 4 Haste "kéo
-    // dài TỚI KHI HẾT Manifested E.G.O", nhưng `diceUp` và `haste` đều bị reset
-    // về 0 ở ngay trên trong CÙNG hàm này ⇒ phải cộng LẠI mỗi turn, đúng khuôn
-    // blackSuitPersistentBonus/Augury Kick ngay bên cạnh.
+    // Manifested E.G.O — +3 Dice Up là NỀN CHUNG của MỌI Manifested E.G.O.
+    // `diceUp` bị reset về 0 ở ngay trên trong CÙNG hàm này ⇒ phải cộng LẠI mỗi
+    // turn, đúng khuôn blackSuitPersistentBonus/Augury Kick ngay bên cạnh.
+    // ĐẶT SAU khối đếm ngược Manifest ở trên: Manifest vừa hết turn này thì
+    // `manifestedEGO` đã là false ⇒ không cộng nhầm cho turn sau.
+    if (combatant.manifestedEGO) combatant.diceUp = (combatant.diceUp ?? 0) + 3;
+    // "The Strongest" (Red Mist) — 10 Dice Up + 4 Haste CỘNG THÊM lên nền trên
+    // (tổng 13 Dice Up), "kéo dài tới khi hết Manifested E.G.O".
     if (combatant.theStrongestActive) {
       combatant.diceUp = (combatant.diceUp ?? 0) + 10;
       combatant.haste = Math.min(20, (combatant.haste ?? 0) + 4);
@@ -501,7 +513,7 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
     // NGAY tại đây rồi tắt flag (nhánh còn lại "hoặc sau dính đòn có condition
     // Airborne" xử lý riêng ở nơi resolve defense-bypass tags, không phải ở đây).
     if (combatant.airborne) {
-      combatant.currentHp = Math.max(0, combatant.currentHp - 10);
+      applyHpLoss(combatant, 10, { countHana: false });
       combatant.airborne = false;
     }
     // Borrowed Time: "2 Haste và 1 Attack Power Up MỖI TURN (max 2 stack Borrowed
@@ -571,6 +583,10 @@ module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_R
     if ((combatant.auguryKickTurnsLeft ?? 0) > 0) {
       combatant.auguryKickTurnsLeft -= 1;
       if (combatant.auguryKickTurnsLeft <= 0) combatant.auguryKickDiceUpBonus = 0;
+    }
+    if ((combatant.pageDiceUpTurnsLeft ?? 0) > 0) {
+      combatant.pageDiceUpTurnsLeft -= 1;
+      if (combatant.pageDiceUpTurnsLeft <= 0) combatant.pageDiceUpBonus = 0;
     }
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) {
       combatant.overchargedTurnsLeft -= 1;

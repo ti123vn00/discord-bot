@@ -112,6 +112,16 @@ module.exports = function ({
           ))
       ),
       new ActionRowBuilder().addComponents(
+        // 🩹 Chữa trị — GAP ĐÃ SỬA (Fragaria: "làm heal thành dropdown ở shop thay
+        // vì lệnh text khó xài, hiện giờ gần như KHÔNG THỂ xài để heal injury bằng
+        // text"). Lệnh cũ `-heal injury: <tên>` bắt gõ ĐÚNG tên chấn thương —
+        // mà tên là tiếng Việt có dấu ("Gãy Xương Sườn", "Rách Cơ Đùi"…), người
+        // chơi phải mở `-balance` chép tay từng chữ. Nút này mở dropdown liệt kê
+        // sẵn chấn thương ĐANG CÓ kèm giá, bấm là xong.
+        new ButtonBuilder()
+          .setCustomId(`shophealopen:${userId}`)
+          .setLabel("🩹 Chữa trị (HP / Chấn thương)")
+          .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(`shopreset:${userId}`)
           .setLabel(`♻️ Reset Stats + Skill Tree (${formatNumber(RESET_COST)} Ahn)`)

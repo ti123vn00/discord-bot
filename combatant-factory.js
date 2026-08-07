@@ -287,9 +287,14 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       overchargedTurnsLeft: 0, overchargedDiceUpBonus: 0, overchargedDmgBonusPct: 0, // Overcharged Vessel
       // Manifested E.G.O — Duration = Emotion Level hiện tại × 3 turn (Lv1=3, Lv2=6,
       // suy ra Lv3=9/Lv4=12/Lv5=15 theo cùng quy luật — chỉ Lv1/2 được xác nhận trực
-      // tiếp). CD 5 turn SAU KHI hết hiệu lực. -30 Sanity lúc kích hoạt. Active: +3
-      // Dice Up (chỉ hiển thị, không tự áp vào roll skill — như mọi nguồn Dice Up
-      // khác) + 30% Dmg M1+skill bản thân gây ra.
+      // tiếp). CD 5 turn SAU KHI hết hiệu lực. -30 Sanity lúc kích hoạt.
+      // NỀN CHUNG cho MỌI Manifested E.G.O: +3 Dice Up và +30% Dmg M1+skill.
+      // ⚠️ ĐÍNH CHÍNH comment cũ ("+3 Dice Up chỉ hiển thị, không tự áp vào roll
+      // skill — như mọi nguồn Dice Up khác"): SAI ở vế sau. `combat-utils`'s
+      // computeDiceModifier ĐỌC `combatant.diceUp`, và mọi nguồn Dice Up khác
+      // (Augury Kick / Black Suit / Hana) đều cộng thẳng vào field đó. +3 này
+      // TRƯỚC ĐÂY chưa từng được áp — nay đã áp thật (encounter-actions.js lúc
+      // kích hoạt, turn-advance.js cộng lại mỗi turn vì diceUp bị reset).
       manifestedEGO: false, manifestedEGOTurnsLeft: 0, manifestedEGOCooldownLeft: 0, firstManifestEGOUsed: false,
       // ── Manifested E.G.O: Red Mist (ego.js key `redmist`) ───────────────────
       // theStrongestActive — bật lúc Manifest NẾU E.G.O đó có passive

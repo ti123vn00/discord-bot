@@ -111,12 +111,16 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // Không cần check weaponName ở đây — imitationConsumedTotal chỉ tăng khi
     // dùng ĐÚNG Great Split với Mimicry Blade (xem index.js), không nơi nào khác.
     // "The Mimic" (Manifested E.G.O: Red Mist) — Ở DẠNG LƯỠI HÁI: "hiệu ứng Dmg
-    // Bonus từ Passive The Imitation được gia tăng GẤP ĐÔI" ⇒ nhân đôi cả cap
-    // (50% → 100%), không phải nhân đôi rồi vẫn kẹp 50% — kẹp 50% sẽ khiến
-    // passive vô tác dụng với mọi ai đã tiêu ≥10 Imitation, tức đúng nhóm người
-    // chơi mà nó dành cho.
+    // Bonus từ Passive The Imitation được gia tăng GẤP ĐÔI".
+    // ⚠️ CAP GIỮ NGUYÊN 50% (Fragaria đính chính: "The Imitation passive gốc của
+    // Mimicry Blade cap nó vẫn là 50% Dmg Bonus thôi"). Nhân đôi ở đây là nhân
+    // TỐC ĐỘ TÍCH, không phải nới trần: 5 Imitation đã tiêu (1 lần Great Split)
+    // ở dạng lưỡi hái đã chạm thẳng 50%, thay vì phải tiêu đủ 10.
+    // Bản trước tôi nhân đôi cả cap thành 100% — SAI, và lập luận "kẹp 50% thì
+    // passive vô dụng" cũng sai: bonus kéo dài HẾT ENCOUNTER nên 2 lần Great
+    // Split là ăn trọn 50% vĩnh viễn.
     const imitationMul = (attacker.mimicSyncActive && attacker.mimicryForm === "scythe") ? 2 : 1;
-    bonusPct += Math.min(50 * imitationMul, (attacker.imitationConsumedTotal ?? 0) * 5 * imitationMul);
+    bonusPct += Math.min(50, (attacker.imitationConsumedTotal ?? 0) * 5 * imitationMul);
     // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 5) — "The
     // Udjat" (Udjat Khopesh): mỗi 1 Protection hiện có → +1% Dmg Bonus (không
     // tiêu thụ, khác The Imitation — chỉ cần ĐANG CÓ, không cap theo document
@@ -156,10 +160,13 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
     // Manifested E.G.O đang active: +30% Dmg M1+skill bản thân gây ra — cơ chế GỐC
     // của game (không phải Skill Tree perk), không cần hasPerk gate.
-    // "The Strongest" (Manifested E.G.O: Red Mist) ghi ĐÈ mức chung: "nhận 100%
-    // Dmg Bonus". KHÔNG cộng dồn 30 + 100 — spec nêu con số tuyệt đối cho trạng
-    // thái Manifest, không phải "thêm 100 nữa".
-    if (attacker.manifestedEGO) bonusPct += attacker.theStrongestActive ? 100 : 30;
+    // Manifested E.G.O — +30% Dmg là NỀN CHUNG của MỌI Manifested E.G.O
+    // (Fragaria đính chính: "cái cơ bản của Manifested E.G.O là điểm chung của
+    // toàn bộ Manifested E.G.O"). Passive riêng của từng E.G.O CỘNG DỒN lên nền
+    // này, KHÔNG ghi đè.
+    if (attacker.manifestedEGO) bonusPct += 30;
+    // "The Strongest" (Red Mist) — +100% CỘNG THÊM ⇒ tổng 130% khi Manifest.
+    if (attacker.theStrongestActive) bonusPct += 100;
     // Shattered E.G.O — "mọi sát thương của bản thân bị giảm MỘT NỬA" trong 3
     // Turn. Đây là chia đôi dmg CUỐI, không phải -50% bonus: -50 vào bonusPct sẽ
     // đi qua saturateBonusPct (đường cong bão hoà) nên KHÔNG ra đúng một nửa.

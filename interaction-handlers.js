@@ -19,7 +19,15 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+// Xem bgmAttachment ở message-create-handler.js — thiếu file nhạc thì bỏ đính
+// kèm chứ không để discord.js ném ENOENT làm hỏng cả tương tác.
+function bgmAttachmentIH(name) {
+  if (!name) return [];
+  const p = `./assets/audio/bgm/${name}`;
+  try { return require("fs").existsSync(p) ? [new AttachmentBuilder(p)] : []; } catch { return []; }
+}
+
+module.exports = function ({ GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -429,7 +437,7 @@ client.on("interactionCreate", async (interaction) => {
         try {
           await startChannel.send({
             content: `> 🎵 BGM trận này: **${startedEnc.currentBgm}**`,
-            files: [new AttachmentBuilder(`./assets/audio/bgm/${startedEnc.currentBgm}`)],
+            files: bgmAttachmentIH(startedEnc.currentBgm),
           }).catch(() => {});
         } catch (bgmErr) {
           log("error", "partybegin-bgm", interaction.user.id, bgmErr.message);
@@ -2257,6 +2265,33 @@ client.on("interactionCreate", async (interaction) => {
       // đã chọn mới save — nhưng bước đó fetch encounter MỚI (getEncounter),
       // làm MẤT TRẮNG mutation vừa làm ở đây. Save NGAY để không mất.
       await saveEncounter(channelId, encounter);
+      // ── Skill KHÔNG có dmg nhưng CẦN chọn đồng đội (Designant.) ───────────
+      // Phải chặn TRƯỚC nhánh `!verify.autoDmgStr` bên dưới: nhánh đó dựng
+      // pendingAction với `targets: []` rồi resolve NGAY, không chỗ nào hỏi ai.
+      const critSkillObj = findSkill(critSkillName);
+      if (!verify.autoDmgStr && critSkillObj?.needsAllyTarget) {
+        const allyOptions = buildAllyTargetOptions(encounter, interaction.user.id);
+        if (allyOptions.length === 0) {
+          return interaction.reply({ content: "⚠️ Không còn đồng đội nào (còn sống) để chỉ định.", flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+        pendingCriticalRolls.set(pendingKey, {
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns,
+          emotionDelta: verify.emotionDelta ?? 0, lightCost: verify.lightCost,
+          sanityCost: verify.sanityCost, skillRollEmbed: verify.skillRollEmbed,
+          expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
+        });
+        await interaction.update({
+          embeds: [verify.skillRollEmbed, { title: `⚡ ${critSkillName} — chọn người được chỉ định`, description: critSkillObj.allyTargetPrompt ?? "Chọn 1 đồng đội (hoặc chính bạn):", color: 0x3498db }],
+          components: [new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`encallytarget:${channelId}:${encodeURIComponent(critSkillName)}`)
+              .setPlaceholder("Chọn người được chỉ định...")
+              .setMinValues(1).setMaxValues(1)
+              .addOptions(...allyOptions),
+          )],
+        }).catch(() => {});
+        return;
+      }
       if (!verify.autoDmgStr) {
         // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua ảnh chụp thật của user — "Durandal"
         // Critical không có dmg trực tiếp): TRƯỚC ĐÂY nhánh này chỉ hiện embed rồi
@@ -2290,12 +2325,12 @@ client.on("interactionCreate", async (interaction) => {
         if (encounter._deleteAfterSave) {
           await deleteEncounter(channelId).catch((err) => log("error", "critical-deleteEncounter", interaction.user.id, err.message));
           return interaction.reply({
-            embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
+            embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
           }).catch(() => {});
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.reply({
-          embeds: [verify.skillRollEmbed, { description: `*(Critical này không có dice sát thương trực tiếp để tự tính dmg — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
+          embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
         }).catch(() => {});
       }
       const pendingKey = `${channelId}:${interaction.user.id}`;
@@ -2568,14 +2603,14 @@ client.on("interactionCreate", async (interaction) => {
           await deleteEncounter(channelId).catch((err) => log("error", "page-deleteEncounter", interaction.user.id, err.message));
           return interaction.update({
             content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
-            embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
+            embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
             components: [],
           }).catch(() => {});
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.update({
           content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
-          embeds: [verify.skillRollEmbed, { description: `*(Page này không có dice sát thương trực tiếp — dùng \`-encounter buff\`/lệnh liên quan để narrate hiệu ứng nếu cần.)*${lines.length ? `\n${lines.join("\n")}` : ""}`, color: 0x95a5a6 }],
+          embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
           components: [],
         }).catch(() => {});
       }
@@ -2671,7 +2706,11 @@ client.on("interactionCreate", async (interaction) => {
         resultText = `🏁 Bạn đã kết thúc lượt.${wrapped ? "\n> 🔄 Đã hết 1 vòng turn order — GM dùng nút **🔄 Kết thúc Turn** trong GM Panel để bắt đầu turn mới." : ""}`;
       });
       maybeRunAiTurn(channelId).catch(() => {});
-      await interaction.update({ embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
+      // content: "" — XOÁ dòng text cũ của panel. Không truyền thì Discord GIỮ
+      // NGUYÊN content cũ, người chơi thấy "Chọn hành động..." lơ lửng trên kết
+      // quả kết thúc lượt. (t-ui.js bắt được sau khi tôi thêm code làm lệch cửa
+      // sổ 12 dòng — trước đó nó pass NHỜ MAY, không phải vì đúng.)
+      await interaction.update({ content: "", embeds: [{ description: resultText, color: 0x95a5a6 }], components: [] }).catch(() => {});
       return;
     }
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
@@ -2696,7 +2735,7 @@ client.on("interactionCreate", async (interaction) => {
         const encAfter = await getEncounter(channelId);
         const bgmName = egoBgmFor(encAfter?.players?.[interaction.user.id]);
         if (bgmName) {
-          egoBgmFiles = [new AttachmentBuilder(`./assets/audio/bgm/${bgmName}`)];
+          egoBgmFiles = bgmAttachmentIH(bgmName);
           resultMsg += `\n> 🎵 BGM đổi sang **${bgmName}** cho tới khi hết Manifest E.G.O.`;
         }
       } catch (bgmErr) {
@@ -2709,6 +2748,215 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     log("error", "encMenuSelect", interaction.user?.id ?? "unknown", err.message);
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── 🩹 CHỮA TRỊ (shophealopen: / healpick:) ────────────────────────────────
+// GAP ĐÃ SỬA (Fragaria: "làm heal thành dropdown ở shop thay vì lệnh text khó
+// xài, hiện giờ gần như KHÔNG THỂ xài để heal injury bằng text").
+// Lệnh cũ `-heal injury: <tên>` so khớp bằng `includes()` trên tên chấn thương
+// tiếng Việt CÓ DẤU — người chơi phải mở `-balance` chép tay từng chữ, sai dấu
+// là báo "không tìm thấy". Dropdown liệt kê sẵn nên không còn gõ gì.
+//
+// LUẬT GIỮ NGUYÊN, không tự ý đổi:
+//   • Chấn thương: 50.000 Ahn/cái, không giới hạn số lần.
+//   • HP: 1.500 Ahn/HP, **1 lần mỗi chu kỳ**, làm mới ở mốc 0h/12h giờ VN
+//     (dùng CHUNG mostRecentHpResetBoundaryUtc với reset HP — tự đếm 12 tiếng
+//     từ lần heal sẽ lệch dần khỏi mốc đó và người chơi không đoán được).
+const INJURY_HEAL_COST_UI = 50000;
+const HP_HEAL_RATE_AHN_UI = 1500;
+
+async function buildHealPanel(userId) {
+  const { data } = await getPlayerDataWithSlot(userId);
+  const { grade } = calcGrade(data.exp ?? 0);
+  const gradeBasedMaxHp = 140 + 20 * (GRADE_MIN - grade);
+  const effectiveMaxHp = Math.max(1, gradeBasedMaxHp - calcInjuryMaxHpPenalty(data.injuries ?? []));
+  const currentHp = Math.min(data.currentHp ?? effectiveMaxHp, effectiveMaxHp);
+  const missingHp = Math.max(0, effectiveMaxHp - currentHp);
+  const ahn = data.ahn ?? 0;
+  const injuries = data.injuries ?? [];
+  const healUsed = (data.lastPaidHealAt ?? 0) >= mostRecentHpResetBoundaryUtc(Date.now());
+
+  const options = [];
+  injuries.forEach((name, i) => {
+    options.push(new StringSelectMenuOptionBuilder()
+      .setLabel(`🩹 ${name}`.slice(0, 100))
+      .setDescription(`${formatNumber(INJURY_HEAL_COST_UI)} Ahn${ahn < INJURY_HEAL_COST_UI ? " — KHÔNG đủ Ahn" : ""}`.slice(0, 100))
+      // Mang theo TÊN để đối chiếu lúc bấm: index có thể lệch nếu người chơi
+      // chữa ở cửa sổ khác trước đó.
+      .setValue(`injury:${i}|${name.slice(0, 70)}`.slice(0, 100)));
+  });
+  if (missingHp > 0 && !healUsed) {
+    // 3 mốc cho nhanh, khỏi gõ số. Cap theo Ahn đang có để không hiện lựa chọn
+    // chắc chắn thất bại.
+    const affordable = Math.floor(ahn / HP_HEAL_RATE_AHN_UI);
+    for (const [label, amt] of [["Hồi đầy", missingHp], ["Hồi 1/2", Math.ceil(missingHp / 2)], ["Hồi 10 HP", Math.min(10, missingHp)]]) {
+      if (amt <= 0 || amt > affordable) continue;
+      if (options.some(o => o.data?.value === `hp:${amt}`)) continue;
+      options.push(new StringSelectMenuOptionBuilder()
+        .setLabel(`❤️ ${label} (+${amt} HP)`.slice(0, 100))
+        .setDescription(`${formatNumber(amt * HP_HEAL_RATE_AHN_UI)} Ahn — 1 lần/chu kỳ`.slice(0, 100))
+        .setValue(`hp:${amt}`));
+    }
+  }
+  const notes = [];
+  notes.push(`❤️ HP: **${currentHp}/${effectiveMaxHp}**${missingHp === 0 ? " (đã đầy)" : ""}`);
+  notes.push(`💰 Ahn: **${formatNumber(ahn)}**`);
+  if (injuries.length === 0) notes.push("🩹 Không có chấn thương nào.");
+  if (healUsed) notes.push("⚠️ Đã dùng lượt hồi HP bằng Ahn của chu kỳ này — làm mới ở mốc **0h/12h giờ VN**.");
+  if (missingHp > 0 && !healUsed && ahn < HP_HEAL_RATE_AHN_UI) notes.push(`⚠️ Không đủ Ahn để hồi HP (cần tối thiểu ${formatNumber(HP_HEAL_RATE_AHN_UI)} Ahn/HP).`);
+
+  return {
+    embeds: [{ title: "🩹 Chữa trị", description: notes.join("\n"), color: 0x2ecc71 }],
+    components: options.length > 0
+      ? [new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`healpick:${userId}`)
+            .setPlaceholder("Chọn thứ muốn chữa...")
+            .setMinValues(1).setMaxValues(1)
+            .addOptions(options.slice(0, 25)))]
+      : [],
+  };
+}
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  if (!interaction.customId.startsWith("shophealopen:")) return;
+  const ownerId = interaction.customId.split(":")[1];
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Đây là bảng của người khác — gõ `-shop` để mở bảng của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    await interaction.editReply(await buildHealPanel(ownerId));
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}` }).catch(() => {});
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("healpick:")) return;
+  const ownerId = interaction.customId.split(":")[1];
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({ content: "⚠️ Đây là bảng của người khác.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  if (isOnCooldown(interaction.user.id, "healpick", 3000)) {
+    return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 3 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferUpdate().catch(() => {});
+  const raw = interaction.values[0];
+  try {
+    let msg = "";
+    await withLock(ownerId, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(ownerId);
+      const { grade } = calcGrade(data.exp ?? 0);
+      const gradeBasedMaxHp = 140 + 20 * (GRADE_MIN - grade);
+      const effectiveMaxHp = Math.max(1, gradeBasedMaxHp - calcInjuryMaxHpPenalty(data.injuries ?? []));
+      const currentHp = Math.min(data.currentHp ?? effectiveMaxHp, effectiveMaxHp);
+
+      if (raw.startsWith("injury:")) {
+        const body = raw.slice(7);
+        const sep = body.indexOf("|");
+        const idx = parseInt(body.slice(0, sep), 10);
+        const namePart = body.slice(sep + 1);
+        const list = data.injuries ?? [];
+        // Đối chiếu TÊN chứ không tin index — người chơi có thể đã chữa ở bảng khác.
+        if (!Number.isInteger(idx) || !list[idx] || !String(list[idx]).startsWith(namePart)) {
+          throw new Error("Danh sách chấn thương đã thay đổi — mở lại bảng chữa trị.");
+        }
+        if ((data.ahn ?? 0) < INJURY_HEAL_COST_UI) {
+          throw new Error(`Cần ${formatNumber(INJURY_HEAL_COST_UI)} Ahn — bạn chỉ có ${formatNumber(data.ahn ?? 0)} Ahn.`);
+        }
+        const removed = list[idx];
+        list.splice(idx, 1);
+        data.injuries = list;
+        data.ahn = (data.ahn ?? 0) - INJURY_HEAL_COST_UI;
+        await savePlayerData(ownerId, data, slot);
+        msg = `🩹 Đã chữa **${removed}** — tốn ${formatNumber(INJURY_HEAL_COST_UI)} Ahn (còn ${formatNumber(data.ahn)} Ahn). Max HP hồi lại tương ứng.`;
+        return;
+      }
+      if (raw.startsWith("hp:")) {
+        const want = parseInt(raw.slice(3), 10);
+        const missing = effectiveMaxHp - currentHp;
+        if (!(want > 0)) throw new Error("Lựa chọn không hợp lệ.");
+        if (missing <= 0) throw new Error("Bạn đã đầy HP rồi.");
+        if ((data.lastPaidHealAt ?? 0) >= mostRecentHpResetBoundaryUtc(Date.now())) {
+          throw new Error("Bạn đã dùng lượt hồi HP bằng Ahn của chu kỳ này rồi — mỗi chu kỳ **1 lần**, làm mới ở mốc **0h/12h giờ VN**.");
+        }
+        const actual = Math.min(want, missing);
+        const cost = actual * HP_HEAL_RATE_AHN_UI;
+        if ((data.ahn ?? 0) < cost) {
+          throw new Error(`Cần ${formatNumber(cost)} Ahn để hồi ${actual} HP — bạn chỉ có ${formatNumber(data.ahn ?? 0)} Ahn.`);
+        }
+        data.ahn = (data.ahn ?? 0) - cost;
+        data.currentHp = currentHp + actual;
+        data.lastPaidHealAt = Date.now();
+        await savePlayerData(ownerId, data, slot);
+        msg = `❤️ Đã hồi **${actual} HP** (${currentHp} → ${data.currentHp}/${effectiveMaxHp}) — tốn ${formatNumber(cost)} Ahn (còn ${formatNumber(data.ahn)} Ahn).\n> ⚠️ Đây là **lượt hồi duy nhất** của chu kỳ này.`;
+        return;
+      }
+      throw new Error("Lựa chọn không hợp lệ.");
+    });
+    // Dựng lại bảng để người chơi thấy Ahn/HP/chấn thương đã cập nhật và chữa tiếp.
+    const panel = await buildHealPanel(ownerId);
+    await interaction.editReply({ content: msg, embeds: panel.embeds, components: panel.components }).catch(() => {});
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err.message}`, embeds: [], components: [] }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU: chọn ĐỒNG ĐỘI cho skill khai `needsAllyTarget` ────────────
+// BUG ĐÃ SỬA (Fragaria: "Designant không cho chỉ định mà mặc định cho bản thân").
+// Skill không có dice sát thương vốn đi thẳng resolve với `targets: []`, nên
+// resolve-pending-action.js luôn rơi vào nhánh mặc định `?? p.attackerId`.
+// Bước này lấp `targets` bằng người được chọn — resolve KHÔNG cần sửa gì, nó vốn
+// đã đọc `(p.targets ?? [])[0]?.targetId` đúng.
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("encallytarget:")) return;
+  const parts = interaction.customId.split(":");
+  const channelId = parts[1];
+  const critSkillName = decodeURIComponent(parts.slice(2).join(":"));
+  const chosenAllyId = interaction.values[0];
+  await interaction.deferUpdate().catch(() => {});
+  const pendingKey = `${channelId}:${interaction.user.id}:${critSkillName}`;
+  try {
+    const pendingRoll = pendingCriticalRolls.get(pendingKey);
+    if (!pendingRoll || pendingRoll.expiresAt < Date.now()) {
+      pendingCriticalRolls.delete(pendingKey);
+      return interaction.followUp({ content: "⚠️ Lượt roll đã hết hạn — chọn lại Critical.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    pendingCriticalRolls.delete(pendingKey);
+    let outLines = [];
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+      if (!encounter.players?.[chosenAllyId]) throw new Error("Người được chọn không còn trong encounter.");
+      const p = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        kind: "critical", attackerId: interaction.user.id,
+        // preview rỗng — skill này KHÔNG gây dmg, `targets` chỉ để CHỈ ĐỊNH người.
+        targets: [{ targetId: chosenAllyId, preview: { totalDmg: 0, dmgValues: [] } }],
+        dmgStr: `Critical: ${critSkillName}`, defenseBypass: {},
+        // rollText — text ĐÃ ROLL thật. Skill không có dice sát thương thì
+        // `dmgStr` chỉ là nhãn, mọi con số (VD "**41%**" của Astral Quantization)
+        // đều nằm ở đây. Không truyền là resolve đọc ra 0.
+        rollText: pendingRoll.skillRollEmbed?.description ?? "",
+        skillKey: pendingRoll.skillKey, cooldownTurns: pendingRoll.cooldownTurns,
+        emotionDelta: pendingRoll.emotionDelta ?? 0,
+        lightCost: pendingRoll.lightCost, sanityCost: pendingRoll.sanityCost,
+      };
+      outLines = await resolveOnePendingAction(encounter, p);
+      await saveEncounter(channelId, encounter);
+    });
+    await interaction.editReply({
+      embeds: [pendingRoll.skillRollEmbed, { description: outLines.join("\n") || "*(không có gì để hiện)*", color: 0x95a5a6 }],
+      components: [],
+    }).catch(() => {});
+  } catch (err) {
+    log("error", "encallytarget", interaction.user?.id ?? "unknown", err.message);
+    await interaction.followUp({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
 

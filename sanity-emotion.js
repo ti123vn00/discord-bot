@@ -7,7 +7,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, EMOTION_LEVEL_DURATION_TURNS, ENCOUNTER_SANITY_MAX }) {
+module.exports = function ({ healHpCapped, hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, EMOTION_LEVEL_DURATION_TURNS, ENCOUNTER_SANITY_MAX }) {
 
   function getEffectiveSanityForDiceBonus(combatant) {
     return hasPerk(combatant, "Negative Thoughts") ? -combatant.currentSanity : combatant.currentSanity;
@@ -79,12 +79,20 @@ module.exports = function ({ hasPerk, getMaxEmotionLevel, EMOTION_LEVEL_TABLE, E
       combatant.emotionLevel = nextLevel;
       combatant.emotionLevelCooldownLeft = 0; // đang active — không còn CD nào treo nữa
       combatant.emotionLevelTurnsLeft = hasPerk(combatant, "Light Body") ? Infinity : EMOTION_LEVEL_DURATION_TURNS;
+      // BUG ĐÃ SỬA (Fragaria: "Emotion level heal được máu ảo của Memories:
+      // Compassion, cần gate kỹ hơn").
+      // % hồi VẪN tính trên `maxHp` (đã gồm 100 máu ảo) — đó là phần thưởng của
+      // món đồ, hồi nhiều hơn là đúng. Nhưng TRẦN hồi phải là `healCapHp`
+      // (= maxHp GỐC): luật của Compassion là "+100 Max HP nhưng KHÔNG hồi lên
+      // tới đó được". `Math.min(maxHp, …)` cũ cho hồi thẳng vào 100 máu ảo.
       const healAmount = Math.round(combatant.maxHp * tier.healPct / 100 * 100) / 100;
-      combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + healAmount);
+      const healedReal = healHpCapped ? healHpCapped(combatant, healAmount) : (() => {
+        const b = combatant.currentHp; combatant.currentHp = Math.min(combatant.maxHp, b + healAmount); return combatant.currentHp - b;
+      })();
       combatant.maxLight = combatant.baseMaxLight + tier.maxLightBonus;
       if (hasPerk(combatant, "Emotion Surge")) combatant.currentLight = combatant.maxLight;
       else combatant.currentLight = Math.min(combatant.currentLight, combatant.maxLight);
-      notes.push(`🆙 Emotion Level ${nextLevel}! (+${healAmount.toFixed(2)} HP, +${tier.diceUp} Dice Up khi dùng skill, Max Light → ${combatant.maxLight})`);
+      notes.push(`🆙 Emotion Level ${nextLevel}! (+${healedReal.toFixed(2)} HP, +${tier.diceUp} Dice Up khi dùng skill, Max Light → ${combatant.maxLight})`);
       // "Black Suit" (outfit) — GAP MỚI (xác nhận trực tiếp): "Mỗi khi đạt
       // Emotion Level nhận được 1 Dice Up, 1 Clash Power và 1 Protection kéo
       // dài cho đến hết encounter" — Protection dùng ĐÚNG cơ chế

@@ -178,8 +178,10 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     // Luồng ENCOUNTER → dùng <:Shin:1528452250861699215>, KHÔNG dùng Fix_Shin.
     if (combatant.shinMangActive) lines.push(`> <:Shin:1528452250861699215><:Fix_Mang:1507591172770631822> **Shin/Mang active** — Shin Lvl ${combatant.shinLevel ?? 10}, Mang Lvl ${combatant.mangLevel ?? 1}/5: -0,2x Res bản thân, +${(combatant.mangLevel ?? 1) * 10}% Dmg, +${combatant.mangLevel ?? 1} Dice Up, +${combatant.mangLevel ?? 1} Clash Power Up, True Dmg (M1+skill, bỏ qua DR)`);
     if ((combatant.consumablesLoadout ?? []).length > 0) lines.push(`> 🎒 Item mang vào: ${combatant.consumablesLoadout.join(", ")} (${combatant.consumablesLoadout.length}/4)${combatant.usedItemThisTurn ? " — đã dùng 1 turn này" : ""}`);
-    if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill`);
+    if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill` + (combatant.theStrongestActive ? ` · 🔥**The Strongest** +10 Dice Up, +100% Dmg, Max Dice, 50% DR` : ""));
     else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) lines.push(`> ⏳ Manifest E.G.O CD — còn ${combatant.manifestedEGOCooldownLeft} turn`);
+    if ((combatant.shatteredEgoTurnsLeft ?? 0) > 0) lines.push(`> 💔 **Shattered E.G.O** — còn ${combatant.shatteredEgoTurnsLeft} turn — dmg ×0.5, mọi Dice ra Min Dice`);
+    if (combatant.mimicSyncActive) lines.push(`> 🗡️ **Mimicry: Synchronization** — dạng ${combatant.mimicryForm === "scythe" ? "**Lưỡi hái** (56/Slash/Heavy, The Imitation ×2)" : "**Kiếm** (28/Slash/Medium)"}`);
     if ((combatant.injuries ?? []).length > 0) lines.push(`> 🩻 Chấn thương: ${combatant.injuries.join(", ")}`);
     // gmNote (xác nhận trực tiếp: "thêm note lên chỗ status của player hoặc
     // boss/mob phòng trong các status đặc biệt mà chưa kịp implement vào

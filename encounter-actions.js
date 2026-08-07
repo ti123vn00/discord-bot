@@ -272,6 +272,20 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
       // làm người chơi Panic/Stagger ngay lập tức thì luật "bị Stagger trong
       // lúc Manifest ⇒ Shattered E.G.O" phải áp được luôn, chứ không phải bỏ
       // qua chỉ vì cờ chưa kịp bật.
+      // ── NỀN CHUNG của MỌI Manifested E.G.O ────────────────────────────────
+      // Fragaria đính chính: "+100% riêng của Red Mist và +30% đều là chung, kể
+      // cả cái Dice Up nữa — cái cơ bản của Manifested E.G.O là điểm chung của
+      // TOÀN BỘ Manifested E.G.O".
+      //
+      // ⚠️ GAP ĐÃ SỬA (phát hiện khi làm Red Mist): "+3 Dice Up" của Manifest
+      // TRƯỚC ĐÂY chỉ là CHỮ ở encounter-display.js — KHÔNG dòng nào cộng nó vào
+      // `combatant.diceUp`. Mà `diceUp` CÓ đi vào dice roll thật (combat-utils
+      // `computeDiceModifier` đọc nó). Nghĩa là mọi người dùng Manifest E.G.O từ
+      // trước tới nay đều THIẾU 3 Dice Up so với luật. Nay áp thật.
+      // Comment cũ ở combatant-factory.js ghi "chỉ hiển thị, không tự áp vào roll
+      // skill — như mọi nguồn Dice Up khác" là SAI ở vế sau: nguồn Dice Up khác
+      // (Augury Kick, Black Suit, Hana...) đều cộng thẳng vào `diceUp`.
+      player.diceUp = (player.diceUp ?? 0) + 3;
       let egoPassiveNote = "";
       if (hasEgoMechanic(player, "redmist_the_strongest")) {
         player.theStrongestActive = true;
@@ -288,7 +302,7 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
         // (cùng khuôn với blackSuitPersistentBonus). Ở đây cấp cho TURN NÀY.
         player.diceUp = (player.diceUp ?? 0) + 10;
         player.haste = Math.min(20, (player.haste ?? 0) + 4);
-        egoPassiveNote += ` 🔥**The Strongest** — Max Dice chắc chắn, +100% Dmg, +10 Dice Up, +4 Haste, +100 Max Stamina, 50% Dmg Reduction.`;
+        egoPassiveNote += ` 🔥**The Strongest** — Max Dice chắc chắn, +100% Dmg (tổng **130%** với nền Manifest), +10 Dice Up (tổng **13**), +4 Haste, +100 Max Stamina, 50% Dmg Reduction.`;
       }
       if (hasEgoMechanic(player, "redmist_the_mimic")) {
         egoPassiveNote += applyMimicSynchronization(player);

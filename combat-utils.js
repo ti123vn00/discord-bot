@@ -295,13 +295,37 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
    *  Dùng hàm này thay cho `c.currentHp = Math.max(0, c.currentHp - n)` ở MỌI
    *  chỗ mất HP TRONG vòng đấu.
    */
-  function applyHpLoss(combatant, amount) {
+  function applyHpLoss(combatant, amount, { skipShield = false, countHana = true } = {}) {
     if (!combatant || !(amount > 0)) return 0;
+    // ── SHIELD HP HẤP THỤ TRƯỚC — BUG NẶNG ĐÃ SỬA ────────────────────────────
+    // Fragaria: "You're too slow của Eye Gouger sử dụng XUYÊN QUA Shield HP.
+    // Shield HP của game là dùng để THAY THẾ cho HP, nên không thể có chuyện bị
+    // xuyên được, kể cả status effect như Bleed hay Burn cũng đều tiêu Shield HP
+    // trước rồi mới qua HP."
+    //
+    // GỐC BUG: applyHpLoss là choke point DUY NHẤT của mất HP, nhưng nó trừ
+    // THẲNG `currentHp` mà KHÔNG hề đụng `shieldHp`. Khiên chỉ được hấp thụ ở
+    // ĐÚNG MỘT chỗ — nhánh dmg chính trong resolve-pending-action.js. Nghĩa là
+    // TOÀN BỘ nguồn dmg còn lại đều xuyên khiên: You're Too Slow, dmg phản
+    // (Renegade/Dullahan/thua clash), Astral Quantization, Tremor Burst, và cả
+    // tick Bleed/Burn/haouSinking ở turn-advance.js.
+    //
+    // Sửa TẠI ĐÂY thay vì vá từng nguồn: thêm khiên vào đúng choke point thì mọi
+    // nguồn tự đúng, kể cả nguồn thêm mới sau này.
+    //
+    // `skipShield: true` — DÀNH RIÊNG cho nhánh dmg chính, nơi đã gọi
+    // applyShieldLoss TRƯỚC đó (Renegade cần biết khiên lúc BỊ ĐÁNH nên phải
+    // hấp thụ tách riêng). Không có cờ này thì chỗ đó sẽ trừ khiên HAI LẦN.
+    if (!skipShield && (combatant.shieldHp ?? 0) > 0) {
+      const absorbed = applyShieldLoss(combatant, Math.min(combatant.shieldHp, amount));
+      amount -= absorbed;
+      if (!(amount > 0)) return 0;
+    }
     const before = combatant.currentHp ?? 0;
     combatant.currentHp = Math.max(0, before - amount);
     const lost = before - combatant.currentHp;
     if (lost <= 0) return 0;
-    if (combatant.hasHanaAssociation) {
+    if (combatant.hasHanaAssociation && countHana) {
       const thresholdBefore = Math.floor((combatant.hpLostThisTurn ?? 0) / 10);
       combatant.hpLostThisTurn = (combatant.hpLostThisTurn ?? 0) + lost;
       const thresholdAfter = Math.floor(combatant.hpLostThisTurn / 10);

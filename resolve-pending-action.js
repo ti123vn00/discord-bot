@@ -256,6 +256,14 @@ async function resolveOnePendingAction(encounter, p) {
               if (p.unbreakableDiceHalved) finalDmg *= 0.5;
               let defenseNote = "";
               let evadedCompletely = false;
+              // renegadeLandedHits — số hit THẬT SỰ DÍNH (không bị Evade/Parry).
+              // Guard KHÔNG tính là trượt: hit bị Guard vẫn vào, chỉ giảm dmg —
+              // đúng như ảnh Fragaria gửi (Guard giảm 99% nhưng dmg vẫn áp).
+              // Khai ở ĐÂY (scope vòng lặp target) chứ không trong khối phòng thủ:
+              // `hitEvadedOrParried` nằm trong khối lồng, đọc từ ngoài là
+              // ReferenceError — đúng lớp lỗi scope đã dính nhiều lần (HANDOFF).
+              // null = chưa qua khối phòng thủ ⇒ coi như dính hết.
+              let renegadeLandedHits = null;
               // Guard/Evade/Parry — TIÊU THỤ charge SỐNG (đọc trực tiếp target lúc xử
               // lý action này trong batch, KHÔNG dùng giá trị tính sẵn lúc declare).
               // QUAN TRỌNG: 1 charge chặn được SỐ HIT theo vũ khí BÊN TẤN CÔNG — CHỈ
@@ -595,6 +603,7 @@ async function resolveOnePendingAction(encounter, p) {
                 // số học 2 cách cho cùng kết quả vì Guard không bao giờ đạt đúng
                 // 0%, dùng field chuyên dụng rõ ràng và chắc chắn hơn).
                 evadedCompletely = totalHits > 0 && hitEvadedOrParried.every(Boolean);
+                renegadeLandedHits = totalHits - hitEvadedOrParried.filter(Boolean).length;
                 const bypassNote = [bypass.blockEvade && "Undodgeable", bypass.blockGuard && "Unblockable", bypass.blockParry && "Unparriable"].filter(Boolean);
                 defenseNote = noteParts.length > 0 ? " " + noteParts.join(" + ") : "";
                 if (bypassNote.length > 0 && hitIdx < totalHits) defenseNote += ` *(${bypassNote.join(", ")} — phần hit còn lại không thể chặn)*`;
@@ -890,7 +899,10 @@ async function resolveOnePendingAction(encounter, p) {
               // Logic đã GOM vào applyHpLoss (combat-utils.js) để MỌI nguồn mất
               // HP đều được đếm — trước đây CHỈ dòng này đếm, 19 chỗ trừ HP còn
               // lại (dmg phản, Bleed tự cắn, Tremor Burst…) hoàn toàn không.
-              applyHpLoss(target, finalDmg);
+              // skipShield: khiên ĐÃ được hấp thụ ngay phía trên (tách riêng vì
+              // Renegade cần biết khiên lúc BỊ ĐÁNH). Không truyền cờ này thì
+              // applyHpLoss sẽ trừ khiên LẦN HAI.
+              applyHpLoss(target, finalDmg, { skipShield: true });
               // Dmg NGƯỜI TẤN CÔNG gây ra trong turn, TÁCH RIÊNG THEO TỪNG MỤC
               // TIÊU — "Astral Quantization" tính % trên dmg gây cho **từng** kẻ
               // địch, không phải trên tổng.
@@ -946,11 +958,36 @@ async function resolveOnePendingAction(encounter, p) {
                 const holder = Object.values(encounter.players ?? {})
                   .find(pl => pl.weaponName === "Lucent Historia" && (pl.currentHp ?? 0) > 0);
                 if (holder) {
+                  // BUG ĐÃ SỬA (Fragaria: "Renegade thay vì phản per hit nhận
+                  // được thì nó chỉ phản 1 group. VD 1 page gây 3 lần dmg thì
+                  // Lucent Historia sẽ phản CẢ 3 LẦN").
+                  // Bản cũ phản ĐÚNG 1 LẦN cho cả action, bất kể bị đánh mấy hit.
+                  //
+                  // LUẬT ĐẦY ĐỦ (Fragaria đưa kèm ví dụ số):
+                  //  • Giá trị phản 1 GROUP = base dmg người BỊ ĐÁNH ÷ hệ số WEIGHT
+                  //    của họ (light ÷1 · medium ÷2 · heavy ÷4).
+                  //  • Với M1, 1 group = WEAPON_DEFENSE_HITS[weight của KẺ TẤN CÔNG]
+                  //    hit, nên MỖI HIT chỉ mang 1/số-hit-mỗi-group giá trị đó.
+                  //    Với Page/Critical thì mỗi dice là 1 group riêng (hitsPerCharge
+                  //    = 1) ⇒ mỗi dice phản TRỌN giá trị.
+                  //  • Tổng phản = giá-trị-mỗi-hit × số hit THẬT SỰ DÍNH.
+                  //
+                  // KIỂM LẠI VÍ DỤ CỦA FRAGARIA: người bị đánh M1 light base 5
+                  // (5÷1 = 5/group), kẻ địch M1 light đánh 2 hit (group light = 4
+                  // hit) ⇒ mỗi hit phản 5÷4 = **1.25** ✓, 2 hit dính = 2.5 = đúng
+                  // **50%** của Renegade ✓ — khớp cả hai vế Fragaria nói.
                   const divisor = RENEGADE_DIVISOR[target.weaponWeight ?? "medium"] ?? 2;
-                  const reflected = Math.round(((target.weaponBaseDamage ?? 0) / divisor) * 1000) / 1000;
-                  if (reflected > 0) {
+                  const perGroup = Math.round(((target.weaponBaseDamage ?? 0) / divisor) * 1000) / 1000;
+                  // hitsPerCharge đã tính sẵn ở đầu vòng lặp target: M1 → số hit
+                  // mỗi group theo vũ khí KẺ TẤN CÔNG; Page/Critical → 1.
+                  const perHit = Math.round((perGroup / Math.max(1, hitsPerCharge)) * 1000) / 1000;
+                  const landed = renegadeLandedHits === null ? hitCount : renegadeLandedHits;
+                  const reflected = Math.round(perHit * landed * 1000) / 1000;
+                  if (reflected > 0 && landed > 0) {
                     applyHpLoss(attacker.combatant, reflected);
-                    renegadeNote = ` ⚔️[Renegade: ${target.weaponWeight ?? "medium"} ${target.weaponBaseDamage}/${divisor} → phản **${reflected}** ${target.weaponType ?? ""} về ${attacker.label}]`;
+                    renegadeNote = ` ⚔️[Renegade: ${target.weaponWeight ?? "medium"} ${target.weaponBaseDamage}/${divisor} = ${perGroup}/group` +
+                      (hitsPerCharge > 1 ? ` ÷ ${hitsPerCharge} hit/group = ${perHit}/hit` : "") +
+                      ` × ${landed} hit dính → phản **${reflected}** ${target.weaponType ?? ""} về ${attacker.label}]`;
                   }
                 }
               }
@@ -1927,6 +1964,21 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.imitation = Math.min(IMITATION_MAX ?? 10, (attacker.combatant.imitation ?? 0) + sfx.selfImitation);
                   selfParts.push(`+${sfx.selfImitation} Imitation (tổng ${attacker.combatant.imitation})`);
                 }
+                if (sfx.selfDiceUp > 0) {
+                  // Dice Up TỰ NHẬN có thời hạn (Focus Spirit…). Phải lưu thành
+                  // bonus BỀN chứ không cộng thẳng `diceUp`: advanceCombatantTurn
+                  // reset `diceUp` về 0 mỗi turn ⇒ cộng thẳng là mất ngay turn sau,
+                  // đúng triệu chứng "Focus Spirit không cho dice up".
+                  // Cộng CẢ 2: `diceUp` để có hiệu lực NGAY turn này, và bonus bền
+                  // để turn-advance cộng lại cho những turn còn lại.
+                  attacker.combatant.diceUp = (attacker.combatant.diceUp ?? 0) + sfx.selfDiceUp;
+                  const turns = Math.max(1, sfx.selfDiceUpTurns ?? 1);
+                  if (turns > 1) {
+                    attacker.combatant.pageDiceUpBonus = (attacker.combatant.pageDiceUpBonus ?? 0) + sfx.selfDiceUp;
+                    attacker.combatant.pageDiceUpTurnsLeft = Math.max(attacker.combatant.pageDiceUpTurnsLeft ?? 0, turns - 1);
+                  }
+                  selfParts.push(`+${sfx.selfDiceUp} Dice Up${turns > 1 ? ` (${turns} Turn)` : ""}`);
+                }
                 if (sfx.selfLight > 0) {
                   const beforeL = attacker.combatant.currentLight ?? 0;
                   attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 99, beforeL + sfx.selfLight);
@@ -1939,9 +1991,11 @@ async function resolveOnePendingAction(encounter, p) {
                   selfParts.push(`+${attacker.combatant.haste - beforeHa} Haste (tổng ${attacker.combatant.haste})`);
                 }
                 if (sfx.healHp > 0) {
-                  const beforeH = attacker.combatant.currentHp ?? 0;
-                  attacker.combatant.currentHp = Math.min(attacker.combatant.maxHp ?? beforeH, beforeH + sfx.healHp);
-                  selfParts.push(`+${(attacker.combatant.currentHp - beforeH).toFixed(0)} HP`);
+                  // healHpCapped — KHÔNG dùng Math.min(maxHp, …) nữa: với người
+                  // đội "Memories: Compassion" thì `maxHp` đã cộng 100 máu ẢO mà
+                  // luật ghi rõ là KHÔNG hồi lên tới đó được. Xem healCapHp.
+                  const gotHp = healHpCapped(attacker.combatant, sfx.healHp);
+                  if (gotHp > 0) selfParts.push(`+${gotHp.toFixed(0)} HP`);
                 }
                 if (selfParts.length) verifyNote += ` 💠[${selfParts.join(", ")}]`;
               }
@@ -2031,10 +2085,24 @@ async function resolveOnePendingAction(encounter, p) {
             // p.dmgStr — KHÔNG roll lại, nếu không số hiện cho người chơi sẽ khác
             // số thực thi.
             if (p.skillKey === "astral quantization" && attacker.type === "player") {
-              const pct = Math.round(parseFloat(String(p.dmgStr ?? "0").match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0"));
+              // BUG ĐÃ SỬA (Fragaria: "Astral Quantization có vẻ hoạt động không
+              // đúng"). Skill này KHÔNG có dice sát thương ⇒ `p.dmgStr` là chuỗi
+              // placeholder "Critical: Astral Quantization" — KHÔNG có chữ số nào
+              // ⇒ regex cũ luôn trả "0" ⇒ **pct = 0 vĩnh viễn**, cuối turn gây
+              // đúng 0 dmg. Con số thật nằm trong TEXT ĐÃ ROLL ("bằng **41%** DMG"),
+              // nay truyền qua `p.rollText` từ bước chọn đồng đội.
+              const pctSrc = `${p.rollText ?? ""} ${p.dmgStr ?? ""}`;
+              const pct = Math.round(parseFloat(
+                pctSrc.match(/\*\*(\d+(?:\.\d+)?)%\*\*/)?.[1]
+                ?? pctSrc.match(/(\d+(?:\.\d+)?)\s*%/)?.[1]
+                ?? "0"));
+              if (!(pct > 0)) {
+                verifyNote += ` ⚠️[Astral Quantization: không đọc được % từ kết quả roll — báo GM]`;
+              }
               const allyId = (p.targets ?? [])[0]?.targetId ?? p.attackerId;
               const ally = encounter.players?.[allyId];
-              if (!ally || (ally.shieldHp ?? 0) <= 0) {
+              if (!(pct > 0)) { /* đã báo ở trên */ }
+              else if (!ally || (ally.shieldHp ?? 0) <= 0) {
                 verifyNote += ` ⚠️[Astral Quantization: <@${allyId}> KHÔNG có Shield HP — không chỉ định được]`;
               } else {
                 encounter.pendingAstralQuantization = encounter.pendingAstralQuantization ?? [];

@@ -4426,6 +4426,18 @@ Object.assign(SKILLS, {
   "designant.": {
     name: "Designant.", weaponOf: "Lucent Historia", tags: "Weapon",
     cost: "—", cd: "3 Turn", diceMul: "1x",
+    // needsAllyTarget — skill này CHỈ ĐỊNH một đồng đội (hoặc chính mình).
+    // BUG ĐÃ SỬA (Fragaria: "Designant không cho chỉ định mà mặc định cho bản
+    // thân"). Gốc: Designant không có dice sát thương ⇒ đi nhánh `!autoDmgStr`
+    // trong interaction-handlers.js, nhánh đó dựng pendingAction với
+    // `targets: []` và KHÔNG hỏi target bao giờ. Xuống resolve-pending-action.js
+    // thì `(p.targets ?? [])[0]?.targetId ?? p.attackerId` luôn rơi vào vế sau
+    // ⇒ vĩnh viễn tự chỉ định mình.
+    // Cờ này bật một bước chọn ĐỒNG ĐỘI (dropdown `encallytarget:`) trước khi
+    // resolve. Đặt trên DATA thay vì hard-code tên skill trong handler để skill
+    // sau này cùng kiểu chỉ cần khai 1 dòng.
+    needsAllyTarget: true,
+    allyTargetPrompt: "Chọn người được **Designant.** chỉ định (có thể chọn chính mình):",
     roll() {
       return [
         `*Bản thân và tất cả đồng đội nhận 30 Shield HP, rồi chỉ định một đồng đội hoặc chính bản thân.*`,
@@ -4437,6 +4449,11 @@ Object.assign(SKILLS, {
   "astral quantization": {
     name: "Astral Quantization", weaponOf: "Lucent Historia", tags: "Weapon",
     cost: "—", cd: "4 Turn", diceMul: "1x",
+    // Cùng lỗi với Designant.: skill không có dice sát thương ⇒ không bao giờ
+    // được hỏi target ⇒ luôn tự chỉ định mình (mà mình thường không có Shield HP
+    // nên còn báo "không chỉ định được"). Xem needsAllyTarget ở Designant.
+    needsAllyTarget: true,
+    allyTargetPrompt: "Chọn đồng đội (phải ĐANG CÓ Shield HP) để **Astral Quantization** lấy % sát thương của họ:",
     roll() {
       const dice = r(1, 50);
       return [
@@ -5376,7 +5393,7 @@ function autoExtractDiceSideEffects(lines) {
  *  @returns {{fragile:number, paralyze:number, drainStamina:number, selfImitation:number, selfLight:number, healHp:number}}
  */
 function extractNonDmgStrEffects(lines) {
-  const out = { fragile: 0, paralyze: 0, airborne: 0, hemorrhage: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0 };
+  const out = { fragile: 0, paralyze: 0, airborne: 0, hemorrhage: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0, selfDiceUp: 0, selfDiceUpTurns: 0 };
   const stripEmoji = (t) => t.replace(/<a?:[^:>]+:\d+>/g, "");
   for (const raw of lines ?? []) {
     const line = stripEmoji(String(raw));
@@ -5412,6 +5429,21 @@ function extractNonDmgStrEffects(lines) {
     //     không đứng liền sau "nhận" nên không khớp.
     // Bỏ sót thì GM gõ tay được; áp NHẦM thì phá cân bằng âm thầm — chọn bỏ sót.
     out.selfHaste     += sum(/nh[ậa]n\s*(\d+)\s*Haste/i);
+    // Dice Up TỰ NHẬN có thời hạn — VD Focus Spirit: "Nhận 2 Dice Up tồn tại 2 Turn".
+    // GAP ĐÃ SỬA (Fragaria: "Page Focus Spirit không cho dice up"): parser TRƯỚC ĐÂY
+    // không có field `selfDiceUp` nào cả, nên dòng đó chỉ là chữ. Page thuần buff
+    // (dmgStr = null) đi thẳng nhánh "không có dice sát thương" và không áp gì hết.
+    // ⚠️ Bắt CẢ thời hạn: Dice Up bị reset về 0 mỗi turn ở advanceCombatantTurn,
+    // nên "tồn tại N Turn" phải lưu thành bonus BỀN rồi cộng lại mỗi turn
+    // (khuôn auguryKickDiceUpBonus). Không có "Turn" thì coi như chỉ turn này.
+    {
+      const m = line.match(/nh[ậa]n\s*(\d+)\s*(?:<[^>]*>)?\s*Dice\s*Up/i);
+      if (m) {
+        out.selfDiceUp += parseInt(m[1], 10);
+        const mt = line.match(/t[ồo]n\s*t[ạa]i\s*\*{0,2}(\d+)\s*Turn/i);
+        out.selfDiceUpTurns = Math.max(out.selfDiceUpTurns, mt ? parseInt(mt[1], 10) : 1);
+      }
+    }
     // Airborne — debuff LÊN ĐỊCH ("đá kẻ địch lên trời gây 1 [Airborne]").
     // Cho phép markdown xen giữa: text thật là "gây 1 **[Airborne]**".
     out.airborne      += sum(/g[âaăằ]y\s*(\d+)\s*[*\[\s]*Airborne/i);
