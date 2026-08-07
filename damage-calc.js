@@ -138,6 +138,12 @@ function calcMathCore(opts) {
     // nhân thật.
     // Nguồn hiện có: **Shattered E.G.O** (Manifested E.G.O: Red Mist).
     outgoingDmgMul = 1,
+    // incomingDmgMul — hệ số nhân dmg NGƯỜI PHÒNG THỦ phải chịu (đối xứng với
+    // outgoingDmgMul). Nguồn: **Karmic Consequence** — "mỗi stack khiến bạn nhận
+    // thêm 1% Dmg" ⇒ 100 stack = ×2.
+    // KHÔNG nhét vào reductionPct: reductionPct đi qua saturateDR (đường cong bão
+    // hoà) nên số âm sẽ méo hoàn toàn, và DR âm cũng không có nghĩa gì ở đó.
+    incomingDmgMul = 1,
     // 6 biến thể Tremor (50-Status Nhóm 2, xác nhận trực tiếp từng cái) — TRÊN
     // TARGET đang bị Tremor Burst kích hoạt lên người:
     //   Everlasting: 50% (100% nếu target có Borrowed Time active) re-trigger
@@ -290,7 +296,7 @@ function calcMathCore(opts) {
     const rawTotalPct = bonusPct + extraPct;
     const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0);
     const bonusFactor = 1 + effTotalPct / 100;
-    let instanceDmg = Math.max(0, dmg + flatDmgPerHit) * bonusFactor * multiplier * currentRes * currentDR * outgoingDmgMul;
+    let instanceDmg = Math.max(0, dmg + flatDmgPerHit) * bonusFactor * multiplier * currentRes * currentDR * outgoingDmgMul * incomingDmgMul;
     if (isDice) instanceDmg *= diceMul;
 
     // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).

@@ -38,6 +38,21 @@ const {
   BLEED_MAX,
   CHARGE_MAX,
   IMITATION_MAX,
+  SIZZLING_WOUND,
+  SIZZLING_WOUND_BURN_BLEED_MUL,
+  CADUCEUS_STAMINA_PER_CHARGE,
+  CADUCEUS_DICE,
+  CADUCEUS_CRIT_TIERS,
+  CADUCEUS_FURIOSO,
+  PRESCRIPT_RULES,
+  PRESCRIPT_DICE_PER_TURN,
+  KARMIC_PER_FAILURE,
+  KARMIC_MAX,
+  UNLOCK_THRESHOLDS,
+  SINGLETON_UNLOCK_PROTECTION,
+  PROCURATION_MAX,
+  FURIOSO_KARMIC_COST,
+  FACTION_THE_INDEX,
   TREMOR_VARIANT_MAX,
   SPECTRO_FRAZZLE_MAX,
   GAZE_AWE_MAX,
@@ -416,7 +431,10 @@ const KNOWN_KEYS = new Set([
   "combatreward", // "-give ... combatreward: yes" — đánh dấu EXP/Ahn là thưởng thắng trận, để nhân hệ số Casual Outfit/Rats Outfit/Businessman theo outfit người NHẬN
   "sfx", // "-encounter addenemyskill ... sfx: <tên file>" — SFX riêng tự đính kèm khi skill này được dùng (hệ thống BGM/SFX file đính kèm)
   "wrath", "desire", "sloth", "gluttony", "gloom", "pride", "envy", "shin", "light", // 9 nhánh Skill Tree (branchPoints)
-  "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", // 4 cờ điều kiện đặc biệt
+  "shinunlock", "lightskilltreeunlock", "50statunlock", "manifestedegounlock", "faction", "title", "injury", "manifestego" /* -setplayer manifestego: redmist — gán Manifested E.G.O.
+  // ⚠️ parseKeyValues chỉ nhận key NẰM TRONG danh sách này (regex dựng từ
+  // KNOWN_KEYS). Thêm xử lý ở message-create-handler mà QUÊN đăng ký ở đây thì
+  // `kv.<key>` LUÔN undefined — lệnh im lặng báo "không có gì để set". */, // 4 cờ điều kiện đặc biệt
   "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1
   "paralyze", "diceup", "dicedown", "smoke", "vengeancemark", "nails", "redplumblossom", "freeble", "borrowedtime", "fairy", "airborne", "chains", "sizzlingwound", "perceptionblockingmask", "blacksilence", // 50-Status Nhóm 2
   "tremoreverlasting", "tremorfracture", "tremorreverb", "tremordecay", "tremorchain", "spectrofrazzle", "tremorscorch", "tremorhemorrhage", "burningsensation", // Tremor variants + Burning Sensation
@@ -1487,7 +1505,7 @@ function normalizeEnemyKey(k) {
 /** Combatant — dùng CHUNG cho mọi enemy và mọi player trong encounter. */
 const { createCombatant } = require("./combatant-factory")({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MAX_LIGHT, ENCOUNTER_SANITY_MAX, normalizeWeaponWeight }); // ĐÃ TÁCH sang file riêng (combatant-factory.js)
 
-const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, hasEncounterStarted, validateAndRerollPrescript, validateAndRerollPrescriptRound, computeDiceModifier, applyHpLoss, grantShieldHp, applyShieldLoss, healHpCapped, insertIntoTurnOrderMidRound, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic, applyMimicryForm, applyMimicSynchronization, revertMimicSynchronization, endManifestedEgoState, MIMICRY_SYNC_FORMS } = require("./combat-utils")({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere });
+const { rollSpeedValue, determineTurnOrder, isCurrentTurnHolder, hasEncounterStarted, validateAndRerollPrescript, validateAndRerollPrescriptRound, computeDiceModifier, applyHpLoss, grantShieldHp, applyShieldLoss, healHpCapped, insertIntoTurnOrderMidRound, advanceToNextTurnHolder, buildTurnOrderText, combatantResStr, trueDmgResStr, haouRuptureResStr, applyParrySuccessPerks, applyEvadeSuccessPerks, restoreInjuryMaxHp, applyDeathPenalty, appendActionLog, getActionLogIcon, checkStaggerPanic, syncCompassionPhantomHp, applyMimicryForm, applyMimicSynchronization, revertMimicSynchronization, endManifestedEgoState, MIMICRY_SYNC_FORMS } = require("./combat-utils")({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU: WEAPON_DEFENSE_HITS, UNLOCK_THRESHOLDS, PRESCRIPT_DICE_PER_TURN, PRESCRIPT_RULES, KARMIC_PER_FAILURE, KARMIC_MAX, hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere });
 
 /** Tiến 1 turn cho 1 combatant — hồi Stamina (hoặc đếm ngược Stagger), đếm ngược
  *  Panic, tính Light gain. Gọi cho TỪNG combatant (mọi enemy + mọi player) khi
@@ -1509,7 +1527,7 @@ const SEVERE_INJURIES = ["Mất tay", "Mất Chân", "Vết thương lớn"];
 /** getParryClashPenalty — tổng penalty dice Parry/Clash từ TẤT CẢ chấn thương đang
  *  có (Gãy tay -5, Gãy chân -3, Mất Chân -10 — cộng dồn nếu có nhiều). */
 const { getParryClashPenalty, rollInjury } = require("./injury-system")({ SEVERE_INJURIES, MINOR_INJURIES }); // ĐÃ TÁCH sang file riêng (injury-system.js)
-const { advanceCombatantTurn } = require("./turn-advance")({ healHpCapped, applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }); // ĐÃ TÁCH sang file riêng (turn-advance.js)
+const { advanceCombatantTurn } = require("./turn-advance")({ SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON_UNLOCK_PROTECTION, applySanityGain: (...a) => applySanityGain(...a), syncCompassionPhantomHp, healHpCapped, applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }); // ĐÃ TÁCH sang file riêng (turn-advance.js)
 
 const { encounterKey, getEncounter, saveEncounter, deleteEncounter } = require("./encounter-persistence")({ redis, withTimeout, log }); // ĐÃ TÁCH sang file riêng (encounter-persistence.js)
 
@@ -1766,7 +1784,9 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         dmgStr: perkCtx.dmgStrRewritten,
         resStr: finalResStr,
         bonusPct: perkCtx.bonusPct + mangBonusPct, critMul: perkCtx.critMul,
-        outgoingDmgMul: perkCtx.outgoingDmgMul, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
+        outgoingDmgMul: perkCtx.outgoingDmgMul,
+        // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
+        incomingDmgMul: 1 + Math.min(KARMIC_MAX, t.combatant?.karmicConsequence ?? 0) / 100, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
         // Sanity dice bonus ("+1 Sanity = +1% dice value, -1 Sanity = -1%") LUÔN tự
         // áp dụng từ Sanity HIỆN TẠI của người tấn công — KHÔNG phải tham số tự gõ
         // tay (trước đây M1 hoàn toàn THIẾU dòng này, /hit thì có nhưng phải tự gõ
@@ -2005,7 +2025,9 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // Reduction" không phân biệt DR đến từ nguồn nào.
         resStr: finalResStr, drStr: player.shinMangActive ? "" : drStr,
         bonusPct: bonusPct + perkCtx.bonusPct + mangBonusPct,
-        outgoingDmgMul: perkCtx.outgoingDmgMul, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
+        outgoingDmgMul: perkCtx.outgoingDmgMul,
+        // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
+        incomingDmgMul: 1 + Math.min(KARMIC_MAX, t.combatant?.karmicConsequence ?? 0) / 100, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
         // Tự động cộng Sanity HIỆN TẠI của người dùng Page vào dice bonus (xem
         // comment đầy đủ ở doPlayerAttack) — sanityBonusPct (tham số tự gõ tay nếu
         // có) CỘNG THÊM vào, không thay thế, để vẫn linh hoạt cho trường hợp đặc biệt.
@@ -2219,7 +2241,9 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten, resStr: haouRuptureCheck?.applied ? haouRuptureCheck.resStr : combatantResStr(t.combatant),
         bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
-        outgoingDmgMul: perkCtx.outgoingDmgMul, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
+        outgoingDmgMul: perkCtx.outgoingDmgMul,
+        // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
+        incomingDmgMul: 1 + Math.min(KARMIC_MAX, t.combatant?.karmicConsequence ?? 0) / 100, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
         sanityBonusPct: getEffectiveSanityForDiceBonus(enemy),
         poiseInit: enemy.poise, chargeInit: enemy.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — enemy ĐANG TẤN CÔNG.
@@ -2436,7 +2460,7 @@ function findWeaponAnywhere(raw) {
   return null;
 }
 const { findOutfit } = require("./outfit");
-const { findAccessory } = require("./accessory");
+const { findAccessory, validateAccessoryEquip, dedupeEquippedAccessories } = require("./accessory");
 const { findSfx, pickRandomBgm } = require("./sfx-config");
 // 5 E.G.O Slot riêng theo Tier (luật: "5 E.G.O Slot Page riêng với các tier như
 // ZAYIN/TETH/HE/WAW/ALEPH" — mỗi loại tier CHỈ lắp được 1 slot, KHÔNG phải 5 slot
@@ -2446,7 +2470,7 @@ const { findSfx, pickRandomBgm } = require("./sfx-config");
 // thuộc gì trong index.js, nên đặt sớm là an toàn (Sai Lầm #0, HANDOFF).
 const EGO_TIER_SLOT_ORDER = ["ZAYIN", "TETH", "HE", "WAW", "ALEPH"];
 const { buildBalanceEmbed } = require("./balance-display")({ EGO_TIER_SLOT_ORDER, isConsumableItem, getPlayerData, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, UNIVERSALLY_KNOWN_WEAPONS, getActiveProfileSlot, getProfileNames }); // ĐÃ TÁCH sang file riêng (balance-display.js) — đặt SAU findOutfit/findAccessory (const, TDZ)
-const { buildJoinedCombatant } = require("./player-join-builder")({ isConsumableItem, createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, validateAndRerollPrescriptRound, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_SANITY_MAX }); // module MỚI — TÁCH logic "-encounter join" để dùng chung với auto-join từ Party Board (quest system) — đặt SAU findOutfit (const, TDZ)
+const { buildJoinedCombatant } = require("./player-join-builder")({ parseSkillCost: (...a) => parseSkillCost(...a), isEgoSkill, syncCompassionPhantomHp, dedupeEquippedAccessories, isConsumableItem, createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, validateAndRerollPrescriptRound, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_SANITY_MAX }); // module MỚI — TÁCH logic "-encounter join" để dùng chung với auto-join từ Party Board (quest system) — đặt SAU findOutfit (const, TDZ)
 const { CONTRACTS, RARE_DROP_BOOK, RARE_DROP_CHANCE, QUEST_MOBS } = require("./quest-data"); // module MỚI — data tĩnh Quest System (contract list + mob stat block)
 const { SHOP_CATALOG, RESET_COST, buildShopEmbed, buildShopComponents, buildQuantityComponents, purchase: shopPurchase, resetSkillTree: shopResetSkillTree, readWeeklySold: shopReadWeeklySold } = require("./shop")({
   ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
@@ -2512,18 +2536,11 @@ function getEgoTier(skill) {
 
 
 // ─── PRESCRIPT TABLE ──────────────────────────────────────────────────────────
-const PRESCRIPT_TABLE = [
-  // Bảng Sắc lệnh (Cacudeus) — base Dmg/Stamina cập nhật theo bản Fragaria gửi.
-  "Dice 1: **8 Dmg** [<:Fix_Blunt:1513768529718022254>Blunt] — nhận 2 <:Poise:1513762945715142736>Poise [5 Stamina]",
-  "Dice 2: **8 Dmg** [<:Fix_Pierce:1513768511179329556>Pierce] — gây 2 <:Sinking:1513762793436741652>Sinking [5 Stamina]",
-  "Dice 3: **15 Dmg** [<:Fix_Slash:1513768633434640517>Slash] — bản thân +10% Dmg turn sau (2 lần/turn) [10 Stamina]",
-  "Dice 4: **15 Dmg** [<:Fix_Pierce:1513768511179329556>Pierce] — địch nhận thêm 5% Dmg (2 lần/turn) [10 Stamina]",
-  "Dice 5: **15 Dmg** [<:Fix_Blunt:1513768529718022254>Blunt] — giảm 50 Stamina địch [10 Stamina]",
-  "Dice 6: **24 Dmg** [<:Fix_Slash:1513768633434640517>Slash] — địch nhận thêm 10% Dmg Slash (2 lần/turn) [20 Stamina]",
-  "Dice 7: **24 Dmg** [<:Fix_Pierce:1513768511179329556>Pierce] — địch nhận thêm 10% Dmg Pierce (2 lần/turn) [20 Stamina]",
-  "Dice 8: **24 Dmg** [<:Fix_Blunt:1513768529718022254>Blunt] — địch nhận thêm 10% Dmg Blunt (2 lần/turn) [20 Stamina]",
-  "Dice 9: **30 Dmg** [<:Fix_Slash:1513768633434640517>Slash] — 100% Crit [20 Stamina]",
-];
+// PRESCRIPT_TABLE — DẪN XUẤT từ CADUCEUS_DICE (constants.js) thay vì 9 chuỗi gõ
+// tay. Trước đây 2 nơi giữ cùng dữ liệu: sửa base dmg ở một nơi là lệch ngay.
+const TYPE_EMOJI_CAD = { Blunt: "<:Fix_Blunt:1513768529718022254>", Pierce: "<:Fix_Pierce:1513768511179329556>", Slash: "<:Fix_Slash:1513768633434640517>" };
+const PRESCRIPT_TABLE = CADUCEUS_DICE.map(d =>
+  `Dice ${d.n}: **${d.dmg} Dmg** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — ${d.desc} [${d.stamina} Stamina]`);
 
 
 const client = new Client({
@@ -2946,9 +2963,9 @@ aiHooks.finalizeReactiveChoice = finalizeReactiveChoice;
 aiHooks.announceCurrentTurn = announceCurrentTurn;
 
 const { buildGmPanelContent } = require("./gmpanel-builder")({ ADMIN_IDS, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, getEncounter }); // module MỚI — TÁCH logic gmpanel để dùng chung cho lệnh text VÀ nút "🎛️ Mở GM Panel"
-require("./message-create-handler")({ findManifestedEgo, MANIFESTED_EGOS, resolveEncounterBgm, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createPartyBoard, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, startPartyBoard, stopEmotionTracking, transferHost, validateAndRerollPrescript, validateAndRerollPrescriptRound, validateMathInputs, webParrySessions, withLock }); // ĐÃ TÁCH sang file riêng (message-create-handler.js)
+require("./message-create-handler")({ CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, findManifestedEgo, MANIFESTED_EGOS, resolveEncounterBgm, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createPartyBoard, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, startPartyBoard, stopEmotionTracking, transferHost, validateAndRerollPrescript, validateAndRerollPrescriptRound, validateMathInputs, webParrySessions, withLock }); // ĐÃ TÁCH sang file riêng (message-create-handler.js)
 
-require("./interaction-handlers")({ GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, attachCounterContext, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
+require("./interaction-handlers")({ validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, attachCounterContext, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
 
 
 client.login(TOKEN);

@@ -19,14 +19,30 @@
 // Thiếu file thì bỏ đính kèm và đi tiếp — mất nhạc còn hơn mất cả bảng trạng thái.
 function bgmAttachment(AttachmentBuilder, name) {
   if (!name) return [];
-  const path = `./assets/audio/bgm/${name}`;
-  try {
-    if (!require("fs").existsSync(path)) return [];
-    return [new AttachmentBuilder(path)];
-  } catch { return []; }
+  // BUG ĐÃ SỬA (Fragaria: "Contract bị lỗi không thấy phát bgm, chỉ hiện text
+  // chứ còn file không thấy gửi"). Đây là REGRESSION do chính lớp kiểm
+  // `existsSync` tôi thêm ở lượt trước: nó dùng đường dẫn TƯƠNG ĐỐI `./assets/…`
+  // — mà relative path giải theo **CWD của tiến trình**, không phải theo vị trí
+  // file .js. Render không đảm bảo CWD là repo root ⇒ existsSync trả false ⇒ bỏ
+  // đính kèm im lặng, chỉ còn dòng chữ.
+  //
+  // Neo vào `__dirname` (mọi file .js của repo đều nằm ở root nên __dirname CHÍNH
+  // LÀ repo root) rồi mới thử tới CWD. Không tìm thấy ở cả hai thì LOG — im lặng
+  // bỏ qua chính là thứ làm bug này khó lần ra.
+  const fs = require("fs");
+  const nodePath = require("path");
+  const candidates = [
+    nodePath.join(__dirname, "assets", "audio", "bgm", name),
+    nodePath.resolve("assets", "audio", "bgm", name),
+  ];
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return [new AttachmentBuilder(c)]; } catch { /* thử ứng viên kế */ }
+  }
+  try { log("error", "bgmMissing", "system", `Không tìm thấy file BGM "${name}" ở: ${candidates.join(" | ")}`); } catch { /* log chưa sẵn sàng */ }
+  return [];
 }
 
-module.exports = function ({ resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -116,96 +132,111 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ── -Caduceus ──
+  // ── -caduceus ─────────────────────────────────────────────────────────────
   // Cú pháp:
-  //   -Caduceus [số lần]                              — roll ngẫu nhiên hoàn toàn
-  //   -Caduceus <Blunt|Pierce|Slash> [số lần] [karmic] — 75% ra đúng type (giảm theo Karmic Consequence)
-  // Công thức Karmic: chance = max(0, 75 - karmic / 2) %
+  //   -caduceus [số lần]                  — đánh thường: roll Will of Hermes 1–9
+  //   -caduceus <blunt|pierce|slash> <2|3|4>  — Critical bậc 1/2/3
+  //
+  // ⚠️ CON SỐ Ở CRITICAL LÀ **SỐ DICE ROLL**, KHÔNG PHẢI BẬC.
+  // Fragaria: *"Critical 1 … thì sẽ roll 2 Dice của Caduceus và Critical 2 thì
+  // roll 3 Dice … ví dụ giờ tôi xài Slam Down with Weight, Topple the Body tức
+  // Critical biến thể Blunt thì nó sẽ là `-caduceus blunt 2`."*
+  //   2 dice → Critical 1 (bonus 30%) · 3 dice → Critical 2 (40%) · 4 dice → Critical 3 (50%)
+  //
+  // Karmic Consequence LẤY TỪ TRẬN nếu người chơi đang trong encounter (trước đây
+  // phải GÕ TAY vào tham số thứ 3 — sai số là chuyện chắc chắn xảy ra). Vẫn cho
+  // ghi đè bằng tham số cuối để GM thử số.
   if (message.content.toLowerCase().startsWith("-caduceus")) {
     if (isOnCooldown(message.author.id, "caduceus", 2000)) {
       message.reply("⏳ Bạn dùng lệnh này quá nhanh, chờ 2 giây nhé.");
       return;
     }
     const CADUCEUS_MAX = 20;
+    const TYPE_KEYS = { blunt: "Blunt", pierce: "Pierce", slash: "Slash" };
+    const TYPE_COLORS = { Blunt: 0xe67e22, Pierce: 0x3498db, Slash: 0xe74c3c };
+    const TYPE_ICONS = { Blunt: "<:Fix_Blunt:1513768529718022254>", Pierce: "<:Fix_Pierce:1513768511179329556>", Slash: "<:Fix_Slash:1513768633434640517>" };
+    const lineOf = (d) => `**Dice ${d.n}** · *${d.name}* — **${d.dmg} Dmg** [${TYPE_ICONS[d.type]}${d.type}] · ${d.desc} *[${d.stamina} Stamina]*`;
 
-    // Tách pool theo type dựa vào nội dung string trong PRESCRIPT_TABLE
-    const TYPED_POOLS = {
-      blunt:  PRESCRIPT_TABLE.filter(e => e.includes("Blunt")),
-      pierce: PRESCRIPT_TABLE.filter(e => e.includes("Pierce")),
-      slash:  PRESCRIPT_TABLE.filter(e => e.includes("Slash")),
-    };
-    const TYPE_LABELS = { blunt: "Blunt", pierce: "Pierce", slash: "Slash" };
-    const TYPE_COLORS = { blunt: 0xe67e22, pierce: 0x3498db, slash: 0xe74c3c };
-    const TYPE_ICONS  = { blunt: "<:Blunt:1513768529718022254>", pierce: "<:Pierce:1513768511179329556>", slash: "<:Slash:1513768633434640517>"};
+    const tokens = message.content.replace(/-caduceus/i, "").trim().split(/\s+/).filter(Boolean);
+    const typeKey = TYPE_KEYS[(tokens[0] ?? "").toLowerCase()];
 
-    const arg = message.content.replace(/-caduceus/i, "").trim();
-    const tokens = arg.split(/\s+/);
+    // Karmic thật từ combatant trong encounter (nếu có).
+    let karmicLive = 0, unlockLive = 0, procurationLive = 0, liveNote = "";
+    try {
+      const chId = await getUserActiveEncounterChannel(message.author.id);
+      const enc = chId ? await getEncounter(chId) : null;
+      const me = enc?.players?.[message.author.id];
+      if (me) {
+        karmicLive = me.karmicConsequence ?? 0;
+        unlockLive = me.prescriptUnlockLevel ?? 0;
+        procurationLive = (me.procurationHermes ?? []).length ?? 0;
+        liveNote = `\n> 📊 Trong trận: Karmic **${karmicLive}** · Unlock **${unlockLive || "—"}** · Procuration **${procurationLive}/9**`;
+      }
+    } catch { /* ngoài trận thì thôi, không phải lỗi */ }
 
-    // Kiểm tra token đầu có phải type không
-    const firstLower = (tokens[0] ?? "").toLowerCase();
-    const isTyped = firstLower in TYPED_POOLS;
-
-    if (isTyped) {
-      // -Caduceus <type> [times] [karmic]
-      const typeKey  = firstLower;
-      const timesRaw = parseInt(tokens[1], 10);
-      const times    = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
-      if (times > CADUCEUS_MAX) {
-        message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`);
+    if (typeKey) {
+      const rolls = parseInt(tokens[1], 10);
+      const tierObj = CADUCEUS_CRIT_TIERS.find(t => t.rolls === rolls);
+      if (!tierObj) {
+        message.reply(`❌ Số dice phải là **2**, **3** hoặc **4**.\n> \`2\` → Critical 1 · \`3\` → Critical 2 · \`4\` → Critical 3\n> VD: \`-caduceus blunt 2\``);
         return;
       }
-      const karmicRaw = parseFloat(tokens[2]);
-      const karmic    = (!isNaN(karmicRaw) && karmicRaw >= 0) ? karmicRaw : 0;
-      const chance    = Math.max(0, 75 - karmic / 2); // % ra đúng type
+      const karmicOverride = parseFloat(tokens[2]);
+      const karmic = !isNaN(karmicOverride) && karmicOverride >= 0 ? karmicOverride : karmicLive;
+      // "75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const typePool = CADUCEUS_DICE.filter(d => d.type === typeKey);
+      const offPool = CADUCEUS_DICE.filter(d => d.type !== typeKey);
 
-      const typePool = TYPED_POOLS[typeKey];
-      if (typePool.length === 0) {
-        message.reply(`❌ Không tìm thấy entry nào với type **${TYPE_LABELS[typeKey]}** trong Prescript Table.`);
-        return;
-      }
-
-      const results = Array.from({ length: times }, () => {
-        const useTypePool = Math.random() * 100 < chance;
-        const pool        = useTypePool ? typePool : PRESCRIPT_TABLE;
-        const entry       = pool[Math.floor(Math.random() * pool.length)];
-        // Đánh dấu dựa trên nội dung entry thực tế, không phải pool đã chọn
-        const isCorrectType = entry.includes(TYPE_LABELS[typeKey]);
-        const hitMark = isCorrectType ? " ✅" : " ❌";
-        return entry + hitMark;
+      const picked = Array.from({ length: tierObj.rolls }, () => {
+        const pool = (Math.random() * 100 < chance) ? typePool : offPool;
+        return pool[Math.floor(Math.random() * pool.length)];
       });
-
-      // Đếm số lần ra đúng type
-      const hits = results.filter(r => r.endsWith("✅")).length;
+      const hits = picked.filter(d => d.type === typeKey).length;
+      // Base Dmg của mỗi mặt TRỞ THÀNH Dice Value khi dùng Critical (Fragaria:
+      // "M1 thì không có Dice Value, nhưng khi dùng Critical thì Base Dmg của mỗi
+      // loại vũ khí của Caduceus sẽ trở thành Dice Value nhằm phục vụ việc bonus
+      // từ sanity và clash").
+      const dmgStr = picked.map(d => `${d.dmg}${d.type[0]}`).join(" + ");
+      const totalClash = picked.reduce((a, d) => a + d.dmg, 0);
 
       message.reply({
         embeds: [{
-          title: `${TYPE_ICONS[typeKey]} Prescript — ${TYPE_LABELS[typeKey]}${times > 1 ? ` × ${times}` : ""}`,
+          title: `${TYPE_ICONS[typeKey]} Critical ${tierObj.tier} — ${tierObj.names[typeKey]}`,
           color: TYPE_COLORS[typeKey],
           description:
-            `> **Tỷ lệ ra ${TYPE_LABELS[typeKey]}:** ${chance.toFixed(1)}%` +
-            (karmic > 0 ? ` *(Karmic Consequence: ${karmic} → −${(karmic / 2).toFixed(1)}%)*` : "") +
-            `\n> **Kết quả đúng type:** ${hits}/${times}\n\n` +
-            results.join("\n"),
+            `> **Roll ${tierObj.rolls} Dice** · [CD: ${tierObj.cd} Turn]` +
+            (tierObj.tags.length ? ` · ${tierObj.tags.map(t => `[${t}]`).join(" ")}` : "") +
+            `\n> **Tỉ lệ ra ${typeKey}:** ${chance.toFixed(1)}%` +
+            (karmic > 0 ? ` *(Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)*` : "") +
+            `\n> **Đúng type:** ${hits}/${tierObj.rolls} → bonus **+${tierObj.bonusPct}% Dmg** cho ${hits} dice đó` +
+            `${liveNote}\n\n` +
+            picked.map((d, i) => `${i + 1}. ${lineOf(d)}${d.type === typeKey ? " ✅" : " ❌"}`).join("\n") +
+            `\n\n> 🎲 **Dice Value tổng (dùng cho clash):** ${totalClash}` +
+            `\n> 📋 dmgStr gợi ý: \`${dmgStr}\``,
         }],
       });
       return;
     }
 
-    // Mặc định: -Caduceus [số lần] (không typed)
+    // Đánh thường — roll Will of Hermes 1–9.
     const timesRaw = parseInt(tokens[0], 10);
-    const times    = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
-    if (times > CADUCEUS_MAX) {
-      message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`);
-      return;
-    }
-    const results = Array.from({ length: times }, () =>
-      PRESCRIPT_TABLE[Math.floor(Math.random() * PRESCRIPT_TABLE.length)]
-    );
+    const times = (!isNaN(timesRaw) && timesRaw > 0) ? timesRaw : 1;
+    if (times > CADUCEUS_MAX) { message.reply(`❌ Số lần roll tối đa là ${CADUCEUS_MAX}.`); return; }
+    const picked = Array.from({ length: times }, () => CADUCEUS_DICE[Math.floor(Math.random() * CADUCEUS_DICE.length)]);
+    const totalStamina = picked.reduce((a, d) => a + d.stamina, 0);
+    // Charge phòng thủ: 20 Stamina = 1 charge (xem hitsPerDefenseCharge).
+    const charges = Math.max(1, Math.ceil(totalStamina / (CADUCEUS_STAMINA_PER_CHARGE ?? 20)));
     message.reply({
       embeds: [{
-        title: `<:Prescript:1528452494945157281> Prescript${times > 1 ? ` × ${times}` : ""}`,
-        color: 0xe74c3c,
-        description: results.join("\n"),
+        title: `<:Prescript:1528452494945157281> Will of Hermes${times > 1 ? ` × ${times}` : ""}`,
+        color: 0x9b59b6,
+        description:
+          picked.map((d, i) => `${i + 1}. ${lineOf(d)}`).join("\n") +
+          `\n\n> ⚡ **Tổng Stamina:** ${totalStamina}` +
+          `\n> 🛡️ **Charge phòng thủ cần để chặn hết:** ${charges} *(20 Stamina = 1 charge)*` +
+          `\n> 📋 dmgStr gợi ý: \`${picked.map(d => `${d.dmg}${d.type[0]}`).join(" + ")}\`` +
+          liveNote,
       }],
     });
     return;
@@ -1039,6 +1070,33 @@ client.on("messageCreate", async (message) => {
     //
     // Nhận cả key (`redmist`), tên đầy đủ, lẫn tên chủ nhân — findManifestedEgo
     // tra được cả 3. `manifestego: none` để gỡ về bộ chung.
+    // ── faction / title ─────────────────────────────────────────────────────
+    // Fragaria: *"các điều kiện ở trong The Index Syndicate thì nên làm -setplayer
+    // cho set faction cũng như title."* Lưu THÔ (không whitelist tên faction) —
+    // GM cần tự do đặt tên; code chỉ so chuỗi ở nơi dùng.
+    // `faction: none` / `title: none` để gỡ.
+    let factionUpdate, titleUpdate;
+    for (const [key, setter] of [["faction", v => { factionUpdate = v; }], ["title", v => { titleUpdate = v; }]]) {
+      const raw = (kv[key] ?? "").trim();
+      if (!raw) continue;
+      setter(["none", "null", "clear"].includes(raw.toLowerCase()) ? null : raw.slice(0, 60));
+    }
+    // ── injury: — GM gán/gỡ chấn thương ĐẶC BIỆT ────────────────────────────
+    // Fragaria: *"Sizzling Wound là injury… KHÔNG có bằng cách thông thường mà chỉ
+    // qua GM gán, VĨNH VIỄN, không thể xoá bằng cách thông thường, chỉ GM mới xoá
+    // được."* ⇒ không đi qua rollInjury (ngẫu nhiên) và không đi qua bảng chữa trị.
+    // Cú pháp:  injury: Sizzling Wound       (gán)
+    //           injury: -Sizzling Wound      (gỡ — dấu trừ đứng trước)
+    //           injury: none                 (xoá SẠCH, kể cả vĩnh viễn)
+    let injuryAdd, injuryRemove, injuryClearAll = false;
+    {
+      const rawInj = (kv.injury ?? "").trim();
+      if (rawInj) {
+        if (["none", "null", "clear"].includes(rawInj.toLowerCase())) injuryClearAll = true;
+        else if (rawInj.startsWith("-")) injuryRemove = rawInj.slice(1).trim();
+        else injuryAdd = rawInj;
+      }
+    }
     let manifestedEgoUpdate; // undefined = không đụng tới; null = gỡ
     {
       const rawEgo = (kv.manifestego ?? "").trim();
@@ -1087,8 +1145,8 @@ client.on("messageCreate", async (message) => {
       branchUpdates[bKey] = { isAdd, value };
       hasBranchUpdate = true;
     }
-    if (expValue === null && ahnValue === null && lunacyValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null && Object.keys(unlockFlagUpdates).length === 0 && manifestedEgoUpdate === undefined) {
-      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`lunacy\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}), manifestego (VD manifestego: redmist), hoặc 4 cờ điều kiện (\`shinunlock\`/\`lightskilltreeunlock\`/\`50statunlock\`/\`manifestedegounlock\`: yes/no).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
+    if (expValue === null && ahnValue === null && lunacyValue === null && gradeTarget === null && bookEntries.length === 0 && itemEntries.length === 0 && pageEntries.length === 0 && bonusSkillValue === null && !hasBranchUpdate && hpSetValue === null && Object.keys(unlockFlagUpdates).length === 0 && manifestedEgoUpdate === undefined && factionUpdate === undefined && titleUpdate === undefined && injuryAdd === undefined && injuryRemove === undefined && !injuryClearAll) {
+      message.reply(`❌ Không có gì để set. Dùng: \`exp\`, \`grade\`, \`ahn\`, \`lunacy\`, \`hp\`, \`books\`, \`items\`, \`bonusskillpoints\`, 9 nhánh Skill Tree (${BRANCH_KEYS.join("/")}), manifestego / faction / title / injury, hoặc 4 cờ điều kiện (\`shinunlock\`/\`lightskilltreeunlock\`/\`50statunlock\`/\`manifestedegounlock\`: yes/no).\n> Thêm \`+\` trước số để cộng thêm, VD: \`exp: +50\` hoặc \`sloth: +10\``);
       return;
     }
 
@@ -1177,6 +1235,36 @@ client.on("messageCreate", async (message) => {
           for (const [fieldName, value] of Object.entries(unlockFlagUpdates)) {
             data[fieldName] = value;
             changes.push(`${fieldName}: ${value ? "✅ TRUE" : "❌ FALSE"}`);
+          }
+          if (injuryClearAll || injuryAdd || injuryRemove) {
+            data.injuries = data.injuries ?? [];
+            const normI = (v) => String(v ?? "").trim().toLowerCase();
+            if (injuryClearAll) {
+              const n = data.injuries.length;
+              data.injuries = [];
+              changes.push(`🩹 Injury: 🗑️ xoá sạch **${n}** chấn thương (kể cả vĩnh viễn)`);
+            }
+            if (injuryRemove) {
+              const before = data.injuries.length;
+              data.injuries = data.injuries.filter(i => normI(i) !== normI(injuryRemove));
+              changes.push(before === data.injuries.length
+                ? `🩹 Injury: ⚠️ không có **${injuryRemove}** để gỡ`
+                : `🩹 Injury: 🗑️ gỡ **${injuryRemove}**`);
+            }
+            if (injuryAdd) {
+              if (data.injuries.some(i => normI(i) === normI(injuryAdd))) {
+                changes.push(`🩹 Injury: ⚠️ đã có **${injuryAdd}** rồi`);
+              } else {
+                data.injuries.push(injuryAdd);
+                changes.push(`🩹 Injury: ➕ **${injuryAdd}**`
+                  + (normI(injuryAdd) === normI(SIZZLING_WOUND) ? " *(vĩnh viễn — chỉ GM gỡ được)*" : ""));
+              }
+            }
+          }
+          for (const [field, val, icon] of [["faction", factionUpdate, "🏛️"], ["title", titleUpdate, "🎖️"]]) {
+            if (val === undefined) continue;
+            if (val === null) { delete data[field]; changes.push(`${icon} ${field}: 🗑️ gỡ`); }
+            else { data[field] = val; changes.push(`${icon} ${field}: **${val}**`); }
           }
           if (manifestedEgoUpdate !== undefined) {
             if (manifestedEgoUpdate === null) {
@@ -1788,12 +1876,19 @@ client.on("messageCreate", async (message) => {
       // LOẠI — 2 accessory tên khác nhau nhưng cùng `exclusiveType` cũng chặn.
       // Gate này áp cả cho admin: đây là luật thiết kế của món đồ, không phải
       // hạn mức sở hữu.
-      if (accessory.exclusiveType) {
-        const conflictSlot = data.equippedAccessories.findIndex((name, idx) =>
-          idx !== slotNum - 1 && name && findAccessory(name)?.exclusiveType === accessory.exclusiveType);
-        if (conflictSlot >= 0) {
-          throw new Error(`**${accessory.name}** thuộc loại **${accessory.exclusiveType}** — bạn đang đeo **${data.equippedAccessories[conflictSlot]}** (cùng loại) ở slot #${conflictSlot + 1}. Chỉ được đeo 1 món loại này.`);
-        }
+      // MỘT luật duy nhất — xem validateAccessoryEquip (accessory.js). Trước đây
+      // lệnh text chỉ kiểm exclusiveType, KHÔNG kiểm trùng chính món đó.
+      {
+        // Loại slot ĐANG GHI ĐÈ ra khỏi danh sách đối chiếu — ghi đè chính slot
+        // đang đeo món đó không được coi là "trùng".
+        const vres = validateAccessoryEquip({
+          accessory,
+          equipped: (data.equippedAccessories ?? []).filter((_, i) => i !== slotNum - 1),
+          ownedCount: data.items?.[accessory.name] ?? 0,
+          // owner — bật các gate requiresFaction/Title/Outfit/Injury.
+          owner: { faction: data.faction, title: data.title, equippedOutfit: data.equippedOutfit, injuries: data.injuries ?? [] },
+        });
+        if (!vres.ok) throw new Error(vres.reason);
       }
       data.equippedAccessories[slotNum - 1] = accessory.name;
       await savePlayerData(targetUserId, data, slot);

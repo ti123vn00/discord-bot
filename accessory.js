@@ -61,6 +61,41 @@ const ACCESSORIES = {
       { name: "Resourceful", desc: "Các hành động phòng thủ được refund 1/4 Stamina" },
     ],
   },
+  "wound casing mask": {
+    name: "Wound-Casing Mask",
+    exclusive: true,
+    requiresFaction: "The Index Syndicate",
+    // Gate ĐẶC BIỆT: phải ĐANG mang injury "Sizzling Wound" mới đeo được.
+    requiresInjury: "Sizzling Wound",
+    passives: [
+      { name: "Wound-Casing Mask", mechanicId: "index_wound_casing_mask",
+        desc: "Vô hiệu hoá **Sizzling Wound** của bạn. Mặt nạ **VỠ** khi bạn bị Stagger hoặc dùng biến thể **Furioso** lần đầu — vết thương cũ quay lại, **Sizzling Wound** hoạt động tới hết Encounter\n• Miễn nhiễm **Stagger** · **50% Dmg Reduction** · Sanity bị cap ở **-40** (không thể giảm thêm) · Dmg từ Burn/Bleed **không thể giết** bạn\n• Start Encounter: Sanity set về **45**. Khi **Sizzling Wound** hoạt động: Dmg Reduction **50% → 75%** và nhận **3 Dice Up**\n• Mỗi Turn Start, nếu có **Unlock - I/II/III**: nhận **5/10/20 Poise**; mỗi 1 Poise thừa sau 20 cho **+2% Dmg Bonus**" },
+    ],
+  },
+  "the oracles proxy prescript device": {
+    name: "The Oracle's Proxy Prescript Device",
+    exclusive: true,
+    // Gate KÉP: phải ở The Index Syndicate VÀ đang mặc The Index Oracle's Proxy.
+    requiresFaction: "The Index Syndicate",
+    requiresOutfit: "The Index Oracle's Proxy",
+    passives: [
+      { name: "Undertake Prescript", mechanicId: "index_undertake_prescript",
+        desc: "Nếu turn TRƯỚC bạn hoàn thành ít nhất 1 sắc lệnh, turn này hồi **10 Sanity**. Lần ĐẦU nhận **Unlock - I/II/III** trong trận thì hồi thêm **10 Sanity** nữa" },
+      { name: "Grace of God", mechanicId: "index_grace_of_god",
+        desc: "Từ **Unlock - II** trở đi, **dice đầu tiên của Caduceus mỗi turn do bạn tự chọn**" },
+      { name: "Prescript Delivered on a Device", mechanicId: "index_prescript_device",
+        desc: "Vào **Unlock - III**: không còn nhận **Karmic Consequence** khi trượt sắc lệnh. Đồng thời mọi Dice thành **Unbreakable Dice** — thua clash vẫn gây **50%** sát thương ban đầu" },
+    ],
+  },
+  "providence of the prescript": {
+    name: "Providence of the Prescript",
+    exclusive: true,
+    requiresFaction: "The Index Syndicate",
+    passives: [
+      { name: "Providence of the Prescript", mechanicId: "index_providence",
+        desc: "Khi gây <:Sinking:1513762793436741652>Sinking/<:Rupture:1513762822620479488>Rupture, nhận thêm 3 <:Poise:1513762945715142736>Poise\n• Nhận Poise theo cách trên **3 lần** thì turn kế **Crit Mul +0.3**\n• Khi bản thân có **≥20 Poise**: mỗi đòn đánh trúng gây thêm 1 Sinking và 1 Rupture" },
+    ],
+  },
   "composition tool": {
     name: "Composition Tool",
     passives: [
@@ -81,4 +116,93 @@ function findAccessory(raw) {
   return null;
 }
 
-module.exports = { ACCESSORIES, findAccessory };
+/** validateAccessoryEquip — LUẬT DUY NHẤT quyết định có đeo được hay không.
+ *
+ *  Gom về MỘT chỗ vì trước đây luật nằm rải rác: lệnh text `-equipaccessory` kiểm
+ *  `exclusiveType`, dropdown `-balance` kiểm thêm `exclusive`, còn "không cho cùng
+ *  1 accessory ở nhiều slot" thì KHÔNG ĐÂU kiểm cả — nên đeo được 2 Composition
+ *  Tool (Fragaria gửi ảnh). Fragaria cũng dặn trước: *"sau này cũng sẽ có 1 số
+ *  loại passive không cho stack hay đi chung với nhau nên cần chú ý"* ⇒ mọi luật
+ *  mới chỉ cần thêm vào ĐÂY, hai đường equip tự có ngay.
+ *
+ *  @param equipped mảng slot hiện tại (có thể chứa null), ĐÃ trừ slot đang thay.
+ *  @returns { ok: true } | { ok: false, reason: "<lý do hiển thị cho người chơi>" }
+ */
+function validateAccessoryEquip({ accessory, equipped = [], ownedCount = 0, owner = null }) {
+  if (!accessory) return { ok: false, reason: "Không tìm thấy accessory này." };
+  const worn = equipped.filter(Boolean);
+
+  // (1) KHÔNG cho cùng 1 accessory ở nhiều slot — MẶC ĐỊNH cho MỌI accessory.
+  //     Trước đây chỉ món khai `exclusive: true` mới bị chặn (mà cờ đó cũng chưa
+  //     nơi nào đọc), nên Composition Tool xếp được 2 slot và passive chồng nhau.
+  if (worn.some(n => n === accessory.name)) {
+    return { ok: false, reason: `Bạn đã đeo **${accessory.name}** rồi — mỗi accessory chỉ đeo được **1 cái** cùng lúc, kể cả khi sở hữu nhiều bản.` };
+  }
+
+  // (2) Sở hữu đủ số lượng.
+  if (ownedCount < 1) {
+    return { ok: false, reason: "Bạn không còn sở hữu món này." };
+  }
+
+  // (3) exclusiveType — chỉ 1 món mỗi LOẠI (VD "Nón Ánh Sáng (Bảo Hộ)").
+  if (accessory.exclusiveType) {
+    const clash = worn.find(n => findAccessory(n)?.exclusiveType === accessory.exclusiveType);
+    if (clash) {
+      return { ok: false, reason: `Thuộc loại **${accessory.exclusiveType}** — bạn đang đeo **${clash}** (cùng loại). Chỉ được đeo 1 món loại này.` };
+    }
+  }
+
+  // (3b) GATE THEO NGƯỜI CHƠI — faction / title / outfit / injury.
+  //      Fragaria: *"sau này sẽ có nhiều đồ bị gate faction cũng như title"* ⇒ dựng
+  //      sẵn cả 4 loại gate ở ĐÂY, món mới chỉ cần khai `requiresX` là có ngay.
+  //      `owner` = { faction, title, equippedOutfit, injuries } — truyền từ nơi gọi;
+  //      KHÔNG truyền thì bỏ qua gate (giữ tương thích với chỗ gọi cũ).
+  if (owner) {
+    const norm = (v) => String(v ?? "").trim().toLowerCase();
+    if (accessory.requiresFaction && norm(owner.faction) !== norm(accessory.requiresFaction)) {
+      return { ok: false, reason: `**${accessory.name}** chỉ dùng được khi bạn thuộc **${accessory.requiresFaction}**.` };
+    }
+    if (accessory.requiresTitle && norm(owner.title) !== norm(accessory.requiresTitle)) {
+      return { ok: false, reason: `**${accessory.name}** yêu cầu chức danh **${accessory.requiresTitle}**.` };
+    }
+    if (accessory.requiresOutfit && norm(owner.equippedOutfit) !== norm(accessory.requiresOutfit)) {
+      return { ok: false, reason: `**${accessory.name}** chỉ dùng được khi đang mặc **${accessory.requiresOutfit}**.` };
+    }
+    if (accessory.requiresInjury
+        && !(owner.injuries ?? []).some(i => norm(i) === norm(accessory.requiresInjury))) {
+      return { ok: false, reason: `**${accessory.name}** chỉ dùng được khi bạn đang mang **${accessory.requiresInjury}**.` };
+    }
+  }
+
+  // (4) incompatibleWith — hai món KHÔNG đi chung được (chưa món nào dùng, dựng
+  //     sẵn theo lời dặn của Fragaria). Kiểm CẢ HAI CHIỀU để chỉ cần khai 1 bên.
+  const incompatible = (accessory.incompatibleWith ?? []).map(n => String(n).toLowerCase());
+  const clash2 = worn.find(n => {
+    const other = findAccessory(n);
+    if (!other) return false;
+    if (incompatible.includes(other.name.toLowerCase())) return true;
+    return (other.incompatibleWith ?? []).some(x => String(x).toLowerCase() === accessory.name.toLowerCase());
+  });
+  if (clash2) {
+    return { ok: false, reason: `**${accessory.name}** không đi chung được với **${clash2}** đang đeo.` };
+  }
+  return { ok: true };
+}
+
+/** dedupeEquippedAccessories — dọn loadout CŨ đã lỡ trùng trước khi có luật (1).
+ *  Giữ bản ĐẦU TIÊN, các bản trùng sau đổi thành null (KHÔNG splice — slot là
+ *  mảng cố định 3 ô, splice sẽ làm lệch index ở mọi nơi khác).
+ *  @returns { list, removed: [tên đã gỡ] } */
+function dedupeEquippedAccessories(equipped = []) {
+  const seen = new Set();
+  const removed = [];
+  const list = equipped.map(n => {
+    if (!n) return n;
+    if (seen.has(n)) { removed.push(n); return null; }
+    seen.add(n);
+    return n;
+  });
+  return { list, removed };
+}
+
+module.exports = { ACCESSORIES, findAccessory, validateAccessoryEquip, dedupeEquippedAccessories };

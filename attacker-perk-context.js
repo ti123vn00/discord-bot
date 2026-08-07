@@ -167,6 +167,25 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if (attacker.manifestedEGO) bonusPct += 30;
     // "The Strongest" (Red Mist) — +100% CỘNG THÊM ⇒ tổng 130% khi Manifest.
     if (attacker.theStrongestActive) bonusPct += 100;
+    // Wound-Casing Mask — "cứ mỗi 1 Poise thừa SAU 20 nhận 2% Dmg Bonus".
+    if (attacker.hasWoundCasingMask) {
+      const extraPoise = Math.max(0, (attacker.poise ?? 0) - 20);
+      if (extraPoise > 0) bonusPct += extraPoise * 2;
+    }
+    // ── EROSION (Falco Berigora) ─────────────────────────────────────────────
+    // Fragaria chốt: *"+0,1x res lên kẻ địch của Erosion CHỈ BẢN THÂN NGƯỜI GÂY RA
+    // Erosion mới được hưởng thôi, những người khác thì không."*
+    // ⇒ Erosion KHÔNG phải debuff Res chung trên mục tiêu — nó là bonus RIÊNG cho
+    //   người đã áp. Nên lưu theo NGƯỜI GÂY (`erosionBy[attackerId]`) chứ không
+    //   phải một con số chung; nếu lưu chung thì cả party ăn ké, sai luật.
+    const myErosion = (target?.erosionBy ?? {})[attackerId] ?? 0;
+    if (myErosion > 0) bonusPct += myErosion * 10; // +0.1x Res ≙ +10% dmg mỗi stack
+    // ── WILL OF PRESCRIPT (Oracle Device [Caduceus]) ─────────────────────────
+    // "+10% Dmg lên kẻ địch có The Prescript Target's - The Index, với MỖI Grace".
+    if (attacker.prescriptTargetId && targetId && attacker.prescriptTargetId === targetId) {
+      const grace = attacker.graceOfPrescript ?? 0;
+      if (grace > 0) bonusPct += grace * 10;
+    }
     // Shattered E.G.O — "mọi sát thương của bản thân bị giảm MỘT NỬA" trong 3
     // Turn. Đây là chia đôi dmg CUỐI, không phải -50% bonus: -50 vào bonusPct sẽ
     // đi qua saturateBonusPct (đường cong bão hoà) nên KHÔNG ra đúng một nửa.
@@ -331,6 +350,12 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
       flatDmgBonus = attacker.blSalsuBonusDmgPending;
       attacker.blSalsuBonusDmgPending = 0;
     }
+
+    // Providence of the Prescript — "nhận Poise theo cách trên 3 lần thì vào TURN KẾ
+
+    // Crit Mul của bạn được cộng thêm 0.3". Cờ do turn-advance chốt sổ cuối turn.
+
+    if (attacker.providenceCritMulNextTurn) critMul = (critMul ?? 1) + 0.3;
 
     return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus, outgoingDmgMul };
   }

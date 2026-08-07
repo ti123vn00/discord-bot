@@ -307,6 +307,13 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // shatteredEgoTurnsLeft — debuff sau khi bị Stagger trong lúc Manifest:
       //   dmg gây ra giảm 1/2 + mọi Dice ra Min Dice, 3 Turn.
       theStrongestActive: false, theStrongestMaxStaminaBonus: 0, shatteredEgoTurnsLeft: 0,
+      // ── Blind (Wedjat — Manifested E.G.O Hoshino) ──────────────────────────
+      // "Blind: khiến đòn ĐÁNH THƯỜNG tiếp theo bị trượt". Mỗi stack ăn 1 đòn M1.
+      // KHÔNG ảnh hưởng Page/Critical — luật ghi rõ "đòn đánh thường".
+      blind: 0,
+      // ── False Throne — hồi sinh đồng minh trong 1 Turn ─────────────────────
+      // falseThroneRevivedTurnsLeft > 0 = đang sống nhờ hồi sinh; về 0 thì gục lại.
+      falseThroneRevivedTurnsLeft: 0,
       // The Mimic — Mimicry Blade hoá thành Mimicry: Synchronization trong lúc
       // Manifest. `mimicryForm`: "sword" (mặc định) | "scythe". Người chơi tự đổi
       // qua panel Special, đổi bao nhiêu lần trong turn cũng được.

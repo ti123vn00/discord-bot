@@ -3251,13 +3251,27 @@ roll(v = "no") {
   },
   "falco berigora": {
     name: "Falco Berigora", weaponOf: "Manifested E.G.O (Hoshino)", tags: "Weapon",
-    // Light: "??" GIỮ NGUYÊN như GM ghi (chưa xác nhận số cụ thể) — KHÔNG tự bịa.
     cost: "?? Light", cd: "3 Turn", diceMul: "1x",
-    roll() {
+    // promptArg — hỏi người chơi bỏ RA BAO NHIÊU Light (dmg = 30 × số đó).
+    // KHÔNG để bot tự quyết: đây là chi phí người chơi tự cân, giống Thrust.
+    promptArg: {
+      label: "Bỏ ra bao nhiêu Light?",
+      // Trần lấy từ Light hiện có — deriveAutoPromptArg tự điền, người chơi chọn lại được.
+      options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    },
+    roll(lightSpent = 0) {
+      const spent = Math.max(0, Math.floor(Number(lightSpent) || 0));
+      const dmg = 30 * spent;
       return [
-        `${D1} dồn một viên cầu rồi bắn thẳng tới kẻ địch, gây 30 × Lượng Light bỏ ra .`,
-        `${D1} Khi đạt -40 Sanity, áp thêm 2 Paralyze.`,
-        `${D1} Nếu kẻ địch có Bleed: tiêu hết Bleed, chuyển thành 2 Erosion (Erosion: +0,1x Res của ĐỐI PHƯƠNG, chỉ áp dụng 1 Turn, áp với chính bản thân)`,
+        // Dòng dice THẬT — parser tự dựng dmgStr từ đây.
+        spent > 0
+          ? `${D1} **${dmg}** [<:Pierce:1513768511179329556>Pierce] — dồn một viên cầu rồi bắn thẳng tới kẻ địch (30 × ${spent} Light bỏ ra)`
+          : `${D1} *Không bỏ Light nào — đòn này không gây sát thương.*`,
+        // ĐIỀU KIỆN — viết KHÔNG có động từ liền số để parser không tự áp
+        // (bài học: bỏ sót thì GM gõ tay được, áp NHẦM thì phá cân bằng âm thầm).
+        // Xử lý THẬT ở resolve-pending-action.js theo Sanity lúc đánh.
+        `*Nếu Sanity ≤ -40: đối thủ chịu thêm 2 <:Paralyze:1513762878546051112>Paralyze*`,
+        `*Nếu kẻ địch có <:Bleed:1513762688226955285>Bleed: tiêu hết Bleed, chuyển thành 2 Erosion*`,
       ];
     },
   },
@@ -4110,14 +4124,21 @@ roll(v = "no") {
   "jackpot": {
     name: "Jackpot", weaponOf: "Ebony & Ivory", tags: "Weapon",
     cost: "— [Chỉ khi dùng Charge Shot với Gunslinger Style]", cd: "—", diceMul: "2x",
-    roll() {
-      const isInstakill = Math.random() < 0.0777;
+    // chargeSpec — tích tụ tới 7 Turn (khác 3 Turn của Overdrive/Charge Shot).
+    // effect "instakill": mỗi turn tích thêm 1/7 cơ hội chạm mốc 7.77%; đủ 7 turn
+    // mới có đúng 7.77%. Chưa đủ 7 turn thì KHÔNG có cửa insta-kill.
+    chargeSpec: { maxTurns: 7, effect: "instakill" },
+    roll(chargedTurns = 7) {
+      const turns = Math.max(0, Math.min(7, Math.floor(Number(chargedTurns) || 0)));
+      // CHỈ đủ 7 turn mới quay 7.77% — tích thiếu thì viên đạn vẫn bắn nhưng
+      // không có cửa insta-kill (nếu không thì "tích tụ 7 Turn" thành vô nghĩa).
+      const isInstakill = turns >= 7 && Math.random() < 0.0777;
       return [
-        `*Tích tụ 7 Turn — 7.77% cơ hội insta-kill kẻ địch*`,
-        isInstakill
-          ? `*💀 7.77% kích hoạt — INSTA-KILL!*`
-          : ``,
-        `${D1} **77** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Undodgeable] [Unparriable] [Unclashable] — bắn viên đạn quỷ tích tụ 7 turn${isInstakill ? " — **INSTA-KILL**" : ""}`,
+        turns >= 7
+          ? `*Đã tích đủ 7 Turn — 7.77% cơ hội insta-kill kẻ địch*`
+          : `*Mới tích ${turns}/7 Turn — CHƯA đủ để có cửa insta-kill*`,
+        isInstakill ? `*💀 7.77% kích hoạt — INSTA-KILL!*` : ``,
+        `${D1} **77** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Undodgeable] [Unparriable] [Unclashable] — bắn viên đạn quỷ tích tụ ${turns} turn${isInstakill ? " — **INSTA-KILL**" : ""}`,
       ].filter(Boolean);
     },
   },
@@ -4442,7 +4463,7 @@ Object.assign(SKILLS, {
       return [
         `*Bản thân và tất cả đồng đội nhận 30 Shield HP, rồi chỉ định một đồng đội hoặc chính bản thân.*`,
         // Fragaria cập nhật số: 50% → **20%** Max HP của người dùng.
-        `*Người được chỉ định sẽ nhận <:Shield:1449582220481134705>Shield HP bằng **20% Max HP của người dùng** và 1 <:DiceUp:1513767795681398894>Dice Up đến hết turn.*`,
+        `*Người được chỉ định sẽ nhận <:shield:1449582220481134705>Shield HP bằng **20% Max HP của người dùng** và 1 <:DiceUp:1513767795681398894>Dice Up đến hết turn.*`,
       ];
     },
   },
@@ -4455,7 +4476,9 @@ Object.assign(SKILLS, {
     needsAllyTarget: true,
     allyTargetPrompt: "Chọn đồng đội (phải ĐANG CÓ Shield HP) để **Astral Quantization** lấy % sát thương của họ:",
     roll() {
-      const dice = r(1, 50);
+      // BUG ĐÃ SỬA (Fragaria: "Text gốc là 1-30 dice nhưng lại ra được 41").
+      // Luật: "roll dice [1-30]" — code cũ để r(1, 50), lệch hẳn 20 điểm trần.
+      const dice = r(1, 30);
       return [
         `*Chỉ định một đồng đội có Shield HP. Cuối turn, gây sát thương lên một đối thủ bằng **${dice}%** DMG mà đồng đội đó đã gây ra trong turn này.*`,
         `[<:Slash:1513768633434640517>Slash]`,
@@ -5393,7 +5416,7 @@ function autoExtractDiceSideEffects(lines) {
  *  @returns {{fragile:number, paralyze:number, drainStamina:number, selfImitation:number, selfLight:number, healHp:number}}
  */
 function extractNonDmgStrEffects(lines) {
-  const out = { fragile: 0, paralyze: 0, airborne: 0, hemorrhage: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0, selfDiceUp: 0, selfDiceUpTurns: 0 };
+  const out = { fragile: 0, paralyze: 0, airborne: 0, hemorrhage: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0, selfDiceUp: 0, selfDiceUpTurns: 0, blind: 0, selfShieldPerTarget: 0 };
   const stripEmoji = (t) => t.replace(/<a?:[^:>]+:\d+>/g, "");
   for (const raw of lines ?? []) {
     const line = stripEmoji(String(raw));
@@ -5429,6 +5452,14 @@ function extractNonDmgStrEffects(lines) {
     //     không đứng liền sau "nhận" nên không khớp.
     // Bỏ sót thì GM gõ tay được; áp NHẦM thì phá cân bằng âm thầm — chọn bỏ sót.
     out.selfHaste     += sum(/nh[ậa]n\s*(\d+)\s*Haste/i);
+    // Blind (Wedjat) — "gây 5 Blind": mỗi stack làm 1 đòn ĐÁNH THƯỜNG kế trượt.
+    out.blind         += sum(/(?:g[âa]y|g[ắa]n|áp)\s*(\d+)\s*(?:<[^>]*>)?\s*Blind/i);
+    // Shield NHẬN THEO TỪNG MỤC TIÊU dính đòn (Wedjat: "Nhận 100 HP Shield với
+    // TỪNG mục tiêu dính đòn") — khác selfShield thường ở chỗ nhân theo số target.
+    {
+      const m = line.match(/nh[ậa]n\s*(\d+)\s*HP\s*Shield\s*v[ớo]i\s*T[ỪU]NG\s*m[ụu]c\s*ti[êe]u/i);
+      if (m) out.selfShieldPerTarget += parseInt(m[1], 10);
+    }
     // Dice Up TỰ NHẬN có thời hạn — VD Focus Spirit: "Nhận 2 Dice Up tồn tại 2 Turn".
     // GAP ĐÃ SỬA (Fragaria: "Page Focus Spirit không cho dice up"): parser TRƯỚC ĐÂY
     // không có field `selfDiceUp` nào cả, nên dòng đó chỉ là chữ. Page thuần buff

@@ -244,7 +244,12 @@ async function resolveOnePendingAction(encounter, p) {
               if (!targetResolved) { targetDmgLines.push(`⚠️ target ${t.targetId} không còn tồn tại`); continue; }
               const target = targetResolved.combatant;
               const hadRuptureBeforeHit = target.rupture > 0; // Defenseless cần biết TRƯỚC khi finalRupture ghi đè
-              const bleedBeforeHit = target.bleed; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
+              const bleedBeforeHit = target.bleed;
+              // Providence of the Prescript cần biết Sinking/Rupture TRƯỚC đòn
+              // để biết đòn này có THỰC SỰ gây thêm hay không (đã đầy trần thì
+              // không tính là "gây ra").
+              const sinkingBeforeHit = target.sinking ?? 0;
+              const ruptureBeforeHit = target.rupture ?? 0; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
               burnBeforeMap[t.targetId] = target.burn ?? 0;
               let finalDmg = t.preview.totalDmg;
               // Borrowed Eyes: dice CHỈ để đếm charge né, KHÔNG gây dmg.
@@ -284,6 +289,29 @@ async function resolveOnePendingAction(encounter, p) {
               const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
               const attackerWeapon = attacker.combatant.weaponWeight ?? "medium";
               const hitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (isM1Type ? (WEAPON_DEFENSE_HITS[attackerWeapon] ?? 1) : 1);
+              // ── BLIND (Wedjat) — GAP ĐÃ SỬA, trước đây chỉ là chữ ────────
+              // "Blind: khiến đòn ĐÁNH THƯỜNG tiếp theo bị trượt". Tiêu 1 stack,
+              // ép cả đòn M1 trượt sạch. CHỈ M1 — Page/Critical không dính.
+              // Đặt TRƯỚC mọi tính toán dmg để không tốn công tính rồi vứt.
+              let blindNote = "";
+              if (isM1Type && (attacker.combatant.blind ?? 0) > 0) {
+                attacker.combatant.blind -= 1;
+                blindNote = ` 🌑[**Blind** — đòn đánh thường TRƯỢT (còn ${attacker.combatant.blind} Blind)]`;
+                finalDmg = 0;
+                // evadedCompletely = "không trúng gì" ⇒ Bleed/Burn/Rupture… cũng
+                // KHÔNG áp. Trượt mà vẫn dính status thì không phải là trượt.
+                evadedCompletely = true;
+              }
+              // Sắc lệnh (The Index Oracle's Proxy) — ghi lại ĐÃ TẤN CÔNG và
+              // TYPE vũ khí đã dùng. Sắc lệnh 5/6/7 đòi đúng type Blunt/Pierce/Slash.
+              if (attacker.combatant) {
+                attacker.combatant.prescriptAttacked = true;
+                const wType = attacker.combatant.weaponType;
+                if (wType) {
+                  attacker.combatant.prescriptAttackTypes = attacker.combatant.prescriptAttackTypes ?? {};
+                  attacker.combatant.prescriptAttackTypes[wType] = true;
+                }
+              }
               const hitCount = Math.max(1, t.preview.dmgValues?.length ?? 1);
               if (isM1Type) totalHitsThisAction += hitCount; // chỉ M1 mới tính cho Battle Ignition (Page/skill không tính, đúng comment dưới)
               totalHitsThisActionAny += hitCount;
@@ -937,6 +965,28 @@ async function resolveOnePendingAction(encounter, p) {
                   }
                 }
               }
+              // ── PROVIDENCE OF THE PRESCRIPT (accessory) ──────────────────
+              if (attacker.combatant?.hasProvidenceOfPrescript && finalDmg > 0) {
+                // "Khi bản thân ≥20 Poise: mỗi đòn ĐÁNH TRÚNG gây thêm 1 Sinking
+                // và 1 Rupture." Áp TRƯỚC vế dưới để chính nó cũng kích được +3 Poise.
+                let providenceInflicted = false;
+                if ((attacker.combatant.poise ?? 0) >= 20) {
+                  target.sinking = Math.min(99, (target.sinking ?? 0) + 1);
+                  target.rupture = Math.min(99, (target.rupture ?? 0) + 1);
+                  providenceInflicted = true;
+                }
+                // "Khi gây Sinking/Rupture, nhận thêm 3 Poise" — tính CẢ nguồn từ
+                // page lẫn từ chính vế trên.
+                const gaveSinkOrRupt = providenceInflicted
+                  || (target.sinking ?? 0) > (sinkingBeforeHit ?? 0)
+                  || (target.rupture ?? 0) > (ruptureBeforeHit ?? 0);
+                if (gaveSinkOrRupt) {
+                  attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 3);
+                  attacker.combatant.providencePoiseProcsThisTurn = (attacker.combatant.providencePoiseProcsThisTurn ?? 0) + 1;
+                  verifyNote += ` ⚖️[Providence: +3 Poise (${attacker.combatant.providencePoiseProcsThisTurn}/3 lần turn này)`
+                    + (providenceInflicted ? ` · ≥20 Poise → +1 Sinking +1 Rupture` : "") + `]`;
+                }
+              }
               // ── RENEGADE (Lucent Historia) ────────────────────────────────
               // Fragaria đính chính luật: *"đồng đội NÀO CÓ Shield HP thì sẽ phản
               // lại MỖI KHI BỊ TẤN CÔNG theo BASE DMG, chia theo type dmg nốt.
@@ -1053,6 +1103,11 @@ async function resolveOnePendingAction(encounter, p) {
                 regenHealNote = ` 💚+${regenConsumed} HP (Regen, còn ${target.regen}${hemorrhageHealNote})`;
               }
               const justDied = wasAliveBefore && target.currentHp <= 0;
+              // Fpoon — easter egg (Fragaria: "khi chết thay vì ghi là đã bị hạ
+              // gục thì hãy ghi là tự dùng Fpoon tự sát"). Chỉ áp cho người mặc
+              // The Index Oracle's Proxy; thuần HIỂN THỊ, không đổi cơ chế nào.
+              const fpoonDeath = justDied && target.hasIndexOraclesProxy === true;
+              if (fpoonDeath) target.deathFlavor = "🥄 Caduceus biến thành **Fpoon** — buộc phải tự sát.";
               // HP Persistence (luật: "HP vẫn giữ nguyên" sau khi encounter kết
               // thúc) — đồng bộ NGAY mỗi lần HP player thay đổi (không chỉ lúc
               // -encounter end, để không mất dữ liệu nếu encounter bị bỏ dở/quên
@@ -1915,6 +1970,89 @@ async function resolveOnePendingAction(encounter, p) {
             // trong damageRegex nên chưa từng áp được lần nào).
             {
               const sfx = p.autoSideEffects;
+              // ── Blind / Shield-theo-mục-tiêu / Paralyze theo Sanity / Erosion ──
+              // 4 hiệu ứng TRƯỚC ĐÂY chỉ là CHỮ trong text (HANDOFF liệt kê ở mục
+              // "hiệu ứng còn phải thao tác tay").
+              if (sfx && (sfx.blind > 0 || sfx.selfShieldPerTarget > 0)) {
+                for (const t2 of (p.targets ?? [])) {
+                  const tr2 = resolveCombatant(encounter, t2.targetId);
+                  if (!tr2?.combatant) continue;
+                  if (sfx.blind > 0) {
+                    tr2.combatant.blind = Math.min(99, (tr2.combatant.blind ?? 0) + sfx.blind);
+                    verifyNote += ` 🌑[${tr2.label}: +${sfx.blind} Blind (đòn đánh thường kế trượt)]`;
+                  }
+                }
+                // "Nhận 100 HP Shield với TỪNG mục tiêu DÍNH ĐÒN" — nhân theo SỐ
+                // mục tiêu, không phải 1 lần. Đi qua grantShieldHp để ăn đúng
+                // hiệu suất Day One / Compassion.
+                if (sfx.selfShieldPerTarget > 0 && attacker.combatant) {
+                  const nTargets = (p.targets ?? []).length;
+                  if (nTargets > 0) {
+                    const got = grantShieldHp(attacker.combatant, sfx.selfShieldPerTarget * nTargets, attacker.combatant, { isAlly: false });
+                    verifyNote += ` 🛡️[+${got} Shield HP (${sfx.selfShieldPerTarget} × ${nTargets} mục tiêu)]`;
+                  }
+                }
+              }
+              // Falco Berigora — 2 điều kiện viết dạng *Nếu…* nên parser CỐ Ý
+              // không tự áp; xử lý thật ở đây.
+              // False Throne — "sau khi dùng: hồi sinh TOÀN BỘ đồng minh đã chết
+              // trong trận này trong 1 Turn (4 Light, mọi Buff trừ Emotion Level
+              // bị reset)". TRƯỚC ĐÂY chỉ là chữ.
+              if (p.skillKey === "false throne" && attacker.type === "player") {
+                const revived = [];
+                for (const [pid, pl] of Object.entries(encounter.players ?? {})) {
+                  if ((pl.currentHp ?? 0) > 0) continue;
+                  // Reset MỌI buff trừ Emotion Level: dựng lại combatant từ các
+                  // field NỀN thay vì xoá từng buff một (xoá tay chắc chắn sót,
+                  // và sót buff nào thì người chết sống dậy mạnh hơn lúc sống).
+                  const keepEmotion = { emotionLevel: pl.emotionLevel, emotionCoin: pl.emotionCoin,
+                    emotionLevelTurnsLeft: pl.emotionLevelTurnsLeft, emotionLevelCooldownLeft: pl.emotionLevelCooldownLeft };
+                  for (const k of Object.keys(pl)) {
+                    const v = pl[k];
+                    // Chỉ reset các bộ đếm/stack dạng SỐ và cờ dạng BOOLEAN true —
+                    // giữ nguyên tên, vũ khí, Res, snapshot page… (không phải buff).
+                    if (typeof v === "number" && /Left$|Stacks?$|Bonus$|TurnsLeft$/.test(k)) pl[k] = 0;
+                    if (v === true && /^(has|is)[A-Z]/.test(k) === false && /Active$/.test(k)) pl[k] = false;
+                  }
+                  for (const k of ["burn","bleed","tremor","rupture","sinking","poise","charge","fragile",
+                                   "paralyze","blind","haste","bind","diceUp","diceDown","shieldHp","erosion"]) {
+                    if (k in pl) pl[k] = 0;
+                  }
+                  Object.assign(pl, keepEmotion);
+                  pl.currentHp = 1;
+                  pl.currentLight = 4;
+                  pl.staggered = false;
+                  pl.currentStamina = Math.max(1, Math.round((pl.maxStamina ?? 100) * 0.5));
+                  // Sống lại ĐÚNG 1 Turn — turn-advance đếm ngược rồi cho gục lại.
+                  pl.falseThroneRevivedTurnsLeft = 1;
+                  revived.push(pl.name ?? pid);
+                }
+                verifyNote += revived.length > 0
+                  ? ` 👑[**False Throne** hồi sinh ${revived.length} đồng minh trong 1 Turn: ${revived.join(", ")} — 4 Light, mọi Buff (trừ Emotion Level) đã reset]`
+                  : ` 👑[**False Throne** — không có đồng minh nào đã chết để hồi sinh]`;
+              }
+              if (p.skillKey === "falco berigora" && attacker.combatant) {
+                const lowSanity = (attacker.combatant.currentSanity ?? 0) <= -40;
+                for (const t2 of (p.targets ?? [])) {
+                  const tr2 = resolveCombatant(encounter, t2.targetId);
+                  if (!tr2?.combatant) continue;
+                  if (lowSanity) {
+                    tr2.combatant.paralyze = Math.min(99, (tr2.combatant.paralyze ?? 0) + 2);
+                    verifyNote += ` 😵[Sanity ${attacker.combatant.currentSanity} ≤ -40 → ${tr2.label} +2 Paralyze]`;
+                  }
+                  if ((tr2.combatant.bleed ?? 0) > 0) {
+                    const eaten = tr2.combatant.bleed;
+                    tr2.combatant.bleed = 0;
+                    // Erosion — 2 stack, hết hạn sau 1 Turn (turn-advance dọn).
+                    // Lưu theo NGƯỜI GÂY — chỉ họ mới được hưởng (Fragaria chốt).
+                    tr2.combatant.erosionBy = tr2.combatant.erosionBy ?? {};
+                    tr2.combatant.erosionBy[p.attackerId] = (tr2.combatant.erosionBy[p.attackerId] ?? 0) + 2;
+                    tr2.combatant.erosion = (tr2.combatant.erosion ?? 0) + 2; // tổng, chỉ để HIỂN THỊ
+                    tr2.combatant.erosionTurnsLeft = 1;
+                    verifyNote += ` 🩸[Tiêu ${eaten} Bleed của ${tr2.label} → +2 Erosion (1 Turn)]`;
+                  }
+                }
+              }
               if (sfx && (sfx.drainStamina || sfx.fragile || sfx.paralyze)) {
                 const sfxLabels = [];
                 for (const t2 of p.targets ?? []) {

@@ -21,13 +21,7 @@
 const SHIN_MAX_LEVEL = 50;
 const MANG_MAX_LEVEL = 5;
 
-module.exports = function ({ isConsumableItem,
-  createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight,
-  calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp,
-  getPlayerDataWithSlot, savePlayerData, hasEncounterStarted,
-  validateAndRerollPrescript, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA,
-  ENCOUNTER_SANITY_MAX,
-}) {
+module.exports = function ({ parseSkillCost, isEgoSkill, syncCompassionPhantomHp, dedupeEquippedAccessories, isConsumableItem, createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_SANITY_MAX }) {
   async function buildJoinedCombatant(encounter, userId, displayName, profileDataForDefaults, kv = {}) {
     const hp = parseInt(kv["hp"] ?? "", 10);
     const stamina = parseInt(kv["stamina"] ?? "", 10);
@@ -190,8 +184,16 @@ module.exports = function ({ isConsumableItem,
     // Memories: Compassion — CHỈ tác dụng khi dùng Lucent Historia; điều kiện vũ
     // khí kiểm ở NƠI DÙNG (grantShieldHp/combatantResStr) chứ không kiểm ở đây,
     // vì người chơi có thể đổi vũ khí giữa trận (Dimension Pocket).
-    const accNamesNorm = (profileData.equippedAccessories ?? []).filter(Boolean).map(n => n.trim().toLowerCase());
+    // Dọn loadout CŨ đã lỡ đeo trùng trước khi có luật "1 accessory / 1 slot"
+    // (Fragaria gửi ảnh 2x Composition Tool). Không dọn thì passive vẫn chồng
+    // trong trận dù đường equip đã chặn.
+    const { list: dedupedAcc, removed: dupAccRemoved } = dedupeEquippedAccessories(profileData.equippedAccessories ?? []);
+    if (dupAccRemoved.length > 0) {
+      joined.accessoryDupWarning = `⚠️ Bỏ ${dupAccRemoved.length} accessory đeo trùng (${[...new Set(dupAccRemoved)].join(", ")}) — mỗi accessory chỉ có tác dụng 1 lần.`;
+    }
+    const accNamesNorm = dedupedAcc.filter(Boolean).map(n => n.trim().toLowerCase());
     joined.hasMemoriesCompassion = accNamesNorm.includes("memories: compassion");
+    joined.equippedAccessories = dedupedAcc;
     // "+100 Max HP nhưng KHÔNG BAO GIỜ heal lên được ngưỡng 100 thêm này"
     // → cộng vào maxHp để hiển thị/tính %, nhưng chặn trần hồi máu ở
     // `healCapHp` (mọi nguồn heal kẹp theo giá trị này, không phải maxHp).
@@ -202,10 +204,58 @@ module.exports = function ({ isConsumableItem,
     // → maxHp +100 (để MỌI phép tính theo % Max HP dùng con số mới), currentHp
     //   GIỮ NGUYÊN, và trần HỒI kẹp ở maxHp GỐC qua `healCapHp`.
     //   Dmg vẫn trừ bình thường — 100 máu ảo chỉ chặn HỒI, không chặn MẤT.
-    if (joined.hasMemoriesCompassion) {
-      joined.healCapHp = joined.maxHp;
-      joined.maxHp += 100;
-      joined.compassionPhantomHp = 100;
+    // BUG ĐÃ SỬA (Fragaria: "hiện tại đang có Memories: Compassion CẦN Lucent
+    // Historia để có thể kích hoạt passive"). `+100 Max HP` trước đây áp VÔ ĐIỀU
+    // KIỆN — chỉ 2 hiệu ứng kia (x2 Shield, -0.2x Res) mới kiểm vũ khí ở nơi dùng.
+    // Ai đeo Compassion mà cầm vũ khí khác vẫn được +100 Max HP miễn phí.
+    // ⚠️ Đây là chỉ số dựng MỘT LẦN lúc join nên phải kiểm ngay tại đây; 2 hiệu
+    //    ứng kia kiểm lúc dùng nên vẫn theo kịp việc đổi vũ khí giữa trận
+    //    (Dimension Pocket). Nghĩa là đổi SANG Lucent Historia giữa trận sẽ KHÔNG
+    //    hồi tố +100 Max HP — cần Fragaria chốt nếu muốn khác.
+    // syncCompassionPhantomHp — MỘT hàm duy nhất quyết định bật/tắt 100 máu ảo,
+    // dùng chung với lưới an toàn mỗi vòng turn (turn-advance) và các chỗ đổi vũ
+    // khí. Trước đây cộng tay ở đây nên đổi vũ khí giữa trận là sai luật ngay.
+    syncCompassionPhantomHp(joined);
+
+    // ── THE INDEX ORACLE'S PROXY ──────────────────────────────────────────
+    joined.hasIndexOraclesProxy = findOutfit(profileData.equippedOutfit)?.indexOraclesProxy === true;
+    joined.faction = profileData.faction ?? null;
+    joined.title = profileData.title ?? null;
+    joined.inTheIndex = (joined.faction ?? "").toLowerCase() === "the index syndicate";
+    // Accessory của bộ — gate KÉP (faction + outfit) kiểm ngay lúc join.
+    joined.hasPrescriptDevice = accNamesNorm.includes("the oracle's proxy prescript device")
+      && joined.inTheIndex && joined.hasIndexOraclesProxy;
+    joined.hasProvidenceOfPrescript = accNamesNorm.includes("providence of the prescript")
+      && joined.inTheIndex;
+    // ── WOUND-CASING MASK ────────────────────────────────────────────────────
+    joined.hasSizzlingWound = (profileData.injuries ?? []).some(i => String(i).trim().toLowerCase() === "sizzling wound");
+    joined.hasWoundCasingMask = accNamesNorm.includes("wound-casing mask")
+      && joined.inTheIndex && joined.hasSizzlingWound;
+    if (joined.hasWoundCasingMask) {
+      // Mặt nạ CÒN NGUYÊN ⇒ "vô hiệu hoá Sizzling Wound của bạn".
+      joined.woundCasingMaskIntact = true;
+      joined.sizzlingWound = false; // mặt nạ che ⇒ vô hiệu hoá vết thương
+      // "Khi Start Encounter; Sanity được set về mức 45."
+      joined.currentSanity = 45;
+    } else if (joined.hasSizzlingWound) {
+      // Có vết thương mà không đeo mặt nạ ⇒ chịu trọn Sizzling Wound.
+      joined.sizzlingWound = true;
+    }
+
+    // ── SINGLETON ────────────────────────────────────────────────────────
+    // Fragaria: *"Singleton là khi player có loadout page gồm 5 mức Light cost
+    // KHÁC NHAU, ví dụ 0,1,2,3,4 hoặc 0,2,3,4,5 cũng được; CHỈ tính loadout page
+    // THƯỜNG."* ⇒ đúng 5 page thường, và 5 mức cost đôi một khác nhau.
+    // Đọc cost bằng parseSkillCost (nguồn duy nhất) chứ không tự regex lại.
+    {
+      const costs = [];
+      for (const nm of (joined.unlockedPagesSnapshot ?? [])) {
+        const sk = findSkill(nm);
+        if (!sk || isEgoSkill(sk)) continue; // E.G.O Page KHÔNG tính
+        costs.push(parseSkillCost(sk.cost ?? "").light ?? 0);
+      }
+      joined.singleton = costs.length === 5 && new Set(costs).size === 5;
+      joined.singletonCosts = costs;
     }
     // Day One of My New Life — hiệu suất tạo khiên theo TẦNG TINH LUYỆN.
     // Tầng lưu ở profile theo tên accessory (`data.accessoryRefine`), mặc định 1.

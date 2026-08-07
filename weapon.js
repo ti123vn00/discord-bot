@@ -201,6 +201,27 @@ const WEAPONS = {
     ],
     criticalSkillKey: "upstanding slash",
   },
+  // ── ORACLE DEVICE [CADUCEUS] (Relic) ─────────────────────────────────────
+  // KHÔNG có đòn đánh thường cố định: mỗi lần M1 phải roll 1–9 ("Will of Hermes"),
+  // mỗi mặt là một vũ khí khác nhau với base dmg / type / Stamina riêng.
+  // ⇒ `weight`/`type`/`baseDamage` ở đây chỉ là GIÁ TRỊ NỀN cho các hệ thống
+  //   chung (hiển thị, WEAPON_DEFENSE_HITS); số thật lấy từ CADUCEUS_DICE.
+  "oracle device caduceus": {
+    name: "Oracle Device [Caduceus]", weight: "medium", type: "Slash", baseDamage: 8,
+    relic: true,
+    caduceus: true, // cờ nhận diện — code tra bằng cờ, không so chuỗi tên
+    passives: [
+      { name: "Will of Prescript", mechanicId: "caduceus_will_of_prescript",
+        desc: "Vào đầu mỗi turn gắn ngẫu nhiên 1 kẻ địch hiệu ứng **The Prescript Target's - The Index**. Mỗi 1 **Grace of the Prescript** của bản thân cho **+10% Dmg** lên kẻ địch đó." },
+      { name: "Will of Hermes", mechanicId: "caduceus_will_of_hermes",
+        desc: "Không có đòn đánh thường cố định — mỗi lần đánh thường roll 1–9, mỗi mặt là một vũ khí khác nhau. Mỗi mặt dùng LẦN ĐẦU cho 1 stack **Procuration [Hermes]**." },
+      { name: "Imitation Of A Life", mechanicId: "caduceus_imitation_of_a_life",
+        desc: "Cần **9 Procuration [Hermes]** để dùng **Furioso**. Bậc Furioso theo số **Unlock** đang có." },
+    ],
+    // Critical đi qua lệnh `-caduceus <type> <bậc 1-3>` chứ không phải 1 skill key
+    // duy nhất — mỗi bậc roll số dice khác nhau (2/3/4).
+    criticalSkillKey: null,
+  },
   "augury spear": {
     name: "Augury Spear", weight: "light", type: "Pierce", baseDamage: 6,
     passives: [{ name: "Rotate Trigram", desc: "Vào đầu mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam -> Ri -> lặp lại." }],

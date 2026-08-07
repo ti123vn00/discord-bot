@@ -25,6 +25,9 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     // nghĩa, phải chịu chung đường cong bão hoà với Protection/Charge Shield,
     // nếu không thì stack chồng lên nhau thành bất tử.
     if (defender.theStrongestActive) reductionPct += 50;
+    // Wound-Casing Mask — "50% Dmg Reduction", và "khi có Sizzling Wound thì
+    // 50% → 75%" (tức mặt nạ ĐÃ VỠ, vết thương hoạt động ⇒ chống chịu tốt hơn).
+    if (defender.hasWoundCasingMask) reductionPct += defender.sizzlingWound ? 75 : 50;
     // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Reverberation
     // Ensemble" (outfit): "Cho bạn 40% Dmg Reduction" — cố định, không điều
     // kiện. BUG ĐÃ SỬA: combatant không có field chung "outfitName" nào cả —

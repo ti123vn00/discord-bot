@@ -12,7 +12,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
+module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU, UNLOCK_THRESHOLDS, PRESCRIPT_DICE_PER_TURN, PRESCRIPT_RULES, KARMIC_PER_FAILURE, KARMIC_MAX, hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
 
   /** rollSpeedValue — roll trong Range Speed của combatant, cộng Haste trừ Bind
    *  ("1 Haste +1 Speed, 1 Bind -1 Speed" theo update mới). */
@@ -153,54 +153,106 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
   // track — Tấn công/Né/Block/Parry/Clash đều có lệnh thật trong bot) + Will of
   // Prescript (Index Longsword/Cleaver, đánh dấu random 1 địch mỗi turn). Trước
   // đây bị đánh dấu "KHÔNG TỰ ĐỘNG HOÁ" — ĐÃ LỖI THỜI, giờ tự động hoàn toàn.
+  /** PRESCRIPT (The Index Oracle's Proxy) — chấm sắc lệnh của vòng vừa qua rồi
+   *  gieo sắc lệnh mới.
+   *
+   *  ⚠️ ĐỔI LUẬT theo bản Fragaria gửi (khác hẳn bản cũ):
+   *   • **2 dice mỗi turn**, không phải 1.
+   *   • Bảng 1–7 MỚI: 5/6/7 là "đánh bằng vũ khí Blunt/Pierce/Slash", thay cho
+   *     block/parry/không-làm-gì của bảng cũ.
+   *   • Đủ 3/6/9 Grace ⇒ Unlock I/II/III.
+   *   • Mỗi sắc lệnh trượt = 5 Karmic (2 dice ⇒ tối đa 10/turn), trần 100.
+   *
+   *  ⚠️ "turn" = MỘT VÒNG TURN ORDER. Hàm này chỉ được gọi từ
+   *  validateAndRerollPrescriptRound (mốc hết vòng), KHÔNG phải lượt riêng.
+   */
+  function evaluateOnePrescript(c, roll) {
+    const attacked = !!c.prescriptAttacked;
+    const defended = !!(c.prescriptEvaded || c.prescriptBlocked || c.prescriptParried);
+    const types = c.prescriptAttackTypes ?? {};
+    const map = {
+      1: attacked,
+      2: defended,
+      3: attacked && defended,
+      4: !!c.prescriptClashed,
+      5: !!types.Blunt,
+      6: !!types.Pierce,
+      7: !!types.Slash,
+    };
+    return !!map[roll];
+  }
+
+  /** applyUnlockProgress — quy Grace ra bậc Unlock (3/6/9).
+   *  Trả về bậc MỚI đạt được lần đầu (1|2|3) hoặc 0 nếu không đổi. */
+  function applyUnlockProgress(c) {
+    const th = UNLOCK_THRESHOLDS ?? [3, 6, 9];
+    let lvl = 0;
+    for (let i = 0; i < th.length; i++) if ((c.graceOfPrescript ?? 0) >= th[i]) lvl = i + 1;
+    const before = c.prescriptUnlockLevel ?? 0;
+    c.prescriptUnlockLevel = Math.max(before, lvl);
+    return c.prescriptUnlockLevel > before ? c.prescriptUnlockLevel : 0;
+  }
+
   function validateAndRerollPrescript(encounter, leavingEntry, enteringEntry) {
     const notes = [];
+    const DICE_PER_TURN = PRESCRIPT_DICE_PER_TURN ?? 2;
     if (leavingEntry) {
       const c = leavingEntry.type === "enemy" ? encounter.enemies[leavingEntry.id] : encounter.players[leavingEntry.id];
-      if (c && c.prescriptRoll !== null && c.prescriptRoll !== undefined) {
-        const didNothing = !c.prescriptAttacked && !c.prescriptEvaded && !c.prescriptBlocked && !c.prescriptParried && !c.prescriptClashed;
-        const successMap = {
-          1: c.prescriptAttacked,
-          2: c.prescriptEvaded,
-          3: c.prescriptBlocked,
-          4: c.prescriptParried,
-          5: c.prescriptAttacked && (c.prescriptEvaded || c.prescriptBlocked || c.prescriptParried),
-          6: didNothing,
-          7: c.prescriptClashed,
-        };
-        const succeeded = !!successMap[c.prescriptRoll];
+      const rolls = c?.prescriptRolls;
+      if (c && Array.isArray(rolls) && rolls.length > 0) {
         const label = leavingEntry.type === "enemy" ? (encounter.enemies[leavingEntry.id]?.name ?? leavingEntry.id) : `<@${leavingEntry.id}>`;
-        if (succeeded) {
-          c.graceOfPrescript = (c.graceOfPrescript ?? 0) + 1;
-          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh #${c.prescriptRoll}** của ${label} THÀNH CÔNG — +1 Grace of Prescript (tổng ${c.graceOfPrescript}).`);
-        } else {
-          c.karmicConsequence = Math.min(100, (c.karmicConsequence ?? 0) + 5);
-          notes.push(`<:Karmic_Consequence:1532503901687779338> **Sắc lệnh #${c.prescriptRoll}** của ${label} THẤT BẠI — +5 Karmic Consequence (tổng ${c.karmicConsequence}).`);
+        let succeeded = 0, failed = 0;
+        for (const roll of rolls) {
+          if (evaluateOnePrescript(c, roll)) succeeded++; else failed++;
         }
-        c.prescriptRoll = null;
+        if (succeeded > 0) {
+          c.graceOfPrescript = (c.graceOfPrescript ?? 0) + succeeded;
+          notes.push(`<:Prescript:1528452494945157281> ${label}: **${succeeded}/${rolls.length}** sắc lệnh THÀNH CÔNG — +${succeeded} Grace of the Prescript (tổng ${c.graceOfPrescript}).`);
+          const newLvl = applyUnlockProgress(c);
+          if (newLvl > 0) {
+            c.prescriptUnlockJustReached = newLvl; // accessory đọc để hồi 10 Sanity 1 lần
+            notes.push(`<:Unlock:1528452595859849406> ${label} đạt **Unlock - ${["I", "II", "III"][newLvl - 1]}**!`);
+          }
+        }
+        if (failed > 0) {
+          // "Prescript Delivered on a Device" (accessory) — vào Unlock III thì
+          // KHÔNG còn nhận Karmic khi trượt sắc lệnh.
+          const karmicImmune = c.hasPrescriptDevice && (c.prescriptUnlockLevel ?? 0) >= 3;
+          if (karmicImmune) {
+            notes.push(`<:Unlock:1528452595859849406> ${label}: trượt ${failed} sắc lệnh nhưng **Prescript Delivered on a Device** (Unlock III) miễn Karmic.`);
+          } else {
+            c.karmicConsequence = Math.min(KARMIC_MAX ?? 100, (c.karmicConsequence ?? 0) + (KARMIC_PER_FAILURE ?? 5) * failed);
+            notes.push(`<:Karmic_Consequence:1532503901687779338> ${label}: trượt **${failed}** sắc lệnh — +${(KARMIC_PER_FAILURE ?? 5) * failed} Karmic Consequence (tổng ${c.karmicConsequence}, nhận thêm ${c.karmicConsequence}% Dmg).`);
+          }
+        }
+        // Ghi lại cho "Undertake Prescript" (accessory): turn TRƯỚC có hoàn thành
+        // ít nhất 1 sắc lệnh không.
+        c.prescriptSucceededLastTurn = succeeded > 0;
+      }
+      if (c) {
+        c.prescriptRolls = null;
         c.prescriptAttacked = false;
         c.prescriptEvaded = false;
         c.prescriptBlocked = false;
         c.prescriptParried = false;
         c.prescriptClashed = false;
+        c.prescriptAttackTypes = {};
       }
     }
     if (enteringEntry) {
       const c = enteringEntry.type === "enemy" ? encounter.enemies[enteringEntry.id] : encounter.players[enteringEntry.id];
       if (c) {
-        const weaponInfoForOutfit = c.hasIndexProselyte;
-        if (weaponInfoForOutfit) {
-          c.prescriptRoll = Math.floor(Math.random() * 7) + 1;
-          const rollLabels = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
-          const label = enteringEntry.type === "enemy" ? (encounter.enemies[enteringEntry.id]?.name ?? enteringEntry.id) : `<@${enteringEntry.id}>`;
-          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh mới** cho ${label}: **#${c.prescriptRoll}** — ${rollLabels[c.prescriptRoll]}.`);
+        const label = enteringEntry.type === "enemy" ? (encounter.enemies[enteringEntry.id]?.name ?? enteringEntry.id) : `<@${enteringEntry.id}>`;
+        // `hasIndexProselyte` GIỮ LẠI cho dữ liệu cũ; cờ mới là hasIndexOraclesProxy.
+        if (c.hasIndexOraclesProxy || c.hasIndexProselyte) {
+          c.prescriptRolls = Array.from({ length: DICE_PER_TURN }, () => Math.floor(Math.random() * 7) + 1);
+          const rules = PRESCRIPT_RULES ?? {};
+          const lines = c.prescriptRolls.map(rn => `**#${rn}** — ${rules[rn]?.label ?? "?"}`);
+          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh mới** cho ${label} (${DICE_PER_TURN} dice): ${lines.join(" · ")}`);
         }
         const weaponInfo = findWeaponAnywhere(c.weaponName);
         const hasWillOfPrescript = (weaponInfo?.passives ?? []).some(pa => pa.name === "Will of Prescript");
         if (hasWillOfPrescript) {
-          // Xoá dấu ở mục tiêu CŨ (nếu có, từ lần roll trước đó) trước khi gán
-          // mục tiêu MỚI — tránh sót lại "Bị đánh dấu bởi X" trên mục tiêu ĐÃ
-          // KHÔNG còn bị đánh dấu nữa.
           if (c.prescriptTargetId && encounter.enemies[c.prescriptTargetId]) {
             delete encounter.enemies[c.prescriptTargetId].markedByPrescriptTargetOf;
           }
@@ -208,17 +260,9 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
           if (livingEnemyKeys.length > 0) {
             const pick = livingEnemyKeys[Math.floor(Math.random() * livingEnemyKeys.length)];
             c.prescriptTargetId = pick;
-            // Task yêu cầu trực tiếp: "cần làm rõ ràng the prescript target trên
-            // mục tiêu hơn" — TRƯỚC ĐÂY chỉ lưu ID (không hiện tên rõ ràng ở board
-            // status, và mục tiêu BỊ đánh dấu không hề biết mình bị đánh dấu bởi
-            // ai) — giờ lưu thêm tên để hiện rõ (marker), VÀ đánh dấu NGƯỢC LẠI
-            // trên chính combatant mục tiêu (markedByPrescriptTargetOf — encounter-
-            // display.js đọc field này để hiện "Bị đánh dấu bởi X" ngay trên mục
-            // tiêu, không cần biết ai đang giữ Will of Prescript).
-            const markerLabel = enteringEntry.type === "enemy" ? (encounter.enemies[enteringEntry.id]?.name ?? enteringEntry.id) : `<@${enteringEntry.id}>`;
             c.prescriptTargetName = encounter.enemies[pick]?.name ?? pick;
-            encounter.enemies[pick].markedByPrescriptTargetOf = markerLabel;
-            notes.push(`<:The_Prescripts_Target:1528452363159998525> **The Prescript Target's - The Index** đánh dấu lên **${c.prescriptTargetName}**.`);
+            encounter.enemies[pick].markedByPrescriptTargetOf = label;
+            notes.push(`<:The_Prescripts_Target:1528452363159998525> **The Prescript Target's - The Index** đánh dấu lên **${c.prescriptTargetName}** (+${10 * (c.graceOfPrescript ?? 0)}% Dmg từ Grace).`);
           }
         }
       }
@@ -295,7 +339,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
    *  Dùng hàm này thay cho `c.currentHp = Math.max(0, c.currentHp - n)` ở MỌI
    *  chỗ mất HP TRONG vòng đấu.
    */
-  function applyHpLoss(combatant, amount, { skipShield = false, countHana = true } = {}) {
+  function applyHpLoss(combatant, amount, { skipShield = false, countHana = true, source = null } = {}) {
     if (!combatant || !(amount > 0)) return 0;
     // ── SHIELD HP HẤP THỤ TRƯỚC — BUG NẶNG ĐÃ SỬA ────────────────────────────
     // Fragaria: "You're too slow của Eye Gouger sử dụng XUYÊN QUA Shield HP.
@@ -322,7 +366,15 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       if (!(amount > 0)) return 0;
     }
     const before = combatant.currentHp ?? 0;
-    combatant.currentHp = Math.max(0, before - amount);
+    // Wound-Casing Mask — "Dmg từ Burn và Bleed sẽ KHÔNG THỂ GIẾT được bạn".
+    // Kẹp sàn ở 1 HP thay vì 0 khi nguồn dmg là Burn/Bleed (nguồn khác vẫn giết
+    // được bình thường). `source` do nơi gọi truyền vào.
+    const burnBleedImmuneDeath = combatant.hasWoundCasingMask && (source === "burn" || source === "bleed");
+    if (burnBleedImmuneDeath) {
+      combatant.currentHp = Math.max(1, before - amount);
+    } else {
+      combatant.currentHp = Math.max(0, before - amount);
+    }
     const lost = before - combatant.currentHp;
     if (lost <= 0) return 0;
     if (combatant.hasHanaAssociation && countHana) {
@@ -392,6 +444,48 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
    *  không chặn mất. Nghĩa là ai đội Compassion thực chất có "trần mềm" thấp
    *  hơn maxHp hiển thị.
    */
+  /** syncCompassionPhantomHp — BẬT/TẮT 100 máu ảo của "Memories: Compassion"
+   *  theo vũ khí ĐANG CẦM, gọi lại bao nhiêu lần cũng ra cùng kết quả.
+   *
+   *  Fragaria chốt: *"+100 Max HP, cũng như các passive còn lại của Compassion CHỈ
+   *  hoạt động khi người dùng đang XÀI LUCENT HISTORIA TRONG LOADOUT — nếu họ đổi
+   *  qua cái khác mà nó hoạt động thì đã sai về logic rồi."*
+   *
+   *  VÌ SAO PHẢI CÓ HÀM RIÊNG: 2 hiệu ứng kia (x2 Shield, −0.2x Res) kiểm
+   *  `weaponName` NGAY LÚC DÙNG nên tự đúng khi đổi vũ khí giữa trận. Riêng
+   *  +100 Max HP là CHỈ SỐ, trước đây cộng MỘT LẦN lúc join ⇒ đổi vũ khí xong
+   *  vẫn giữ máu ảo. Phải đồng bộ lại mỗi khi vũ khí đổi.
+   *
+   *  Gọi ở: player-join-builder (lúc vào trận), advanceCombatantTurn (lưới an
+   *  toàn mỗi vòng turn — bắt được MỌI đường đổi vũ khí kể cả đường thêm sau
+   *  này), và ngay tại các chỗ đổi vũ khí (Mimicry: Synchronization).
+   *
+   *  @returns dòng ghi chú nếu trạng thái ĐỔI, "" nếu không đổi gì.
+   */
+  function syncCompassionPhantomHp(combatant) {
+    if (!combatant?.hasMemoriesCompassion) return "";
+    const shouldBeOn = combatant.weaponName === "Lucent Historia";
+    const isOn = (combatant.compassionPhantomHp ?? 0) > 0;
+    if (shouldBeOn) {
+      if (!isOn) {
+        combatant.maxHp = (combatant.maxHp ?? 0) + 100;
+        combatant.compassionPhantomHp = 100;
+      }
+      // Tính LẠI mỗi lần thay vì lưu cứng lúc bật: maxHp có thể đổi giữa chừng
+      // (chữa injury, buff Max HP…) — lưu cứng sẽ khiến trần hồi lệch dần.
+      combatant.healCapHp = combatant.maxHp - combatant.compassionPhantomHp;
+      return isOn ? "" : ` 💗[Memories: Compassion BẬT — +100 Max HP ảo (không hồi tới được)]`;
+    }
+    if (!isOn) return "";
+    // TẮT: trừ ĐÚNG phần đã cộng, rồi kẹp currentHp cho khỏi vượt trần mới.
+    const phantom = combatant.compassionPhantomHp ?? 100;
+    combatant.maxHp = Math.max(1, (combatant.maxHp ?? 0) - phantom);
+    combatant.compassionPhantomHp = 0;
+    combatant.healCapHp = undefined; // hết máu ảo ⇒ hồi tới maxHp như người thường
+    combatant.currentHp = Math.min(combatant.currentHp ?? 0, combatant.maxHp);
+    return ` 💔[Memories: Compassion TẮT — không cầm Lucent Historia, mất ${phantom} Max HP ảo]`;
+  }
+
   function healHpCapped(combatant, amount) {
     if (!combatant || !(amount > 0)) return 0;
     const cap = Number.isFinite(combatant.healCapHp) ? combatant.healCapHp : (combatant.maxHp ?? 0);
@@ -769,6 +863,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     combatant.mimicryOriginalWeaponWeight = combatant.weaponWeight;
     combatant.mimicSyncActive = true;
     combatant.weaponName = "Mimicry: Synchronization";
+    syncCompassionPhantomHp(combatant); // đổi vũ khí ⇒ Compassion phải theo kịp
     applyMimicryForm(combatant, "sword");
     return ` 🗡️**The Mimic** — Mimicry Blade → **Mimicry: Synchronization** (dạng Kiếm 28/Slash/Medium · đổi sang Lưỡi hái 56/Slash/Heavy ở panel Special).`;
   }
@@ -779,6 +874,7 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
   function revertMimicSynchronization(combatant) {
     if (!combatant.mimicSyncActive) return "";
     combatant.weaponName = combatant.mimicryOriginalWeaponName ?? "Mimicry Blade";
+    syncCompassionPhantomHp(combatant); // đổi vũ khí ⇒ Compassion phải theo kịp
     combatant.weaponBaseDamage = combatant.mimicryOriginalBaseDamage ?? 14;
     combatant.weaponType = combatant.mimicryOriginalWeaponType ?? "Slash";
     combatant.weaponWeight = combatant.mimicryOriginalWeaponWeight ?? "medium";
@@ -817,6 +913,27 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       notes.push("**Shattered E.G.O** 3 Turn (dmg −1/2, mọi Dice ra Min Dice)");
     }
     return `😈 **Hết Manifest E.G.O**${forcedByStagger ? " (bị Stagger cắt ngang)" : ""} — ${notes.join(" · ") || "trở lại bình thường"}.${mimicNote}`;
+  }
+
+  /** hitsPerDefenseCharge — 1 charge phòng thủ (Guard/Evade/Parry/Counter/Dash)
+   *  chặn được BAO NHIÊU hit của đòn đánh thường này.
+   *
+   *  Vũ khí thường: theo WEIGHT (light 4 / medium 2 / heavy 1) — không đổi.
+   *
+   *  **Oracle Device [Caduceus]** khác hẳn: mỗi lần M1 nó roll ra một vũ khí
+   *  khác nhau nên WEIGHT vô nghĩa. Fragaria chốt: *"charge defense cho M1 của
+   *  Caduceus dựa vào STAMINA tiêu thụ của từng dice — lưỡi hái 20 Stamina tiêu
+   *  1 charge, còn rìu 5 Stamina thì 4 đòn rìu mới cần 1 charge."*
+   *  ⇒ 20 Stamina = 1 charge ⇒ hits/charge = 20 / (Stamina của mặt dice đó).
+   *
+   *  @param staminaPerHit Stamina của mặt Caduceus đang dùng (chỉ khi là Caduceus).
+   */
+  function hitsPerDefenseCharge(weaponWeight, { caduceusStaminaPerHit = 0 } = {}) {
+    if (caduceusStaminaPerHit > 0) {
+      const per = CADUCEUS_STAMINA_PER_CHARGE ?? 20;
+      return Math.max(1, Math.round(per / caduceusStaminaPerHit));
+    }
+    return (WEAPON_DEFENSE_HITS_CU ?? { light: 4, medium: 2, heavy: 1 })[weaponWeight ?? "medium"] ?? 1;
   }
 
   function checkStaggerPanic(combatant) {
@@ -874,6 +991,24 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       // không có đường nào Stagger mà thoát được luật này.
       // Gate bằng CỜ `theStrongestActive` chứ không tra ego.js: combat-utils
       // không (và không nên) biết gì về Manifested E.G.O nào có passive nào.
+      // ── WOUND-CASING MASK ───────────────────────────────────────────────
+      // "Nếu bị Stagger… thì mặt nạ sẽ bị vỡ ra" NHƯNG cũng "bạn MIỄN NHIỄM với
+      // hiệu ứng Stagger". Đọc gộp: cú Stagger KHÔNG làm bạn Stagger, nhưng nó
+      // LÀM VỠ mặt nạ. Đó là cách duy nhất để hai vế cùng đúng.
+      // ⚠️ Cần Fragaria xác nhận nếu ý là khác.
+      if (combatant.woundCasingMaskIntact) {
+        combatant.woundCasingMaskIntact = false;
+        combatant.sizzlingWound = true;
+        combatant.maskBrokenNote = "🎭 **Wound-Casing Mask VỠ** — vết thương cũ quay lại: **Sizzling Wound** hoạt động tới hết Encounter.";
+      }
+      if (combatant.hasWoundCasingMask) {
+        // Miễn nhiễm Stagger — huỷ luôn cú Stagger vừa đặt ở trên.
+        combatant.staggered = false;
+        combatant.dazedStacks = Math.max(0, (combatant.dazedStacks ?? 1) - 1);
+        // return TRẦN — checkStaggerPanic KHÔNG có biến `notes` (nó không trả về
+        // gì). `return notes` ở đây sẽ là ReferenceError ngay lúc ai đó Stagger.
+        return;
+      }
       if (combatant.theStrongestActive && combatant.manifestedEGO) {
         combatant.staggerForcedNote = endManifestedEgoState(combatant, { forcedByStagger: true });
       }
@@ -924,6 +1059,9 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     appendActionLog,
     getActionLogIcon,
     checkStaggerPanic,
+    syncCompassionPhantomHp,
+    applyUnlockProgress,
+    hitsPerDefenseCharge,
     applyMimicryForm,
     applyMimicSynchronization,
     revertMimicSynchronization,

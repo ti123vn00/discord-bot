@@ -10,7 +10,7 @@ const OUTFITS = {
     resistance: { B: 1.3, P: 1.3, S: 1.3 },
     speedRange: { min: 2, max: 5 },
     keypage: [
-      "Khi bắt đầu trận đấu, ngay lập tức cho bản thân và toàn bộ đồng đội <:Shield:1449582220481134705>Shield HP bằng 30% Max HP của bản thân. [Một lần mỗi Encounter]",
+      "Khi bắt đầu trận đấu, ngay lập tức cho bản thân và toàn bộ đồng đội <:shield:1449582220481134705>Shield HP bằng 30% Max HP của bản thân. [Một lần mỗi Encounter]",
     ],
   },
 
@@ -90,6 +90,21 @@ const OUTFITS = {
     keypage: [
       "Mỗi lần đỡ thành công bạn sẽ bị nhận 1 Tremor. Critical của vũ khí bạn sẽ áp Tremor lên kẻ địch tương đương với 1/2 Tremor trên người bạn hiện tại",
       "Nếu bạn có trên hoặc bằng 10 Defense Up và khi đỡ đòn Guard Break, bạn sẽ tiêu thụ hết chúng và sẽ không bị Guard Break; có thể đỡ đòn Undodgeable bằng cách tương tự",
+    ],
+  },
+  // ── THE INDEX ORACLE'S PROXY ─────────────────────────────────────────────
+  // ⚠️ "turn" trong TOÀN BỘ mô tả dưới = MỘT VÒNG TURN ORDER (xem HANDOFF).
+  "the index oracles proxy": {
+    name: "The Index Oracle's Proxy",
+    resistance: { B: 1, P: 1.3, S: 1.3 },
+    speedRange: { min: 6, max: 9 },
+    indexOraclesProxy: true, // cờ nhận diện cho code (không so chuỗi tên)
+    keypage: [
+      "Mỗi turn gieo **2 dice 1–7** để lấy sắc lệnh, phải thực hiện trong turn đó. Mỗi sắc lệnh THÀNH CÔNG cho 1 **Grace of the Prescript**; đủ **3/6/9** thì nhận **Unlock - I/II/III**. Mỗi sắc lệnh THẤT BẠI cho 5 **Karmic Consequence** — mỗi stack khiến bạn **nhận thêm 1% Dmg** [Max 100 stack]",
+      "**Singleton** (loadout Page thường có 5 mức Light cost KHÁC NHAU): nhận 5 Dice Up và refund 1/5 Stamina khi đánh thường",
+      "**Singleton** — nhận 5/10/20 Protection và Regen mỗi turn khi **Unlock - I/II/III**",
+      "**Singleton** — dùng biến thể **Furioso** bất kỳ cho 1 stack **Indulgence in Prescript**: mỗi đòn có áp Sinking sẽ inflict thêm 2 count. Mất khi end turn",
+      "**Shin - Rien**: khi nhận sát thương vượt ngưỡng nửa Max HP, ngừng nhận dmg ở turn này. End turn tháo **Wound-Casing Mask**, vào trạng thái Shin vĩnh viễn tới hết Encounter, nhận thêm 1 Dice Up với mỗi 20 HP đã mất",
     ],
   },
   "hana association": {

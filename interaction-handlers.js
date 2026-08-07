@@ -23,11 +23,30 @@ const path = require("path");
 // kèm chứ không để discord.js ném ENOENT làm hỏng cả tương tác.
 function bgmAttachmentIH(name) {
   if (!name) return [];
-  const p = `./assets/audio/bgm/${name}`;
-  try { return require("fs").existsSync(p) ? [new AttachmentBuilder(p)] : []; } catch { return []; }
+  // BUG ĐÃ SỬA (Fragaria: "Contract bị lỗi không thấy phát bgm, chỉ hiện text
+  // chứ còn file không thấy gửi"). Đây là REGRESSION do chính lớp kiểm
+  // `existsSync` tôi thêm ở lượt trước: nó dùng đường dẫn TƯƠNG ĐỐI `./assets/…`
+  // — mà relative path giải theo **CWD của tiến trình**, không phải theo vị trí
+  // file .js. Render không đảm bảo CWD là repo root ⇒ existsSync trả false ⇒ bỏ
+  // đính kèm im lặng, chỉ còn dòng chữ.
+  //
+  // Neo vào `__dirname` (mọi file .js của repo đều nằm ở root nên __dirname CHÍNH
+  // LÀ repo root) rồi mới thử tới CWD. Không tìm thấy ở cả hai thì LOG — im lặng
+  // bỏ qua chính là thứ làm bug này khó lần ra.
+  const fs = require("fs");
+  const nodePath = require("path");
+  const candidates = [
+    nodePath.join(__dirname, "assets", "audio", "bgm", name),
+    nodePath.resolve("assets", "audio", "bgm", name),
+  ];
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return [new AttachmentBuilder(c)]; } catch { /* thử ứng viên kế */ }
+  }
+  try { log("error", "bgmMissing", "system", `Không tìm thấy file BGM "${name}" ở: ${candidates.join(" | ")}`); } catch { /* log chưa sẵn sàng */ }
+  return [];
 }
 
-module.exports = function ({ GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -3637,22 +3656,16 @@ client.on("interactionCreate", async (interaction) => {
           } else if (chosenType === "accessory") {
             const accessory = findAccessory(chosenName);
             if (!accessory) throw new Error("Không tìm thấy accessory này.");
-            const ownedCount = data.items?.[accessory.name] ?? 0;
-            const usedInAnySlot = data.equippedAccessories.filter(name => name === accessory.name).length;
-            if (usedInAnySlot >= ownedCount) throw new Error(`Chỉ sở hữu ${ownedCount}, đã dùng hết ở các slot hiện tại.`);
-            // `exclusive` — chặn trùng CHÍNH NÓ (khác exclusiveType bên dưới).
-            if (accessory.exclusive && usedInAnySlot >= 1) {
-              throw new Error(`**${accessory.name}** là món độc nhất — chỉ đeo được 1 cái cùng lúc.`);
-            }
-            // `exclusiveType` — chặn theo LOẠI (VD 2 món khác tên cùng là
-            // "Nón Ánh Sáng"). Dùng CHUNG luật với `-equipaccessory`.
-            if (accessory.exclusiveType) {
-              const conflictSlot = data.equippedAccessories.findIndex(name =>
-                name && findAccessory(name)?.exclusiveType === accessory.exclusiveType);
-              if (conflictSlot >= 0) {
-                throw new Error(`Thuộc loại **${accessory.exclusiveType}** — bạn đang đeo **${data.equippedAccessories[conflictSlot]}** (cùng loại) ở slot #${conflictSlot + 1}. Chỉ được đeo 1 món loại này.`);
-              }
-            }
+            // MỘT luật duy nhất cho cả dropdown lẫn lệnh text — xem
+            // validateAccessoryEquip trong accessory.js. Trước đây 2 đường equip
+            // kiểm KHÁC NHAU nên đeo được 2 Composition Tool qua dropdown.
+            const vres = validateAccessoryEquip({
+              accessory,
+              equipped: data.equippedAccessories,
+              ownedCount: data.items?.[accessory.name] ?? 0,
+              owner: { faction: data.faction, title: data.title, equippedOutfit: data.equippedOutfit, injuries: data.injuries ?? [] },
+            });
+            if (!vres.ok) throw new Error(vres.reason);
             const targetSlot = data.equippedAccessories.findIndex(s2 => !s2);
             // KHÔNG ghi đè slot #1 khi đầy nữa (bug cũ) — báo rõ để người chơi
             // chủ động gỡ, đúng mô hình consumable (đủ 4 thì từ chối xếp thêm).

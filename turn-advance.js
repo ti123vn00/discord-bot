@@ -8,9 +8,18 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
+module.exports = function ({ SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON_UNLOCK_PROTECTION, applySanityGain, syncCompassionPhantomHp, healHpCapped, applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
 
   function advanceCombatantTurn(combatant) {
+    // LƯỚI AN TOÀN — Memories: Compassion chỉ hiệu lực khi CẦM Lucent Historia
+    // (Fragaria: "nếu họ đổi qua cái khác mà nó hoạt động thì đã sai về logic").
+    // Đặt ở đây vì advanceCombatantTurn chạy cho MỌI combatant mỗi vòng turn ⇒
+    // bắt được mọi đường đổi vũ khí, kể cả đường thêm mới sau này mà quên gọi sync.
+    const compassionNote = syncCompassionPhantomHp ? syncCompassionPhantomHp(combatant) : "";
+    // Ghi vào FIELD chứ không push vào `notes`: biến đó khai ở DƯỚI trong hàm
+    // này (đọc từ đây là ReferenceError — đúng lớp lỗi scope đã dính nhiều lần).
+    combatant.compassionSyncNote = compassionNote || null;
+
     combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
     // "Blade Lineage Salsu" (outfit) — GAP MỚI (xác nhận trực tiếp): "Vào turn
     // start nếu Poise >=10, add vào base dmg của page/critical theo 1/2 lượng
@@ -36,7 +45,11 @@ module.exports = function ({ applyHpLoss, endManifestedEgoState, hasPerk, ENCOUN
       // Sizzling Wound (50-Status Nhóm 2, xác nhận trực tiếp): "+50% Dmg từ Burn
       // và Bleed" — nhân trực tiếp vào dmg Burn thật gây ra.
       const burnDmg = combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1) * (combatant.burningSensation ? 3 : 1);
-      applyHpLoss(combatant, burnDmg, { countHana: false });
+      // ⚠️ KHÔNG nhân 1.5 lần nữa ở đây — `burnDmg` NGAY TRÊN đã có
+      // `(combatant.sizzlingWound ? 1.5 : 1)`. Sizzling Wound vốn ĐÃ tồn tại
+      // trong repo (cờ `sizzlingWound`, nối sẵn ở turn-advance + 2 chỗ Bleed +
+      // encounter-display). Thêm cờ thứ hai sẽ thành nhân đôi ×2.25.
+      applyHpLoss(combatant, burnDmg, { countHana: false, source: "burn" });
     }
     combatant.burn = Math.floor((combatant.burn ?? 0) / 2);
     combatant.bleed = Math.floor((combatant.bleed ?? 0) / 2);
@@ -130,7 +143,8 @@ module.exports = function ({ applyHpLoss, endManifestedEgoState, hasPerk, ENCOUN
       // "Perfect Body" (Perfect Cube) — GAP ĐÃ SỬA: "Mỗi turn end được hồi 10 HP".
       // Chỉ hồi cho người CÒN SỐNG (0 HP là đã gục — hồi sẽ tự hồi sinh, sai luật).
       if (combatant.hasPerfectCube && combatant.currentHp > 0) {
-        combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + 10);
+        // healHpCapped — không hồi vào 100 máu ẢO của "Memories: Compassion".
+        healHpCapped(combatant, 10);
       }
     }
     // Haou Tremor (xác nhận trực tiếp): "Khi end turn sẽ tự động kích Tremor
@@ -320,6 +334,20 @@ module.exports = function ({ applyHpLoss, endManifestedEgoState, hasPerk, ENCOUN
     // Shattered E.G.O — 3 Turn (dmg ×0.5 + mọi Dice ra Min Dice). Đếm ngược
     // ĐỘC LẬP với Manifest: nó chỉ tồn tại SAU khi Manifest đã bị cắt.
     if ((combatant.shatteredEgoTurnsLeft ?? 0) > 0) combatant.shatteredEgoTurnsLeft -= 1;
+    // Erosion (Falco Berigora) — "chỉ áp dụng 1 Turn".
+    if ((combatant.erosionTurnsLeft ?? 0) > 0) {
+      combatant.erosionTurnsLeft -= 1;
+      if (combatant.erosionTurnsLeft <= 0) { combatant.erosion = 0; combatant.erosionBy = {}; }
+    }
+    // False Throne — hồi sinh CHỈ 1 Turn, hết turn thì gục lại.
+    if ((combatant.falseThroneRevivedTurnsLeft ?? 0) > 0) {
+      combatant.falseThroneRevivedTurnsLeft -= 1;
+      if (combatant.falseThroneRevivedTurnsLeft <= 0 && (combatant.currentHp ?? 0) > 0) {
+        combatant.currentHp = 0;
+        combatant.staggered = true;
+        combatant.falseThroneCollapsed = true;
+      }
+    }
     // K-Corp Ampule — CD 2 turn RIÊNG của item này (xem -encounter useitem).
     if ((combatant.kCorpAmpuleCooldownLeft ?? 0) > 0) {
       combatant.kCorpAmpuleCooldownLeft -= 1;
@@ -413,6 +441,47 @@ module.exports = function ({ applyHpLoss, endManifestedEgoState, hasPerk, ENCOUN
     // ĐẶT SAU khối đếm ngược Manifest ở trên: Manifest vừa hết turn này thì
     // `manifestedEGO` đã là false ⇒ không cộng nhầm cho turn sau.
     if (combatant.manifestedEGO) combatant.diceUp = (combatant.diceUp ?? 0) + 3;
+    // ── SINGLETON (The Index Oracle's Proxy) ─────────────────────────────────
+    // "Nhận 5 Dice Up và refund 1/5 Stamina khi đánh thường". Dice Up bị reset
+    // mỗi turn nên phải cộng LẠI ở đây (khuôn blackSuitPersistentBonus).
+    // ── WOUND-CASING MASK ────────────────────────────────────────────────────
+    if (combatant.hasWoundCasingMask) {
+      // "Mỗi Turn Start nếu có Unlock - I/II/III nhận 5/10/20 Poise."
+      const amt = ({ 1: 5, 2: 10, 3: 20 })[combatant.prescriptUnlockLevel ?? 0] ?? 0;
+      if (amt > 0) combatant.poise = Math.min(POISE_MAX ?? 99, (combatant.poise ?? 0) + amt);
+      // "Khi có Sizzling Wound … nhận được 3 Dice Up" — diceUp reset mỗi turn nên
+      // phải cộng LẠI ở đây.
+      if (combatant.sizzlingWound) combatant.diceUp = (combatant.diceUp ?? 0) + 3;
+      // "Sanity bị cap lại ở mức -40; không thể bị giảm thêm bởi bất kỳ hình thức nào."
+      if ((combatant.currentSanity ?? 0) < -40) combatant.currentSanity = -40;
+    }
+    if (combatant.singleton && combatant.hasIndexOraclesProxy) {
+      combatant.diceUp = (combatant.diceUp ?? 0) + 5;
+      // "Nhận 5/10/20 Protection và Regen mỗi turn khi Unlock - I/II/III".
+      const lvl = combatant.prescriptUnlockLevel ?? 0;
+      const amt = (SINGLETON_UNLOCK_PROTECTION ?? {})[lvl] ?? 0;
+      if (amt > 0) {
+        combatant.protection = (combatant.protection ?? 0) + amt;
+        combatant.regen = (combatant.regen ?? 0) + amt;
+      }
+    }
+    // ── UNDERTAKE PRESCRIPT (The Oracle's Proxy Prescript Device) ────────────
+    // "Nếu turn TRƯỚC hoàn thành ít nhất 1 sắc lệnh thì turn này hồi 10 Sanity.
+    //  Lần ĐẦU nhận Unlock I/II/III trong trận thì hồi thêm 10 Sanity nữa."
+    if (combatant.hasPrescriptDevice) {
+      let sanityGain = 0;
+      if (combatant.prescriptSucceededLastTurn) sanityGain += 10;
+      if (combatant.prescriptUnlockJustReached) { sanityGain += 10; combatant.prescriptUnlockJustReached = 0; }
+      if (sanityGain > 0 && applySanityGain) applySanityGain(combatant, sanityGain);
+    }
+    // Indulgence in Prescript — "sẽ biến mất khi end turn".
+    if ((combatant.indulgenceInPrescript ?? 0) > 0) combatant.indulgenceInPrescript = 0;
+    // Providence of the Prescript — "nhận Poise theo cách trên 3 lần thì TURN KẾ
+    // Crit Mul +0.3". Chốt sổ ở đây rồi reset bộ đếm.
+    if (combatant.hasProvidenceOfPrescript) {
+      combatant.providenceCritMulNextTurn = (combatant.providencePoiseProcsThisTurn ?? 0) >= 3;
+      combatant.providencePoiseProcsThisTurn = 0;
+    }
     // "The Strongest" (Red Mist) — 10 Dice Up + 4 Haste CỘNG THÊM lên nền trên
     // (tổng 13 Dice Up), "kéo dài tới khi hết Manifested E.G.O".
     if (combatant.theStrongestActive) {
@@ -461,7 +530,9 @@ module.exports = function ({ applyHpLoss, endManifestedEgoState, hasPerk, ENCOUN
       combatant.tacticalSuppressionTurnsLeft -= 1;
       if (combatant.tacticalSuppressionTurnsLeft <= 0) {
         const depleted = Math.max(0, combatant.tacticalSuppressionShieldGranted - (combatant.shieldHp ?? 0));
-        combatant.currentHp = Math.min(combatant.maxHp, combatant.currentHp + depleted);
+        // healHpCapped — khiên Tactical Suppression chưa dùng hết chuyển lại
+        // thành HP, cũng KHÔNG được lấp vào máu ảo của Compassion.
+        healHpCapped(combatant, depleted);
         combatant.tacticalSuppressionActive = false;
         combatant.tacticalSuppressionShieldGranted = 0;
         if (!combatant.tacticalSuppressionCdPending) {

@@ -52,6 +52,86 @@ module.exports = {
   // Imitation đã tiêu) sẽ không bao giờ chạm tới được.
   IMITATION_MAX: 10,
 
+  // ── ORACLE DEVICE [CADUCEUS] — 9 mặt của "Will of Hermes" ─────────────────
+  // TRƯỚC ĐÂY chỉ tồn tại dạng 9 CHUỖI trong index.js (`PRESCRIPT_TABLE`) nên
+  // không code nào đọc được base dmg / type / stamina — lệnh `-caduceus` chỉ in
+  // chữ ra cho GM tự tính. Nay là DỮ LIỆU THẬT để đánh trong encounter.
+  //
+  // `dmg` dùng làm base dmg khi M1, VÀ làm **Dice Value** khi dùng Critical
+  // (Fragaria: "M1 thì không có Dice Value, nhưng khi dùng Critical thì Base Dmg
+  // của mỗi loại vũ khí của Caduceus sẽ trở thành Dice Value nhằm phục vụ việc
+  // bonus từ sanity và clash").
+  CADUCEUS_DICE: [
+    { n: 1, name: "When hacking through the ribs with a hatchet...",                          dmg: 8,  type: "Blunt",  stamina: 5,  effect: "self:poise:2",        desc: "nhận 2 Poise" },
+    { n: 2, name: "When penetrating the lungs with a stiletto...",                            dmg: 8,  type: "Pierce", stamina: 5,  effect: "foe:sinking:2",       desc: "gây 2 Sinking" },
+    { n: 3, name: "When cleaving through the shoulder and the skull with a bastard sword...", dmg: 15, type: "Slash",  stamina: 10, effect: "self:dmgUpNextTurn:10", desc: "bản thân +10% Dmg turn sau (2 lần/turn)" },
+    { n: 4, name: "When punching 10 or more holes in the torso with a rapier...",             dmg: 15, type: "Pierce", stamina: 10, effect: "foe:takeDmg:5",       desc: "địch nhận thêm 5% Dmg turn này (2 lần/turn)" },
+    { n: 5, name: "When caving in the back of the skull with a hammer...",                    dmg: 15, type: "Blunt",  stamina: 10, effect: "foe:drainStamina:50", desc: "giảm 50 Stamina địch" },
+    { n: 6, name: "When rending the body with a greatsword...",                               dmg: 24, type: "Slash",  stamina: 20, effect: "foe:takeDmgType:10",  desc: "địch nhận thêm 10% Dmg từ Slash turn này (2 lần/turn)" },
+    { n: 7, name: "When boring a 20-inch hole with a lance...",                               dmg: 24, type: "Pierce", stamina: 20, effect: "foe:takeDmgType:10",  desc: "địch nhận thêm 10% Dmg từ Pierce turn này (2 lần/turn)" },
+    { n: 8, name: "When ripping the flesh to ten thousand strips with a whip...",             dmg: 24, type: "Blunt",  stamina: 20, effect: "foe:takeDmgType:10",  desc: "địch nhận thêm 10% Dmg từ Blunt turn này (2 lần/turn)" },
+    { n: 9, name: "When lacerating through space itself with a scythe, like a certain someone...", dmg: 30, type: "Slash", stamina: 20, effect: "self:alwaysCrit", desc: "100% gây critical dmg" },
+  ],
+
+  // 3 bậc Critical thường của Caduceus — số dice roll và bonus khi ra ĐÚNG type.
+  // Tên đủ 3 type mỗi bậc, đúng thứ tự Blunt / Pierce / Slash.
+  CADUCEUS_CRIT_TIERS: [
+    { tier: 1, rolls: 2, bonusPct: 30, cd: 1, tags: [],
+      names: { Blunt: "Slam Down with Weight, Topple the Body", Pierce: "Lay Vertical The End, Insert Up to the Wick", Slash: "Lay the Blade on its Side, Slice Like a Severed Breath" } },
+    { tier: 2, rolls: 3, bonusPct: 40, cd: 2, tags: ["Guard Break"],
+      names: { Blunt: "Swing to Fell, Have it Meet the Ground", Pierce: "Aim Toward a Point, Let it Echo Within", Slash: "Carve at a Low Slant, Peel What Remains" } },
+    { tier: 3, rolls: 4, bonusPct: 50, cd: 3, tags: ["Guard Break", "Undodgeable"],
+      names: { Blunt: "Destroy the Sound, Crush Flat the Thought", Pierce: "Stab the Silence's Heart, Penetrate the Memory", Slash: "With Tempered Secret, Cut the Form" } },
+  ],
+
+  // 3 biến thể Furioso — mở theo Unlock I/II/III, đều cần ĐỦ 9 Procuration.
+  CADUCEUS_FURIOSO: [
+    { unlock: 1, name: "Furioso Replica",              bleed: 3, bind: 1, fragile: 1, diceMul: 1 },
+    { unlock: 2, name: "Furioso [Crescendo]",          bleed: 4, bind: 2, fragile: 2, diceMul: 1.25 },
+    { unlock: 3, name: "Furioso [Lacrimosa-Crescendo]", bleed: 5, bind: 3, fragile: 3, diceMul: 1.5 },
+  ],
+
+  // ── THE INDEX ORACLE'S PROXY (outfit) ─────────────────────────────────────
+  // Sắc lệnh: MỖI TURN gieo **2 dice** 1–7 (bản cũ chỉ 1 dice và bảng khác hẳn).
+  // ⚠️ "turn" ở đây = MỘT VÒNG TURN ORDER, không phải lượt riêng của từng người.
+  PRESCRIPT_RULES: {
+    1: { label: "Tấn công ít nhất một lần" },
+    2: { label: "Thực hiện hành động phòng thủ ít nhất một lần" },
+    3: { label: "Một hành động phòng thủ VÀ một hành động tấn công trong turn này" },
+    4: { label: "Clash với 1 skill của kẻ địch trong turn" },
+    5: { label: "Dùng vũ khí Blunt tấn công kẻ địch" },
+    6: { label: "Dùng vũ khí Pierce tấn công kẻ địch" },
+    7: { label: "Dùng vũ khí Slash tấn công kẻ địch" },
+  },
+  PRESCRIPT_DICE_PER_TURN: 2,
+  KARMIC_PER_FAILURE: 5,
+  KARMIC_MAX: 100,
+  // Grace cần cho Unlock I / II / III.
+  UNLOCK_THRESHOLDS: [3, 6, 9],
+  // Protection + Regen mỗi turn khi Singleton, theo bậc Unlock.
+  SINGLETON_UNLOCK_PROTECTION: { 1: 5, 2: 10, 3: 20 },
+  // Procuration [Hermes] — 1 stack cho MỖI mặt dice dùng LẦN ĐẦU ⇒ trần đúng 9.
+  PROCURATION_MAX: 9,
+  FURIOSO_KARMIC_COST: 35,
+
+  // Faction/Title — điều kiện của bộ The Index. Dùng `-setplayer faction:`/`title:`.
+  FACTION_THE_INDEX: "The Index Syndicate",
+
+  // ── SIZZLING WOUND ────────────────────────────────────────────────────────
+  // Injury ĐẶC BIỆT: KHÔNG rơi ngẫu nhiên như MINOR/SEVERE_INJURIES, chỉ GM gán,
+  // và VĨNH VIỄN — `-heal injury:` / dropdown chữa trị KHÔNG gỡ được, chỉ GM.
+  SIZZLING_WOUND: "Sizzling Wound",
+  SIZZLING_WOUND_DESC: "Nhận thêm 50% Dmg từ Burn và Bleed. Vĩnh viễn — chỉ GM gỡ được.",
+  SIZZLING_WOUND_BURN_BLEED_MUL: 1.5,
+
+  // Caduceus — 1 charge phòng thủ ứng với BAO NHIÊU Stamina đòn đánh thường.
+  // Fragaria: *"charge defense cho M1 của Caduceus dựa vào Stamina tiêu thụ của
+  // từng dice: lưỡi hái 20 stamina tiêu 1 charge, rìu 5 stamina thì 4 đòn rìu
+  // mới cần 1 charge."* ⇒ 20 Stamina = 1 charge, KHÔNG dùng WEAPON_DEFENSE_HITS
+  // theo weight như vũ khí thường (Caduceus đổi weight mỗi lần roll nên bảng
+  // theo weight vô nghĩa với nó).
+  CADUCEUS_STAMINA_PER_CHARGE: 20,
+
   // -encounter setstatus: 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/
   // Chain) — max cap dùng CHUNG 99, xác nhận trực tiếp: "các stack tremor này đều
   // có max count là 99".
