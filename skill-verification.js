@@ -368,7 +368,18 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceMo
       // skill Min Dice sẽ giảm 1 count Paralyze" — nhất quán với cooldown/Light/
       // Sanity ở trên (đều trừ/áp dụng NGAY lúc declare, không đợi confirm, theo
       // đúng thiết kế gốc của hàm này — roll skill là RNG thật, không thể "hoãn").
+      // Shattered E.G.O ("The Strongest" — Manifested E.G.O: Red Mist, sau khi
+      // bị Stagger trong lúc Manifest): "mọi Dice bạn gieo đều CHẮC CHẮN ra Min
+      // Dice trong 3 Turn". Dùng CHUNG đường forceMinDice với Paralyze — nhưng
+      // KHÔNG tiêu `paralyze` (Shattered đếm turn riêng ở turn-advance.js).
+      const hasShatteredEgo = (attacker.shatteredEgoTurnsLeft ?? 0) > 0;
       const hasParalyze = (attacker.paralyze ?? 0) > 0;
+      // "The Strongest": toàn bộ Dice ra Max Dice trong suốt Manifest.
+      // Cờ `theStrongestActive` do encounter-actions.js bật lúc Manifest và
+      // turn-advance.js tắt lúc hết — KHÔNG suy lại từ ego.js ở đây để không
+      // phải kéo thêm dependency vào skill-verification (module này vốn không
+      // biết gì về E.G.O).
+      const wantMaxDice = attacker.theStrongestActive === true && !hasParalyze && !hasShatteredEgo;
       // Freeble (xác nhận trực tiếp): "giảm số dice bằng số count của MỌI skill
       // trong turn của kẻ địch" — trừ trực tiếp vào diceModifier (cùng cơ chế với
       // Dice Up/Down, r() đã tự clamp không dưới 1 — xem comment ở skills.js).
@@ -458,7 +469,7 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceMo
         ? [...promptRollArgs, String(reuseTimesResolved)]
         : (promptRollArgs.length ? promptRollArgs : variantRollArgs);
       const autoResult = autoBuildDmgStrFromSkillRoll(skill, {
-        forceMinDice: hasParalyze, diceModifier,
+        forceMinDice: hasParalyze || hasShatteredEgo, forceMaxDice: wantMaxDice, diceModifier,
         rollArgs: unlockRollArgs.length ? unlockRollArgs
           : (chargeRollArgs.length ? chargeRollArgs
             : (cloudCutterRollArgs.length ? cloudCutterRollArgs : combinedRollArgs)),

@@ -13,6 +13,8 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
   function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, eyeOfHorusNewCount = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
     let bonusPct = attacker.gmBonusPctOverride ?? 0;
+    // Hệ số nhân THẲNG vào dmg cuối (không đi qua saturateBonusPct). Mặc định 1.
+    let outgoingDmgMul = 1;
     // "Dullahan" (Fused Blade passive) — xác nhận trực tiếp: "Khi có Dullahan
     // bạn nhận được 30% Dmg gây ra".
     if ((attacker.dullahanStacks ?? 0) > 0) bonusPct += 30;
@@ -108,7 +110,13 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // → +5% Dmg Bonus kéo dài tới hết Encounter, cap 50% (= 10 Imitation tiêu).
     // Không cần check weaponName ở đây — imitationConsumedTotal chỉ tăng khi
     // dùng ĐÚNG Great Split với Mimicry Blade (xem index.js), không nơi nào khác.
-    bonusPct += Math.min(50, (attacker.imitationConsumedTotal ?? 0) * 5);
+    // "The Mimic" (Manifested E.G.O: Red Mist) — Ở DẠNG LƯỠI HÁI: "hiệu ứng Dmg
+    // Bonus từ Passive The Imitation được gia tăng GẤP ĐÔI" ⇒ nhân đôi cả cap
+    // (50% → 100%), không phải nhân đôi rồi vẫn kẹp 50% — kẹp 50% sẽ khiến
+    // passive vô tác dụng với mọi ai đã tiêu ≥10 Imitation, tức đúng nhóm người
+    // chơi mà nó dành cho.
+    const imitationMul = (attacker.mimicSyncActive && attacker.mimicryForm === "scythe") ? 2 : 1;
+    bonusPct += Math.min(50 * imitationMul, (attacker.imitationConsumedTotal ?? 0) * 5 * imitationMul);
     // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit, batch 5) — "The
     // Udjat" (Udjat Khopesh): mỗi 1 Protection hiện có → +1% Dmg Bonus (không
     // tiêu thụ, khác The Imitation — chỉ cần ĐANG CÓ, không cap theo document
@@ -148,7 +156,15 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     if (hasPerk(attacker, "Battle Ignition") && (attacker.lastTurnAttackCount ?? 0) >= 10) bonusPct += 15;
     // Manifested E.G.O đang active: +30% Dmg M1+skill bản thân gây ra — cơ chế GỐC
     // của game (không phải Skill Tree perk), không cần hasPerk gate.
-    if (attacker.manifestedEGO) bonusPct += 30;
+    // "The Strongest" (Manifested E.G.O: Red Mist) ghi ĐÈ mức chung: "nhận 100%
+    // Dmg Bonus". KHÔNG cộng dồn 30 + 100 — spec nêu con số tuyệt đối cho trạng
+    // thái Manifest, không phải "thêm 100 nữa".
+    if (attacker.manifestedEGO) bonusPct += attacker.theStrongestActive ? 100 : 30;
+    // Shattered E.G.O — "mọi sát thương của bản thân bị giảm MỘT NỬA" trong 3
+    // Turn. Đây là chia đôi dmg CUỐI, không phải -50% bonus: -50 vào bonusPct sẽ
+    // đi qua saturateBonusPct (đường cong bão hoà) nên KHÔNG ra đúng một nửa.
+    // Xử lý bằng hệ số nhân riêng `outgoingDmgMul` (xem nơi đọc ở damage-calc).
+    if ((attacker.shatteredEgoTurnsLeft ?? 0) > 0) outgoingDmgMul *= 0.5;
     // Chấn thương nặng "Mất tay": -50% sát thương gây ra — cơ chế GỐC, không cần unlock.
     if ((attacker.injuries ?? []).includes("Mất tay")) bonusPct -= 50;
     // Backdraft: Stamina ≤50 (xấp xỉ "lúc turn start" bằng Stamina hiện tại, vì không
@@ -309,7 +325,7 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
       attacker.blSalsuBonusDmgPending = 0;
     }
 
-    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus };
+    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus, outgoingDmgMul };
   }
   
 

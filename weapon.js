@@ -176,6 +176,31 @@ const WEAPONS = {
     passives: [{ name: "The Imitation", mechanicId: "mimicry_imitation", desc: "Mỗi 1 Imitation đã tiêu thụ sẽ gia tăng cho bạn 5% Dmg Bonus [Max: 50%]." }],
     criticalSkillKey: "upstanding slash",
   },
+  // ── Dạng CƯỜNG HOÁ TẠM THỜI của Mimicry Blade ────────────────────────────
+  // Chỉ tồn tại trong lúc Manifested E.G.O: Red Mist đang bật (passive "The
+  // Mimic"). Fragaria chốt: *"khi hết Manifested E.G.O đều tự động quay về
+  // Mimicry Blade, vì đây là một passive TẠM THỜI biến đổi vũ khí hiện tại; nó
+  // vẫn giữ 3 loại Critical của Mimicry Blade"*.
+  // ⇒ KHÔNG có đường sở hữu/equip món này (không nằm trong VALID_ITEMS, không
+  //   rơi từ sách). Combatant được ghi đè chỉ số lúc Manifest và khôi phục lúc
+  //   Manifest tắt (xem applyMimicSynchronization/revertMimicSynchronization
+  //   trong combat-utils.js).
+  // ⇒ `criticalSkillKey` GIỮ NGUYÊN "upstanding slash" — 3 Critical (Upstanding
+  //   Slash / Great Split: Vertical / Great Split: Horizontal) không đổi.
+  // 2 dạng: kiếm (mặc định) và lưỡi hái. Người chơi tự đổi qua nút ở panel
+  // Special, đổi bao nhiêu lần trong turn cũng được (Fragaria xác nhận).
+  "mimicry synchronization": {
+    name: "Mimicry: Synchronization", weight: "medium", type: "Slash", baseDamage: 28,
+    forms: {
+      sword:  { label: "Kiếm",     weight: "medium", type: "Slash", baseDamage: 28 },
+      scythe: { label: "Lưỡi hái", weight: "heavy",  type: "Slash", baseDamage: 56 },
+    },
+    passives: [
+      { name: "The Imitation", mechanicId: "mimicry_imitation", desc: "Mỗi 1 Imitation đã tiêu thụ sẽ gia tăng cho bạn 5% Dmg Bonus [Max: 50%]. Ở dạng lưỡi hái, hiệu ứng này được **gia tăng gấp đôi**." },
+      { name: "The Mimic", desc: "Hai dạng: **Kiếm** (28 Base Dmg · Slash · Medium) và **Lưỡi hái** (56 Base Dmg · Slash · Heavy). Yêu cầu HP để dùng **Great Split: Horizontal** được gỡ bỏ." },
+    ],
+    criticalSkillKey: "upstanding slash",
+  },
   "augury spear": {
     name: "Augury Spear", weight: "light", type: "Pierce", baseDamage: 6,
     passives: [{ name: "Rotate Trigram", desc: "Vào đầu mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam -> Ri -> lặp lại." }],

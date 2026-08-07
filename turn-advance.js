@@ -8,7 +8,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
+module.exports = function ({ endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
 
   function advanceCombatantTurn(combatant) {
     combatant.currentSpeed = null; // phải roll lại mỗi turn mới (xem -encounter rollspeed)
@@ -273,14 +273,47 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // Manifest E.G.O — đếm ngược Duration (Level×3 turn), hết thì tắt + vào CD 5 turn.
     // Nếu KHÔNG active, đếm ngược CD nếu có.
     if (combatant.manifestedEGO) {
+      // "The Strongest" — kiểm tra NGƯỠNG DMG *TRƯỚC* khi trừ turn: điều kiện là
+      // "nếu trong 1 TURN bạn không gây ra dmg tối thiểu 15% Max HP của kẻ địch"
+      // ⇒ chấm ở cuối turn đó. `dmgDealtByTargetThisTurn` bị RESET về 0 ở cuối
+      // chính hàm này, nên đọc muộn hơn là luôn ra 0 (đúng cái bẫy đã dính 1 lần
+      // với Astral Quantization/Swan Song — xem HANDOFF).
+      if (combatant.theStrongestActive) {
+        const perTarget = combatant.dmgDealtByTargetThisTurn ?? {};
+        const enemyMaxHps = combatant.theStrongestEnemyMaxHpSnapshot ?? {};
+        // "dmg tối thiểu bằng 15% Max HP CỦA KẺ ĐỊCH" — đủ điều kiện nếu có ÍT
+        // NHẤT 1 kẻ địch bị ăn ≥15% Max HP của chính nó. Dùng ngưỡng theo TỪNG
+        // mục tiêu (không phải tổng dmg) vì spec viết "của kẻ địch" số ít.
+        let reached = false;
+        for (const [tid, dealt] of Object.entries(perTarget)) {
+          const maxHp = enemyMaxHps[tid];
+          if (!maxHp) continue;
+          if (dealt >= maxHp * 0.15) { reached = true; break; }
+        }
+        if (!reached) {
+          const penalty = Math.floor((combatant.maxStamina ?? 0) * 0.5);
+          combatant.currentStamina = Math.max(0, (combatant.currentStamina ?? 0) - penalty);
+          combatant.theStrongestPenaltyNote = `🔥 **The Strongest** — turn này không gây đủ 15% Max HP lên kẻ địch nào ⇒ −${penalty} Stamina.`;
+        } else {
+          combatant.theStrongestPenaltyNote = null;
+        }
+      }
       combatant.manifestedEGOTurnsLeft -= 1;
       if (combatant.manifestedEGOTurnsLeft <= 0) {
-        combatant.manifestedEGO = false;
-        combatant.manifestedEGOCooldownLeft = 5;
+        // Đi qua endManifestedEgoState để TRẢ LẠI mọi thứ đã cấp (Max Stamina,
+        // vũ khí Mimicry: Synchronization → Mimicry Blade). Tự set
+        // `manifestedEGO = false` ở đây như bản cũ sẽ để combatant kẹt vĩnh viễn
+        // với +100 Max Stamina và cây vũ khí biến hình.
+        combatant.manifestEndNote = endManifestedEgoState
+          ? endManifestedEgoState(combatant)
+          : (combatant.manifestedEGO = false, combatant.manifestedEGOCooldownLeft = 5, "");
       }
     } else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) {
       combatant.manifestedEGOCooldownLeft -= 1;
     }
+    // Shattered E.G.O — 3 Turn (dmg ×0.5 + mọi Dice ra Min Dice). Đếm ngược
+    // ĐỘC LẬP với Manifest: nó chỉ tồn tại SAU khi Manifest đã bị cắt.
+    if ((combatant.shatteredEgoTurnsLeft ?? 0) > 0) combatant.shatteredEgoTurnsLeft -= 1;
     // K-Corp Ampule — CD 2 turn RIÊNG của item này (xem -encounter useitem).
     if ((combatant.kCorpAmpuleCooldownLeft ?? 0) > 0) {
       combatant.kCorpAmpuleCooldownLeft -= 1;
@@ -366,6 +399,20 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // nào cộng nó vào `diceUp`. Nửa "Dice Up" của perk chưa từng có tác dụng;
     // chỉ nửa `overchargedDmgBonusPct` chạy (qua attacker-perk-context.js).
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) combatant.diceUp += (combatant.overchargedDiceUpBonus ?? 0);
+    // "The Strongest" (Manifested E.G.O: Red Mist) — 10 Dice Up + 4 Haste "kéo
+    // dài TỚI KHI HẾT Manifested E.G.O", nhưng `diceUp` và `haste` đều bị reset
+    // về 0 ở ngay trên trong CÙNG hàm này ⇒ phải cộng LẠI mỗi turn, đúng khuôn
+    // blackSuitPersistentBonus/Augury Kick ngay bên cạnh.
+    if (combatant.theStrongestActive) {
+      combatant.diceUp = (combatant.diceUp ?? 0) + 10;
+      combatant.haste = Math.min(20, (combatant.haste ?? 0) + 4);
+    }
+    // "The Red Mist" — 5 Dice Up mỗi kẻ địch đã hạ, "kéo dài TỚI HẾT ENCOUNTER".
+    // KHÔNG gate theo manifestedEGO: Dice Up đã nhận thì giữ tới hết trận kể cả
+    // sau khi Manifest tắt (chỉ việc NHẬN mới cần đang Manifest).
+    if ((combatant.redMistPersistentDiceUp ?? 0) > 0) {
+      combatant.diceUp = (combatant.diceUp ?? 0) + combatant.redMistPersistentDiceUp;
+    }
     combatant.diceUp += (combatant.blackSuitPersistentBonus ?? 0); // "Black Suit" — GAP MỚI: Dice Up từ Emotion Level KÉO DÀI hết encounter, cộng LẠI ngay sau reset mỗi turn (TRƯỚC khi Rotate Trigram/Geon áp +3 riêng, để không bị ghi đè mất).
     // "Rotate Trigram" (Augury Spear passive) — xác nhận trực tiếp: "Vào đầu
     // mỗi turn start bạn nhận được các buff theo thứ tự sau Geon -> Gon -> Gam

@@ -162,14 +162,38 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, findSingulari
     // (bản mạnh hơn, AOE 4 người), không thì Vertical.
     let criticalKeyFinal = criticalKeyEffective;
     let mimicryNote = "";
-    if (combatant.weaponName === "Mimicry Blade" && (combatant.imitation ?? 0) >= 5) {
+    // `mimicSyncActive` = đang ở Mimicry: Synchronization (The Mimic, Manifested
+    // E.G.O: Red Mist) — vũ khí đổi tên nên check `weaponName === "Mimicry Blade"`
+    // trần sẽ TẮT MẤT toàn bộ cơ chế Great Split đúng lúc nó mạnh nhất.
+    const isMimicryLine = combatant.weaponName === "Mimicry Blade" || combatant.mimicSyncActive;
+    let extraMimicryOption = null;
+    if (isMimicryLine && (combatant.imitation ?? 0) >= 5) {
       const lowHp = combatant.maxHp > 0 && combatant.currentHp < combatant.maxHp * 0.3;
-      criticalKeyFinal = lowHp ? "great split horizontal" : "great split vertical";
-      mimicryNote = lowHp ? " (tiêu 5 Imitation, <30% HP)" : " (tiêu 5 Imitation)";
+      if (combatant.mimicSyncActive) {
+        // "Yêu cầu HP để sử dụng Great Split: Horizontal được gỡ bỏ" ⇒ KHÔNG
+        // chọn hộ theo HP nữa, hiện CẢ HAI để người chơi tự quyết (Vertical
+        // 2x dice đơn mục tiêu vs Horizontal 3x dice AOE 4 người).
+        criticalKeyFinal = "great split vertical";
+        mimicryNote = " (tiêu 5 Imitation)";
+        extraMimicryOption = "great split horizontal";
+      } else {
+        criticalKeyFinal = lowHp ? "great split horizontal" : "great split vertical";
+        mimicryNote = lowHp ? " (tiêu 5 Imitation, <30% HP)" : " (tiêu 5 Imitation)";
+      }
     }
     const criticalSkill = criticalKeyFinal ? findSkill(criticalKeyFinal) : null;
     if (criticalSkill) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}${mimicryNote}`.slice(0, 100)).setValue(`critical:${criticalSkill.name}`));
+    }
+    // Great Split: Horizontal — chỉ có mặt song song khi The Mimic đang bật.
+    if (extraMimicryOption) {
+      const extraSkill = findSkill(extraMimicryOption);
+      if (extraSkill) {
+        options.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`⚡ Critical: ${extraSkill.name} (tiêu 5 Imitation)`.slice(0, 100))
+          .setDescription("The Mimic — đã gỡ yêu cầu <30% HP · 3x dice, AOE 4 người".slice(0, 100))
+          .setValue(`critical:${extraSkill.name}`));
+      }
     }
     // ── CRITICAL THỨ 2 (BUG ĐÃ SỬA — Fragaria: "khi xài mấy weap không kích
     // crit-2 khi đủ condition... Index Longsword, Mook Workshop, Brawler" +
@@ -315,6 +339,20 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, findSingulari
     }
     if (combatant.weaponName === "Soldato Rifle") {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`🔫 Reload (${combatant.bulletStack ?? 0}/8 đạn trong súng)`).setValue("reload"));
+    }
+    // "The Mimic" (Manifested E.G.O: Red Mist) — đổi dạng Mimicry: Synchronization.
+    // Fragaria: "Họ sẽ có 1 nút ở Special để chuyển dạng lưỡi hái hay kiếm trong
+    // turn tùy ý thích" ⇒ không giới hạn số lần/turn, không tốn Light/lượt.
+    // Gate bằng `mimicSyncActive` (cờ do combat-utils bật) chứ không phải
+    // weaponName — cờ đó chỉ bật khi ĐANG Manifest VÀ vốn cầm Mimicry Blade.
+    if (combatant.mimicSyncActive) {
+      const toScythe = combatant.mimicryForm !== "scythe";
+      options.push(new StringSelectMenuOptionBuilder()
+        .setLabel(toScythe ? "🌾 Đổi sang dạng Lưỡi hái (56/Slash/Heavy)" : "🗡️ Đổi sang dạng Kiếm (28/Slash/Medium)")
+        .setDescription(toScythe ? "Dmg Bonus của The Imitation ×2" : "Nhẹ hơn — tốn ít Stamina hơn khi M1")
+        // Ghi RÕ dạng đích thay vì toggle mù: mở 2 panel rồi bấm cả hai thì
+        // toggle sẽ lật qua lật lại, còn ghi đích thì bấm mấy lần cũng ra đúng.
+        .setValue(toScythe ? "mimicryform:scythe" : "mimicryform:sword"));
     }
     return options;
   }

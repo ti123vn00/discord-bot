@@ -20,7 +20,7 @@ const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 // Suy TRỰC TIẾP từ 3 ví dụ Fragaria đưa: light 5→5 · medium 10/2 · heavy 20/4.
 const RENEGADE_DIVISOR = { light: 1, medium: 2, heavy: 4 };
 
-module.exports = function ({ applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -53,6 +53,31 @@ async function resolveOnePendingAction(encounter, p) {
   const dailyKillHookPromises = [];
             const attacker = resolveCombatant(encounter, p.attackerId);
             if (!attacker) { resultLines.push(`⚠️ Bỏ qua 1 action — không tìm thấy attacker ${p.attackerId} (có thể đã rời encounter).`); return resultLines; }
+
+            // ── "The Red Mist" (Manifested E.G.O: Red Mist) ─────────────────
+            // "Bạn được hồi máu dựa vào 4% sát thương gây ra."
+            // Tính CỜ MỘT LẦN ở đây thay vì gọi hasEgoMechanic() trong vòng lặp
+            // hit (chạy tới hàng chục lần mỗi action). Cộng dồn vào
+            // redMistHealTotal rồi in MỘT dòng — in mỗi hit sẽ ngập log.
+            const redMistLifestealActive = attacker.combatant
+              ? hasEgoMechanic(attacker.combatant, "redmist_the_red_mist")
+              : false;
+            let redMistHealTotal = 0;
+            // The Mimic — page nào khai `mimicryFormOnUse` thì tự chuyển dạng
+            // Mimicry ("Biến Mimicry trở thành một cây lưỡi hái" nằm ngay trong
+            // text của Reaching Hand / Dense Flesh). Chỉ đổi khi ĐANG ở dạng
+            // Mimicry: Synchronization — page dùng lúc không Manifest thì thôi.
+            {
+              const usedSkill = p.skillKey ? findSkill(p.skillKey) : null;
+              if (usedSkill?.mimicryFormOnUse && attacker.combatant?.mimicSyncActive
+                  && attacker.combatant.mimicryForm !== usedSkill.mimicryFormOnUse) {
+                attacker.combatant.mimicryForm = usedSkill.mimicryFormOnUse;
+                attacker.combatant.weaponBaseDamage = usedSkill.mimicryFormOnUse === "scythe" ? 56 : 28;
+                attacker.combatant.weaponWeight = usedSkill.mimicryFormOnUse === "scythe" ? "heavy" : "medium";
+                attacker.combatant.weaponType = "Slash";
+                resultLines.push(`🗡️ **Mimicry: Synchronization** → dạng **${usedSkill.mimicryFormOnUse === "scythe" ? "Lưỡi hái" : "Kiếm"}** (theo ${usedSkill.name}).`);
+              }
+            }
 
             // Stamina cost (chỉ attack mới có) — trừ 1 LẦN cho action này, KHÔNG
             // nhân theo số target (1 đòn M1 chỉ tốn Stamina 1 lần dù AOE).
@@ -627,10 +652,17 @@ async function resolveOnePendingAction(encounter, p) {
                     effectiveDiceEffects.forEach((effect, i) => {
                       if (!effect) return;
                       if (hitEvadedOrParried[i]) return; // GAP ĐÃ SỬA: chỉ Evade/Parry THÀNH CÔNG mới không dính hiệu ứng — Guard (kể cả 100% reduction) vẫn tính là "dính"
+                      // Cap theo TỪNG field — trước đây vòng lặp này cộng TRẦN
+                      // TRỤI, nên Imitation (và mọi field mới thêm sau) không có
+                      // giới hạn nào. Khai bảng thay vì if riêng cho từng field.
+                      const DICE_EFFECT_SELF_CAPS = { imitation: IMITATION_MAX ?? 10 };
                       for (const [key, field] of Object.entries(DICE_EFFECT_SELF_FIELDS)) {
                         const amount = effect[key];
                         if (!amount) continue;
-                        attacker.combatant[field] = (attacker.combatant[field] ?? 0) + amount;
+                        const capForField = DICE_EFFECT_SELF_CAPS[field];
+                        attacker.combatant[field] = capForField != null
+                          ? Math.min(capForField, (attacker.combatant[field] ?? 0) + amount)
+                          : (attacker.combatant[field] ?? 0) + amount;
                         // BUG ĐÃ SỬA: verifyNote CHƯA tồn tại ở scope này (khai
                         // báo sau, gây TDZ error "Cannot access before
                         // initialization") — dùng defenseNote (đã tồn tại sẵn).
@@ -873,6 +905,25 @@ async function resolveOnePendingAction(encounter, p) {
                 const tk = t.targetId;
                 attacker.combatant.dmgDealtByTargetThisTurn[tk] =
                   (attacker.combatant.dmgDealtByTargetThisTurn[tk] ?? 0) + finalDmg;
+                // "The Strongest" cần biết Max HP của TỪNG kẻ địch đã đánh, để
+                // cuối turn chấm ngưỡng "15% Max HP của kẻ địch" (turn-advance.js).
+                // Ghi Ở ĐÂY vì đây là chỗ DUY NHẤT biết chắc target là ai; snapshot
+                // lúc Manifest thì bỏ sót kẻ địch mới vào giữa trận.
+                if (attacker.combatant.theStrongestActive) {
+                  attacker.combatant.theStrongestEnemyMaxHpSnapshot = attacker.combatant.theStrongestEnemyMaxHpSnapshot ?? {};
+                  attacker.combatant.theStrongestEnemyMaxHpSnapshot[tk] = target.maxHp ?? 0;
+                }
+                // "The Red Mist" — "Bạn được hồi máu dựa vào 4% sát thương gây ra".
+                // Tính trên finalDmg (dmg THẬT sau phòng thủ/Res/DR), không phải
+                // preview. Đi qua healHpCapped để tôn trọng healCapHp (Memories:
+                // Compassion cộng Max HP ảo mà KHÔNG cho heal lên tới đó).
+                if (redMistLifestealActive) {
+                  const healAmt = Math.round(finalDmg * 0.04 * 1000) / 1000;
+                  if (healAmt > 0) {
+                    healHpCapped(attacker.combatant, healAmt);
+                    redMistHealTotal += healAmt;
+                  }
+                }
               }
               // ── RENEGADE (Lucent Historia) ────────────────────────────────
               // Fragaria đính chính luật: *"đồng đội NÀO CÓ Shield HP thì sẽ phản
@@ -987,6 +1038,18 @@ async function resolveOnePendingAction(encounter, p) {
               if (justDied) {
                 if (targetResolved.type === "enemy" && attacker.type === "player") {
                   applyEmotionDelta(attacker.combatant, 3);
+                  // "The Red Mist" (Manifested E.G.O: Red Mist) — "cứ mỗi một kẻ
+                  // địch bạn tiêu diệt được Ở TRONG TRẠNG THÁI Manifested E.G.O,
+                  // bản thân nhận 5 Dice Up kéo dài TỚI HẾT ENCOUNTER".
+                  // Gate `manifestedEGO` là bắt buộc: hạ địch lúc KHÔNG Manifest
+                  // thì không được gì. Cộng vào bộ đếm BỀN (redMistPersistentDiceUp)
+                  // chứ không vào `diceUp` — `diceUp` bị reset mỗi turn, cộng
+                  // thẳng vào đó là mất sạch ngay turn sau.
+                  if (hasEgoMechanic(attacker.combatant, "redmist_the_red_mist")) {
+                    attacker.combatant.redMistPersistentDiceUp = (attacker.combatant.redMistPersistentDiceUp ?? 0) + 5;
+                    attacker.combatant.diceUp = (attacker.combatant.diceUp ?? 0) + 5;
+                    resultLines.push(`🩸 **The Red Mist** — hạ ${targetResolved.label ?? "kẻ địch"}: +5 Dice Up tới hết Encounter (tổng ${attacker.combatant.redMistPersistentDiceUp}).`);
+                  }
                   // Stage 5 (cuối) — nhiệm vụ 3 của -daily, biến thể "killmobs"
                   // ("hạ 3 mob/boss bất kỳ") — tăng đếm mỗi khi player hạ 1 enemy
                   // (bất kỳ encounter nào, quest hay GM thường — "mob/boss bất kỳ"
@@ -1861,7 +1924,7 @@ async function resolveOnePendingAction(encounter, p) {
               if (sfx && attacker.type === "player") {
                 const selfParts = [];
                 if (sfx.selfImitation > 0) {
-                  attacker.combatant.imitation = (attacker.combatant.imitation ?? 0) + sfx.selfImitation;
+                  attacker.combatant.imitation = Math.min(IMITATION_MAX ?? 10, (attacker.combatant.imitation ?? 0) + sfx.selfImitation);
                   selfParts.push(`+${sfx.selfImitation} Imitation (tổng ${attacker.combatant.imitation})`);
                 }
                 if (sfx.selfLight > 0) {
@@ -1984,7 +2047,7 @@ async function resolveOnePendingAction(encounter, p) {
               verifyNote += ` 🗝️[Đã tiêu **Unlocked Blade** — chuỗi Unlock reset về 0]`;
             }
             if (p.skillKey === "upstanding slash" && attacker.type === "player") {
-              attacker.combatant.imitation = (attacker.combatant.imitation ?? 0) + totalHitsThisActionAny;
+              attacker.combatant.imitation = Math.min(IMITATION_MAX ?? 10, (attacker.combatant.imitation ?? 0) + totalHitsThisActionAny);
               verifyNote += ` 🗡️[+${totalHitsThisActionAny} Imitation, tổng ${attacker.combatant.imitation}]`;
             }
             // BUG ĐÃ SỬA (cùng lỗi dấu ":" như ở skill-verification.js) —

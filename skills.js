@@ -52,6 +52,29 @@ function stopForceMinDice() {
   forceMinDiceActive = false;
 }
 
+// ─── ÉP MAX DICE — đối xứng với forceMinDice ở trên ─────────────────────────
+// Nguồn hiện có: passive "The Strongest" (Manifested E.G.O: Red Mist) — "toàn
+// bộ Dice bạn gieo đều CHẮC CHẮN ra Max Dice".
+//
+// ⚠️ KHÁC forceMinDice ở đúng MỘT điểm: forceMinDice trả THẲNG `min`, BỎ QUA
+// diceModifier (Paralyze là debuff — Dice Up không được cứu). Còn "The Strongest"
+// cấp Max Dice VÀ 10 Dice Up trong CÙNG một passive, nên nếu ở đây cũng bỏ qua
+// diceModifier thì 10 Dice Up kia thành vô nghĩa — tự passive mâu thuẫn với
+// chính nó. Vì vậy: `max + diceModifierActive`.
+//
+// Nếu cả hai cùng bật thì MIN thắng (debuff ưu tiên). Thực tế không xảy ra —
+// Shattered E.G.O chỉ tồn tại SAU khi Manifest đã tắt — nhưng vẫn định nghĩa
+// rõ để không phụ thuộc vào may mắn.
+let forceMaxDiceActive = false;
+
+function startForceMaxDice() {
+  forceMaxDiceActive = true;
+}
+
+function stopForceMaxDice() {
+  forceMaxDiceActive = false;
+}
+
 // ─── DICE UP/DOWN (Value Power Up/Down) — cộng/trừ trực tiếp vào kết quả roll ──
 // "Dice Up: +1 Dice. Biến mất sau End Turn" / "Dice Down: -1 Dice..." (xác nhận
 // trực tiếp) — CÙNG side-channel pattern, khác Paralyze ở chỗ đây là CỘNG THÊM
@@ -89,6 +112,8 @@ function r(min, max) {
   let result;
   if (forceMinDiceActive) {
     result = min;
+  } else if (forceMaxDiceActive) {
+    result = Math.max(1, max + diceModifierActive);
   } else {
     result = Math.max(1, Math.floor(Math.random() * (max - min + 1)) + min + diceModifierActive);
   }
@@ -96,7 +121,7 @@ function r(min, max) {
     // Emotion Coin tính theo kết quả GỐC (trước Dice Up/Down) để giữ đúng ý nghĩa
     // "roll đúng max/min của DICE GỐC" — Dice Up/Down là buff cộng thêm bên ngoài,
     // không phải bản chất của dice đó.
-    const rawResult = forceMinDiceActive ? min : result - diceModifierActive;
+    const rawResult = forceMinDiceActive ? min : (forceMaxDiceActive ? max : result - diceModifierActive);
     emotionTracker.push({ min, max, result: rawResult, delta: computeEmotionDelta(min, max, rawResult) });
   }
   return result;
@@ -2632,6 +2657,38 @@ roll(v = "no") {
       ];
     },
   },
+  // ── E.G.O PAGE của "Manifested E.G.O: Red Mist" (ego.js key `redmist`) ──────
+  // KHÔNG phải "E.G.O Page" theo nghĩa slot ZAYIN/TETH/HE/WAW/ALEPH (thứ đó có
+  // tag <:The_Library:...> và equip vào `equippedEgoPages`). Đây là page RIÊNG
+  // của một Manifested E.G.O: chỉ hiện trong dropdown Moves khi người chơi ĐANG
+  // bật Manifest, lọc qua `egoSkillKeysFor(combatant)` (ego.js). Cùng khuôn với
+  // Falco Berigora / Wedjat (Hoshino) — nên dùng `weaponOf` + tags "Weapon".
+  "reaching hand": {
+    name: "Reaching Hand", weaponOf: "Manifested E.G.O: Red Mist", tags: "Weapon",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
+    // mimicryFormOnUse — dùng page này thì Mimicry chuyển sang dạng LƯỠI HÁI
+    // ("Biến Mimicry trở thành một cây lưỡi hái"). Đọc ở resolve-pending-action.js.
+    mimicryFormOnUse: "scythe",
+    roll() {
+      const d1 = r(12, 20);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] — Biến Mimicry trở thành một cây lưỡi hái sau đó bổ dọc kẻ địch, gây 4 <:Bleed:1513762688226955285>Bleed, nhận 4 <:Imitation:1513769425063514173>Imitation và hồi 45 HP`,
+      ];
+    },
+  },
+  "dense flesh": {
+    name: "Dense Flesh", weaponOf: "Manifested E.G.O: Red Mist", tags: "Weapon",
+    cost: "6 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1.5x",
+    mimicryFormOnUse: "scythe",
+    roll() {
+      const d1 = r(8, 14), d2 = r(8, 14), d3 = r(8, 14);
+      return [
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] — Biến Mimicry trở thành một cây lưỡi hái sau đó lướt lên cắt ngang kẻ địch bằng 3 lần xoay, gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed, gắn 1 <:Hemorrhage:1513762688226955285>Hemorrhage`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Guard Break] [Undodgeable] — gây 2 <:Bleed:1513762688226955285>Bleed, nhận 2 <:Imitation:1513769425063514173>Imitation và hồi 70 HP`,
+      ];
+    },
+  },
   "great split horizontal": {
     name: "Great Split: Horizontal", weaponOf: "Mimicry Blade", tags: "Weapon",
     cost: "Tiêu 5 Imitation, cần bản thân dưới 30% HP", cd: "—", diceMul: "3x",
@@ -4238,6 +4295,10 @@ const SKILL_ALIASES = {
   "gsv": "great split vertical",
   "greatsplithorizontal": "great split horizontal",
   "gsh": "great split horizontal",
+  "reachinghand": "reaching hand",
+  "rhand": "reaching hand",
+  "denseflesh": "dense flesh",
+  "dflesh": "dense flesh",
   "dimensionalriftdagger": "dimensional rift dagger",
   "drd": "dimensional rift dagger",
   "dimensionalriftgauntlets": "dimensional rift gauntlets",
@@ -5435,9 +5496,10 @@ function buildReuseVariants(skill, resourceNow) {
   return opts;
 }
 
-function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifier = 0, rollArgs = [], repeatTimes = 1 } = {}) {
+function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDice = false, diceModifier = 0, rollArgs = [], repeatTimes = 1 } = {}) {
   startEmotionTracking();
   if (forceMinDice) startForceMinDice();
+  else if (forceMaxDice) startForceMaxDice();
   if (diceModifier !== 0) setDiceModifier(diceModifier);
   // rollArgs — cho skill CÓ TRẠNG THÁI cần đọc từ combatant (VD Unlock: stage
   // 1/2/3 theo số stack Unlock Blade đang có). Mặc định rỗng → roll() dùng giá
@@ -5456,6 +5518,7 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, diceModifie
     lines = skill.roll(...rollArgs);
   }
   if (forceMinDice) stopForceMinDice();
+  else if (forceMaxDice) stopForceMaxDice();
   if (diceModifier !== 0) clearDiceModifier();
   const tracked = stopEmotionTracking();
   const totalEmotionDelta = tracked.reduce((sum, t) => sum + t.delta, 0);
@@ -5640,4 +5703,4 @@ function resolveSkillKey(raw) {
   return null;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, startForceMaxDice, stopForceMaxDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };

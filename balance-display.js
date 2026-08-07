@@ -14,7 +14,7 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, isConsumableItem, UNIVERSALLY_KNOWN_WEAPONS }) {
+module.exports = function ({ EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, isConsumableItem, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
@@ -197,18 +197,61 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
         if (!((data.items[n] ?? 0) > 0 && findAccessory(n))) return false;
         return (equippedAccCounts[n] ?? 0) < data.items[n];
       });
-      const gearOptions = [
-        ...ownedWeapons.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Vũ khí").setValue(`weapon:${n}`).setEmoji("⚔️")),
-        ...ownedOutfits.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Outfit").setValue(`outfit:${n}`).setEmoji("🧥")),
-        ...ownedAccessories.map(n => new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Accessory").setValue(`accessory:${n}`).setEmoji("💍")),
-      ].slice(0, 25);
+      // ── DROPDOWN 3: WEAPON / OUTFIT / ACCESSORY (equip ➕ + gỡ ➖) ──────
+      // Fragaria: "sửa lại equip accessory và page ở balance giống kiểu
+      // consumable item có nút equip và gỡ khỏi loadout vì hiện tại nó khá clunky".
+      //
+      // 3 điểm CLUNKY của bản cũ, sửa hết ở đây:
+      //   (1) KHÔNG có đường gỡ — muốn tháo accessory phải nhớ gõ
+      //       `-unequipaccessory <slot>`, trong khi consumable đã gỡ được bằng
+      //       dropdown từ lâu.
+      //   (2) Đầy 3 slot thì `findIndex(s => !s)` trả -1 → code cũ ép
+      //       `targetSlot = 0` ⇒ GHI ĐÈ slot #1 mà người chơi không hề chọn.
+      //       Giờ đầy slot = ẨN option equip (đúng như consumable ẩn khi đủ 4),
+      //       và handler chặn lại lần nữa thay vì ghi đè.
+      //   (3) Dropdown cũ KHÔNG kiểm `exclusive`/`exclusiveType` (chỉ lệnh text
+      //       `-equipaccessory` mới kiểm) ⇒ đeo được 2 "Nón Ánh Sáng" qua UI.
+      //       Handler mới dùng CHUNG luật với lệnh text.
+      const accSlots = data.equippedAccessories ?? [null, null, null];
+      const accSlotsFull = accSlots.filter(Boolean).length >= accSlots.length;
+      const gearOptions = [];
+      // GỠ đứng TRƯỚC: tối đa 1 outfit + 3 accessory = 4 option, không bao giờ
+      // bị cắt bởi trần 25 của Discord dù người chơi sở hữu rất nhiều đồ.
+      if (data.equippedOutfit) {
+        gearOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➖ Gỡ Outfit: ${data.equippedOutfit}`.slice(0, 100))
+          .setDescription("Bỏ outfit đang mặc (Res về mặc định)")
+          .setValue(`unoutfit:${data.equippedOutfit}`.slice(0, 100)).setEmoji("🗑️"));
+      }
+      accSlots.forEach((n, i) => {
+        if (!n) return;
+        gearOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➖ Gỡ Accessory #${i + 1}: ${n}`.slice(0, 100))
+          .setDescription("Bỏ khỏi slot accessory")
+          .setValue(`unacc:${i}|${n.slice(0, 70)}`.slice(0, 100)).setEmoji("🗑️"));
+      });
+      gearOptions.push(
+        ...ownedWeapons.map(n => new StringSelectMenuOptionBuilder().setLabel(`➕ ${n}`.slice(0, 100)).setDescription("Vũ khí — thay cây đang cầm").setValue(`weapon:${n}`).setEmoji("⚔️")),
+        ...ownedOutfits.map(n => new StringSelectMenuOptionBuilder().setLabel(`➕ ${n}`.slice(0, 100)).setDescription("Outfit — thay bộ đang mặc").setValue(`outfit:${n}`).setEmoji("🧥")),
+      );
+      if (!accSlotsFull) {
+        gearOptions.push(...ownedAccessories.map(n => new StringSelectMenuOptionBuilder()
+          .setLabel(`➕ ${n}`.slice(0, 100))
+          .setDescription(`Accessory — đang ${accSlots.filter(Boolean).length}/${accSlots.length} slot`.slice(0, 100))
+          .setValue(`accessory:${n}`).setEmoji("💍")));
+      } else if (ownedAccessories.length > 0) {
+        gearOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`⚠️ Đủ ${accSlots.length}/${accSlots.length} slot accessory — gỡ bớt trước`.slice(0, 100))
+          .setDescription(`Còn ${ownedAccessories.length} accessory chưa đeo`.slice(0, 100))
+          .setValue("noop").setEmoji("⛔"));
+      }
       if (gearOptions.length > 0) {
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`balequipgear:${targetUser.id}`)
-            .setPlaceholder("⚔️ Equip Weapon/Outfit/Accessory (chọn nhiều được)...")
-            .setMinValues(1).setMaxValues(gearOptions.length)
-            .addOptions(gearOptions)
+            .setPlaceholder(`⚔️ Trang bị — Weapon/Outfit/Accessory (${accSlots.filter(Boolean).length}/${accSlots.length} acc)...`.slice(0, 150))
+            .setMinValues(1).setMaxValues(Math.min(25, gearOptions.length))
+            .addOptions(gearOptions.slice(0, 25))
         ));
       }
       // ── CONSUMABLE LOADOUT ────────────────────────────────────────────
@@ -223,9 +266,7 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
       // xếp được — vô nghĩa vì không có nhánh dùng cho chúng.
       //
       // ⚠️ GỘP xếp + gỡ vào MỘT dropdown: Discord chặn cứng **5 action row**
-      // mỗi message. Trước đó -balance có tới 6 hàng ⇒ hàng thứ 6 bị NUỐT, và
-      // Fragaria báo đúng hiện tượng: "dropdown ở -balance tận 6, khiến đôi khi
-      // nó làm ẩn mất phần mở khoá perks nếu đang có loadout consumable".
+      // mỗi message. Đây là KHUÔN MẪU mà gear/page ở trên-dưới đang bắt chước.
       const equippedConsumables = data.equippedConsumables ?? [];
       const consumableCounts = {};
       for (const n of equippedConsumables) consumableCounts[n] = (consumableCounts[n] ?? 0) + 1;
@@ -233,6 +274,12 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
         (data.items[n] ?? 0) > 0 && isConsumableItem(n)
         && (consumableCounts[n] ?? 0) < data.items[n]);
       const consumableOptions = [];
+      equippedConsumables.forEach((n, i) => {
+        consumableOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➖ Gỡ #${i + 1} ${n}`.slice(0, 100))
+          .setDescription("Bỏ khỏi loadout mang vào trận")
+          .setValue(`del:${i}|${n}`.slice(0, 100)).setEmoji("🗑️"));
+      });
       if (equippedConsumables.length < 4) {
         for (const n of addableConsumables) {
           consumableOptions.push(new StringSelectMenuOptionBuilder()
@@ -241,12 +288,6 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
             .setValue(`add:${n}`.slice(0, 100)).setEmoji("🎒"));
         }
       }
-      equippedConsumables.forEach((n, i) => {
-        consumableOptions.push(new StringSelectMenuOptionBuilder()
-          .setLabel(`➖ Gỡ #${i + 1} ${n}`.slice(0, 100))
-          .setDescription("Bỏ khỏi loadout mang vào trận")
-          .setValue(`del:${i}|${n}`.slice(0, 100)).setEmoji("🗑️"));
-      });
       if (consumableOptions.length > 0) {
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
@@ -256,8 +297,17 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
             .addOptions(consumableOptions.slice(0, 25))
         ));
       }
-      // Page/E.G.O Page: cùng logic "số dư" như accessory (có thể sở hữu
-      // nhiều bản cùng tên, equip vào nhiều slot Page/E.G.O Page khác nhau).
+      // ── DROPDOWN 4: PAGE + E.G.O PAGE (equip ➕ + gỡ ➖) ────────────────
+      // GỘP Page thường và E.G.O Page vào MỘT hàng. Trước đây là 2 hàng riêng
+      // ⇒ -balance có 6 action row ⇒ Discord NUỐT IM LẶNG hàng thứ 6. Chốt chặn
+      // ở cuối hàm có cắt về 5 nhưng đó chỉ là "mất có báo"; gộp lại mới là
+      // sửa gốc — giờ tối đa đúng 5 hàng, không bao giờ mất hàng nào.
+      //
+      // BỎ HẲN bước 2 "chọn slot 1–5": đó chính là chỗ clunky Fragaria nói.
+      // Slot của Page KHÔNG có ý nghĩa cơ chế nào — `player-join-builder.js`
+      // đọc `(profileData.equippedPages ?? []).filter(Boolean)` nên thứ tự bị
+      // vứt đi hoàn toàn lúc vào trận. Vậy nên equip = lấp ô trống đầu tiên
+      // (như consumable), muốn đổi chỗ thì gỡ rồi xếp lại.
       const equippedPageCounts = {};
       for (const name of (data.equippedPages ?? [])) { if (name) equippedPageCounts[name] = (equippedPageCounts[name] ?? 0) + 1; }
       const equippedEgoPageCounts = {};
@@ -273,36 +323,65 @@ module.exports = function ({ getPlayerData, getActiveProfileSlot, getProfileName
         if (!s || !isEgoSkill(s)) return false;
         return (equippedEgoPageCounts[n] ?? 0) < data.pages[n];
       });
-      if (ownedRegularPages.length > 0) {
-        // BUG ĐÃ SỬA (Fragaria: "nên cho dropdown ở balance cho equip page theo
-        // slot 1/2/3/4/5 vì giờ nó chỉ cho equip page vào slot 1").
-        // TRƯỚC ĐÂY slot được CHỌN HỘ: `findIndex(s => !s)` = ô trống đầu tiên,
-        // và khi ĐÃ ĐẦY 5 slot thì rơi vào `targetSlot = 0` → mọi lần equip sau
-        // đều GHI ĐÈ slot 1. Người chơi không có cách nào đưa page vào slot 3.
-        // Giờ chọn 1 page → hiện tiếp dropdown 5 slot (kèm page đang nằm trong
-        // mỗi slot) để tự chọn. E.G.O Page vẫn tự động vì slot của nó do Tier
-        // quyết định, không được chọn tay.
-        const pageOptions = ownedRegularPages.slice(0, 25).map(n =>
-          new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription("Chọn xong sẽ hỏi slot 1–5").setValue(`page:${n}`).setEmoji("📖")
-        );
+      const pageSlots = data.equippedPages ?? [null, null, null, null, null];
+      const egoSlots = data.equippedEgoPages ?? [null, null, null, null, null];
+      const pageSlotsFull = pageSlots.filter(Boolean).length >= 5;
+      const pageOptions = [];
+      // GỠ trước (tối đa 5 + 5 = 10 option) — luôn nằm trong trần 25 nên người
+      // chơi có 200 page vẫn gỡ được, chỉ phần equip mới bị cắt.
+      pageSlots.forEach((n, i) => {
+        if (!n) return;
+        pageOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➖ Gỡ Page #${i + 1}: ${n}`.slice(0, 100))
+          .setDescription("Bỏ khỏi loadout Page thường")
+          .setValue(`unpage:${i}|${n.slice(0, 70)}`.slice(0, 100)).setEmoji("🗑️"));
+      });
+      egoSlots.forEach((n, i) => {
+        if (!n) return;
+        pageOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➖ Gỡ E.G.O #${i + 1}: ${n}`.slice(0, 100))
+          .setDescription(`Slot Tier ${EGO_TIER_SLOT_ORDER[i] ?? "?"}`.slice(0, 100))
+          .setValue(`unego:${i}|${n.slice(0, 70)}`.slice(0, 100)).setEmoji("🗑️"));
+      });
+      if (!pageSlotsFull) {
+        for (const n of ownedRegularPages) {
+          pageOptions.push(new StringSelectMenuOptionBuilder()
+            .setLabel(`➕ ${n}`.slice(0, 100))
+            .setDescription(`Page thường — đang ${pageSlots.filter(Boolean).length}/5 slot`.slice(0, 100))
+            .setValue(`page:${n}`.slice(0, 100)).setEmoji("📖"));
+        }
+      } else if (ownedRegularPages.length > 0) {
+        pageOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel("⚠️ Đủ 5/5 slot Page — gỡ bớt trước".slice(0, 100))
+          .setDescription(`Còn ${ownedRegularPages.length} page chưa xếp`.slice(0, 100))
+          .setValue("noop").setEmoji("⛔"));
+      }
+      for (const n of ownedEgoPages) {
+        pageOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➕ ${n}`.slice(0, 100))
+          .setDescription(`E.G.O Page — Tier ${getEgoTier(findSkill(n)) ?? "?"}, tự vào đúng slot Tier`.slice(0, 100))
+          .setValue(`egopage:${n}`.slice(0, 100)).setEmoji("✨"));
+      }
+      if (pageOptions.length > 0) {
+        // Tràn 25 KHÔNG được im lặng (bài học đã ghi ở HANDOFF: `slice(0,25)`
+        // trần trụi làm page thứ 25 trở đi biến mất mà không ai biết).
+        let pageOptionsFinal = pageOptions;
+        if (pageOptions.length > 25) {
+          const hidden = pageOptions.length - 24;
+          pageOptionsFinal = [
+            ...pageOptions.slice(0, 24),
+            new StringSelectMenuOptionBuilder()
+              .setLabel(`⚠️ Còn ${hidden} lựa chọn nữa không hiện được`.slice(0, 100))
+              .setDescription("Discord giới hạn 25 dòng — dùng `-equippage <slot> <tên>`")
+              .setValue("noop"),
+          ];
+        }
         components.push(new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`balequippage:${targetUser.id}`)
-            .setPlaceholder("📖 Equip Page thường — chọn 1 page...")
-            .setMinValues(1).setMaxValues(1)
-            .addOptions(pageOptions)
-        ));
-      }
-      if (ownedEgoPages.length > 0) {
-        const egoOptions = ownedEgoPages.slice(0, 25).map(n =>
-          new StringSelectMenuOptionBuilder().setLabel(n.slice(0, 100)).setDescription(`Tier ${getEgoTier(findSkill(n)) ?? "?"} — tự vào đúng slot Tier`).setValue(`egopage:${n}`).setEmoji("✨")
-        );
-        components.push(new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`balequipego:${targetUser.id}`)
-            .setPlaceholder("✨ Equip E.G.O Page (chọn nhiều được)...")
-            .setMinValues(1).setMaxValues(egoOptions.length)
-            .addOptions(egoOptions)
+            .setPlaceholder(`📖 Page (${pageSlots.filter(Boolean).length}/5) & E.G.O Page (${egoSlots.filter(Boolean).length}/5)...`.slice(0, 150))
+            .setMinValues(1).setMaxValues(Math.min(25, pageOptionsFinal.length))
+            .addOptions(pageOptionsFinal)
         ));
       }
     }

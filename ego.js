@@ -36,6 +36,41 @@ const MANIFESTED_EGOS = {
     owner: null,
     skillKeys: ["instant of annihilation", "deadening abyss"],
   },
+  // ── ID: "redmist" ────────────────────────────────────────────────────────
+  // Cấp cho người chơi bằng: `-setprofile ManifestedEGO: redmist`
+  // (hoặc `-setprofile ManifestedEGO: Red Mist` — findManifestedEgo tra được cả
+  //  key, tên hiển thị lẫn tên chủ nhân).
+  // ⚠️ NHỚ cấp KÈM cờ `ManifestedEGOUnlock` qua `-flag`, nếu không người chơi
+  //    vẫn không bấm được nút Manifest (2 thứ độc lập: cờ mở khoá vs E.G.O nào).
+  redmist: {
+    key: "redmist",
+    name: "Manifested E.G.O: Red Mist",
+    owner: null, // chưa gán chủ — Fragaria chỉ định khi cấp
+    skillKeys: ["reaching hand", "dense flesh"],
+    // BGM riêng — phát khi Manifest bật, kéo dài tới khi Manifest hết.
+    // CHỈ tên file; code tự ghép với /assets/audio/bgm/ (cùng quy ước
+    // sfx-config.js). File .mp3 THẬT do Fragaria đặt vào repo.
+    bgm: "Red Mist.mp3",
+    // passives — MÔ TẢ để hiện cho người chơi. Phần CHẠY THẬT nằm ở code, tra
+    // qua `mechanicId` (cùng khuôn với weapon.js/outfit.js passives).
+    passives: [
+      {
+        name: "The Strongest",
+        mechanicId: "redmist_the_strongest",
+        desc: "Khi ở trạng thái Manifested E.G.O toàn bộ Dice bạn gieo đều **chắc chắn ra Max Dice**, nhận 100% Dmg Bonus, 10 <:DiceUp:1513767795681398894>Dice Up, 4 <:Haste:1513768004222062632>Haste, 100 Max Stamina, 50% Dmg Reduction kéo dài tới khi hết Manifested E.G.O. Nếu trong 1 Turn bạn không gây ra dmg tối thiểu bằng 15% Max HP của kẻ địch thì bản thân sẽ bị trừ một lượng Stamina bằng 50% Max Stamina. Nếu bạn bị Stagger ở trong trạng thái Manifested E.G.O, lập tức kết thúc trạng thái và bản thân nhận phải debuff **Shattered E.G.O**; khiến cho mọi sát thương của bản thân bị giảm một nửa, và mọi Dice bạn gieo đều **chắc chắn sẽ ra Min Dice** kéo dài trong 3 Turn",
+      },
+      {
+        name: "The Red Mist",
+        mechanicId: "redmist_the_red_mist",
+        desc: "Cứ mỗi một kẻ địch bạn tiêu diệt được ở trong trạng thái Manifested E.G.O, bản thân nhận được 5 <:DiceUp:1513767795681398894>Dice Up kéo dài tới hết Encounter. Bạn được hồi máu dựa vào 4% sát thương gây ra",
+      },
+      {
+        name: "The Mimic",
+        mechanicId: "redmist_the_mimic",
+        desc: "Nếu bạn đang sử dụng **Mimicry Blade**, biến nó trở thành **Mimicry: Synchronization**, cường hóa và khiến nó mở thêm một hình thái mới. Ở dạng kiếm sẽ có 28 Base Dmg/Slash/Medium. Ở dạng lưỡi hái sẽ có 56 Base Dmg/Slash/Heavy, đồng thời hiệu ứng Dmg Bonus từ Passive **The Imitation** được gia tăng gấp đôi. Yêu cầu HP để sử dụng Great Split: Horizontal được gỡ bỏ",
+      },
+    ],
+  },
   // Bộ CHUNG cũ — giữ lại để profile đã cấp trước đây không mất E.G.O.
   // Ai chưa được gán E.G.O riêng thì rơi về đây (xem resolveManifestedEgo).
   default: {
@@ -86,4 +121,54 @@ function egoSkillKeysFor(profileOrCombatant) {
   return resolveManifestedEgo(profileOrCombatant)?.skillKeys ?? [];
 }
 
-module.exports = { MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor };
+/** egoPassivesFor — passive của Manifested E.G.O người này đang mang.
+ *  Dùng cho phần HIỂN THỊ (panel/`-balance`). Logic thật tra bằng hasEgoMechanic. */
+function egoPassivesFor(profileOrCombatant) {
+  return resolveManifestedEgo(profileOrCombatant)?.passives ?? [];
+}
+
+/** hasEgoMechanic — combatant này có passive E.G.O mang `mechanicId` đó không.
+ *
+ *  ⚠️ CHỈ đúng khi đang BẬT Manifest. Passive của Manifested E.G.O không phải
+ *  buff bị động thường trực — nó chỉ tồn tại trong lúc trạng thái đang chạy.
+ *  Gate luôn ở đây thay vì bắt 8 nơi gọi tự nhớ kiểm `manifestedEGO` (sót 1 chỗ
+ *  là passive rò rỉ ra ngoài trạng thái, rất khó thấy).
+ *
+ *  KHÔNG dùng `egoSkillKeysFor` để suy ra passive — người chơi rơi về bộ chung
+ *  (`default`) thì KHÔNG có passive nào, đúng như trước bản này.
+ */
+function hasEgoMechanic(combatant, mechanicId) {
+  if (!combatant?.manifestedEGO) return false;
+  return egoPassivesFor(combatant).some(p => p.mechanicId === mechanicId);
+}
+
+/** egoBgmFor — file BGM của Manifested E.G.O người này ĐANG BẬT, hoặc null.
+ *  Gate `manifestedEGO` ngay tại đây (cùng lý do với hasEgoMechanic). */
+function egoBgmFor(combatant) {
+  if (!combatant?.manifestedEGO) return null;
+  return resolveManifestedEgo(combatant)?.bgm ?? null;
+}
+
+/** resolveEncounterBgm — BGM NÊN phát ở encounter này ngay lúc này.
+ *
+ *  Ưu tiên BGM của Manifested E.G.O đang bật; không ai đang Manifest thì trả
+ *  BGM thường của trận (`encounter.currentBgm`).
+ *
+ *  ⚠️ CỐ Ý TÍNH LẠI TỪ STATE mỗi lần thay vì ghi đè `currentBgm` lúc Manifest
+ *  rồi khôi phục lúc hết: cách ghi-đè-rồi-khôi-phục cần một cú "trả lại" chạy
+ *  đúng ở MỌI đường kết thúc Manifest (hết Duration, bị Stagger, người chơi
+ *  chết, encounter kết thúc giữa chừng...). Sót một đường là trận đó kẹt BGM
+ *  E.G.O vĩnh viễn mà không ai biết vì sao. Hàm thuần này không thể kẹt.
+ *
+ *  Nhiều người cùng Manifest thì lấy người ĐẦU TIÊN có bgm — không trộn được 2
+ *  bài, và không có luật nào nói ai ưu tiên nên chọn quy ước đơn giản, ổn định.
+ */
+function resolveEncounterBgm(encounter) {
+  for (const p of Object.values(encounter?.players ?? {})) {
+    const bgm = egoBgmFor(p);
+    if (bgm) return bgm;
+  }
+  return encounter?.currentBgm ?? null;
+}
+
+module.exports = { egoBgmFor, resolveEncounterBgm, MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor, egoPassivesFor, hasEgoMechanic };

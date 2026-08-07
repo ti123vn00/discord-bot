@@ -130,6 +130,14 @@ function calcMathCore(opts) {
     // ảnh hưởng bất kỳ caller nào hiện có KHÔNG truyền tham số này (mọi lệnh
     // -math/-encounter cũ vẫn chạy y hệt trước, đã verify bằng test thật).
     flatDmgPerHit = 0,
+    // outgoingDmgMul — hệ số nhân THẲNG vào dmg cuối của MỖI hit (mặc định 1 =
+    // không đổi gì, mọi caller cũ giữ nguyên hành vi).
+    // Vì sao KHÔNG dùng bonusPct: bonusPct đi qua `saturateBonusPct()` (đường
+    // cong bão hoà) nên -50 KHÔNG ra đúng một nửa — với bonus đang cao thì -50
+    // chỉ cắt vài %. Hiệu ứng khai "giảm một nửa sát thương" là phép NHÂN, phải
+    // nhân thật.
+    // Nguồn hiện có: **Shattered E.G.O** (Manifested E.G.O: Red Mist).
+    outgoingDmgMul = 1,
     // 6 biến thể Tremor (50-Status Nhóm 2, xác nhận trực tiếp từng cái) — TRÊN
     // TARGET đang bị Tremor Burst kích hoạt lên người:
     //   Everlasting: 50% (100% nếu target có Borrowed Time active) re-trigger
@@ -282,7 +290,7 @@ function calcMathCore(opts) {
     const rawTotalPct = bonusPct + extraPct;
     const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0);
     const bonusFactor = 1 + effTotalPct / 100;
-    let instanceDmg = Math.max(0, dmg + flatDmgPerHit) * bonusFactor * multiplier * currentRes * currentDR;
+    let instanceDmg = Math.max(0, dmg + flatDmgPerHit) * bonusFactor * multiplier * currentRes * currentDR * outgoingDmgMul;
     if (isDice) instanceDmg *= diceMul;
 
     // Sinking: chỉ trừ sanity địch khi địch đang có Sinking stacks (đúng cơ chế).

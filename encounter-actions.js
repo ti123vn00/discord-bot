@@ -21,7 +21,7 @@
 const MANG_MAX_LEVEL = 5;
 const SHIN_MAX_LEVEL = 50;
 
-module.exports = function ({ healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
+module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMimicryForm, MIMICRY_SYNC_FORMS, healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
 
   async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
     let result;
@@ -267,6 +267,32 @@ module.exports = function ({ healHpCapped, withLock, encounterKey, getEncounter,
       player.manifestedEGO = true;
       player.manifestedEGOTurnsLeft = player.emotionLevel * 3;
       player.manifestedEGOCooldownLeft = 0;
+      // ── PASSIVE RIÊNG THEO TỪNG MANIFESTED E.G.O (ego.js) ─────────────────
+      // Bật cờ NGAY ở đây, TRƯỚC checkStaggerPanic bên dưới — nếu -30 Sanity
+      // làm người chơi Panic/Stagger ngay lập tức thì luật "bị Stagger trong
+      // lúc Manifest ⇒ Shattered E.G.O" phải áp được luôn, chứ không phải bỏ
+      // qua chỉ vì cờ chưa kịp bật.
+      let egoPassiveNote = "";
+      if (hasEgoMechanic(player, "redmist_the_strongest")) {
+        player.theStrongestActive = true;
+        // +100 Max Stamina — cộng cả maxStamina LẪN currentStamina (nếu chỉ
+        // cộng trần thì "nhận 100 Max Stamina" chẳng cho người chơi thêm gì
+        // dùng được ngay trong turn này). Lưu lại đúng phần đã cộng để
+        // endManifestedEgoState trả về chính xác.
+        player.theStrongestMaxStaminaBonus = 100;
+        player.maxStamina = (player.maxStamina ?? 0) + 100;
+        player.currentStamina = (player.currentStamina ?? 0) + 100;
+        // Dice Up / Haste: `diceUp` và `haste` đều bị RESET VỀ 0 mỗi turn ở
+        // advanceCombatantTurn ⇒ cấp một lần ở đây là mất ngay turn sau. Nên
+        // turn-advance.js cộng LẠI mỗi turn khi còn `theStrongestActive`
+        // (cùng khuôn với blackSuitPersistentBonus). Ở đây cấp cho TURN NÀY.
+        player.diceUp = (player.diceUp ?? 0) + 10;
+        player.haste = Math.min(20, (player.haste ?? 0) + 4);
+        egoPassiveNote += ` 🔥**The Strongest** — Max Dice chắc chắn, +100% Dmg, +10 Dice Up, +4 Haste, +100 Max Stamina, 50% Dmg Reduction.`;
+      }
+      if (hasEgoMechanic(player, "redmist_the_mimic")) {
+        egoPassiveNote += applyMimicSynchronization(player);
+      }
       checkStaggerPanic(player);
       let healNote = "";
       if (!player.firstManifestEGOUsed && hasPerk(player, "Comeback Time")) {
@@ -277,7 +303,43 @@ module.exports = function ({ healHpCapped, withLock, encounterKey, getEncounter,
       player.firstManifestEGOUsed = true;
       result =
         `😈 **Manifest E.G.O!** -30 Sanity (còn ${player.currentSanity}) → Duration ${player.manifestedEGOTurnsLeft} turn ` +
-        `(theo Emotion Level ${player.emotionLevel}) — +3 Dice Up, +30% Dmg M1+skill.${healNote}`;
+        `(theo Emotion Level ${player.emotionLevel}) — +3 Dice Up, +30% Dmg M1+skill.${healNote}${egoPassiveNote}` +
+        // Bị Stagger NGAY lúc kích hoạt (do -30 Sanity) — checkStaggerPanic ở
+        // trên đã tự tắt Manifest + gắn Shattered, phải báo cho người chơi biết
+        // thay vì để họ tưởng vẫn đang Manifest.
+        (player.staggerForcedNote ? `\n${player.staggerForcedNote}` : "");
+      player.staggerForcedNote = null;
+      appendActionLog(encounter, result);
+      await saveEncounter(channelId, encounter);
+    });
+    return result;
+  }
+
+  /** performMimicryForm — đổi dạng Kiếm ⇄ Lưỡi hái của Mimicry: Synchronization.
+   *
+   *  Fragaria chốt: *"Họ sẽ có 1 nút ở Special để chuyển dạng lưỡi hái hay kiếm
+   *  trong turn tùy ý thích"* ⇒ KHÔNG giới hạn số lần/turn, KHÔNG tốn Light,
+   *  KHÔNG tốn hành động. Đây là lựa chọn dạng vũ khí, không phải một đòn đánh.
+   *
+   *  ⚠️ KHÔNG kiểm lượt (isCurrentTurnHolder): đổi dạng phải làm được cả lúc
+   *  đang bị đánh, vì Base Dmg của dạng ảnh hưởng tới Parry counter-dmg và
+   *  WEAPON_DEFENSE_HITS (số hit mỗi nhóm phòng thủ).
+   */
+  async function performMimicryForm(channelId, userId, wantForm = null) {
+    let result;
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+      const player = encounter.players[userId];
+      if (!player) throw new Error("Bạn chưa tham gia encounter này.");
+      if (!player.mimicSyncActive) {
+        throw new Error("Bạn không ở dạng **Mimicry: Synchronization** — cần đang bật Manifest E.G.O và cầm Mimicry Blade.");
+      }
+      const next = wantForm ?? (player.mimicryForm === "scythe" ? "sword" : "scythe");
+      if (!MIMICRY_SYNC_FORMS[next]) throw new Error(`Dạng "${next}" không hợp lệ.`);
+      const f = applyMimicryForm(player, next);
+      result = `🗡️ **Mimicry: Synchronization** → dạng **${f.label}** (${f.baseDamage} Base Dmg · ${f.type} · ${f.weight})` +
+        (next === "scythe" ? ` — Dmg Bonus của **The Imitation** ×2.` : `.`);
       appendActionLog(encounter, result);
       await saveEncounter(channelId, encounter);
     });
@@ -480,6 +542,7 @@ module.exports = function ({ healHpCapped, withLock, encounterKey, getEncounter,
     performParry,
     performShinMang,
     performManifestEgo,
+    performMimicryForm,
     performOvercharge,
     performFollowUp,
     performUseItem,

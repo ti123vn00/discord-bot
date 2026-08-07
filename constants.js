@@ -42,6 +42,16 @@ module.exports = {
   // /math: Charge stacks tối đa (trên bản thân, dùng để kích hoạt vũ khí/skill đặc biệt)
   CHARGE_MAX: 99,
 
+  // Imitation (Mimicry Blade) — Fragaria chốt: "cap của Status Imitation thành
+  // 10 Max". TRƯỚC ĐÂY hoàn toàn KHÔNG có cap: 4 nơi đều `imitation += n` trần
+  // trụi, và `imitation` cũng không nằm trong STATUS_CAPS_SHARED nên `-encounter
+  // setstatus` set bao nhiêu cũng được.
+  // ⚠️ CHỈ cap `imitation` (stack ĐANG CÓ, tiêu 5 mỗi lần Great Split).
+  // `imitationConsumedTotal` là bộ đếm TÍCH LUỸ cả trận cho Dmg Bonus của
+  // "The Imitation" — KHÔNG cap ở 10, nếu không thì cap 50% Dmg Bonus (=10
+  // Imitation đã tiêu) sẽ không bao giờ chạm tới được.
+  IMITATION_MAX: 10,
+
   // -encounter setstatus: 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/
   // Chain) — max cap dùng CHUNG 99, xác nhận trực tiếp: "các stack tremor này đều
   // có max count là 99".

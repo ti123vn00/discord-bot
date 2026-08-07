@@ -19,7 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 
-module.exports = function ({ applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -2679,9 +2679,33 @@ client.on("interactionCreate", async (interaction) => {
     if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
     else if (value === "manifestego") resultMsg = await performManifestEgo(channelId, interaction.user.id);
     else if (value === "overcharge") resultMsg = await performOvercharge(channelId, interaction.user.id);
+    // "The Mimic" — đổi dạng Kiếm ⇄ Lưỡi hái của Mimicry: Synchronization.
+    // value mang sẵn dạng đích ("mimicryform:scythe") thay vì toggle mù: nút được
+    // dựng từ state lúc mở panel, nếu người chơi mở 2 panel rồi bấm cả hai thì
+    // toggle sẽ lật qua lật lại; ghi rõ đích thì bấm mấy lần cũng ra đúng dạng đó.
+    else if (value.startsWith("mimicryform:")) resultMsg = await performMimicryForm(channelId, interaction.user.id, value.slice(12));
     else if (value.startsWith("useitem:")) resultMsg = await performUseItem(channelId, interaction.user.id, value.slice(8));
     else { await interaction.reply({ content: "⚠️ Hành động không hợp lệ.", flags: MessageFlags.Ephemeral }).catch(() => {}); return; }
-    await interaction.reply({ content: resultMsg });
+    // BGM riêng của Manifested E.G.O (ego.js `bgm`) — đính kèm NGAY lúc kích hoạt
+    // để nó bắt đầu phát. Discord không phát nhạc nền liên tục được, nên "kéo dài
+    // tới hết Manifest" thể hiện bằng: `resolveEncounterBgm` trả về bài này ở MỌI
+    // lần hiện `-encounter status` cho tới khi Manifest tắt.
+    let egoBgmFiles = [];
+    if (value === "manifestego") {
+      try {
+        const encAfter = await getEncounter(channelId);
+        const bgmName = egoBgmFor(encAfter?.players?.[interaction.user.id]);
+        if (bgmName) {
+          egoBgmFiles = [new AttachmentBuilder(`./assets/audio/bgm/${bgmName}`)];
+          resultMsg += `\n> 🎵 BGM đổi sang **${bgmName}** cho tới khi hết Manifest E.G.O.`;
+        }
+      } catch (bgmErr) {
+        // Thiếu file audio KHÔNG được làm hỏng cú Manifest (đã trừ Sanity, đã
+        // bật buff rồi). Log lại thay vì nuốt im lặng.
+        log("error", "egoBgm", interaction.user?.id ?? "unknown", bgmErr.message);
+      }
+    }
+    await interaction.reply({ content: resultMsg, files: egoBgmFiles });
   } catch (err) {
     log("error", "encMenuSelect", interaction.user?.id ?? "unknown", err.message);
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -3281,7 +3305,23 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ─── SELECT MENU INTERACTIONS (-balance: equip weapon/outfit/accessory) ──────
+// ─── SELECT MENU (-balance: Weapon/Outfit/Accessory — equip ➕ VÀ gỡ ➖) ──────
+// Fragaria: "sửa lại equip accessory và page ở balance giống kiểu consumable
+// item có nút equip và gỡ khỏi loadout vì hiện tại nó khá clunky".
+//
+// 3 BUG của bản cũ được sửa cùng lúc ở đây:
+//  (1) KHÔNG có đường gỡ qua UI — chỉ có lệnh text `-unequipaccessory <slot>`.
+//  (2) Đầy 3 slot → `findIndex(s => !s)` trả -1 → code cũ ép `targetSlot = 0`
+//      ⇒ GHI ĐÈ slot #1 mà người chơi không chọn. Giờ NÉM LỖI, không ghi đè.
+//  (3) `exclusive` / `exclusiveType` KHÔNG được kiểm ở đường dropdown (chỉ lệnh
+//      text `-equipaccessory` mới kiểm) ⇒ đeo được 2 "Nón Ánh Sáng" qua UI.
+//      ⚠️ `exclusive: true` (Memories: Compassion) TRƯỚC ĐÂY KHÔNG ĐƯỢC ĐỌC Ở
+//      BẤT KỲ ĐÂU trong repo — kể cả lệnh text. Nay chặn ở đây.
+//
+// THỨ TỰ XỬ LÝ: gỡ TRƯỚC, equip SAU — người chơi chọn "gỡ #1" + "equip X" cùng
+// lượt thì X lấp đúng ô vừa trống. Làm ngược lại sẽ báo "đủ slot" một cách vô lý.
+// AN TOÀN VỚI INDEX: `equippedAccessories` là mảng CỐ ĐỊNH 3 ô, gỡ = gán null
+// (KHÔNG splice như consumable) nên index không xê dịch giữa các thao tác cùng lô.
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith("balequipgear:")) return;
@@ -3294,38 +3334,84 @@ client.on("interactionCreate", async (interaction) => {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    // GAP ĐÃ SỬA (multi-select) — LOOP TUẦN TỰ qua từng gear đã chọn, mỗi item
-    // độc lập thành công/thất bại (VD equip 2 accessory cùng tên nhưng chỉ sở
-    // hữu 1 — cái đầu thành công, cái sau báo lỗi thiếu, không mất cái đầu).
     const results = [];
+    const picks = interaction.values.filter(v => v !== "noop");
+    if (picks.length === 0) {
+      return interaction.editReply({ content: "⛔ Dòng đó chỉ là ghi chú, không phải lựa chọn. Gỡ bớt slot rồi thử lại." });
+    }
+    // Gỡ trước, equip sau (xem comment trên).
+    const ordered = [
+      ...picks.filter(v => v.startsWith("unacc:") || v.startsWith("unoutfit:")),
+      ...picks.filter(v => !v.startsWith("unacc:") && !v.startsWith("unoutfit:")),
+    ];
     await withLock(ownerId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
-      for (const raw of interaction.values) {
+      data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+      for (const raw of ordered) {
         const chosenType = raw.split(":")[0];
         const chosenName = raw.split(":").slice(1).join(":");
         try {
+          if (chosenType === "unoutfit") {
+            if (!data.equippedOutfit) throw new Error("Bạn không mặc outfit nào.");
+            const removed = data.equippedOutfit;
+            data.equippedOutfit = null;
+            results.push(`🗑️ Đã gỡ Outfit **${removed}**.`);
+            continue;
+          }
+          if (chosenType === "unacc") {
+            // value = "unacc:<index>|<tên đã cắt 70 ký tự>" — cắt tên để tổng
+            // value không vượt trần 100 ký tự của Discord; đối chiếu bằng
+            // startsWith nên vẫn bắt được trường hợp loadout đã đổi giữa chừng.
+            const sep = chosenName.indexOf("|");
+            const idx = parseInt(chosenName.slice(0, sep), 10);
+            const namePart = chosenName.slice(sep + 1);
+            const cur = data.equippedAccessories[idx];
+            if (!Number.isInteger(idx) || idx < 0 || idx > 2 || !cur || !String(cur).startsWith(namePart)) {
+              throw new Error("Slot đã thay đổi — mở lại `-balance` rồi thử lại.");
+            }
+            data.equippedAccessories[idx] = null;
+            results.push(`🗑️ Đã gỡ Accessory **${cur}** khỏi slot #${idx + 1}.`);
+            continue;
+          }
           const isUniversalChosen = chosenType === "weapon" && UNIVERSALLY_KNOWN_WEAPONS.has(chosenName.toLowerCase());
           if (!isUniversalChosen && (data.items?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu — dùng lại \`-balance\` để cập nhật.`);
           if (chosenType === "weapon") {
             const weapon = findWeaponAnywhere(chosenName);
+            if (!weapon) throw new Error("Không tìm thấy vũ khí này.");
             data.equippedWeapon = weapon.name;
             results.push(`✅ Vũ khí **${weapon.name}** (${weapon.weight}/${weapon.type}, Base Dmg ${weapon.baseDamage}).`);
           } else if (chosenType === "outfit") {
             const outfit = findOutfit(chosenName);
+            if (!outfit) throw new Error("Không tìm thấy outfit này.");
             data.equippedOutfit = outfit.name;
             const r = outfit.resistance;
             results.push(`✅ Outfit **${outfit.name}** (Res: ${r.B}xB ${r.P}xP ${r.S}xS).`);
           } else if (chosenType === "accessory") {
             const accessory = findAccessory(chosenName);
-            data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
+            if (!accessory) throw new Error("Không tìm thấy accessory này.");
             const ownedCount = data.items?.[accessory.name] ?? 0;
             const usedInAnySlot = data.equippedAccessories.filter(name => name === accessory.name).length;
             if (usedInAnySlot >= ownedCount) throw new Error(`Chỉ sở hữu ${ownedCount}, đã dùng hết ở các slot hiện tại.`);
-            let targetSlot = data.equippedAccessories.findIndex(s => !s);
-            const overwritten = targetSlot === -1;
-            if (overwritten) targetSlot = 0;
+            // `exclusive` — chặn trùng CHÍNH NÓ (khác exclusiveType bên dưới).
+            if (accessory.exclusive && usedInAnySlot >= 1) {
+              throw new Error(`**${accessory.name}** là món độc nhất — chỉ đeo được 1 cái cùng lúc.`);
+            }
+            // `exclusiveType` — chặn theo LOẠI (VD 2 món khác tên cùng là
+            // "Nón Ánh Sáng"). Dùng CHUNG luật với `-equipaccessory`.
+            if (accessory.exclusiveType) {
+              const conflictSlot = data.equippedAccessories.findIndex(name =>
+                name && findAccessory(name)?.exclusiveType === accessory.exclusiveType);
+              if (conflictSlot >= 0) {
+                throw new Error(`Thuộc loại **${accessory.exclusiveType}** — bạn đang đeo **${data.equippedAccessories[conflictSlot]}** (cùng loại) ở slot #${conflictSlot + 1}. Chỉ được đeo 1 món loại này.`);
+              }
+            }
+            const targetSlot = data.equippedAccessories.findIndex(s2 => !s2);
+            // KHÔNG ghi đè slot #1 khi đầy nữa (bug cũ) — báo rõ để người chơi
+            // chủ động gỡ, đúng mô hình consumable (đủ 4 thì từ chối xếp thêm).
+            if (targetSlot === -1) throw new Error(`Đã đủ 3/3 slot accessory — gỡ bớt 1 món trước (dropdown có sẵn dòng "➖ Gỡ Accessory").`);
             data.equippedAccessories[targetSlot] = accessory.name;
-            results.push(`✅ Accessory **${accessory.name}** vào slot #${targetSlot + 1}${overwritten ? " (GHI ĐÈ slot đầy)" : ""}.`);
+            const refineTier = data.accessoryRefine?.[accessory.name];
+            results.push(`✅ Accessory **${accessory.name}**${refineTier ? ` *(Tinh Luyện ${refineTier})*` : ""} vào slot #${targetSlot + 1}.`);
           } else {
             throw new Error("Loại trang bị không hợp lệ.");
           }
@@ -3341,15 +3427,16 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ─── SELECT MENU INTERACTIONS (-balance: equip Page/E.G.O Page) ──────────────
+// ─── SELECT MENU (-balance: Page & E.G.O Page — equip ➕ VÀ gỡ ➖) ────────────
+// BỎ HẲN bước 2 "chọn slot 1–5" của bản cũ — đó chính là chỗ clunky. Slot của
+// Page KHÔNG mang ý nghĩa cơ chế nào: `player-join-builder.js` đọc
+// `(profileData.equippedPages ?? []).filter(Boolean)` nên thứ tự bị vứt đi hoàn
+// toàn lúc vào trận. Giờ equip = lấp ô trống đầu tiên; muốn đổi chỗ thì gỡ rồi
+// xếp lại, đúng mô hình consumable.
+// Vẫn chấp nhận customId "balequipego:" — message CŨ đã gửi trước bản này vẫn
+// còn dropdown đó, không được để người chơi bấm vào là im lặng.
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
-  // Chấp nhận CẢ 2 customId (Page thường VÀ E.G.O Page) — BUG ĐÃ SỬA: trước đây
-  // CẢ 2 dropdown (Page thường/E.G.O Page trong -balance) dùng CHUNG 1 customId
-  // "balequippage:" y hệt nhau (Discord không thể phân biệt 2 component TRÙNG
-  // customId trong cùng 1 message) — đã tách riêng "balequipego:" cho dropdown
-  // E.G.O Page, giờ handler CHUNG này chấp nhận CẢ 2 (logic bên trong ĐÃ phân biệt
-  // đúng qua giá trị chọn "page:"/"egopage:", không cần customId phân biệt).
   if (!interaction.customId.startsWith("balequippage:") && !interaction.customId.startsWith("balequipego:")) return;
   const [, ownerId] = interaction.customId.split(":");
   if (interaction.user.id !== ownerId) {
@@ -3360,54 +3447,56 @@ client.on("interactionCreate", async (interaction) => {
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    // BƯỚC 1 cho Page THƯỜNG: chỉ chọn page, CHƯA equip — hỏi slot ở bước 2.
-    // (E.G.O Page bỏ qua bước này: slot của nó do Tier quyết định, không chọn tay.)
-    // Fragaria: "nên cho dropdown ở balance cho equip page theo slot 1/2/3/4/5
-    // vì giờ nó chỉ cho equip page vào slot 1".
-    if (interaction.customId.startsWith("balequippage:")) {
-      const rawPick = interaction.values[0] ?? "";
-      const pickedName = rawPick.split(":").slice(1).join(":");
-      const { data: dataForSlots } = await getPlayerDataWithSlot(ownerId);
-      const cur = dataForSlots.equippedPages ?? [null, null, null, null, null];
-      const slotOptions = [0, 1, 2, 3, 4].map(i =>
-        new StringSelectMenuOptionBuilder()
-          .setLabel(`Slot #${i + 1}`)
-          .setDescription((cur[i] ? `Đang có: ${cur[i]} — sẽ bị thay` : "Đang trống").slice(0, 100))
-          .setValue(`${i}|${pickedName}`.slice(0, 100))
-          .setEmoji(cur[i] ? "♻️" : "▫️"));
-      return interaction.editReply({
-        content: `📖 Đưa **${pickedName}** vào slot nào?`,
-        components: [new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder().setCustomId(`balpageslot:${ownerId}`)
-            .setPlaceholder("Chọn slot 1–5...").setMinValues(1).setMaxValues(1)
-            .addOptions(slotOptions))],
-      });
-    }
-    // GAP ĐÃ SỬA (multi-select) — LOOP TUẦN TỰ qua từng Page đã chọn.
-    const pickedSlot = 0; // chỉ E.G.O đi tới đây; slot thật do Tier quyết định
     const results = [];
+    const picks = interaction.values.filter(v => v !== "noop" && v !== "toomanypages");
+    if (picks.length === 0) {
+      return interaction.editReply({ content: "⛔ Dòng đó chỉ là ghi chú, không phải lựa chọn. Gỡ bớt slot rồi thử lại." });
+    }
+    const ordered = [
+      ...picks.filter(v => v.startsWith("unpage:") || v.startsWith("unego:")),
+      ...picks.filter(v => !v.startsWith("unpage:") && !v.startsWith("unego:")),
+    ];
     await withLock(ownerId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
-      for (const raw of interaction.values) {
+      data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
+      data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
+      for (const raw of ordered) {
         const chosenType = raw.split(":")[0];
         const chosenName = raw.split(":").slice(1).join(":");
-        const isEgo = chosenType === "egopage";
         try {
-          if ((data.pages?.[chosenName] ?? 0) < 1) throw new Error(`Không còn sở hữu — dùng lại \`-balance\` để cập nhật.`);
+          if (chosenType === "unpage" || chosenType === "unego") {
+            const listKey = chosenType === "unego" ? "equippedEgoPages" : "equippedPages";
+            const sep = chosenName.indexOf("|");
+            const idx = parseInt(chosenName.slice(0, sep), 10);
+            const namePart = chosenName.slice(sep + 1);
+            const cur = data[listKey][idx];
+            if (!Number.isInteger(idx) || idx < 0 || idx > 4 || !cur || !String(cur).startsWith(namePart)) {
+              throw new Error("Slot đã thay đổi — mở lại `-balance` rồi thử lại.");
+            }
+            data[listKey][idx] = null;
+            results.push(`🗑️ Đã gỡ ${chosenType === "unego" ? "E.G.O " : ""}**${cur}** khỏi slot #${idx + 1}.`);
+            continue;
+          }
+          const isEgo = chosenType === "egopage";
           const skill = findSkill(chosenName);
           if (!skill) throw new Error(`Không tìm thấy Page trong hệ thống.`);
+          // Tra sở hữu theo ĐỊNH DANH SKILL (findOwnedPageKey) — kho `data.pages`
+          // có thể lưu tên LỆCH với skill.name (5 page đã biết). So chuỗi thô sẽ
+          // báo "chưa sở hữu" cho page họ thật sự có.
+          if (!findOwnedPageKey(data.pages, skill)) throw new Error(`Không còn sở hữu — dùng lại \`-balance\` để cập nhật.`);
           const listKey = isEgo ? "equippedEgoPages" : "equippedPages";
-          data[listKey] = data[listKey] ?? [null, null, null, null, null];
           let targetSlot;
           let slotNote = "";
           if (isEgo) {
+            // E.G.O Page: slot do TIER quyết định, không chọn tay được.
             const skillTier = getEgoTier(skill);
             if (!skillTier) throw new Error(`Không xác định được Tier của "${skill.name}".`);
             targetSlot = EGO_TIER_SLOT_ORDER.indexOf(skillTier);
-            slotNote = ` (Tier ${skillTier})`;
+            const occupying = data[listKey][targetSlot];
+            slotNote = ` (Tier ${skillTier}${occupying && occupying !== skill.name ? `, thay **${occupying}**` : ""})`;
           } else {
-            targetSlot = data[listKey].findIndex(s => !s);
-            if (targetSlot === -1) { targetSlot = 0; slotNote = " (GHI ĐÈ slot đầy)"; }
+            targetSlot = data[listKey].findIndex(s2 => !s2);
+            if (targetSlot === -1) throw new Error(`Đã đủ 5/5 slot Page — gỡ bớt 1 page trước (dropdown có sẵn dòng "➖ Gỡ Page").`);
           }
           data[listKey][targetSlot] = skill.name;
           results.push(`✅ **${skill.name}** vào ${isEgo ? "E.G.O " : ""}slot #${targetSlot + 1}${slotNote}.`);
@@ -3495,10 +3584,11 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ─── BƯỚC 2: chọn SLOT cho Page thường (balpageslot:) ───────────────────────
-// Tách riêng khỏi "balequippage:" vì Discord không phân biệt được 2 dropdown
-// trùng customId trong cùng message, và vì bước này cần biết page đã chọn.
-// Giá trị mang cả slot lẫn tên page: "<slotIdx>|<tên page>".
+// ─── (DI SẢN) balpageslot: — bước 2 "chọn slot" của bản CŨ ──────────────────
+// -balance KHÔNG còn dựng dropdown này nữa (bước 2 chính là chỗ clunky Fragaria
+// yêu cầu bỏ). GIỮ handler lại vì message CŨ đã gửi trước bản này vẫn còn
+// dropdown đó trên màn hình người chơi — xoá handler = bấm vào thì Discord báo
+// "This interaction failed" mà không ai hiểu vì sao.
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith("balpageslot:")) return;

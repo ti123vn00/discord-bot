@@ -709,6 +709,92 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     return "🔹";
   }
   
+  // ── MANIFESTED E.G.O: RED MIST — bật/tắt trạng thái ────────────────────────
+  // Gom vào ĐÂY vì có tới 3 nơi cần tắt Manifest: hết Duration (turn-advance.js),
+  // bị Stagger (checkStaggerPanic ngay dưới), và có thể thêm nguồn khác sau này.
+  // Mỗi nơi tự trả chỉ số/vũ khí thì chắc chắn có nơi sót — đúng bài học
+  // applyHpLoss (19/20 chỗ trừ HP không được đếm).
+
+  const MIMICRY_SYNC_FORMS = {
+    sword:  { label: "Kiếm",     weight: "medium", type: "Slash", baseDamage: 28 },
+    scythe: { label: "Lưỡi hái", weight: "heavy",  type: "Slash", baseDamage: 56 },
+  };
+
+  /** applyMimicryForm — ghi chỉ số của dạng đang chọn lên combatant.
+   *  Ghi THẲNG weaponBaseDamage/Type/Weight (đúng pattern Atelier Logic 2 form)
+   *  để M1, chi phí Stamina, WEAPON_DEFENSE_HITS và Parry counter-dmg tự đúng
+   *  theo dạng mà không phải sửa từng nơi. */
+  function applyMimicryForm(combatant, form) {
+    const f = MIMICRY_SYNC_FORMS[form] ?? MIMICRY_SYNC_FORMS.sword;
+    combatant.mimicryForm = MIMICRY_SYNC_FORMS[form] ? form : "sword";
+    combatant.weaponBaseDamage = f.baseDamage;
+    combatant.weaponType = f.type;
+    combatant.weaponWeight = f.weight;
+    return f;
+  }
+
+  /** applyMimicSynchronization — "The Mimic": Mimicry Blade → Mimicry: Synchronization.
+   *  CHỈ khi đang cầm ĐÚNG Mimicry Blade. Lưu chỉ số gốc để revert nguyên trạng.
+   *  @returns dòng mô tả để append vào log, hoặc "" nếu không đủ điều kiện. */
+  function applyMimicSynchronization(combatant) {
+    if (combatant.mimicSyncActive) return "";
+    if (combatant.weaponName !== "Mimicry Blade") return "";
+    combatant.mimicryOriginalWeaponName = combatant.weaponName;
+    combatant.mimicryOriginalBaseDamage = combatant.weaponBaseDamage;
+    combatant.mimicryOriginalWeaponType = combatant.weaponType;
+    combatant.mimicryOriginalWeaponWeight = combatant.weaponWeight;
+    combatant.mimicSyncActive = true;
+    combatant.weaponName = "Mimicry: Synchronization";
+    applyMimicryForm(combatant, "sword");
+    return ` 🗡️**The Mimic** — Mimicry Blade → **Mimicry: Synchronization** (dạng Kiếm 28/Slash/Medium · đổi sang Lưỡi hái 56/Slash/Heavy ở panel Special).`;
+  }
+
+  /** revertMimicSynchronization — trả về ĐÚNG vũ khí gốc.
+   *  Fragaria chốt: "khi hết Manifested E.G.O đều tự động quay về Mimicry Blade,
+   *  vì đây là một passive TẠM THỜI biến đổi vũ khí hiện tại". */
+  function revertMimicSynchronization(combatant) {
+    if (!combatant.mimicSyncActive) return "";
+    combatant.weaponName = combatant.mimicryOriginalWeaponName ?? "Mimicry Blade";
+    combatant.weaponBaseDamage = combatant.mimicryOriginalBaseDamage ?? 14;
+    combatant.weaponType = combatant.mimicryOriginalWeaponType ?? "Slash";
+    combatant.weaponWeight = combatant.mimicryOriginalWeaponWeight ?? "medium";
+    combatant.mimicSyncActive = false;
+    combatant.mimicryForm = "sword";
+    combatant.mimicryOriginalWeaponName = null;
+    return ` 🗡️Mimicry trở lại **${combatant.weaponName}**.`;
+  }
+
+  /** endManifestedEgoState — TẮT Manifest + trả lại MỌI thứ đã cấp.
+   *  @param forcedByStagger true = bị Stagger cắt ngang ⇒ dính Shattered E.G.O.
+   *  ⚠️ KHÔNG đụng `manifestedEGOTurnsLeft` ở nhánh hết-hạn (turn-advance đã tự
+   *     đếm về 0); nhánh Stagger thì phải ép về 0, nếu không turn sau nó vẫn
+   *     tưởng còn hiệu lực và bật lại buff. */
+  function endManifestedEgoState(combatant, { forcedByStagger = false } = {}) {
+    if (!combatant.manifestedEGO) return "";
+    const notes = [];
+    combatant.manifestedEGO = false;
+    combatant.manifestedEGOTurnsLeft = 0;
+    combatant.manifestedEGOCooldownLeft = 5;
+    if (combatant.theStrongestActive) {
+      // Trừ ĐÚNG phần đã cộng (không trừ cứng 100) — nguồn khác có thể đã đổi
+      // maxStamina giữa chừng.
+      const bonus = combatant.theStrongestMaxStaminaBonus ?? 0;
+      if (bonus > 0) {
+        combatant.maxStamina = Math.max(1, (combatant.maxStamina ?? 0) - bonus);
+        combatant.currentStamina = Math.min(combatant.currentStamina ?? 0, combatant.maxStamina);
+      }
+      combatant.theStrongestMaxStaminaBonus = 0;
+      combatant.theStrongestActive = false;
+      notes.push(`Max Stamina −${bonus}`);
+    }
+    const mimicNote = revertMimicSynchronization(combatant);
+    if (forcedByStagger) {
+      combatant.shatteredEgoTurnsLeft = 3;
+      notes.push("**Shattered E.G.O** 3 Turn (dmg −1/2, mọi Dice ra Min Dice)");
+    }
+    return `😈 **Hết Manifest E.G.O**${forcedByStagger ? " (bị Stagger cắt ngang)" : ""} — ${notes.join(" · ") || "trở lại bình thường"}.${mimicNote}`;
+  }
+
   function checkStaggerPanic(combatant) {
     if (combatant.currentStamina <= 0 && !combatant.staggered) {
       // "Reactive" (Composition Tool) — GAP ĐÃ SỬA: "Cho khả năng kháng Stagger
@@ -756,6 +842,17 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       combatant.lastStaggerWas2Turn = isThisStagger2Turn;
       combatant.dazedStacks = (combatant.dazedStacks ?? 0) + 1;
       combatant.currentStamina = 0;
+      // "The Strongest" (Manifested E.G.O: Red Mist): "Nếu bạn bị Stagger ở
+      // trong trạng thái Manifested E.G.O, LẬP TỨC kết thúc trạng thái và bản
+      // thân nhận phải debuff Shattered E.G.O".
+      // Đặt ở ĐÂY vì checkStaggerPanic là choke point DUY NHẤT của Stagger —
+      // mọi nguồn (Stamina ≤0, forceStagger, Resonate…) đều đi qua đây, nên
+      // không có đường nào Stagger mà thoát được luật này.
+      // Gate bằng CỜ `theStrongestActive` chứ không tra ego.js: combat-utils
+      // không (và không nên) biết gì về Manifested E.G.O nào có passive nào.
+      if (combatant.theStrongestActive && combatant.manifestedEGO) {
+        combatant.staggerForcedNote = endManifestedEgoState(combatant, { forcedByStagger: true });
+      }
       // Cleanse: SAU KHI lần Stagger 2-turn này THỰC SỰ KẾT THÚC, dazedStacks reset về
       // 0 (chu kỳ 1,1,2-cleanse lặp lại) — xem advanceCombatantTurn, không reset ở
       // đây vì Stagger vừa MỚI BẮT ĐẦU, chưa kết thúc.
@@ -803,5 +900,10 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     appendActionLog,
     getActionLogIcon,
     checkStaggerPanic,
+    applyMimicryForm,
+    applyMimicSynchronization,
+    revertMimicSynchronization,
+    endManifestedEgoState,
+    MIMICRY_SYNC_FORMS,
   };
 };

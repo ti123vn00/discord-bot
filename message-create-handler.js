@@ -2793,9 +2793,17 @@ if (message.content.startsWith("-gacha")) {
       // cố định suốt trận, KHÔNG re-roll mỗi lần xem status — xem comment ở
       // sub === "start"). Encounter tạo TRƯỚC KHI tính năng này tồn tại sẽ không
       // có field này (currentBgm undefined) — bỏ qua đính kèm, không lỗi gì.
-      const bgmFiles = encounter.currentBgm ? [new AttachmentBuilder(`./assets/audio/bgm/${encounter.currentBgm}`)] : [];
+      // BGM ĐỘNG — `resolveEncounterBgm` (ego.js) trả BGM của Manifested E.G.O
+      // đang bật nếu có, không thì BGM thường của trận. Tính lại từ state mỗi
+      // lần thay vì ghi đè `currentBgm` lúc Manifest rồi khôi phục lúc hết:
+      // khôi phục sót một đường là trận đó kẹt BGM E.G.O vĩnh viễn.
+      const bgmName = resolveEncounterBgm(encounter);
+      const isEgoBgm = !!bgmName && bgmName !== encounter.currentBgm;
+      const bgmFiles = bgmName ? [new AttachmentBuilder(`./assets/audio/bgm/${bgmName}`)] : [];
       message.reply({
-        content: encounter.currentBgm ? `🎵 BGM trận này: **${encounter.currentBgm}**` : undefined,
+        content: bgmName
+          ? (isEgoBgm ? `🎵 **${bgmName}** — BGM Manifested E.G.O (còn tới khi hết trạng thái)` : `🎵 BGM trận này: **${bgmName}**`)
+          : undefined,
         embeds: [boardPayload4.embed],
         components: [...actionPanelRows, ...boardPayload4.components],
         files: bgmFiles,

@@ -19,6 +19,12 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     if ((defender.dullahanStacks ?? 0) > 0) reductionPct -= 15;
     if (hasPerk(defender, "Smoldering Resolve") && defender.currentHp < defender.maxHp * 0.4) reductionPct += 10;
     if (hasPerk(defender, "No Will To Break") && defender.manifestedEGO) reductionPct += 20;
+    // "The Strongest" (Manifested E.G.O: Red Mist): "50% Dmg Reduction kéo dài
+    // tới khi hết Manifested E.G.O". CỘNG vào reductionPct (đi qua saturateDR
+    // như mọi nguồn DR khác) chứ KHÔNG nhân riêng — đây là Dmg Reduction đúng
+    // nghĩa, phải chịu chung đường cong bão hoà với Protection/Charge Shield,
+    // nếu không thì stack chồng lên nhau thành bất tử.
+    if (defender.theStrongestActive) reductionPct += 50;
     // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Reverberation
     // Ensemble" (outfit): "Cho bạn 40% Dmg Reduction" — cố định, không điều
     // kiện. BUG ĐÃ SỬA: combatant không có field chung "outfitName" nào cả —

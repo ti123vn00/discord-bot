@@ -291,6 +291,29 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // Dice Up (chỉ hiển thị, không tự áp vào roll skill — như mọi nguồn Dice Up
       // khác) + 30% Dmg M1+skill bản thân gây ra.
       manifestedEGO: false, manifestedEGOTurnsLeft: 0, manifestedEGOCooldownLeft: 0, firstManifestEGOUsed: false,
+      // ── Manifested E.G.O: Red Mist (ego.js key `redmist`) ───────────────────
+      // theStrongestActive — bật lúc Manifest NẾU E.G.O đó có passive
+      //   `redmist_the_strongest`; tắt lúc Manifest hết. Là CỜ RIÊNG chứ không
+      //   suy lại từ ego.js ở mỗi nơi dùng: skill-verification.js/damage-calc
+      //   không biết gì về E.G.O, và suy lại 5 nơi thì sót 1 nơi là lệch luật.
+      // theStrongestMaxStaminaBonus — LƯU lại đúng phần Max Stamina đã cộng để
+      //   lúc trả về trừ ĐÚNG chừng đó (trừ cứng 100 sẽ ăn lẹm vào Max Stamina
+      //   gốc nếu nguồn khác đã đổi nó giữa chừng).
+      // shatteredEgoTurnsLeft — debuff sau khi bị Stagger trong lúc Manifest:
+      //   dmg gây ra giảm 1/2 + mọi Dice ra Min Dice, 3 Turn.
+      theStrongestActive: false, theStrongestMaxStaminaBonus: 0, shatteredEgoTurnsLeft: 0,
+      // The Mimic — Mimicry Blade hoá thành Mimicry: Synchronization trong lúc
+      // Manifest. `mimicryForm`: "sword" (mặc định) | "scythe". Người chơi tự đổi
+      // qua panel Special, đổi bao nhiêu lần trong turn cũng được.
+      // mimicryOriginal* — chỉ số vũ khí GỐC, để hết Manifest trả về NGUYÊN TRẠNG
+      //   (Fragaria: "đây là một passive TẠM THỜI biến đổi vũ khí hiện tại").
+      mimicSyncActive: false, mimicryForm: "sword",
+      mimicryOriginalWeaponName: null, mimicryOriginalBaseDamage: 0,
+      mimicryOriginalWeaponType: null, mimicryOriginalWeaponWeight: null,
+      // The Red Mist — Dice Up cộng dồn theo số kẻ địch hạ được, KÉO DÀI HẾT
+      // ENCOUNTER (giống blackSuitPersistentBonus: phải cộng LẠI mỗi turn vì
+      // `diceUp` bị reset về 0 ở advanceCombatantTurn).
+      redMistPersistentDiceUp: 0,
       // Chấn thương — nhận dmg >30% Max HP trong 1 đòn → roll 10% nặng/40% nhẹ/50%
       // không gì. injuries: list các chấn thương ĐANG có (có thể nhiều, KHÔNG tự hết
       // — chỉ GM xoá tay nếu chữa lành, xem -encounter healinjury). daseStacks riêng
