@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ applyHpLoss, cdKeyFor, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
+module.exports = function ({ applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, appendActionLog, cdKeyFor, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -92,6 +92,64 @@ async function performEndTurn(channelId, userId, isAdmin) {
         }
       }
     }
+    // ⚠️ THỨ TỰ BẮT BUỘC: 2 khối dưới phải chạy TRƯỚC vòng advanceCombatantTurn.
+    // advanceCombatantTurn RESET `dmgDealtThisTurn` và `shieldLostThisTurn` về 0 —
+    // đặt sau nó thì Astral Quantization và Swan Song LUÔN ra 0. (Tôi đã chèn
+    // nhầm xuống dưới đúng 1 lần, test t-player-gear.js bắt được.)
+    // ── ASTRAL QUANTIZATION — bắn dmg TRÌ HOÃN ────────────────────────────
+    // Fragaria đính chính: *"turn đó nếu đồng đội đánh 3 kẻ địch mỗi kẻ 100 dmg
+    // và Astral Quantization gieo ra 30 thì TOÀN BỘ 3 kẻ đó sẽ chịu thêm 30 dmg
+    // vào end turn"*.
+    // → % tính RIÊNG cho TỪNG kẻ địch, trên dmg mà đồng đội gây cho CHÍNH kẻ đó,
+    //   và đánh TẤT CẢ kẻ địch đã bị đồng đội đánh — KHÔNG phải 1 mục tiêu, cũng
+    //   không phải % của TỔNG dmg (bản đầu của tôi sai cả hai).
+    // Chạy TRƯỚC advanceCombatantTurn (reset bộ đếm) và trước Swan Song — dmg này
+    // có thể phá khiên, phải tính vào lượng khiên mất để Swan Song hồi đúng.
+    if ((encounter.pendingAstralQuantization ?? []).length > 0) {
+      for (const aq of encounter.pendingAstralQuantization) {
+        const ally = encounter.players?.[aq.allyId];
+        const perTarget = ally?.dmgDealtByTargetThisTurn ?? {};
+        const hits = [];
+        for (const [foeKey, dealt] of Object.entries(perTarget)) {
+          const foe = encounter.enemies?.[foeKey];
+          if (!foe || (foe.currentHp ?? 0) <= 0 || !(dealt > 0)) continue;
+          const dmg = Math.round(dealt * (aq.pct / 100) * 1000) / 1000;
+          if (dmg <= 0) continue;
+          const absorbed = applyShieldLoss(foe, Math.min(foe.shieldHp ?? 0, dmg));
+          applyHpLoss(foe, dmg - absorbed);
+          hits.push(`**${foe.name}** \`${foeKey}\` ${dealt.toFixed(1)}→**${dmg}**`);
+        }
+        if (hits.length > 0) {
+          appendActionLog(encounter,
+            `🌌 **Astral Quantization** (<@${aq.userId}>) — **${aq.pct}%** dmg <@${aq.allyId}> đã gây trong turn: ${hits.join(" · ")}`);
+        }
+      }
+      encounter.pendingAstralQuantization = [];
+    }
+    // ── SWAN SONG (Lucent Historia) ──────────────────────────────────────
+    // "CUỐI TURN, bản thân và đồng đội hồi phục một lượng HP bằng **20% lượng
+    // Shield HP ĐÃ MẤT trong turn này**."
+    // Chạy TRƯỚC advanceCombatantTurn ở dưới — hàm đó reset `shieldLostThisTurn`
+    // về 0, tính sau là luôn hồi 0.
+    // Mỗi người hồi theo khiên CHÍNH MÌNH mất (không phải tổng cả đội) — đọc
+    // đúng chữ "bản thân VÀ đồng đội hồi ... 20% lượng Shield HP đã mất".
+    {
+      const hasSwanSong = Object.values(encounter.players ?? {})
+        .some(pl => pl.weaponName === "Lucent Historia" && (pl.currentHp ?? 0) > 0);
+      if (hasSwanSong) {
+        const healed = [];
+        for (const [pid, pl] of Object.entries(encounter.players ?? {})) {
+          const lost = pl.shieldLostThisTurn ?? 0;
+          if (lost <= 0 || (pl.currentHp ?? 0) <= 0) continue;
+          const got = healHpCapped(pl, Math.round(lost * 0.2 * 1000) / 1000);
+          if (got > 0) healed.push(`<@${pid}> +${got} HP`);
+        }
+        if (healed.length > 0) {
+          appendActionLog(encounter, `🦢 **Swan Song** — hồi 20% Shield đã mất: ${healed.join(", ")}`);
+        }
+      }
+    }
+
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
     // Sắc lệnh (Index) — chấm + roll lại theo VÒNG TURN ORDER, không theo lượt

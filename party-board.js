@@ -29,6 +29,7 @@ module.exports = function ({
   getPlayerData, buildJoinedCombatant, determineTurnOrder,
   validateAndRerollPrescript, appendActionLog, hasPerk, ADMIN_IDS, aiHooks, pickRandomBgm,
   setUserActiveEncounterChannel, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp,
+  grantShieldHp,
 }) {
   // Trần MẶC ĐỊNH. Contract có thể ghi đè bằng `maxPartySize` (VD weekly boss
   // Nothing There cho 5 người vì độ khó) — xem partySizeLimitFor.
@@ -252,6 +253,38 @@ module.exports = function ({
         await setUserActiveEncounterChannel(id, channelId).catch(() => {});
       }
 
+      // ── HOOK BẮT ĐẦU TRẬN (2 món đồ mới) ─────────────────────────────────
+      // Chạy SAU khi mọi member đã join — cả 2 hiệu ứng đều tác động lên TOÀN
+      // ĐỘI nên phải đợi party đầy đủ, không làm trong vòng lặp join.
+      {
+        const allPlayers = Object.entries(encounter.players);
+        // "Day One of My New Life" — aura −0,1x Res cho TOÀN BỘ đồng đội khi
+        // người đội nón còn trên sân. **KHÔNG STACK**: cờ boolean, nhiều người
+        // cùng đội cũng chỉ trừ 0,1x một lần (combatantResStr cộng đúng 1 lần).
+        const hasAnyDayOne = allPlayers.some(([, c]) => c.hasDayOneAura);
+        if (hasAnyDayOne) {
+          for (const [, c] of allPlayers) c.dayOneAuraActive = true;
+          memberStartNotes.push(`🎩 **Day One of My New Life** — toàn đội −0,1x Res *(không stack)*`);
+        }
+        // "Wanderer's Teatime Clothes" — khiên mở màn cho BẢN THÂN và TOÀN BỘ
+        // đồng đội, bằng 30% Max HP CỦA NGƯỜI MẶC (không phải của người nhận).
+        // [Một lần mỗi Encounter] → cờ `wandererTeatimeUsed`.
+        for (const [wearerId, wearer] of allPlayers) {
+          if (!wearer.hasWandererTeatime || wearer.wandererTeatimeUsed) continue;
+          wearer.wandererTeatimeUsed = true;
+          const amount = Math.round((wearer.maxHp ?? 0) * 0.3 * 100) / 100;
+          if (amount <= 0) continue;
+          const got = [];
+          for (const [rid, receiver] of allPlayers) {
+            const gained = grantShieldHp(receiver, amount, wearer, { isAlly: rid !== wearerId });
+            if (gained > 0) got.push(`<@${rid}> +${gained}`);
+          }
+          if (got.length > 0) {
+            memberStartNotes.push(`🫖 **Wanderer's Teatime Clothes** (<@${wearerId}>) — Shield mở màn: ${got.join(", ")}`);
+          }
+        }
+      }
+
       // Spawn đủ mob theo killCount — key dạng "<mobKey>1", "<mobKey>2"...
       for (let i = 1; i <= contract.killCount; i++) {
         const mobKeyInEncounter = `${contract.mobKey}${i}`;
@@ -273,6 +306,9 @@ module.exports = function ({
         // damage-calc/applySanityGain không thấy (chúng đọc combatant, không đọc
         // QUEST_MOBS).
         if (mobData.noSanity) mob.noSanity = true;
+        if (Number.isFinite(mobData.staminaRegenPerTurn)) mob.staminaRegenPerTurn = mobData.staminaRegenPerTurn;
+        if (Number.isFinite(mobData.speedRangeMin)) mob.speedRangeMin = mobData.speedRangeMin;
+        if (Number.isFinite(mobData.speedRangeMax)) mob.speedRangeMax = mobData.speedRangeMax;
         if (mobData.defenseImmune) mob.defenseImmune = true;
         if (mobData.noStaminaCost) mob.noStaminaCost = true;
         if (mobData.noM1) mob.noM1 = true;

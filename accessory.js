@@ -11,6 +11,30 @@ const A_REALIZATION = "<:Realization:1449582220481134705>Realization";
 const A_BLACKSILENCE = "<:BlackSilence:1449581989400281260>Struggling";
 
 const ACCESSORIES = {
+  "memories compassion": {
+    name: "Memories: Compassion",
+    exclusive: true,
+    // CHỈ có tác dụng khi đang dùng Lucent Historia (Fragaria ghi rõ) — mọi hiệu
+    // ứng bên dưới đều kiểm `weaponName === "Lucent Historia"` trong code.
+    requiresWeapon: "Lucent Historia",
+    passives: [
+      { name: "Memories: Compassion", desc: "*Chỉ có tác dụng khi dùng **Lucent Historia***\n• Gia tăng **100 Max HP**, nhưng bạn KHÔNG BAO GIỜ đạt được hay heal lên ngưỡng 100 máu thêm này\n• Gia tăng **x2 hiệu quả nhận Shield** cho đồng đội khi họ dưới 30% HP\n• Đồng đội nhận được Shield sẽ **giảm 0,2x mọi Resistance** cho bản thân" },
+    ],
+  },
+  "day one of my new life": {
+    name: "Day One of My New Life",
+    // "Nón Ánh Sáng (Bảo Hộ)" — LOẠI exclusive MỚI: chỉ đeo được 1 Nón Ánh Sáng
+    // cùng lúc (khác `exclusive: true` vốn là "không trùng chính nó").
+    exclusiveType: "Nón Ánh Sáng",
+    // Tinh luyện 1→5, ghép 2 cái cùng tên lên 1 tầng. Hiệu suất tạo khiên
+    // 16% + 2%/tầng vượt 1 ⇒ tầng 5 = 16 + 2×4 = 24%.
+    refinable: { maxTier: 5, baseShieldPct: 16, perTierShieldPct: 2 },
+    passives: [
+      { name: "At This Very Moment", desc: "• Gia tăng **16% hiệu suất tạo khiên** (mỗi tầng tinh luyện +2%, tối đa **24%** ở tầng 5)\n• Giảm **0,1x Res** của TOÀN BỘ đồng đội khi bạn còn ở trên sân *(không stack nếu người khác cũng có passive này)*" },
+      { name: "Nón Ánh Sáng", desc: "Độc nhất — không thể equip Accessory khác thuộc loại **Nón Ánh Sáng**. Khi trang bị, bạn chuyển thành vận mệnh của nó." },
+    ],
+  },
+
   "gang tay cam lang": {
     name: "Găng Tay Câm Lặng",
     passives: [

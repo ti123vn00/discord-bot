@@ -107,7 +107,13 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
       // Đang stagger thì KHÔNG hồi 30 Stamina thường — turn này coi như "không hành
       // động được", hồi đầy 1 LẦN lúc hết stagger (đã xử lý ở trên).
     } else {
-      combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + ENCOUNTER_STAMINA_REGEN_PER_TURN);
+      // `staminaRegenPerTurn` — trần hồi RIÊNG của combatant, ghi đè hằng chung.
+      // Fragaria: Nothing There "Stamina không hồi mỗi turn mà chỉ 1 điểm cố
+      // định" ⇒ khai 1 ở quest-data.js. Combatant KHÔNG khai giữ nguyên như cũ.
+      // Nhánh "hồi FULL sau khi hết Stagger" nằm ở trên và áp cho MỌI combatant
+      // nên không phải làm gì thêm — đúng luật Fragaria mô tả.
+      const regenPerTurn = combatant.staminaRegenPerTurn ?? ENCOUNTER_STAMINA_REGEN_PER_TURN;
+      combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + regenPerTurn);
       // "Airborne" (GAP ĐÃ SỬA — Fragaria: "Airborne cũng chưa được implement"):
       // "kẻ địch bị hất tung nhận 10 Dmg vào End Turn. Biến mất sau End Turn
       // hoặc sau bị dính đòn có condition Airborne".
@@ -333,6 +339,16 @@ module.exports = function ({ hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_
     // Boss theo kịch bản: reset bộ đếm đòn/turn (điều kiện DỪNG duy nhất của
     // boss khai `noStaminaCost` — xem attemptOneMobAction trong enemy-ai.js).
     combatant.bossAttacksThisTurn = 0;
+    // "Swan Song" (Lucent Historia) hồi 20% lượng Shield MẤT trong turn — phải
+    // reset bộ đếm ở ĐẦU turn mới, nếu không nó cộng dồn cả trận.
+    // ⚠️ Hiệu ứng hồi máu CHƯA nối (xem HANDOFF) — reset đặt sẵn để khi nối
+    // không phải sửa 2 chỗ.
+    combatant.shieldLostThisTurn = 0;
+    // Tổng dmg gây ra trong turn — "Astral Quantization" đọc trước khi reset
+    // (reactive-defense.js bắn dmg trì hoãn TRƯỚC khi gọi advanceCombatantTurn).
+    combatant.dmgDealtThisTurn = 0;
+    // Dmg theo TỪNG mục tiêu — Astral Quantization tính % riêng cho mỗi kẻ địch.
+    combatant.dmgDealtByTargetThisTurn = {};
     // "Vừa bị AI nhắm" — giảm dần mỗi turn để người bị dồn đòn turn trước được
     // trở lại vòng quay bình thường (xem enemy-ai.js's pickAiTargets).
     if ((combatant.aiRecentTargetCount ?? 0) > 0) combatant.aiRecentTargetCount -= 1;

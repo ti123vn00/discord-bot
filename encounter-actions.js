@@ -21,7 +21,7 @@
 const MANG_MAX_LEVEL = 5;
 const SHIN_MAX_LEVEL = 50;
 
-module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
+module.exports = function ({ healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
 
   async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
     let result;
@@ -271,7 +271,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
       let healNote = "";
       if (!player.firstManifestEGOUsed && hasPerk(player, "Comeback Time")) {
         const healAmt = Math.round(player.maxHp * 0.25 * 100) / 100;
-        player.currentHp = Math.min(player.maxHp, player.currentHp + healAmt);
+        healHpCapped(player, healAmt); // tôn trọng healCapHp (Memories: Compassion)
         healNote = ` 🩹+${healAmt} HP (Comeback Time — lần đầu Manifest E.G.O)`;
       }
       player.firstManifestEGOUsed = true;
@@ -368,7 +368,7 @@ module.exports = function ({ withLock, encounterKey, getEncounter, saveEncounter
         }
       } else if (isChuoi) {
         const before = player.currentHp;
-        player.currentHp = Math.min(player.maxHp, player.currentHp + 10);
+        healHpCapped(player, 10);
         effectNote = ` 🍌 +${(player.currentHp - before).toFixed(0)} HP (${player.currentHp}/${player.maxHp}).`;
       } else if (isTao) {
         player.appleDmgReductionActive = true;

@@ -183,6 +183,44 @@ module.exports = function ({ isConsumableItem,
     joined.hasLiuAssociation = equippedOutfitNameNormalized === "liu association";
     joined.hasCinqAssociation = equippedOutfitNameNormalized === "cinq association";
     joined.hasDieciAssociation = equippedOutfitNameNormalized === "dieci association";
+    // ── 4 MÓN MỚI (Fragaria) ───────────────────────────────────────────────
+    // Wanderer's Teatime Clothes — khiên mở màn, 1 LẦN mỗi encounter.
+    joined.hasWandererTeatime = equippedOutfitNameNormalized === "wanderer's teatime clothes";
+    joined.wandererTeatimeUsed = false;
+    // Memories: Compassion — CHỈ tác dụng khi dùng Lucent Historia; điều kiện vũ
+    // khí kiểm ở NƠI DÙNG (grantShieldHp/combatantResStr) chứ không kiểm ở đây,
+    // vì người chơi có thể đổi vũ khí giữa trận (Dimension Pocket).
+    const accNamesNorm = (profileData.equippedAccessories ?? []).filter(Boolean).map(n => n.trim().toLowerCase());
+    joined.hasMemoriesCompassion = accNamesNorm.includes("memories: compassion");
+    // "+100 Max HP nhưng KHÔNG BAO GIỜ heal lên được ngưỡng 100 thêm này"
+    // → cộng vào maxHp để hiển thị/tính %, nhưng chặn trần hồi máu ở
+    // `healCapHp` (mọi nguồn heal kẹp theo giá trị này, không phải maxHp).
+    // Fragaria làm rõ: *"ví dụ người dùng có 310 HP thì sẽ thành **310/410 HP**
+    // trong trận — mục đích chủ yếu là khiến % Max HP của người đó CAO HƠN,
+    // tương tác tốt với 1 số thứ, chứ nó chỉ là số máu ẢO không thể heal hay
+    // đạt được ngần đó."*
+    // → maxHp +100 (để MỌI phép tính theo % Max HP dùng con số mới), currentHp
+    //   GIỮ NGUYÊN, và trần HỒI kẹp ở maxHp GỐC qua `healCapHp`.
+    //   Dmg vẫn trừ bình thường — 100 máu ảo chỉ chặn HỒI, không chặn MẤT.
+    if (joined.hasMemoriesCompassion) {
+      joined.healCapHp = joined.maxHp;
+      joined.maxHp += 100;
+      joined.compassionPhantomHp = 100;
+    }
+    // Day One of My New Life — hiệu suất tạo khiên theo TẦNG TINH LUYỆN.
+    // Tầng lưu ở profile theo tên accessory (`data.accessoryRefine`), mặc định 1.
+    if (accNamesNorm.includes("day one of my new life")) {
+      // Tầng dùng trong trận = bản CAO NHẤT đang sở hữu. Đọc mảng tầng mới
+      // trước, rồi mới tới field số đơn cũ (dữ liệu chưa từng `-refine`).
+      const tierArr = profileData.accessoryRefineTiers?.["Day One of My New Life"];
+      const tierRaw = Array.isArray(tierArr) && tierArr.length > 0
+        ? Math.max(...tierArr)
+        : (profileData.accessoryRefine?.["Day One of My New Life"] ?? 1);
+      const tier = Math.max(1, Math.min(5, tierRaw));
+      joined.dayOneTier = tier;
+      joined.shieldEfficiencyPct = 16 + (tier - 1) * 2;
+      joined.hasDayOneAura = true;   // -0,1x Res cho đồng đội, KHÔNG stack
+    }
     joined.hasZweiAssociation = equippedOutfitNameNormalized === "zwei association";
     joined.hasHanaAssociation = equippedOutfitNameNormalized === "hana association";
     joined.hasIndexProselyte = equippedOutfitNameNormalized === "index proselyte";

@@ -5,6 +5,15 @@
 // và keypage (mô tả hiệu ứng TỰ DO, giống cách Page/passive khác được lưu — KHÔNG
 // tự mô phỏng máy trừ khi sau này được yêu cầu code cụ thể).
 const OUTFITS = {
+  "wanderer's teatime clothes": {
+    name: "Wanderer's Teatime Clothes",
+    resistance: { B: 1.3, P: 1.3, S: 1.3 },
+    speedRange: { min: 2, max: 5 },
+    keypage: [
+      "Khi bắt đầu trận đấu, ngay lập tức cho bản thân và toàn bộ đồng đội <:Shield:1449582220481134705>Shield HP bằng 30% Max HP của bản thân. [Một lần mỗi Encounter]",
+    ],
+  },
+
   "black suit": {
     name: "Black Suit",
     resistance: { B: 1, P: 1.3, S: 1.3 },

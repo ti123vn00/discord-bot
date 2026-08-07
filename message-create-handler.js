@@ -1538,6 +1538,108 @@ client.on("messageCreate", async (message) => {
   // Slot SINGULARITY: ĐÚNG 1 slot mỗi người (Fragaria: "mỗi người có 1 slot
   // Singularity TÁCH BIỆT với weapon/outfit/accessory"). Vì chỉ 1 slot nên cú
   // pháp KHÔNG có tham số slot — khác page (5 slot) và accessory (3 slot).
+  // ── -refine <tên accessory> — TINH LUYỆN ─────────────────────────────────
+  // Fragaria: "Tinh luyện có được bằng cách GHÉP CÙNG 2 Day One of My New Life
+  // lại với nhau, max là 5" + đính chính: *"ưu tiên bản có tinh luyện CAO HƠN,
+  // đừng để cái có tinh luyện 1 nuốt cái có tinh luyện 3"*.
+  //
+  // ⚠️ MÔ HÌNH DỮ LIỆU ĐÃ ĐỔI: trước đây `accessoryRefine[name]` là MỘT SỐ dùng
+  // chung cho mọi bản sao — không thể diễn tả "tôi có 1 cái tầng 3 và 1 cái tầng
+  // 1". Giờ là MẢNG TẦNG, mỗi phần tử = 1 bản đang sở hữu:
+  //   accessoryRefineTiers["Day One of My New Life"] = [3, 1, 1]
+  // Ghép: lấy bản CAO NHẤT làm gốc (lên +1) và TIÊU bản THẤP NHẤT làm nguyên
+  // liệu — giữ lại nhiều giá trị nhất, và tuyệt đối không để bản thấp nuốt bản cao.
+  if (message.content.startsWith("-refine")) {
+    const rawInputFull = message.content.replace("-refine", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
+    if (!rawInput.trim()) { message.reply("⚠️ Cú pháp: `-refine [@user] <tên accessory>` (VD: `-refine day one of my new life`)"); return; }
+    try {
+      const accessory = findAccessory(rawInput.trim());
+      if (!accessory) throw new Error(`Không tìm thấy accessory "${rawInput.trim()}".`);
+      if (!accessory.refinable) throw new Error(`**${accessory.name}** không tinh luyện được.`);
+      const maxTier = accessory.refinable.maxTier ?? 5;
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      const owned = data.items?.[accessory.name] ?? 0;
+      if (owned < 2) throw new Error(`Cần **2** **${accessory.name}** để ghép (bạn có **${owned}**).`);
+
+      // Chuẩn hoá mảng tầng theo SỐ BẢN đang sở hữu. Tự vá dữ liệu cũ:
+      // `accessoryRefine[name]` (số đơn) → phần tử đầu của mảng; thiếu thì bù 1.
+      data.accessoryRefineTiers = data.accessoryRefineTiers ?? {};
+      let tiers = Array.isArray(data.accessoryRefineTiers[accessory.name])
+        ? [...data.accessoryRefineTiers[accessory.name]]
+        : [];
+      const legacyTier = data.accessoryRefine?.[accessory.name];
+      if (tiers.length === 0 && Number.isFinite(legacyTier)) tiers.push(legacyTier);
+      while (tiers.length < owned) tiers.push(1);
+      tiers = tiers.slice(0, owned).map(t => Math.max(1, Math.min(maxTier, t | 0)));
+
+      tiers.sort((a, b) => b - a);           // cao → thấp
+      const base = tiers[0], material = tiers[tiers.length - 1];
+      if (base >= maxTier) throw new Error(`Bản cao nhất của **${accessory.name}** đã ở tầng tối đa **${maxTier}/${maxTier}**.`);
+      // Gốc = CAO NHẤT (index 0), nguyên liệu = THẤP NHẤT (cuối mảng).
+      tiers[0] = base + 1;
+      tiers.pop();
+
+      data.items[accessory.name] = owned - 1;
+      if (data.items[accessory.name] <= 0) delete data.items[accessory.name];
+      data.accessoryRefineTiers[accessory.name] = tiers;
+      // Giữ `accessoryRefine` đồng bộ = tầng CAO NHẤT, để mọi chỗ đang đọc field
+      // cũ (player-join-builder, hiển thị) vẫn đúng mà không phải sửa đồng loạt.
+      data.accessoryRefine = data.accessoryRefine ?? {};
+      data.accessoryRefine[accessory.name] = Math.max(...tiers);
+      await savePlayerData(targetUserId, data, slot);
+
+      const spec = accessory.refinable;
+      const pctNow = (spec.baseShieldPct ?? 0) + (base + 1 - 1) * (spec.perTierShieldPct ?? 0);
+      message.reply(
+        `✨ Tinh luyện **${accessory.name}**: bản tầng **${base}** → **${base + 1}**/${maxTier}` +
+        ` *(tiêu bản tầng ${material})*${targetLabel ? ` cho **${targetLabel}**` : ""}\n` +
+        `> Hiệu suất tạo khiên: **${pctNow}%** · các bản còn lại: ${tiers.map(t => `T${t}`).join(", ") || "(hết)"}`
+      );
+    } catch (err) { message.reply(`❌ ${err.message}`); }
+    return;
+  }
+
+  // ── -equipsingularity / -unequipsingularity ────────────────────────────────
+  // Slot SINGULARITY: ĐÚNG 1 slot mỗi người (Fragaria: "mỗi người có 1 slot
+  // Singularity TÁCH BIỆT với weapon/outfit/accessory"). Vì chỉ 1 slot nên cú
+  // pháp KHÔNG có tham số slot — khác page (5 slot) và accessory (3 slot).
+  // ── -refine <tên accessory> — TINH LUYỆN ─────────────────────────────────
+  // Fragaria: "Tinh luyện có được bằng cách GHÉP CÙNG 2 Day One of My New Life
+  // lại với nhau, max là 5, sẽ gia tăng +24% hiệu suất tạo khiên".
+  // → Mỗi lần ghép TIÊU 1 bản sao (bản đang giữ + 1 cái nữa = lên 1 tầng).
+  // Tầng lưu ở `data.accessoryRefine[<tên>]`, mặc định 1.
+  if (message.content.startsWith("-refine")) {
+    const rawInputFull = message.content.replace("-refine", "").trim();
+    const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
+    if (!rawInput.trim()) { message.reply("⚠️ Cú pháp: `-refine [@user] <tên accessory>` (VD: `-refine day one of my new life`)"); return; }
+    try {
+      const accessory = findAccessory(rawInput.trim());
+      if (!accessory) throw new Error(`Không tìm thấy accessory "${rawInput.trim()}".`);
+      if (!accessory.refinable) throw new Error(`**${accessory.name}** không tinh luyện được.`);
+      const maxTier = accessory.refinable.maxTier ?? 5;
+      const { data, slot } = await getPlayerDataWithSlot(targetUserId);
+      data.accessoryRefine = data.accessoryRefine ?? {};
+      const cur = Math.max(1, Math.min(maxTier, data.accessoryRefine[accessory.name] ?? 1));
+      if (cur >= maxTier) throw new Error(`**${accessory.name}** đã ở tầng tối đa **${maxTier}/${maxTier}**.`);
+      // Cần 1 bản sao THÊM để ghép — tức phải sở hữu ≥2 (1 cái đang giữ + 1 làm
+      // nguyên liệu). Trừ đúng 1, KHÔNG trừ cả hai.
+      const owned = data.items?.[accessory.name] ?? 0;
+      if (owned < 2) throw new Error(`Cần **2** **${accessory.name}** để ghép (bạn có **${owned}**).`);
+      data.items[accessory.name] = owned - 1;
+      if (data.items[accessory.name] <= 0) delete data.items[accessory.name];
+      data.accessoryRefine[accessory.name] = cur + 1;
+      await savePlayerData(targetUserId, data, slot);
+      const spec = accessory.refinable;
+      const pctNow = (spec.baseShieldPct ?? 0) + ((cur + 1) - 1) * (spec.perTierShieldPct ?? 0);
+      message.reply(
+        `✨ Đã tinh luyện **${accessory.name}**: **${cur} → ${cur + 1}**/${maxTier}${targetLabel ? ` cho **${targetLabel}**` : ""}\n` +
+        `> Hiệu suất tạo khiên hiện tại: **${pctNow}%** · còn lại trong kho: **${data.items[accessory.name] ?? 0}**`
+      );
+    } catch (err) { message.reply(`❌ ${err.message}`); }
+    return;
+  }
+
   if (message.content.startsWith("-equipsingularity")) {
     const rawInputFull = message.content.replace("-equipsingularity", "").trim();
     const { targetUserId, targetLabel, remainingInput: rawInput } = resolveEquipTarget(message, rawInputFull);
@@ -1604,9 +1706,23 @@ client.on("messageCreate", async (message) => {
           throw new Error(`Bạn chỉ sở hữu **${ownedCount}** **${accessory.name}** nhưng đã dùng **${usedInOtherSlots}** ở slot khác rồi — không đủ để equip thêm slot này.`);
         }
       }
+      // ── LOẠI ĐỘC QUYỀN (Fragaria — "Nón Ánh Sáng (Bảo Hộ)") ──────────────
+      // "Độc nhất, không thể equip Accessory KHÁC với Loại 'Nón Ánh Sáng'."
+      // KHÁC `exclusive: true` (vốn chỉ chặn trùng CHÍNH NÓ): đây là chặn theo
+      // LOẠI — 2 accessory tên khác nhau nhưng cùng `exclusiveType` cũng chặn.
+      // Gate này áp cả cho admin: đây là luật thiết kế của món đồ, không phải
+      // hạn mức sở hữu.
+      if (accessory.exclusiveType) {
+        const conflictSlot = data.equippedAccessories.findIndex((name, idx) =>
+          idx !== slotNum - 1 && name && findAccessory(name)?.exclusiveType === accessory.exclusiveType);
+        if (conflictSlot >= 0) {
+          throw new Error(`**${accessory.name}** thuộc loại **${accessory.exclusiveType}** — bạn đang đeo **${data.equippedAccessories[conflictSlot]}** (cùng loại) ở slot #${conflictSlot + 1}. Chỉ được đeo 1 món loại này.`);
+        }
+      }
       data.equippedAccessories[slotNum - 1] = accessory.name;
       await savePlayerData(targetUserId, data, slot);
-      message.reply(`✅ Đã equip accessory **${accessory.name}** vào slot #${slotNum}${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
+      const refineTier = data.accessoryRefine?.[accessory.name];
+      message.reply(`✅ Đã equip accessory **${accessory.name}**${refineTier ? ` *(Tinh Luyện ${refineTier}/${accessory.refinable?.maxTier ?? 5})*` : ""} vào slot #${slotNum}${targetLabel ? ` cho **${targetLabel}**` : ""}.`);
     } catch (err) {
       message.reply(`❌ ${err.message}`);
     }

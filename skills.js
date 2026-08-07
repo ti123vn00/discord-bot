@@ -4368,7 +4368,8 @@ Object.assign(SKILLS, {
     roll() {
       return [
         `*Bản thân và tất cả đồng đội nhận 30 Shield HP, rồi chỉ định một đồng đội hoặc chính bản thân.*`,
-        `*Người được chỉ định sẽ nhận Shield HP bằng 50% Max HP của người dùng và 1 <:DiceUp:1513767795681398894>Dice Up đến hết turn.*`,
+        // Fragaria cập nhật số: 50% → **20%** Max HP của người dùng.
+        `*Người được chỉ định sẽ nhận <:Shield:1449582220481134705>Shield HP bằng **20% Max HP của người dùng** và 1 <:DiceUp:1513767795681398894>Dice Up đến hết turn.*`,
       ];
     },
   },

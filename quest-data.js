@@ -143,6 +143,13 @@ const QUEST_MOBS = {
     // "M1 (Không có)" — boss KHÔNG đánh thường, chỉ dùng page theo pattern.
     m1DmgStr: null, noM1: true,
     weaponWeight: "heavy",
+    // Fragaria: "speed range của Nothing There là 1~3".
+    speedRangeMin: 1, speedRangeMax: 3,
+    // "Stamina KHÔNG hồi mỗi turn mà chỉ 1 điểm cố định; khi bị Stagger và hết
+    // Stagger thì hồi lại FULL Stamina."
+    // → Trần hồi mỗi turn là 1 (thay vì ENCOUNTER_STAMINA_REGEN_PER_TURN chung).
+    // Nhánh hồi-đầy-sau-Stagger đã có sẵn cho MỌI combatant, không phải sửa.
+    staminaRegenPerTurn: 1,
     // "Miễn nhiễm đạn"
     ammoImmune: true,
     // "Không thể né, guard hay parry" — mọi page của boss đều đã mang tag

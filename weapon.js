@@ -28,6 +28,19 @@ const BLEED = "<:Bleed:1513762688226955285>Bleed";
 const POISE = "<:Poise:1513762945715142736>Poise";
 
 const WEAPONS = {
+  "lucent historia": {
+    name: "Lucent Historia", weight: "medium", type: "Slash", baseDamage: 10,
+    // Key CHUẨN là "designant." (có dấu chấm) — trùng tên hiển thị "Designant."
+    // Alias "designant" cũng resolve về đây, nhưng khai key chuẩn để mọi so sánh
+    // `p.skillKey === ...` khớp trực tiếp.
+    criticalSkillKey: "designant.",
+    // Critical thứ 2 — panel Moves đọc qua EXTRA_CRITICALS (xem encounter-panels.js).
+    passives: [
+      { name: "Renegade", desc: "Khi bản thân hoặc đồng đội có <:Shield:1449582220481134705>Shield HP bị đối phương tấn công, người tấn công sẽ bị phản lại bằng **50% sát thương đánh thường** của mục tiêu bị tấn công." },
+      { name: "Swan Song", desc: "Cuối turn, bản thân và đồng đội hồi phục một lượng HP bằng **20% lượng Shield HP đã mất trong turn này**." },
+    ],
+  },
+
   "durandal": {
     name: "Durandal",
     weight: "medium",

@@ -16,7 +16,11 @@
 // cập nhật nếu weapon.js thêm vũ khí có cùng mechanicId.
 const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 
-module.exports = function ({ applyHpLoss, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+// RENEGADE_DIVISOR — hệ số chia base dmg khi phản (Lucent Historia).
+// Suy TRỰC TIẾP từ 3 ví dụ Fragaria đưa: light 5→5 · medium 10/2 · heavy 20/4.
+const RENEGADE_DIVISOR = { light: 1, medium: 2, heavy: 4 };
+
+module.exports = function ({ applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -698,7 +702,7 @@ async function resolveOnePendingAction(encounter, p) {
                       const healAmount = diceEffectSkill.selfHealByBaseDmg(baseDmgVal);
                       if (healAmount > 0) {
                         const beforeHp = attacker.combatant.currentHp ?? 0;
-                        attacker.combatant.currentHp = Math.min(attacker.combatant.maxHp ?? beforeHp, beforeHp + healAmount);
+                        healHpCapped(attacker.combatant, healAmount); // tôn trọng healCapHp (Memories: Compassion)
                         const hpHealed = attacker.combatant.currentHp - beforeHp;
                         if (hpHealed > 0) defenseNote += ` ❤️+${hpHealed.toFixed(1)} HP (${diceEffectSkill.name})`;
                       }
@@ -752,7 +756,7 @@ async function resolveOnePendingAction(encounter, p) {
                 }
                 if (hasPerk(attacker.combatant, "Thirst")) {
                   const healAmt = Math.floor(bleedBeforeHit / 2);
-                  attacker.combatant.currentHp = Math.min(attacker.combatant.maxHp, attacker.combatant.currentHp + healAmt);
+                  healHpCapped(attacker.combatant, healAmt);
                   bleedOverride = 0; // "tiêu thụ chúng" — Thirst LUÔN thắng nếu cả 2 cùng trigger (hiếm khi xảy ra)
                   perkNote += ` [🩸Thirst +${healAmt}HP bản thân, tiêu thụ Bleed]`;
                   usedThisHit = true;
@@ -839,9 +843,14 @@ async function resolveOnePendingAction(encounter, p) {
               // thụ dmg (khác defReductionPct/% ở trên — đây là FLAT absorb,
               // trừ TRƯỚC khi dmg còn lại mới trừ vào HP thật).
               let shieldHpNote = "";
+              // Ghi lại TRƯỚC khi hấp thụ — Renegade kích theo khiên lúc BỊ ĐÁNH,
+              // không phải khiên còn lại sau đòn.
+              const shieldHpBeforeAbsorb = target.shieldHp ?? 0;
               if ((target.shieldHp ?? 0) > 0 && finalDmg > 0) {
-                const absorbed = Math.min(target.shieldHp, finalDmg);
-                target.shieldHp -= absorbed;
+                // applyShieldLoss (combat-utils.js) — đếm vào `shieldLostThisTurn`
+                // để "Swan Song" của Lucent Historia hồi đúng 20% lượng khiên ĐÃ
+                // MẤT trong turn. Trừ tay ở đây là Swan Song hụt đúng phần này.
+                const absorbed = applyShieldLoss(target, Math.min(target.shieldHp, finalDmg));
                 finalDmg -= absorbed;
                 shieldHpNote = ` 🛡️[Shield HP hấp thụ ${absorbed.toFixed(3)}, còn ${target.shieldHp.toFixed(3)}]`;
               }
@@ -850,6 +859,50 @@ async function resolveOnePendingAction(encounter, p) {
               // HP đều được đếm — trước đây CHỈ dòng này đếm, 19 chỗ trừ HP còn
               // lại (dmg phản, Bleed tự cắn, Tremor Burst…) hoàn toàn không.
               applyHpLoss(target, finalDmg);
+              // Dmg NGƯỜI TẤN CÔNG gây ra trong turn, TÁCH RIÊNG THEO TỪNG MỤC
+              // TIÊU — "Astral Quantization" tính % trên dmg gây cho **từng** kẻ
+              // địch, không phải trên tổng.
+              // Fragaria nói rõ: "turn đó nếu đồng đội đánh 3 kẻ địch mỗi kẻ 100
+              // dmg và gieo ra 30 thì TOÀN BỘ 3 kẻ đó chịu thêm 30 dmg".
+              // Dùng tổng (bản trước của tôi) sẽ ra 3 kẻ × 30% × 300 = sai hoàn toàn.
+              // Đếm ở ĐÂY (nơi dmg THẬT vào HP) chứ không ở preview: preview là
+              // dự kiến TRƯỚC phòng thủ, dùng nó sẽ tính cả phần đã bị né/guard.
+              if (attacker.combatant && finalDmg > 0) {
+                attacker.combatant.dmgDealtThisTurn = (attacker.combatant.dmgDealtThisTurn ?? 0) + finalDmg;
+                attacker.combatant.dmgDealtByTargetThisTurn = attacker.combatant.dmgDealtByTargetThisTurn ?? {};
+                const tk = t.targetId;
+                attacker.combatant.dmgDealtByTargetThisTurn[tk] =
+                  (attacker.combatant.dmgDealtByTargetThisTurn[tk] ?? 0) + finalDmg;
+              }
+              // ── RENEGADE (Lucent Historia) ────────────────────────────────
+              // Fragaria đính chính luật: *"đồng đội NÀO CÓ Shield HP thì sẽ phản
+              // lại MỖI KHI BỊ TẤN CÔNG theo BASE DMG, chia theo type dmg nốt.
+              // VD light base 5 → phản 5; Heavy 20/4; Medium 10/2."*
+              //
+              // → Đọc từ 3 ví dụ: chia `weaponBaseDamage` cho hệ số theo WEIGHT
+              //   light ÷1 · medium ÷2 · heavy ÷4
+              //   (5/1 = 5 · 10/2 = 5 · 20/4 = 5 — khớp cả 3 ví dụ)
+              // KHÔNG còn "50% sát thương đánh thường" như bản đầu của tôi.
+              //
+              // Chủ thể phản = CHÍNH NGƯỜI BỊ ĐÁNH (target), miễn họ đang có
+              // Shield HP — không phải người cầm Lucent Historia. Nhưng passive
+              // thuộc về Lucent Historia nên vẫn cần có người trong party cầm nó.
+              // Type dmg phản theo VŨ KHÍ CỦA NGƯỜI PHẢN ("chia theo type dmg nốt").
+              // Khiên xét TRƯỚC khi hấp thụ: bị đánh bay hết khiên trong chính đòn
+              // đó vẫn phải phản.
+              let renegadeNote = "";
+              if (shieldHpBeforeAbsorb > 0 && attacker.combatant && attacker.type === "enemy") {
+                const holder = Object.values(encounter.players ?? {})
+                  .find(pl => pl.weaponName === "Lucent Historia" && (pl.currentHp ?? 0) > 0);
+                if (holder) {
+                  const divisor = RENEGADE_DIVISOR[target.weaponWeight ?? "medium"] ?? 2;
+                  const reflected = Math.round(((target.weaponBaseDamage ?? 0) / divisor) * 1000) / 1000;
+                  if (reflected > 0) {
+                    applyHpLoss(attacker.combatant, reflected);
+                    renegadeNote = ` ⚔️[Renegade: ${target.weaponWeight ?? "medium"} ${target.weaponBaseDamage}/${divisor} → phản **${reflected}** ${target.weaponType ?? ""} về ${attacker.label}]`;
+                  }
+                }
+              }
               // "Dieci Association": "Khi bị tấn công và bạn có Shield HP, kẻ
               // địch sẽ nhận 2 Sinking" — target (bị tấn công) có outfit này VÀ
               // shieldHp > 0 → attacker (kẻ đang tấn công target) nhận 2 Sinking.
@@ -908,7 +961,7 @@ async function resolveOnePendingAction(encounter, p) {
                   if (reducedBS > 0) hemorrhageHealNote += ` (Burning Sensation giảm hồi ${reducedBS})`;
                 }
                 target.regen -= regenConsumed;
-                target.currentHp = Math.min(target.maxHp, target.currentHp + regenConsumed);
+                healHpCapped(target, regenConsumed);
                 regenHealNote = ` 💚+${regenConsumed} HP (Regen, còn ${target.regen}${hemorrhageHealNote})`;
               }
               const justDied = wasAliveBefore && target.currentHp <= 0;
@@ -1240,7 +1293,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${renegadeNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
               if (!evadedCompletely) anyHitLandedThisAction = true; // gom kết quả từng target ra scope ngoài (xem khai báo)
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
@@ -1885,6 +1938,46 @@ async function resolveOnePendingAction(encounter, p) {
                 }
               }
               if (staggeredLabels.length) verifyNote += ` 💫[Resonate ép STAGGER: ${staggeredLabels.join(", ")}]`;
+            }
+            // ── DESIGNANT. (Lucent Historia) ─────────────────────────────────
+            // "Bản thân và TẤT CẢ đồng đội nhận 30 Shield HP, rồi CHỈ ĐỊNH một
+            // đồng đội hoặc chính bản thân. Người được chỉ định nhận Shield HP
+            // bằng 20% Max HP CỦA NGƯỜI DÙNG và 1 Dice Up đến hết turn."
+            // Người chỉ định = target của đòn (promptArg/target chọn ở panel);
+            // không chọn ai thì mặc định CHÍNH MÌNH.
+            if (p.skillKey === "designant." && attacker.type === "player") {
+              const notes = [];
+              for (const [pid, pl] of Object.entries(encounter.players ?? {})) {
+                if ((pl.currentHp ?? 0) <= 0) continue;
+                const got = grantShieldHp(pl, 30, attacker.combatant, { isAlly: pid !== p.attackerId });
+                if (got > 0) notes.push(`<@${pid}> +${got}`);
+              }
+              const designatedId = (p.targets ?? [])[0]?.targetId ?? p.attackerId;
+              const designated = encounter.players?.[designatedId] ?? attacker.combatant;
+              const bonus = Math.round((attacker.combatant.maxHp ?? 0) * 0.2 * 100) / 100;
+              const bonusGot = grantShieldHp(designated, bonus, attacker.combatant, { isAlly: designatedId !== p.attackerId });
+              designated.diceUp = (designated.diceUp ?? 0) + 1;
+              verifyNote += ` 🛡️[Designant: toàn đội ${notes.join(", ")} · chỉ định <@${designatedId}> +${bonusGot} Shield, +1 Dice Up]`;
+            }
+            // ── ASTRAL QUANTIZATION (Lucent Historia) ────────────────────────
+            // "Chỉ định 1 đồng đội ĐANG CÓ Shield HP, roll [1-30]. CUỐI TURN gây
+            // sát thương lên 1 đối thủ bằng [dice]% DMG mà đồng đội đó đã gây ra
+            // trong turn này."
+            // Dmg TRÌ HOÃN → lưu vào encounter, bắn ở mốc kết thúc turn order
+            // (reactive-defense.js's performEndTurn). % lấy từ dice ĐÃ ROLL trong
+            // p.dmgStr — KHÔNG roll lại, nếu không số hiện cho người chơi sẽ khác
+            // số thực thi.
+            if (p.skillKey === "astral quantization" && attacker.type === "player") {
+              const pct = Math.round(parseFloat(String(p.dmgStr ?? "0").match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0"));
+              const allyId = (p.targets ?? [])[0]?.targetId ?? p.attackerId;
+              const ally = encounter.players?.[allyId];
+              if (!ally || (ally.shieldHp ?? 0) <= 0) {
+                verifyNote += ` ⚠️[Astral Quantization: <@${allyId}> KHÔNG có Shield HP — không chỉ định được]`;
+              } else {
+                encounter.pendingAstralQuantization = encounter.pendingAstralQuantization ?? [];
+                encounter.pendingAstralQuantization.push({ userId: p.attackerId, allyId, pct });
+                verifyNote += ` 🌌[Astral Quantization: chỉ định <@${allyId}>, cuối turn gây **${pct}%** tổng dmg của họ]`;
+              }
             }
             if (p.skillKey === "castigation") {
               attacker.combatant.unlockBladeStage = 0;

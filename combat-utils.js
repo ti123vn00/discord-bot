@@ -314,6 +314,81 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     return lost;
   }
 
+  /** grantShieldHp — NGUỒN DUY NHẤT cấp Shield HP.
+   *
+   *  Gom lại vì 4 món đồ mới của Fragaria (Wanderer's Teatime Clothes, Lucent
+   *  Historia, Memories: Compassion, Day One of My New Life) đều tác động vào
+   *  CÙNG một đại lượng "hiệu suất tạo khiên" — nếu mỗi chỗ tự `shieldHp += n`
+   *  thì bonus sẽ áp chỗ có chỗ không, y như bài học `applyHpLoss`/Hana.
+   *
+   *  Thứ tự nhân (quan trọng — đổi thứ tự là ra số khác):
+   *    1. `shieldEfficiencyPct` của NGƯỜI CẤP (Day One of My New Life:
+   *       16% + 2%/tầng tinh luyện).
+   *    2. ×2 nếu người NHẬN là ĐỒNG ĐỘI đang dưới 30% HP (Memories: Compassion,
+   *       chỉ khi người cấp dùng Lucent Historia) — nhân SAU hiệu suất, vì đây
+   *       là "hiệu quả nhận" chứ không phải hiệu suất tạo.
+   *
+   *  Cũng đếm `shieldLostThisTurn` ở nơi TRỪ (xem applyShieldLoss) để Swan Song
+   *  của Lucent Historia hồi đúng 20% lượng khiên ĐÃ MẤT trong turn.
+   *
+   *  @param granter combatant cấp khiên (null = nguồn hệ thống, không có bonus)
+   *  @returns số Shield THỰC SỰ được cộng
+   */
+  function grantShieldHp(receiver, amount, granter = null, opts = {}) {
+    if (!receiver || !(amount > 0)) return 0;
+    let final = amount;
+    const effPct = granter?.shieldEfficiencyPct ?? 0;
+    if (effPct !== 0) final *= (1 + effPct / 100);
+    // Memories: Compassion — "gia tăng x2 hiệu quả nhận Shield cho ĐỒNG ĐỘI khi
+    // họ dưới 30% HP". Chỉ áp cho đồng đội (không phải chính người cấp) và chỉ
+    // khi người cấp đang dùng Lucent Historia.
+    if (opts.isAlly && granter?.hasMemoriesCompassion && granter?.weaponName === "Lucent Historia") {
+      const maxHp = receiver.maxHp > 0 ? receiver.maxHp : 1;
+      if ((receiver.currentHp ?? 0) / maxHp < 0.3) final *= 2;
+    }
+    final = Math.round(final * 1000) / 1000;
+    receiver.shieldHp = (receiver.shieldHp ?? 0) + final;
+    // Memories: Compassion — "đồng đội nhận được Shield sẽ giảm 0,2x mọi
+    // resistance cho bản thân". Cờ đọc ở combatantResStr.
+    if (opts.isAlly && granter?.hasMemoriesCompassion && granter?.weaponName === "Lucent Historia") {
+      receiver.compassionResPenalty = true;
+    }
+    return final;
+  }
+
+  /** healHpCapped — hồi HP, tôn trọng TRẦN HỒI riêng của combatant.
+   *
+   *  "Memories: Compassion": *"Gia tăng 100 Max HP, nhưng bạn sẽ KHÔNG BAO GIỜ
+   *  đạt được hay heal lên ngưỡng máu 100 thêm này"*.
+   *  → `maxHp` ĐÃ cộng 100 (để hiển thị và tính % đúng), nhưng mọi nguồn hồi
+   *  máu phải kẹp theo `healCapHp` (= maxHp GỐC) chứ không phải `maxHp`.
+   *  Combatant không khai `healCapHp` thì kẹp theo maxHp như cũ.
+   *
+   *  ⚠️ Dmg vẫn trừ vào HP bình thường tới tận 0 — 100 máu ảo CHỈ chặn HỒI,
+   *  không chặn mất. Nghĩa là ai đội Compassion thực chất có "trần mềm" thấp
+   *  hơn maxHp hiển thị.
+   */
+  function healHpCapped(combatant, amount) {
+    if (!combatant || !(amount > 0)) return 0;
+    const cap = Number.isFinite(combatant.healCapHp) ? combatant.healCapHp : (combatant.maxHp ?? 0);
+    const before = combatant.currentHp ?? 0;
+    if (before >= cap) return 0;
+    combatant.currentHp = Math.min(cap, before + amount);
+    return Math.round((combatant.currentHp - before) * 1000) / 1000;
+  }
+
+  /** applyShieldLoss — trừ Shield HP và ĐẾM vào `shieldLostThisTurn`.
+   *  Swan Song (Lucent Historia) hồi 20% lượng khiên MẤT trong turn, nên mọi chỗ
+   *  trừ khiên phải đi qua đây — trừ tay ở 1 chỗ là Swan Song hụt đúng chỗ đó. */
+  function applyShieldLoss(combatant, amount) {
+    if (!combatant || !(amount > 0)) return 0;
+    const before = combatant.shieldHp ?? 0;
+    combatant.shieldHp = Math.max(0, before - amount);
+    const lost = before - combatant.shieldHp;
+    if (lost > 0) combatant.shieldLostThisTurn = (combatant.shieldLostThisTurn ?? 0) + lost;
+    return lost;
+  }
+
   function advanceToNextTurnHolder(encounter) {
     const order = encounter.turnOrder ?? [];
     if (order.length === 0) return { wrapped: false, prescriptNotes: [] };
@@ -437,6 +512,21 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
       // cho người chơi (và phải parse lại ở trueDmgResStr/damage-calc).
       const round1 = (v) => Math.round(Math.max(0, v) * 10) / 10;
       return `${round1(r.B - totalReduction)}xB ${round1(r.P - totalReduction)}xP ${round1(r.S - totalReduction)}xS`;
+    }
+    // ── Res penalty từ 2 accessory MỚI (Fragaria) ────────────────────────
+    // Gộp CHUNG ở đây thay vì rải mỗi chỗ một kiểu — Res là 1 con số, tính rời
+    // rạc sẽ ra kết quả khác nhau tuỳ đường gọi.
+    //   • Memories: Compassion — "đồng đội NHẬN được Shield sẽ giảm 0,2x mọi
+    //     Res cho bản thân" (cờ đặt lúc cấp khiên, xem grantShieldHp).
+    //   • Day One of My New Life — "-0,1x Res của TOÀN BỘ đồng đội khi bạn còn
+    //     trên sân", **KHÔNG STACK** nếu nhiều người cùng có → cờ là boolean,
+    //     cộng đúng 1 lần dù cả party đội nón.
+    let extraResPenalty = 0;
+    if (combatant.compassionResPenalty) extraResPenalty += 0.2;
+    if (combatant.dayOneAuraActive) extraResPenalty += 0.1;
+    if (extraResPenalty > 0) {
+      const round1b = (v) => Math.round(Math.max(0, v) * 10) / 10;
+      return `${round1b(r.B - extraResPenalty)}xB ${round1b(r.P - extraResPenalty)}xP ${round1b(r.S - extraResPenalty)}xS`;
     }
     return `${r.B}xB ${r.P}xP ${r.S}xS`;
   }
@@ -696,6 +786,9 @@ module.exports = function ({ hasPerk, getPlayerDataWithSlot, savePlayerData, cal
     validateAndRerollPrescriptRound,
     computeDiceModifier,
     applyHpLoss,
+    grantShieldHp,
+    applyShieldLoss,
+    healHpCapped,
     hasEncounterStarted,
     insertIntoTurnOrderMidRound,
     advanceToNextTurnHolder,

@@ -20,6 +20,12 @@ const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder
 // giá phải trả. Điều kiện lấy NGUYÊN VĂN từ field `cost` của skill trong skills.js
 // (đã đọc và đối chiếu từng cái), KHÔNG tự chế thêm luật mới.
 const EXTRA_CRITICALS = [
+  // Lucent Historia — "Astral Quantization" là Critical THỨ 2, không có điều
+  // kiện mở khoá (CD riêng 4 turn đã đủ giới hạn).
+  {
+    weapon: "Lucent Historia", skillKey: "astral quantization",
+    cond: () => ({ ok: true, note: "" }),
+  },
   // Index Longsword — "Castigation" chain sau khi Unlock đủ 3 lần (Unlocked Blade).
   // Điều kiện KHỚP với gate đã có ở skill-verification.js (unlockBladeStage >= 3),
   // nếu lệch nhau thì nút hiện ra rồi bấm lại báo lỗi.
