@@ -444,6 +444,54 @@ module.exports = function ({ SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON
     // ── SINGLETON (The Index Oracle's Proxy) ─────────────────────────────────
     // "Nhận 5 Dice Up và refund 1/5 Stamina khi đánh thường". Dice Up bị reset
     // mỗi turn nên phải cộng LẠI ở đây (khuôn blackSuitPersistentBonus).
+    // Saikai1.mp3 — "trong turn VÀ turn kế" ⇒ đúng 2 vòng turn order.
+    if ((combatant.saikai1TurnsLeft ?? 0) > 0) combatant.saikai1TurnsLeft -= 1;
+    // ── Status HẸN TURN SAU (Furioso) ────────────────────────────────────────
+    // "Gây … ở TURN SAU khi đòn tấn công này kết thúc" — áp ở đầu vòng turn kế,
+    // không phải ngay lúc đánh (sai một nhịp turn).
+    if (combatant.pendingNextTurnStatus) {
+      const q = combatant.pendingNextTurnStatus;
+      if (q.bleed) combatant.bleed = Math.min(99, (combatant.bleed ?? 0) + q.bleed);
+      if (q.bind) combatant.bind = Math.min(20, (combatant.bind ?? 0) + q.bind);
+      if (q.fragile) combatant.fragile = Math.min(99, (combatant.fragile ?? 0) + q.fragile);
+      combatant.pendingNextTurnStatus = null;
+    }
+
+    // ── SHIN - RIEN (The Index Oracle's Proxy) ────────────────────────────────
+    // "Khi nhận sát thương vượt ngưỡng NỬA MAX HP, bạn ngừng nhận dmg ở turn này.
+    //  End turn, bạn tháo Wound-Casing Mask …, tiến vào trạng thái Shin VĨNH VIỄN
+    //  kéo dài tới hết Encounter, đồng thời nhận thêm 1 Dice Up với mỗi 20 HP đã
+    //  mất kéo dài đến hết Encounter."
+    // Ngưỡng chấm ở ĐÂY (cuối vòng turn) — `hpLostThisTurn` bị reset ngay bên dưới
+    // trong CÙNG hàm này nên đọc muộn hơn là luôn ra 0.
+    if (combatant.hasIndexOraclesProxy) {
+      const halfMax = (combatant.maxHp ?? 0) * 0.5;
+      if (!combatant.shinRienActive && (combatant.hpLostThisTurn ?? 0) >= halfMax && halfMax > 0) {
+        combatant.shinRienActive = true;
+        // Tháo mặt nạ (nếu đang đeo) — Sizzling Wound quay lại, ĐÚNG như khi vỡ.
+        if (combatant.woundCasingMaskIntact) {
+          combatant.woundCasingMaskIntact = false;
+          combatant.sizzlingWound = true;
+        }
+        // "Turn SAU khi gỡ Wound-Casing Mask, bạn CÓ LỰA CHỌN nhận 1 stack
+        //  Indulgence in Prescript và follow-up bằng Furioso" — mở cửa sổ 1 turn.
+        combatant.shinRienFuriosoWindow = 1;
+        combatant.shinRienNote = "🩸 **Shin - Rien** — mất quá nửa Max HP trong 1 turn: tháo **Wound-Casing Mask**, vào trạng thái **Shin** vĩnh viễn tới hết Encounter.";
+      }
+      // "+1 Dice Up với mỗi 20 HP ĐÃ MẤT" — tính trên tổng HP đang thiếu, cộng lại
+      // mỗi turn vì `diceUp` bị reset.
+      if (combatant.shinRienActive) {
+        const lost = Math.max(0, (combatant.maxHp ?? 0) - (combatant.currentHp ?? 0));
+        combatant.diceUp = (combatant.diceUp ?? 0) + Math.floor(lost / 20);
+      }
+      // Cửa sổ Furioso chỉ sống ĐÚNG 1 turn (Fragaria: "sau khi end turn, nếu
+      // không sử dụng Furioso trong turn đó, kĩ năng nói trên sẽ biến mất").
+      if ((combatant.shinRienFuriosoWindow ?? 0) > 0) {
+        combatant.shinRienFuriosoWindow -= 1;
+        if (combatant.shinRienFuriosoWindow <= 0) combatant.shinRienFuriosoUsed = false;
+      }
+    }
+
     // ── WOUND-CASING MASK ────────────────────────────────────────────────────
     if (combatant.hasWoundCasingMask) {
       // "Mỗi Turn Start nếu có Unlock - I/II/III nhận 5/10/20 Poise."
@@ -476,6 +524,9 @@ module.exports = function ({ SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON
     }
     // Indulgence in Prescript — "sẽ biến mất khi end turn".
     if ((combatant.indulgenceInPrescript ?? 0) > 0) combatant.indulgenceInPrescript = 0;
+    // Grace of God — 1 lần MỖI VÒNG TURN ORDER.
+    combatant.graceOfGodUsedThisTurn = false;
+    combatant.shinRienBlockedDmg = 0;
     // Providence of the Prescript — "nhận Poise theo cách trên 3 lần thì TURN KẾ
     // Crit Mul +0.3". Chốt sổ ở đây rồi reset bộ đếm.
     if (combatant.hasProvidenceOfPrescript) {

@@ -140,6 +140,15 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceMo
    *  KHÔNG đoán bừa: chỉ trả giá trị cho skill đã đối chiếu đúng ngữ nghĩa
    *  promptArg trong skills.js. Skill promptArg MỚI sẽ tự rơi vào nhánh null. */
   function deriveAutoPromptArg(skillKey, attacker, encounter, refTarget) {
+    // Caduceus Critical — bơm Karmic/Unlock TỪ COMBATANT. Bản `-caduceus` cũ bắt
+    // GM gõ Karmic bằng tay ở tham số thứ 3; sai số là chuyện chắc chắn xảy ra.
+    if (/^caduceus crit[123] /.test(skillKey)) {
+      return {
+        karmic: attacker?.karmicConsequence ?? 0,
+        unlock: attacker?.prescriptUnlockLevel ?? 0,
+        procuration: (attacker?.procurationHermes ?? []).length,
+      };
+    }
     switch (skillKey) {
       case "vengeance retaliation": {
         // "% HP đã mất kể từ lần dùng skill TRƯỚC (0 nếu không mất gì)".
@@ -295,6 +304,19 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceMo
       // skillNameRaw "Great Split: Vertical" → "great split: vertical"), không
       // strip như alias lookup — so sánh cần strip ":" trước để khớp đúng.
       const skillKeyNoColon = skillKey.replace(/:/g, "").trim();
+      // ── FACTION LOCK ──────────────────────────────────────────────────────
+      // Page khai `requiresFaction` thì CHỈ người thuộc faction đó dùng được.
+      // Trước đây điều kiện chỉ nằm ở CHỮ trong mô tả page (VD "yêu cầu Outfit
+      // Blade Lineage") — không dòng code nào chặn, và còn ghi sai là OUTFIT.
+      // Đặt cơ chế CHUNG ở đây để page mới chỉ cần khai 1 dòng `requiresFaction`.
+      if (skill?.requiresFaction) {
+        const mine = String(attacker.faction ?? "").trim().toLowerCase();
+        const need = String(skill.requiresFaction).trim().toLowerCase();
+        if (mine !== need) {
+          throw new Error(`**${skill.name}** là page riêng của **${skill.requiresFaction}** — bạn cần thuộc faction đó mới dùng được.` +
+            (attacker.faction ? ` (Faction hiện tại: **${attacker.faction}**)` : " (Bạn chưa được gán faction nào — GM dùng `-setplayer @bạn faction: <tên>`)"));
+        }
+      }
       if ((skillKeyNoColon === "great split vertical" || skillKeyNoColon === "great split horizontal") && (attacker.imitation ?? 0) < 5) {
         throw new Error(`Skill "${skill.name}" cần ít nhất 5 Imitation để dùng — hiện có ${attacker.imitation ?? 0}.`);
       }

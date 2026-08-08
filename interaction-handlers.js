@@ -21,32 +21,48 @@ const path = require("path");
 
 // Xem bgmAttachment ở message-create-handler.js — thiếu file nhạc thì bỏ đính
 // kèm chứ không để discord.js ném ENOENT làm hỏng cả tương tác.
-function bgmAttachmentIH(name) {
+let bgmAttachmentLastMissing = null;
+/** bgmAttachmentIH — trả [AttachmentBuilder] nếu file CÓ THẬT trên disk.
+ *
+ *  ❗ BUG NẶNG ĐÃ SỬA — vì sao `-encounter status` phát được BGM mà contract tự
+ *  begin thì KHÔNG (Fragaria chỉ đúng điểm khác biệt này):
+ *  Hàm này nằm ở **module top-level**, NGOÀI thân factory (khối nhận DI),
+ *  nhưng lại gọi `AttachmentBuilder` — vốn là **tham số DI của factory**, không
+ *  hề tồn tại ở scope này. Mỗi lần chạy là `ReferenceError: AttachmentBuilder is
+ *  not defined`, và `try { … } catch { }` quanh từng ứng viên đường dẫn NUỐT SẠCH
+ *  lỗi đó rồi rơi xuống `return []` ⇒ **luôn luôn không có file**, bất kể file có
+ *  thật hay không.
+ *  Bản ở `message-create-handler.js` nhận `AttachmentBuilder` làm THAM SỐ nên
+ *  chạy đúng — đó chính là lý do `-encounter status` vẫn phát được.
+ *
+ *  ⚠️ Bài học kèm theo: `catch { }` trắng quanh code có thể ném ReferenceError
+ *  biến lỗi lập trình thành "im lặng không hoạt động". Nay chỉ nuốt lỗi ĐỌC FILE,
+ *  còn lỗi dựng attachment thì ném ra để thấy ngay.
+ */
+function bgmAttachmentIH(AttachmentBuilder, name) {
+  bgmAttachmentLastMissing = null;
   if (!name) return [];
-  // BUG ĐÃ SỬA (Fragaria: "Contract bị lỗi không thấy phát bgm, chỉ hiện text
-  // chứ còn file không thấy gửi"). Đây là REGRESSION do chính lớp kiểm
-  // `existsSync` tôi thêm ở lượt trước: nó dùng đường dẫn TƯƠNG ĐỐI `./assets/…`
-  // — mà relative path giải theo **CWD của tiến trình**, không phải theo vị trí
-  // file .js. Render không đảm bảo CWD là repo root ⇒ existsSync trả false ⇒ bỏ
-  // đính kèm im lặng, chỉ còn dòng chữ.
-  //
-  // Neo vào `__dirname` (mọi file .js của repo đều nằm ở root nên __dirname CHÍNH
-  // LÀ repo root) rồi mới thử tới CWD. Không tìm thấy ở cả hai thì LOG — im lặng
-  // bỏ qua chính là thứ làm bug này khó lần ra.
   const fs = require("fs");
   const nodePath = require("path");
+  // `__dirname` = repo root (mọi .js nằm ở root) — relative path giải theo CWD
+  // của tiến trình, mà Render không đảm bảo CWD là repo root.
   const candidates = [
     nodePath.join(__dirname, "assets", "audio", "bgm", name),
     nodePath.resolve("assets", "audio", "bgm", name),
   ];
+  let found = null;
   for (const c of candidates) {
-    try { if (fs.existsSync(c)) return [new AttachmentBuilder(c)]; } catch { /* thử ứng viên kế */ }
+    // CHỈ bọc phép ĐỌC ĐĨA — không bọc `new AttachmentBuilder`.
+    try { if (fs.existsSync(c)) { found = c; break; } } catch { /* ổ đĩa lỗi, thử ứng viên kế */ }
   }
-  try { log("error", "bgmMissing", "system", `Không tìm thấy file BGM "${name}" ở: ${candidates.join(" | ")}`); } catch { /* log chưa sẵn sàng */ }
-  return [];
+  if (!found) {
+    bgmAttachmentLastMissing = name;
+    return [];
+  }
+  return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -455,8 +471,13 @@ client.on("interactionCreate", async (interaction) => {
         // thiếu/đường dẫn sai sẽ ném thẳng ra ngoài và phá cả luồng bắt đầu trận.
         try {
           await startChannel.send({
-            content: `> 🎵 BGM trận này: **${startedEnc.currentBgm}**`,
-            files: bgmAttachmentIH(startedEnc.currentBgm),
+            content: (() => {
+              const f = bgmAttachmentIH(AttachmentBuilder, startedEnc.currentBgm);
+              return f.length
+                ? `> 🎵 BGM trận này: **${startedEnc.currentBgm}**`
+                : `> ⚠️ Không tìm thấy file BGM **${startedEnc.currentBgm}** — đặt nó vào \`assets/audio/bgm/\` trong repo rồi deploy lại.`;
+            })(),
+            files: bgmAttachmentIH(AttachmentBuilder, startedEnc.currentBgm),
           }).catch(() => {});
         } catch (bgmErr) {
           log("error", "partybegin-bgm", interaction.user.id, bgmErr.message);
@@ -817,6 +838,10 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.reply({ content: "⚠️ Chỉ GM/admin mới được kết thúc turn.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
       const { encounter, shroudedNotes, prescriptNotes } = await performEndTurn(channelId, interaction.user.id, isAdmin);
+      // BGM có thể vừa đổi trong vòng turn vừa qua (Furioso → Saikai1, mặt nạ vỡ
+      // → Saikai2, Manifest E.G.O bật/tắt). GỬI FILE ngay tại mốc kết thúc turn —
+      // đây là điểm duy nhất chắc chắn chạy MỖI VÒNG cho MỌI người.
+      announceBgmIfChanged(channelId, encounter, "trạng thái trong trận thay đổi").catch(() => {});
       // BUG THẬT phát hiện qua báo cáo trực tiếp (Fragaria: "encounter bị treo
       // cứng, mob không hành động tiếp") — đây là NÚT BẤM (khác lệnh text
       // `-encounter endturn` đã có hook từ trước) — thiếu trigger AI cho round
@@ -1813,6 +1838,21 @@ client.on("interactionCreate", async (interaction) => {
           // mặt là một vũ khí khác với base dmg / type / Stamina riêng. Nên
           // dmgStr là TỔNG các mặt đã roll, không phải `base x hitCount`.
           const rolled = Array.from({ length: hitCount }, () => CADUCEUS_DICE[Math.floor(Math.random() * CADUCEUS_DICE.length)]);
+          // ── GRACE OF GOD (The Oracle's Proxy Prescript Device, Unlock ≥ II) ──
+          // "Dice ĐẦU TIÊN của Caduceus ở MỖI TURN do bạn lựa chọn tuỳ ý."
+          // Người chơi điền số 1–9 vào ô tuỳ chọn của Modal; chỉ dùng được MỘT
+          // LẦN mỗi vòng turn (cờ reset ở advanceCombatantTurn).
+          {
+            const encGG = await getEncounter(channelId);
+            const meGG = encGG?.players?.[interaction.user.id];
+            const eligible = meGG?.hasPrescriptDevice && (meGG?.prescriptUnlockLevel ?? 0) >= 2 && !meGG?.graceOfGodUsedThisTurn;
+            const wantFace = parseInt((() => { try { return interaction.fields.getTextInputValue("caduceusface"); } catch { return ""; } })(), 10);
+            if (eligible && wantFace >= 1 && wantFace <= 9) {
+              rolled[0] = CADUCEUS_DICE[wantFace - 1];
+              meGG.graceOfGodUsedThisTurn = true;
+              await saveEncounter(channelId, encGG);
+            }
+          }
           dmgStr = rolled.map(d => `${d.dmg}${d.type[0]}`).join("+");
           const staTotal = rolled.reduce((a, d) => a + d.stamina, 0);
           const encCad = await getEncounter(channelId);
@@ -2801,7 +2841,7 @@ client.on("interactionCreate", async (interaction) => {
         const encAfter = await getEncounter(channelId);
         const bgmName = egoBgmFor(encAfter?.players?.[interaction.user.id]);
         if (bgmName) {
-          egoBgmFiles = bgmAttachmentIH(bgmName);
+          egoBgmFiles = bgmAttachmentIH(AttachmentBuilder, bgmName);
           resultMsg += `\n> 🎵 BGM đổi sang **${bgmName}** cho tới khi hết Manifest E.G.O.`;
         }
       } catch (bgmErr) {
@@ -2972,6 +3012,34 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+/** announceBgmIfChanged — GỬI FILE mỗi khi BGM đang-phát ĐỔI, không chỉ ghi chữ.
+ *
+ *  Fragaria: *"nên GỬI FILE phát bgm ghi đè luôn thay vì chỉ ghi mỗi text khi có
+ *  bgm mới được ghi đè."* Trước đây chỉ Manifest E.G.O mới đính file; các đường
+ *  ghi đè khác (Saikai1 khi dùng Furioso, Saikai2 khi mặt nạ vỡ) chỉ đổi chữ ⇒
+ *  người chơi không nghe được gì.
+ *
+ *  So với `encounter.lastAnnouncedBgm` để KHÔNG spam lại cùng một bài mỗi lượt.
+ */
+async function announceBgmIfChanged(channelId, encounter, label = "") {
+  try {
+    const want = resolveEncounterBgm(encounter);
+    if (!want || encounter.lastAnnouncedBgm === want) return;
+    encounter.lastAnnouncedBgm = want;
+    const ch = await client.channels.fetch(channelId).catch(() => null);
+    if (!ch) return;
+    const files = bgmAttachmentIH(AttachmentBuilder, want);
+    await ch.send({
+      content: files.length
+        ? `> 🎵 BGM đổi sang **${want}**${label ? ` — ${label}` : ""}`
+        : `> ⚠️ BGM cần đổi sang **${want}** nhưng KHÔNG tìm thấy file — đặt vào \`assets/audio/bgm/\` rồi deploy lại.`,
+      files,
+    }).catch(() => {});
+  } catch (err) {
+    log("error", "announceBgm", "system", err.message);
+  }
+}
+
 // ─── SELECT MENU: chọn ĐỒNG ĐỘI cho skill khai `needsAllyTarget` ────────────
 // BUG ĐÃ SỬA (Fragaria: "Designant không cho chỉ định mà mặc định cho bản thân").
 // Skill không có dice sát thương vốn đi thẳng resolve với `targets: []`, nên
@@ -3093,6 +3161,16 @@ client.on("interactionCreate", async (interaction) => {
         // tồn tại qua lệnh text tự gõ tay) — thêm field TUỲ CHỌN ("Có thể tiêu
         // đạn" — đúng tinh thần passive, KHÔNG bắt buộc), CHỈ hiện khi đang cầm
         // Soldato Rifle VÀ có ít nhất 1 viên trong súng.
+        // Grace of God — ô chọn mặt dice đầu, CHỈ hiện khi đủ điều kiện.
+        if (findWeaponAnywhere(combatant?.weaponName)?.caduceus
+            && combatant?.hasPrescriptDevice && (combatant?.prescriptUnlockLevel ?? 0) >= 2
+            && !combatant?.graceOfGodUsedThisTurn) {
+          modal.addComponents(new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId("caduceusface")
+              .setLabel("Grace of God — chọn mặt dice đầu (1-9)".slice(0, 45))
+              .setPlaceholder("Để trống = roll ngẫu nhiên như thường")
+              .setStyle(TextInputStyle.Short).setRequired(false)));
+        }
         if (combatant?.weaponName === "Soldato Rifle" && (combatant?.bulletStack ?? 0) > 0) {
           const useBulletInput = new TextInputBuilder()
             .setCustomId("usebullet")

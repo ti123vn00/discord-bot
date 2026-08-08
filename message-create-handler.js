@@ -17,6 +17,7 @@
 // File thiếu ⇒ discord.js ném ENOENT ngay trong message.reply. BGM1–9 và
 // "Red Mist.mp3" đều do Fragaria tự bỏ vào repo, chưa kịp thêm là hỏng lệnh.
 // Thiếu file thì bỏ đính kèm và đi tiếp — mất nhạc còn hơn mất cả bảng trạng thái.
+let bgmAttachmentLastMissing = null;
 function bgmAttachment(AttachmentBuilder, name) {
   if (!name) return [];
   // BUG ĐÃ SỬA (Fragaria: "Contract bị lỗi không thấy phát bgm, chỉ hiện text
@@ -29,6 +30,7 @@ function bgmAttachment(AttachmentBuilder, name) {
   // Neo vào `__dirname` (mọi file .js của repo đều nằm ở root nên __dirname CHÍNH
   // LÀ repo root) rồi mới thử tới CWD. Không tìm thấy ở cả hai thì LOG — im lặng
   // bỏ qua chính là thứ làm bug này khó lần ra.
+  bgmAttachmentLastMissing = null;
   const fs = require("fs");
   const nodePath = require("path");
   const candidates = [
@@ -38,7 +40,15 @@ function bgmAttachment(AttachmentBuilder, name) {
   for (const c of candidates) {
     try { if (fs.existsSync(c)) return [new AttachmentBuilder(c)]; } catch { /* thử ứng viên kế */ }
   }
-  try { log("error", "bgmMissing", "system", `Không tìm thấy file BGM "${name}" ở: ${candidates.join(" | ")}`); } catch { /* log chưa sẵn sàng */ }
+  // ⚠️ KHÔNG im lặng nữa. Fragaria báo "contract còn lỗi không phát bgm" HAI lượt
+  // liên tiếp — vì hàm này trả [] mà chẳng ai thấy gì ngoài console log trên
+  // server. Nay gắn cờ để nơi gọi HIỆN CẢNH BÁO ngay trong tin nhắn, kèm đúng
+  // đường dẫn cần đặt file.
+  bgmAttachmentLastMissing = name;
+  // ⚠️ KHÔNG gọi `log(...)` ở đây: `log` là THAM SỐ DI của factory, hàm này lại
+  // nằm ở module top-level ⇒ ReferenceError (đúng lớp lỗi đã làm contract mất
+  // BGM). Dùng console.error — luôn có ở mọi scope.
+  console.error(`[bgmMissing] Không tìm thấy file BGM "${name}" ở: ${candidates.join(" | ")}`);
   return [];
 }
 
@@ -2977,7 +2987,7 @@ if (message.content.startsWith("-gacha")) {
       await message.reply({
         content: bgmPlayable
           ? (isEgoBgm ? `🎵 **${bgmName}** — BGM Manifested E.G.O (còn tới khi hết trạng thái)` : `🎵 BGM trận này: **${bgmName}**`)
-          : undefined,
+          : (bgmName ? `⚠️ Không tìm thấy file BGM **${bgmName}** — đặt vào \`assets/audio/bgm/\` rồi deploy lại.` : undefined),
         embeds: [boardPayload4.embed],
         components: [...actionPanelRows, ...boardPayload4.components].slice(0, 5),
         files: bgmFiles,

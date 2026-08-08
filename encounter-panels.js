@@ -55,7 +55,7 @@ const EXTRA_CRITICALS = [
   },
 ];
 
-module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, findSingularity, egoSkillKeysFor, parseSkillCost, hasPerk, hasShinAccess }) {
+module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdKeyFor, findSingularity, egoSkillKeysFor, parseSkillCost, hasPerk, hasShinAccess }) {
 
   /** describePageOption — dòng mô tả phụ (setDescription) cho mỗi Page trong
    *  dropdown Moves.
@@ -184,6 +184,41 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, findSingulari
     const criticalSkill = criticalKeyFinal ? findSkill(criticalKeyFinal) : null;
     if (criticalSkill) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}${mimicryNote}`.slice(0, 100)).setValue(`critical:${criticalSkill.name}`));
+    }
+    // ── ORACLE DEVICE [CADUCEUS] ─────────────────────────────────────────────
+    // 9 Critical (3 bậc × 3 type) — người chơi tự chọn type, bậc quyết định số
+    // dice roll (2/3/4) và bonus khi ra đúng type (30/40/50%).
+    if (findWeaponAnywhere(combatant.weaponName)?.caduceus) {
+      const karmic = combatant.karmicConsequence ?? 0;
+      const chance = Math.max(0, 75 - karmic / 2);
+      for (const tier of [1, 2, 3]) {
+        for (const ty of ["Blunt", "Pierce", "Slash"]) {
+          const sk = findSkill(`caduceus crit${tier} ${ty.toLowerCase()}`);
+          if (!sk) continue;
+          options.push(new StringSelectMenuOptionBuilder()
+            .setLabel(`⚡ Crit ${tier} ${ty}: ${sk.name}`.slice(0, 100))
+            .setDescription(`Roll ${sk.caduceusCrit.rolls} dice · đúng type +${sk.caduceusCrit.bonusPct}% · tỉ lệ ${chance.toFixed(0)}%`.slice(0, 100))
+            .setValue(`critical:${sk.name}`.slice(0, 100)));
+        }
+      }
+      // Furioso — CHỈ hiện khi ĐỦ 9 Procuration [Hermes] VÀ đúng Unlock.
+      // Thiếu 1 trong 2 thì KHÔNG hiện (Fragaria: "nếu không đủ 1 trong 2 thì sẽ
+      // không xài"), và hiện dòng nhắc để người chơi biết còn thiếu gì.
+      const proc = (combatant.procurationHermes ?? []).length;
+      const unlock = combatant.prescriptUnlockLevel ?? 0;
+      const furiosoKey = ["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][unlock - 1];
+      const fSkill = furiosoKey ? findSkill(furiosoKey) : null;
+      if (fSkill && proc >= 9) {
+        options.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`💥 ${fSkill.name}`.slice(0, 100))
+          .setDescription(`Unlock ${["I", "II", "III"][unlock - 1]} · 9 Dice · ${fSkill.diceMul} Dice Mul`.slice(0, 100))
+          .setValue(`critical:${fSkill.name}`.slice(0, 100)));
+      } else if (fSkill || proc < 9) {
+        options.push(new StringSelectMenuOptionBuilder()
+          .setLabel("⛔ Furioso — chưa đủ điều kiện".slice(0, 100))
+          .setDescription(`Cần 9 Procuration (đang ${proc}/9)${unlock === 0 ? " và Unlock - I" : ""}`.slice(0, 100))
+          .setValue("noop"));
+      }
     }
     // Great Split: Horizontal — chỉ có mặt song song khi The Mimic đang bật.
     if (extraMimicryOption) {

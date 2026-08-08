@@ -258,7 +258,11 @@ async function resolveOnePendingAction(encounter, p) {
               // nhưng đòn có tag này thì KHÔNG bị huỷ, chỉ còn 50% dmg gốc. Cờ do
               // interaction-handlers.js đặt lúc xử lý clash thắng (thay vì cộng
               // evadeCharges như đòn thường).
-              if (p.unbreakableDiceHalved) finalDmg *= 0.5;
+              // "Prescript Delivered on a Device" — vào Unlock III thì MỌI Dice
+              // thành Unbreakable Dice: thua clash vẫn gây 50% dmg gốc.
+              const unlockIIIUnbreakable = attacker.combatant?.hasPrescriptDevice
+                && (attacker.combatant?.prescriptUnlockLevel ?? 0) >= 3;
+              if (p.unbreakableDiceHalved || (unlockIIIUnbreakable && p.clashLost)) finalDmg *= 0.5;
               let defenseNote = "";
               let evadedCompletely = false;
               // renegadeLandedHits — số hit THẬT SỰ DÍNH (không bị Evade/Parry).
@@ -966,6 +970,13 @@ async function resolveOnePendingAction(encounter, p) {
                 }
               }
               // ── PROVIDENCE OF THE PRESCRIPT (accessory) ──────────────────
+              // Indulgence in Prescript (Singleton) — "cho khả năng inflict thêm
+              // 2 count ở mỗi đòn có áp Sinking".
+              if ((attacker.combatant?.indulgenceInPrescript ?? 0) > 0
+                  && (target.sinking ?? 0) > (sinkingBeforeHit ?? 0)) {
+                target.sinking = Math.min(99, (target.sinking ?? 0) + 2);
+                verifyNote += ` 📜[Indulgence in Prescript: +2 Sinking]`;
+              }
               if (attacker.combatant?.hasProvidenceOfPrescript && finalDmg > 0) {
                 // "Khi bản thân ≥20 Poise: mỗi đòn ĐÁNH TRÚNG gây thêm 1 Sinking
                 // và 1 Rupture." Áp TRƯỚC vế dưới để chính nó cũng kích được +3 Poise.
@@ -1998,6 +2009,38 @@ async function resolveOnePendingAction(encounter, p) {
               // False Throne — "sau khi dùng: hồi sinh TOÀN BỘ đồng minh đã chết
               // trong trận này trong 1 Turn (4 Light, mọi Buff trừ Emotion Level
               // bị reset)". TRƯỚC ĐÂY chỉ là chữ.
+              // ── FURIOSO (Caduceus) ────────────────────────────────────────
+              const furiosoSkill = p.skillKey ? findSkill(p.skillKey) : null;
+              if (furiosoSkill?.caduceusFurioso && attacker.combatant) {
+                const F = furiosoSkill.caduceusFurioso;
+                // "Gây … ở TURN SAU khi đòn tấn công này kết thúc" ⇒ hàng đợi,
+                // turn-advance mới áp. Áp ngay bây giờ là sai một nhịp turn.
+                target.pendingNextTurnStatus = target.pendingNextTurnStatus ?? { bleed: 0, bind: 0, fragile: 0 };
+                target.pendingNextTurnStatus.bleed += F.bleed;
+                target.pendingNextTurnStatus.bind += F.bind;
+                target.pendingNextTurnStatus.fragile += F.fragile;
+                verifyNote += ` 💥[${furiosoSkill.name}: turn SAU gây ${F.bleed} Bleed · ${F.bind} Bind · ${F.fragile} Fragile]`;
+                // Wound-Casing Mask — "vỡ khi dùng bất kỳ biến thể Furioso LẦN ĐẦU".
+                if (attacker.combatant.woundCasingMaskIntact) {
+                  // Fragaria: *"Khi Furioso được sử dụng mà player VẪN CÒN mặt nạ
+                  // thì sẽ ghi đè và phát BGM Saikai1.mp3 TRONG TURN VÀ TURN KẾ."*
+                  // Bật cờ TRƯỚC khi làm vỡ — sau khi vỡ thì không còn "vẫn còn
+                  // mặt nạ" nữa, đặt sau là không bao giờ chạy.
+                  attacker.combatant.saikai1TurnsLeft = 2;
+                  attacker.combatant.woundCasingMaskIntact = false;
+                  attacker.combatant.sizzlingWound = true;
+                  verifyNote += ` 🎭[**Wound-Casing Mask VỠ** vì dùng Furioso — Sizzling Wound quay lại tới hết Encounter]`;
+                  verifyNote += ` 🎵[BGM → **Saikai1.mp3** (turn này + turn kế), sau đó **Saikai2.mp3**]`;
+                }
+                // Singleton — "dùng biến thể Furioso bất kỳ cho 1 stack
+                // Indulgence in Prescript" (mất khi end turn).
+                if (attacker.combatant.singleton && attacker.combatant.hasIndexOraclesProxy) {
+                  attacker.combatant.indulgenceInPrescript = (attacker.combatant.indulgenceInPrescript ?? 0) + 1;
+                  verifyNote += ` 📜[+1 **Indulgence in Prescript** — đòn có áp Sinking sẽ inflict thêm 2 count]`;
+                }
+                // "Sau khi sử dụng Furioso thì reset toàn bộ Procuration [Hermes] về 0."
+                attacker.combatant.procurationHermes = [];
+              }
               if (p.skillKey === "false throne" && attacker.type === "player") {
                 const revived = [];
                 for (const [pid, pl] of Object.entries(encounter.players ?? {})) {

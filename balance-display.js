@@ -83,6 +83,18 @@ module.exports = function ({ EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfil
       thumbnail: { url: targetUser.displayAvatarURL({ dynamic: true }) },
       fields: [
         { name: "🏅 Grade", value: gradeDisplay + progressBar, inline: false },
+        // Faction & Title — Fragaria: "hai phần này sẽ hiện trong -balance luôn".
+        // Nhiều đồ/page bị gate theo 2 trường này (requiresFaction/requiresTitle)
+        // nên người chơi PHẢI thấy mình đang thuộc đâu, không thì không hiểu vì
+        // sao không equip/dùng được.
+        ...((data.faction || data.title) ? [{
+          name: "🏛️ Faction & Title",
+          value: [
+            `> - Faction: **${data.faction ?? "*(chưa có)*"}**`,
+            `> - Title: **${data.title ?? "*(chưa có)*"}**`,
+          ].join("\n"),
+          inline: false,
+        }] : []),
         { name: "❤️ HP hiện tại", value: `**${currentHpForDisplay}** / **${effectiveMaxHpForDisplay}** HP${isSelf ? `\n> Dùng \`-heal hp: <ahn>\` để hồi thêm bằng Ahn` : ""}`, inline: true },
         { name: "<:EXP:1525313466905399346> Tổng EXP", value: `**${formatNumber(data.exp ?? 0)}** / **${EXP_MAX}** EXP`, inline: true },
         { name: "💰 Ahn", value: `**${formatNumber(data.ahn ?? 0)}** Ahn`, inline: true },

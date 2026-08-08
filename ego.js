@@ -57,7 +57,7 @@ const MANIFESTED_EGOS = {
       {
         name: "The Strongest",
         mechanicId: "redmist_the_strongest",
-        desc: "Khi ở trạng thái Manifested E.G.O toàn bộ Dice bạn gieo đều **chắc chắn ra Max Dice**, nhận 100% Dmg Bonus, 10 <:DiceUp:1513767795681398894>Dice Up, 4 <:Haste:1513768004222062632>Haste, 100 Max Stamina, 50% Dmg Reduction kéo dài tới khi hết Manifested E.G.O. Nếu trong 1 Turn bạn không gây ra dmg tối thiểu bằng 15% Max HP của kẻ địch thì bản thân sẽ bị trừ một lượng Stamina bằng 50% Max Stamina. Nếu bạn bị Stagger ở trong trạng thái Manifested E.G.O, lập tức kết thúc trạng thái và bản thân nhận phải debuff **Shattered E.G.O**; khiến cho mọi sát thương của bản thân bị giảm một nửa, và mọi Dice bạn gieo đều **chắc chắn sẽ ra Min Dice** kéo dài trong 3 Turn",
+        desc: "Khi ở trạng thái Manifested E.G.O toàn bộ Dice bạn gieo đều **chắc chắn ra Max Dice**, nhận 100% Dmg Bonus, 10 <:DiceUp:1513767795681398894>Dice Up, 4 <:Fix_Haste:1513768004222062632>Haste, 100 Max Stamina, 50% Dmg Reduction kéo dài tới khi hết Manifested E.G.O. Nếu trong 1 Turn bạn không gây ra dmg tối thiểu bằng 15% Max HP của kẻ địch thì bản thân sẽ bị trừ một lượng Stamina bằng 50% Max Stamina. Nếu bạn bị Stagger ở trong trạng thái Manifested E.G.O, lập tức kết thúc trạng thái và bản thân nhận phải debuff **Shattered E.G.O**; khiến cho mọi sát thương của bản thân bị giảm một nửa, và mọi Dice bạn gieo đều **chắc chắn sẽ ra Min Dice** kéo dài trong 3 Turn",
       },
       {
         name: "The Red Mist",
@@ -164,6 +164,22 @@ function egoBgmFor(combatant) {
  *  bài, và không có luật nào nói ai ưu tiên nên chọn quy ước đơn giản, ổn định.
  */
 function resolveEncounterBgm(encounter) {
+  // Ưu tiên 1 — BGM TÌNH HUỐNG của The Index (Wound-Casing Mask / Furioso).
+  // Fragaria:
+  //   • Dùng Furioso mà VẪN CÒN mặt nạ ⇒ **Saikai1.mp3**, kéo dài turn này và
+  //     turn kế (`saikai1TurnsLeft`, turn-advance đếm ngược).
+  //   • Mặt nạ VỠ và Sizzling Wound quay lại ⇒ **Saikai2.mp3**.
+  // ⚠️ Saikai1 đứng TRƯỚC Saikai2. Dùng Furioso khi còn mặt nạ sẽ LÀM VỠ mặt nạ
+  // NGAY, nên cả hai điều kiện cùng đúng ở turn đó. Nếu để Saikai2 trước thì
+  // Saikai1 KHÔNG BAO GIỜ phát được — trái hẳn "phát Saikai1 trong turn VÀ turn
+  // kế". Saikai1 hết 2 turn thì Saikai2 (trạng thái không đảo ngược) tiếp quản.
+  for (const p of Object.values(encounter?.players ?? {})) {
+    if ((p?.saikai1TurnsLeft ?? 0) > 0) return "Saikai1.mp3";
+  }
+  for (const p of Object.values(encounter?.players ?? {})) {
+    if (p?.hasWoundCasingMask && p?.woundCasingMaskIntact === false && p?.sizzlingWound) return "Saikai2.mp3";
+  }
+  // Ưu tiên 2 — BGM của Manifested E.G.O đang bật.
   for (const p of Object.values(encounter?.players ?? {})) {
     const bgm = egoBgmFor(p);
     if (bgm) return bgm;

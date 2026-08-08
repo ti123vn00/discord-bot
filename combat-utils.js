@@ -365,6 +365,15 @@ module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU
       amount -= absorbed;
       if (!(amount > 0)) return 0;
     }
+    // Shin - Rien — "khi nhận sát thương vượt ngưỡng NỬA Max HP, bạn NGỪNG NHẬN
+    // DMG ở turn này". Chặn tại choke point nên mọi nguồn (đòn đánh, Bleed, phản,
+    // Astral…) đều dừng, không phải vá từng nơi.
+    if (combatant.hasIndexOraclesProxy
+        && (combatant.hpLostThisTurn ?? 0) >= (combatant.maxHp ?? 0) * 0.5
+        && (combatant.maxHp ?? 0) > 0) {
+      combatant.shinRienBlockedDmg = (combatant.shinRienBlockedDmg ?? 0) + amount;
+      return 0;
+    }
     const before = combatant.currentHp ?? 0;
     // Wound-Casing Mask — "Dmg từ Burn và Bleed sẽ KHÔNG THỂ GIẾT được bạn".
     // Kẹp sàn ở 1 HP thay vì 0 khi nguồn dmg là Burn/Bleed (nguồn khác vẫn giết

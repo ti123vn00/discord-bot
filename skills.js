@@ -1,6 +1,24 @@
 // skills.js — Toàn bộ skill data, tách ra để dễ quản lý
 // Được require bởi index.js: const { SKILLS, SKILL_ALIASES, findSkill } = require("./skills");
 // ─── SKILL DATA ───────────────────────────────────────────────────────────────
+// Bảng 9 mặt Caduceus — SAO CHÉP tối thiểu từ constants.js để skills.js giữ được
+// tính "module dữ liệu thuần" (không require ngược). Giá trị phải khớp
+// CADUCEUS_DICE; t-index.js có check đối chiếu hai bên.
+const CADUCEUS_FACES = [
+  { n: 1, dmg: 8,  type: "Blunt",  name: "When hacking through the ribs with a hatchet..." },
+  { n: 2, dmg: 8,  type: "Pierce", name: "When penetrating the lungs with a stiletto..." },
+  { n: 3, dmg: 15, type: "Slash",  name: "When cleaving through the shoulder and the skull with a bastard sword..." },
+  { n: 4, dmg: 15, type: "Pierce", name: "When punching 10 or more holes in the torso with a rapier..." },
+  { n: 5, dmg: 15, type: "Blunt",  name: "When caving in the back of the skull with a hammer..." },
+  { n: 6, dmg: 24, type: "Slash",  name: "When rending the body with a greatsword..." },
+  { n: 7, dmg: 24, type: "Pierce", name: "When boring a 20-inch hole with a lance..." },
+  { n: 8, dmg: 24, type: "Blunt",  name: "When ripping the flesh to ten thousand strips with a whip..." },
+  { n: 9, dmg: 30, type: "Slash",  name: "When lacerating through space itself with a scythe, like a certain someone..." },
+];
+// Emoji type — DÙNG ĐÚNG dạng các skill khác đang dùng (`<:Blunt:…>`), không
+// phải `<:Fix_Blunt:…>`: parser dựng dmgStr nhận diện theo khuôn dòng dice sẵn có.
+const TYPE_EMOJI_CAD = { Blunt: "<:Blunt:1513768529718022254>", Pierce: "<:Pierce:1513768511179329556>", Slash: "<:Slash:1513768633434640517>" };
+
 const D1 = "<:Dice1:1508173590078558369>";
 const D2 = "<:Dice2:1508173623691710625>";
 const D3 = "<:Dice3:1508173643518050395>";
@@ -10,6 +28,9 @@ const D6 = "<:Dice6:1517712655106838638>";
 const D7 = "<:Dice7:1517712721796403272>";
 const D8 = "<:Dice8:1517712757053591642>";
 const D9 = "<:Dice9:1517712785612603462>";
+// Mảng 9 emoji dice — dùng cho Caduceus Critical/Furioso (index 0..8 ↔ D1..D9).
+// Phải đặt SAU D1..D9 (const là TDZ).
+const DICE_EMOJI_N = [D1, D2, D3, D4, D5, D6, D7, D8, D9];
 const D10 = "<:Dice10:1517712814314225704>";
 
 // ─── EMOTION COIN TRACKING ──────────────────────────────────────────────────
@@ -409,7 +430,7 @@ const SKILLS = {
       const d1 = r(8,15);
       return [
         `${D1} *Khi dưới 50% HP: <:Dice1:1508173590078558369>Dice 1 nhận 4 <:DiceUp:1513767795681398894>Dice Up*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 6 <:Poise:1513762945715142736>Poise; khi dưới 50% HP thêm 2 <:Poise:1513762945715142736>Poise và 4 <:Haste:1513768004222062632>Haste`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — nhận 6 <:Poise:1513762945715142736>Poise; khi dưới 50% HP thêm 2 <:Poise:1513762945715142736>Poise và 4 <:Fix_Haste:1513768004222062632>Haste`,
       ];
     },
   },
@@ -958,10 +979,14 @@ const SKILLS = {
   },
   "yield my flesh": {
     name: "Yield My Flesh", cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    // ⚠️ FACTION lock, KHÔNG phải outfit lock (Fragaria: "những page như Unlock,
+    // Yield My Flesh là FACTION lock, trong code đang để là outfit lock khá sai").
+    // Trước đây điều kiện chỉ nằm ở CHỮ mô tả — không dòng code nào chặn cả.
+    requiresFaction: "Blade Lineage",
     roll() {
       const d1=r(3,6),d2=r(6,12);
       return [
-        `*Skill đặc biệt của Blade Lineage — yêu cầu Outfit Blade Lineage*`,
+        `*Skill đặc biệt của **Blade Lineage** — yêu cầu FACTION Blade Lineage (không phải outfit)*`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Né 4 đòn đánh thường hoặc clash`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — Nếu địch không đánh để né/clash: chém và nhận 2 <:Light:1513786082502770719>Light`,
       ];
@@ -1392,6 +1417,8 @@ const SKILLS = {
   "unlock": {
     name: "Unlock",
     cost: "0 <:Light:1513786082502770719>Light", cd: "0 Turn", diceMul: "1x",
+    // FACTION lock — xem ghi chú ở "yield my flesh".
+    requiresFaction: "Blade Lineage",
     // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "unlock và castigation hoạt động không
     // đúng"). TRƯỚC ĐÂY stage được chọn NGẪU NHIÊN (`Math.random()*3+1`) — hoàn
     // toàn trái mô tả của chính page: Unlock-2 ghi rõ "(cần Unlock Blade - 1)",
@@ -1904,8 +1931,8 @@ roll(v = "no") {
       const d1 = r(7,10), d2 = r(3,5), d3 = r(7,13);
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — nhận 6 <:Poise:1513762945715142736>Poise`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — nhận 2 <:Haste:1513768004222062632>Haste`,
-        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — nhận 4 <:Haste:1513768004222062632>Haste`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — nhận 2 <:Fix_Haste:1513768004222062632>Haste`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] — nhận 4 <:Fix_Haste:1513768004222062632>Haste`,
       ];
     },
   },
@@ -2689,6 +2716,302 @@ roll(v = "no") {
       ];
     },
   },
+  // ══ ORACLE DEVICE [CADUCEUS] — 9 Critical (3 bậc × 3 type) + 3 Furioso ══════
+  // roll(ctx) nhận MỘT object: { karmic, unlock, procuration }.
+  // `deriveAutoPromptArg` (skill-verification.js) tự bơm từ combatant — người chơi
+  // KHÔNG phải gõ Karmic bằng tay như bản `-caduceus` cũ.
+  //
+  // Base dmg của mỗi mặt TRỞ THÀNH **Dice Value** khi dùng Critical (Fragaria:
+  // "M1 thì không có Dice Value, nhưng khi dùng Critical thì Base Dmg của mỗi loại
+  // vũ khí của Caduceus sẽ trở thành Dice Value nhằm phục vụ bonus từ sanity và clash").
+  "caduceus crit1 blunt": {
+    name: "Slam Down with Weight, Topple the Body", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 1, rolls: 2, bonusPct: 30, type: "Blunt" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 2 Dice Caduceus theo type **Blunt** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 2; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Blunt")
+          : CADUCEUS_FACES.filter(d => d.type !== "Blunt");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Blunt";
+        // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit1 pierce": {
+    name: "Lay Vertical The End, Insert Up to the Wick", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 1, rolls: 2, bonusPct: 30, type: "Pierce" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 2 Dice Caduceus theo type **Pierce** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 2; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Pierce")
+          : CADUCEUS_FACES.filter(d => d.type !== "Pierce");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Pierce";
+        // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit1 slash": {
+    name: "Lay the Blade on its Side, Slice Like a Severed Breath", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 1, rolls: 2, bonusPct: 30, type: "Slash" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 2 Dice Caduceus theo type **Slash** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 2; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Slash")
+          : CADUCEUS_FACES.filter(d => d.type !== "Slash");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Slash";
+        // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit2 blunt": {
+    name: "Swing to Fell, Have it Meet the Ground", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 2, rolls: 3, bonusPct: 40, type: "Blunt" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 3 Dice Caduceus theo type **Blunt** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 3; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Blunt")
+          : CADUCEUS_FACES.filter(d => d.type !== "Blunt");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Blunt";
+        // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit2 pierce": {
+    name: "Aim Toward a Point, Let it Echo Within", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 2, rolls: 3, bonusPct: 40, type: "Pierce" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 3 Dice Caduceus theo type **Pierce** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 3; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Pierce")
+          : CADUCEUS_FACES.filter(d => d.type !== "Pierce");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Pierce";
+        // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit2 slash": {
+    name: "Carve at a Low Slant, Peel What Remains", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 2, rolls: 3, bonusPct: 40, type: "Slash" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 3 Dice Caduceus theo type **Slash** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 3; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Slash")
+          : CADUCEUS_FACES.filter(d => d.type !== "Slash");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Slash";
+        // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit3 blunt": {
+    name: "Destroy the Sound, Crush Flat the Thought", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break, Undodgeable",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 3, rolls: 4, bonusPct: 50, type: "Blunt" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 4 Dice Caduceus theo type **Blunt** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 4; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Blunt")
+          : CADUCEUS_FACES.filter(d => d.type !== "Blunt");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Blunt";
+        // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit3 pierce": {
+    name: "Stab the Silence's Heart, Penetrate the Memory", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break, Undodgeable",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 3, rolls: 4, bonusPct: 50, type: "Pierce" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 4 Dice Caduceus theo type **Pierce** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 4; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Pierce")
+          : CADUCEUS_FACES.filter(d => d.type !== "Pierce");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Pierce";
+        // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "caduceus crit3 slash": {
+    name: "With Tempered Secret, Cut the Form", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break, Undodgeable",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
+    caduceusCrit: { tier: 3, rolls: 4, bonusPct: 50, type: "Slash" },
+    roll(ctx = {}) {
+      const karmic = Math.max(0, Number(ctx.karmic) || 0);
+      // "mặc định 75% ra đúng type vũ khí, giảm khi có Karmic: (75 − Karmic/2)%"
+      const chance = Math.max(0, 75 - karmic / 2);
+      const lines = [`*Roll 4 Dice Caduceus theo type **Slash** — tỉ lệ ra đúng type **${chance.toFixed(1)}%**${karmic > 0 ? ` (Karmic ${karmic} → −${(karmic / 2).toFixed(1)}%)` : ""}*`];
+      let total = 0;
+      for (let i = 0; i < 4; i++) {
+        const pool = (Math.random() * 100 < chance)
+          ? CADUCEUS_FACES.filter(d => d.type === "Slash")
+          : CADUCEUS_FACES.filter(d => d.type !== "Slash");
+        const d = pool[Math.floor(Math.random() * pool.length)];
+        const match = d.type === "Slash";
+        // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
+        const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
+        total += val;
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+      }
+      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      return lines;
+    },
+  },
+  "furioso replica": {
+    name: "Furioso Replica", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Unfocused Volley, Unevadeable, Unblockable, Unparriable, Uncounterable",
+    cost: "—", cd: "—", diceMul: "1x",
+    // Gate: ĐỦ 9 Procuration [Hermes] VÀ Unlock - I. Kiểm ở nơi dựng panel
+    // (encounter-panels.js) — thiếu 1 trong 2 thì option không hiện.
+    caduceusFurioso: { unlock: 1, bleed: 3, bind: 1, fragile: 1 },
+    roll() {
+      // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
+      // là lưỡi hái. Base dmg của mặt tương ứng chính là Dice Value.
+      const lines = [];
+      let total = 0;
+      for (let i = 0; i < 9; i++) {
+        const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
+        total += d.dmg;
+        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+      }
+      lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
+      lines.push(`*Ở turn SAU khi đòn này kết thúc: gây 3 <:Bleed:1513762688226955285>Bleed, 1 <:Fix_Bind:1513762608602324992>Bind và 1 Fragile*`);
+      return lines;
+    },
+  },
+  "furioso crescendo": {
+    name: "Furioso [Crescendo]", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Unfocused Volley, Unevadeable, Unblockable, Unparriable, Uncounterable",
+    cost: "—", cd: "—", diceMul: "1,25x",
+    // Gate: ĐỦ 9 Procuration [Hermes] VÀ Unlock - II. Kiểm ở nơi dựng panel
+    // (encounter-panels.js) — thiếu 1 trong 2 thì option không hiện.
+    caduceusFurioso: { unlock: 2, bleed: 4, bind: 2, fragile: 2 },
+    roll() {
+      // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
+      // là lưỡi hái. Base dmg của mặt tương ứng chính là Dice Value.
+      const lines = [];
+      let total = 0;
+      for (let i = 0; i < 9; i++) {
+        const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
+        total += d.dmg;
+        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+      }
+      lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
+      lines.push(`*Ở turn SAU khi đòn này kết thúc: gây 4 <:Bleed:1513762688226955285>Bleed, 2 <:Fix_Bind:1513762608602324992>Bind và 2 Fragile*`);
+      return lines;
+    },
+  },
+  "furioso lacrimosa crescendo": {
+    name: "Furioso [Lacrimosa-Crescendo]", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Unfocused Volley, Unevadeable, Unblockable, Unparriable, Uncounterable",
+    cost: "—", cd: "—", diceMul: "1,5x",
+    // Gate: ĐỦ 9 Procuration [Hermes] VÀ Unlock - III. Kiểm ở nơi dựng panel
+    // (encounter-panels.js) — thiếu 1 trong 2 thì option không hiện.
+    caduceusFurioso: { unlock: 3, bleed: 5, bind: 3, fragile: 3 },
+    roll() {
+      // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
+      // là lưỡi hái. Base dmg của mặt tương ứng chính là Dice Value.
+      const lines = [];
+      let total = 0;
+      for (let i = 0; i < 9; i++) {
+        const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
+        total += d.dmg;
+        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+      }
+      lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
+      lines.push(`*Ở turn SAU khi đòn này kết thúc: gây 5 <:Bleed:1513762688226955285>Bleed, 3 <:Fix_Bind:1513762608602324992>Bind và 3 Fragile*`);
+      return lines;
+    },
+  },
   "great split horizontal": {
     name: "Great Split: Horizontal", weaponOf: "Mimicry Blade", tags: "Weapon",
     cost: "Tiêu 5 Imitation, cần bản thân dưới 30% HP", cd: "—", diceMul: "3x",
@@ -2952,7 +3275,7 @@ roll(v = "no") {
       const d1 = r(3,12), d2 = r(3,14);
       return [
         `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ thù, nhận 3 <:Poise:1513762945715142736>Poise`,
-        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ thù, nhận 4 <:Haste:1513768004222062632>Haste`,
+        `${D2} **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đâm kẻ thù, nhận 4 <:Fix_Haste:1513768004222062632>Haste`,
       ];
     },
   },
@@ -3463,7 +3786,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,13);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch hai lần liên tiếp, gây 3 <:Rupture:1513762812722155682>Rupture. Nếu ≥5 <:Haste:1513768004222062632>Haste: tái sử dụng skill này một lần nữa`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — Lướt lên chém kẻ địch hai lần liên tiếp, gây 3 <:Rupture:1513762812722155682>Rupture. Nếu ≥5 <:Fix_Haste:1513768004222062632>Haste: tái sử dụng skill này một lần nữa`,
       ];
     },
   },
@@ -3486,7 +3809,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(24,40);
       return [
-        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Unparriable] [AOE 2 người] — Tạo tia sáng năng lượng hư vô bắn vào kẻ địch. Nhận 7 <:Haste:1513768004222062632>Haste và gây 14 <:Bleed:1513762688226955285>Bleed, 8 <:Sinking:1513762793436741652>Sinking`,
+        `${D1} **${d1}** [<:Pierce:1513768511179329556>Pierce] [Guard Break] [Unparriable] [AOE 2 người] — Tạo tia sáng năng lượng hư vô bắn vào kẻ địch. Nhận 7 <:Fix_Haste:1513768004222062632>Haste và gây 14 <:Bleed:1513762688226955285>Bleed, 8 <:Sinking:1513762793436741652>Sinking`,
       ];
     },
   },
@@ -3826,7 +4149,7 @@ roll(v = "no") {
       return [
         `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — chém ngang cắt kẻ địch, nhận 3 <:Poise:1513762945715142736>Poise`,
         `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] — chém ngang cắt kẻ địch, nhận 3 <:Poise:1513762945715142736>Poise`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — sau đó đâm sâu, nhận 4 <:Haste:1513768004222062632>Haste`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] — sau đó đâm sâu, nhận 4 <:Fix_Haste:1513768004222062632>Haste`,
       ];
     },
   },
@@ -3848,7 +4171,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(5,12);
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — lướt qua người kẻ địch rồi chém, nhận 3 <:Haste:1513768004222062632>Haste và gây 3 <:Rupture:1513762812722155682>Rupture`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — lướt qua người kẻ địch rồi chém, nhận 3 <:Fix_Haste:1513768004222062632>Haste và gây 3 <:Rupture:1513762812722155682>Rupture`,
       ];
     },
   },
@@ -3889,7 +4212,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(6,10);
       return [
-        `${D1} **${d1}** — dịch chuyển lại gần kẻ địch, né 1 đòn tấn công (không thể né Undodgeable), sau đó nhận 2 <:Haste:1513768004222062632>Haste`,
+        `${D1} **${d1}** — dịch chuyển lại gần kẻ địch, né 1 đòn tấn công (không thể né Undodgeable), sau đó nhận 2 <:Fix_Haste:1513768004222062632>Haste`,
       ];
     },
   },
@@ -4545,7 +4868,7 @@ Object.assign(SKILLS, {
     roll() {
       const d1 = r(18,24);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down, 2 <:Fix_Bind:1513768025881317457>Bind và toàn bộ đồng minh nhận 3 <:Haste:1513768004222062632>Haste turn kế [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable]`,
+        `<:Dice1:1508173590078558369> **${d1}** — Gây 2 <:DiceDown:1513767826257874964>Dice Down, 2 <:Fix_Bind:1513768025881317457>Bind và toàn bộ đồng minh nhận 3 <:Fix_Haste:1513768004222062632>Haste turn kế [<:Pierce:1513768511179329556>Pierce] [Undodgeable] [Unblockable]`,
         `*[After Use] E.G.O Passive **Silence**: khi bị tấn công turn kế sẽ nhận 3 <:Fix_Bind:1513768025881317457>Bind và tăng 20% Dmg Up*`,
         `*__Utter to me what you think the ideal is.__*`,
       ];
