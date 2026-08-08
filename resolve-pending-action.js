@@ -1081,13 +1081,18 @@ async function resolveOnePendingAction(encounter, p) {
                   const perGroup = Math.round(((target.weaponBaseDamage ?? 0) / divisor) * 1000) / 1000;
                   // hitsPerCharge đã tính sẵn ở đầu vòng lặp target: M1 → số hit
                   // mỗi group theo vũ khí KẺ TẤN CÔNG; Page/Critical → 1.
-                  const perHit = Math.round((perGroup / Math.max(1, hitsPerCharge)) * 1000) / 1000;
+                  // ❗ Fragaria: "Renegade chia luôn cả group hit M1 dù địch đang
+                  // xài PAGE". `hitsPerCharge` là khái niệm của M1 (WEAPON_DEFENSE_HITS);
+                  // với Page/Critical mỗi dice là 1 group riêng ⇒ KHÔNG chia.
+                  const perHit = isM1Type
+                    ? Math.round((perGroup / Math.max(1, hitsPerCharge)) * 1000) / 1000
+                    : perGroup;
                   const landed = renegadeLandedHits === null ? hitCount : renegadeLandedHits;
                   const reflected = Math.round(perHit * landed * 1000) / 1000;
                   if (reflected > 0 && landed > 0) {
                     applyHpLoss(attacker.combatant, reflected);
                     renegadeNote = ` ⚔️[Renegade: ${target.weaponWeight ?? "medium"} ${target.weaponBaseDamage}/${divisor} = ${perGroup}/group` +
-                      (hitsPerCharge > 1 ? ` ÷ ${hitsPerCharge} hit/group = ${perHit}/hit` : "") +
+                      (isM1Type && hitsPerCharge > 1 ? ` ÷ ${hitsPerCharge} hit/group = ${perHit}/hit` : "") +
                       ` × ${landed} hit dính → phản **${reflected}** ${target.weaponType ?? ""} về ${attacker.label}]`;
                   }
                 }
@@ -2055,11 +2060,19 @@ async function resolveOnePendingAction(encounter, p) {
                 const F = furiosoSkill.caduceusFurioso;
                 // "Gây … ở TURN SAU khi đòn tấn công này kết thúc" ⇒ hàng đợi,
                 // turn-advance mới áp. Áp ngay bây giờ là sai một nhịp turn.
-                target.pendingNextTurnStatus = target.pendingNextTurnStatus ?? { bleed: 0, bind: 0, fragile: 0 };
-                target.pendingNextTurnStatus.bleed += F.bleed;
-                target.pendingNextTurnStatus.bind += F.bind;
-                target.pendingNextTurnStatus.fragile += F.fragile;
-                verifyNote += ` 💥[${furiosoSkill.name}: turn SAU gây ${F.bleed} Bleed · ${F.bind} Bind · ${F.fragile} Fragile]`;
+                // ❗ CRASH ĐÃ SỬA ("Furioso Replica: target is not defined", kẹt
+                // luôn encounter). Khối này nằm ở phần SIDE-EFFECTS — CHẠY SAU
+                // vòng lặp `for (const t of p.targets)` — nên biến `target` (khai
+                // TRONG vòng lặp đó) KHÔNG tồn tại ở đây. Phải tự duyệt lại
+                // p.targets qua resolveCombatant, đúng như các khối khác cùng chỗ.
+                for (const tf of (p.targets ?? [])) {
+                  const trf = resolveCombatant(encounter, tf.targetId);
+                  if (!trf?.combatant) continue;
+                  const q = trf.combatant.pendingNextTurnStatus ?? { bleed: 0, bind: 0, fragile: 0 };
+                  q.bleed += F.bleed; q.bind += F.bind; q.fragile += F.fragile;
+                  trf.combatant.pendingNextTurnStatus = q;
+                }
+                verifyNote += ` 💥[${furiosoSkill.name}: turn SAU gây ${F.bleed} <:Bleed:1513762688226955285>Bleed · ${F.bind} <:Fix_Bind:1513768025881317457>Bind · ${F.fragile} <:Fix_Fragile:1513763336167100536>Fragile]`;
                 // Wound-Casing Mask — "vỡ khi dùng bất kỳ biến thể Furioso LẦN ĐẦU".
                 if (attacker.combatant.woundCasingMaskIntact) {
                   // Fragaria: *"Khi Furioso được sử dụng mà player VẪN CÒN mặt nạ
@@ -2067,6 +2080,10 @@ async function resolveOnePendingAction(encounter, p) {
                   // Bật cờ TRƯỚC khi làm vỡ — sau khi vỡ thì không còn "vẫn còn
                   // mặt nạ" nữa, đặt sau là không bao giờ chạy.
                   attacker.combatant.saikai1TurnsLeft = 2;
+                  // Ghi tên biến thể để nhãn BGM nói ĐÚNG bài của ai (Replica /
+                  // Crescendo / Lacrimosa-Crescendo), thay vì dán "Manifested E.G.O".
+                  attacker.combatant.lastFuriosoName = furiosoSkill.name;
+                  attacker.combatant.bgmAnnounceNow = "Saikai1.mp3";
                   attacker.combatant.woundCasingMaskIntact = false;
                   attacker.combatant.sizzlingWound = true;
                   verifyNote += ` 🎭[**Wound-Casing Mask VỠ** vì dùng Furioso — Sizzling Wound quay lại tới hết Encounter]`;

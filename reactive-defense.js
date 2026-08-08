@@ -150,6 +150,18 @@ async function performEndTurn(channelId, userId, isAdmin) {
       }
     }
 
+    // ── LƯỚI AN TOÀN: aura "Day One of My New Life" ────────────────────────
+    // Fragaria: "giảm res của Compassion và Day One CHƯA HOẠT ĐỘNG trong trận".
+    // GỐC: cờ `dayOneAuraActive` CHỈ được đặt ở hook bắt đầu trận của party-board.
+    // Ai vào trận bằng đường khác (`-encounter join`, thêm giữa trận, revive…)
+    // thì cờ không bao giờ được đặt ⇒ aura mất hẳn.
+    // Tính LẠI mỗi vòng turn: ai còn sống mà đội nón thì cả đội có aura, người
+    // đội nón rời sân/chết thì aura tự tắt — đúng luật "khi bạn còn trên sân".
+    {
+      const alive = Object.values(encounter.players ?? {});
+      const auraOn = alive.some(c => c.hasDayOneAura && (c.currentHp ?? 0) > 0);
+      for (const c of alive) c.dayOneAuraActive = auraOn;
+    }
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
     // Sắc lệnh (Index) — chấm + roll lại theo VÒNG TURN ORDER, không theo lượt

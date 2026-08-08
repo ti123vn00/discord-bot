@@ -189,7 +189,13 @@ module.exports = function ({ EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfil
       // -equipweapon) — dù lệnh text vẫn cho equip đúng, dropdown không bao giờ
       // hiện Brawler làm lựa chọn. Gộp thêm universal weapons, tránh trùng lặp
       // nếu lỡ VỪA sở hữu VỪA universal.
-      const ownedWeaponsSet = new Set(Object.keys(data.items ?? {}).filter(n => (data.items[n] ?? 0) > 0 && findWeaponAnywhere(n)));
+      // ❗ Fragaria: "Blade Lineage Mentor bị dính vô field Weapon trong khi nó là
+      // OUTFIT; equip vào ô weapon thì nó trở thành Blade Lineage Hwando."
+      // GỐC: `findWeaponAnywhere` không tìm thấy trong weapon.js thì FALLBACK sang
+      // `findSkill(raw)` — tên outfit khớp alias của một skill Weapon (Hwando) nên
+      // trả về vũ khí SAI. Loại thẳng mọi tên là OUTFIT ra khỏi danh sách vũ khí.
+      const ownedWeaponsSet = new Set(Object.keys(data.items ?? {}).filter(n =>
+        (data.items[n] ?? 0) > 0 && !findOutfit(n) && !findAccessory(n) && findWeaponAnywhere(n)));
       for (const key of UNIVERSALLY_KNOWN_WEAPONS) {
         const universalWeapon = findWeaponAnywhere(key);
         if (universalWeapon) ownedWeaponsSet.add(universalWeapon.name);

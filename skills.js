@@ -17,6 +17,19 @@ const CADUCEUS_FACES = [
 ];
 // Emoji type — DÙNG ĐÚNG dạng các skill khác đang dùng (`<:Blunt:…>`), không
 // phải `<:Fix_Blunt:…>`: parser dựng dmgStr nhận diện theo khuôn dòng dice sẵn có.
+// Hiệu ứng riêng của từng mặt Caduceus — dùng cho Furioso (mọi dice đều ăn
+// hiệu ứng của mặt tương ứng). Viết đúng khuôn parser chung để tự áp.
+const CADUCEUS_FACE_FX = {
+  1: " — nhận 2 <:Poise:1513762945715142736>Poise",
+  2: " — gây 2 <:Sinking:1513762793436741652>Sinking",
+  3: " — bản thân +10% Dmg turn sau",
+  4: " — địch nhận thêm 5% Dmg turn này",
+  5: " — giảm 50 Stamina của kẻ địch",
+  6: " — địch nhận thêm 10% Dmg từ Slash turn này",
+  7: " — địch nhận thêm 10% Dmg từ Pierce turn này",
+  8: " — địch nhận thêm 10% Dmg từ Blunt turn này",
+  9: " [+Crit100] — chắc chắn gây critical",
+};
 const TYPE_EMOJI_CAD = { Blunt: "<:Blunt:1513768529718022254>", Pierce: "<:Pierce:1513768511179329556>", Slash: "<:Slash:1513768633434640517>" };
 
 const D1 = "<:Dice1:1508173590078558369>";
@@ -3040,10 +3053,13 @@ roll(v = "no") {
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
         total += d.dmg;
-        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+        // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
+        // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
+        // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
+        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Ở turn SAU khi đòn này kết thúc: gây 3 <:Bleed:1513762688226955285>Bleed, 1 <:Fix_Bind:1513762608602324992>Bind và 1 Fragile*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×3 · <:Fix_Bind:1513768025881317457>Bind ×1 · <:Fix_Fragile:1513763336167100536>Fragile ×1 (code tự áp ở đầu turn sau)*`);
       return lines;
     },
   },
@@ -3063,10 +3079,13 @@ roll(v = "no") {
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
         total += d.dmg;
-        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+        // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
+        // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
+        // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
+        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Ở turn SAU khi đòn này kết thúc: gây 4 <:Bleed:1513762688226955285>Bleed, 2 <:Fix_Bind:1513762608602324992>Bind và 2 Fragile*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×4 · <:Fix_Bind:1513768025881317457>Bind ×2 · <:Fix_Fragile:1513763336167100536>Fragile ×2 (code tự áp ở đầu turn sau)*`);
       return lines;
     },
   },
@@ -3086,10 +3105,13 @@ roll(v = "no") {
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
         total += d.dmg;
-        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+        // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
+        // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
+        // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
+        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Ở turn SAU khi đòn này kết thúc: gây 5 <:Bleed:1513762688226955285>Bleed, 3 <:Fix_Bind:1513762608602324992>Bind và 3 Fragile*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×5 · <:Fix_Bind:1513768025881317457>Bind ×3 · <:Fix_Fragile:1513763336167100536>Fragile ×3 (code tự áp ở đầu turn sau)*`);
       return lines;
     },
   },

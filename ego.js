@@ -187,4 +187,27 @@ function resolveEncounterBgm(encounter) {
   return encounter?.currentBgm ?? null;
 }
 
-module.exports = { egoBgmFor, resolveEncounterBgm, MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor, egoPassivesFor, hasEgoMechanic };
+/** describeEncounterBgm — nhãn ĐÚNG NGUỒN cho bài đang phát.
+ *  Fragaria: mô tả đang ghi "Saikai2.mp3 — BGM Manifested E.G.O (còn tới khi hết
+ *  trạng thái)" trong khi đó là BGM của **Furioso**. Dán nhãn theo nguồn thật. */
+function describeEncounterBgm(encounter) {
+  const name = resolveEncounterBgm(encounter);
+  if (!name) return null;
+  for (const p of Object.values(encounter?.players ?? {})) {
+    if ((p?.saikai1TurnsLeft ?? 0) > 0) {
+      const v = p.lastFuriosoName ?? "Furioso";
+      return { name, label: `BGM **${v}** (kéo dài 2 Turn)` };
+    }
+  }
+  for (const p of Object.values(encounter?.players ?? {})) {
+    if (p?.hasWoundCasingMask && p?.woundCasingMaskIntact === false && p?.sizzlingWound) {
+      return { name, label: "BGM **Sizzling Wound** — Wound-Casing Mask đã vỡ (tới hết Encounter)" };
+    }
+  }
+  for (const p of Object.values(encounter?.players ?? {})) {
+    if (egoBgmFor(p)) return { name, label: "BGM **Manifested E.G.O** (còn tới khi hết trạng thái)" };
+  }
+  return { name, label: "BGM trận này" };
+}
+
+module.exports = { describeEncounterBgm, egoBgmFor, resolveEncounterBgm, MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor, egoPassivesFor, hasEgoMechanic };

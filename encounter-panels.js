@@ -232,7 +232,13 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
       } else if (fSkill || proc < 9) {
         options.push(new StringSelectMenuOptionBuilder()
           .setLabel("⛔ Furioso — chưa đủ điều kiện".slice(0, 100))
-          .setDescription(`Cần 9 Procuration (đang ${proc}/9)${unlock === 0 ? " và Unlock - I" : ""}`.slice(0, 100))
+          // Fragaria: "nên báo còn THIẾU DICE NÀO — 7/9 khô khan khiến họ không
+          // biết còn chưa ra loại vũ khí nào để mà tính toán."
+          .setDescription((() => {
+            const have = new Set(combatant.procurationHermes ?? []);
+            const missing = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter(n2 => !have.has(n2));
+            return `Thiếu Dice ${missing.join(", ")}${unlock === 0 ? " · và Unlock - I" : ""}`.slice(0, 100);
+          })())
           .setValue("noop"));
       }
     }

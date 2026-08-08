@@ -661,6 +661,17 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
   
   /** Đổi { B, P, S } resistance object thành resStr cho calcMathCore — Stagger thì
    *  ĐÈ TOÀN BỘ về 2x bất kể resistance gốc, đúng luật "Khi bị Stagger Resistance set 2x". */
+  /** clampRes — GIỚI HẠN CHUNG của mọi unit: Res thấp nhất **0.5x**, cao nhất **2x**.
+   *  Fragaria: "đây là giới hạn chung của mọi unit/player trong game, chỉ một số
+   *  trường hợp có passive ĐẶC BIỆT ghi rõ mới bypass được."
+   *  ⇒ passive muốn bypass phải tự khai `resCapBypass = true` trên combatant. */
+  const RES_MIN = 0.5, RES_MAX = 2;
+  function clampRes(v, combatant) {
+    const n = Math.max(0, Number(v) || 0);
+    if (combatant?.resCapBypass) return Math.round(n * 10) / 10;
+    return Math.round(Math.min(RES_MAX, Math.max(RES_MIN, n)) * 10) / 10;
+  }
+
   function combatantResStr(combatant) {
     // Fragaria: "theo logic thì Panic sẽ hoạt động NHƯ STAGGER nhưng KHÔNG giảm
     // Res và chỉ kéo dài 1 turn (thay vì 2 + 1 từ Choáng)."
@@ -680,7 +691,7 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
       // round1 — làm tròn 1 chữ số thập phân. BẮT BUỘC: phép trừ số thực JS cho ra
       // rác kiểu `1 - 0.7 = 0.30000000000000004`, lọt thẳng vào resStr rồi hiển thị
       // cho người chơi (và phải parse lại ở trueDmgResStr/damage-calc).
-      const round1 = (v) => Math.round(Math.max(0, v) * 10) / 10;
+      const round1 = (v) => clampRes(v, combatant);
       // ❗ BUG ĐÃ SỬA (Fragaria: "giảm res của Memories Compassion và Day One of
       // My New Life KHÔNG CÒN HOẠT ĐỘNG"). Nhánh Shin này TRẢ VỀ SỚM nên toàn bộ
       // phần Res penalty của 2 accessory ở dưới BỊ BỎ QUA — hễ bật Shin là 2 món
@@ -703,10 +714,12 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
     if (combatant.compassionResPenalty) extraResPenalty += 0.2;
     if (combatant.dayOneAuraActive) extraResPenalty += 0.1;
     if (extraResPenalty > 0) {
-      const round1b = (v) => Math.round(Math.max(0, v) * 10) / 10;
+      const round1b = (v) => clampRes(v, combatant);
       return `${round1b(r.B - extraResPenalty)}xB ${round1b(r.P - extraResPenalty)}xP ${round1b(r.S - extraResPenalty)}xS`;
     }
-    return `${r.B}xB ${r.P}xP ${r.S}xS`;
+    // Kẹp cả nhánh KHÔNG có penalty — cap 0.5x/2x là luật CHUNG, không phải hệ quả
+    // của riêng accessory nào.
+    return `${clampRes(r.B, combatant)}xB ${clampRes(r.P, combatant)}xP ${clampRes(r.S, combatant)}xS`;
   }
   
   /** trueDmgResStr — dùng khi BÊN TẤN CÔNG có Mang active: ép Res của TARGET tối

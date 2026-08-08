@@ -108,7 +108,13 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
       combatant.staggerTurnsLeft -= 1;
       if (combatant.staggerTurnsLeft <= 0) {
         combatant.staggered = false;
-        combatant.currentStamina = combatant.maxStamina; // hồi đầy sau khi hết Stagger
+        // ❗ Fragaria: "Stamina được hồi đột ngột khi MIỄN NHIỄM Stagger — nên gate:
+        // dù Stamina có về 0 đi nữa cũng chỉ hồi 30 Sta mỗi turn chứ không hồi full.
+        // Logic đúng là CHỈ KHI BỊ STAGGER thì hết Stagger mới hồi lại full."
+        if (combatant.hasWoundCasingMask && !combatant.staggered) {
+          combatant.currentStamina = Math.min(combatant.maxStamina,
+            (combatant.currentStamina ?? 0) + (ENCOUNTER_STAMINA_REGEN_PER_TURN ?? 30));
+        } else combatant.currentStamina = combatant.maxStamina; // hồi đầy sau khi hết Stagger
         // Choáng — cleanse: SAU KHI 1 lần Stagger 2-turn (lastStaggerWas2Turn, set
         // ĐÚNG lúc trigger lần này — xem checkStaggerPanic) ĐÃ THỰC SỰ KẾT THÚC,
         // dazedStacks reset về 0, bắt đầu đếm lại từ đầu cho chu kỳ Stagger tiếp theo
@@ -468,7 +474,8 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
     if (combatant.hasIndexOraclesProxy) {
       const halfMax = (combatant.maxHp ?? 0) * 0.5;
       if (!combatant.shinRienActive && (combatant.hpLostThisTurn ?? 0) >= halfMax && halfMax > 0) {
-        combatant.shinRienActive = true;
+        combatant.shinRienActive = true;   // kéo dài TỚI HẾT ENCOUNTER (không reset ở đâu)
+        combatant.shinMangActive = true;   // vào trạng thái Shin thật sự (Res/hiển thị)
         // Tháo mặt nạ (nếu đang đeo) — Sizzling Wound quay lại, ĐÚNG như khi vỡ.
         if (combatant.woundCasingMaskIntact) {
           combatant.woundCasingMaskIntact = false;
@@ -476,7 +483,12 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
         }
         // "Turn SAU khi gỡ Wound-Casing Mask, bạn CÓ LỰA CHỌN nhận 1 stack
         //  Indulgence in Prescript và follow-up bằng Furioso" — mở cửa sổ 1 turn.
-        combatant.shinRienFuriosoWindow = 1;
+        // ❗ BUG ĐÃ SỬA (Fragaria: "vào turn sau… vẫn không thấy option follow-up
+        // Furioso"). Đặt = 1 rồi khối đếm ngược Ở NGAY DƯỚI chạy trong CÙNG lượt
+        // advanceCombatantTurn này ⇒ về 0 tức thì, offer chưa kịp hiện đã đóng.
+        // Đặt = 2 để sống qua đúng **turn kế tiếp** — đúng luật "TURN SAU khi gỡ
+        // Wound-Casing Mask".
+        combatant.shinRienFuriosoWindow = 2;
         combatant.shinRienNote = "🩸 **Shin - Rien** — mất quá nửa Max HP trong 1 turn: tháo **Wound-Casing Mask**, vào trạng thái **Shin** vĩnh viễn tới hết Encounter.";
       }
       // "+1 Dice Up với mỗi 20 HP ĐÃ MẤT" — tính trên tổng HP đang thiếu, cộng lại

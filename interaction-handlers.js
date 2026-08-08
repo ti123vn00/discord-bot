@@ -1300,6 +1300,19 @@ client.on("interactionCreate", async (interaction) => {
           }
           choiceNote = `💨 ${dashSkill.name} — né miễn phí (0 Sta${dashCost.light ? `, -${dashCost.light} Light` : ""})${dashEffectNote}`;
         } else if (choice === "parry") {
+          // ❗ Fragaria: "thay vì giải quyết per hit thì bị STACK PARRY ĐƯỢC MÃI MÃI
+          // khi 0 Stamina — dùng Wound-Casing Mask thì miễn nhiễm Stagger thành ra
+          // có thể parry mãi."
+          // Parry tốn 0 Stamina; rủi ro DUY NHẤT của nó là thua → −40 Sta → Stagger.
+          // Ai miễn nhiễm Stagger thì mất sạch rủi ro ⇒ spam vô hạn.
+          // Gate ở ĐÂY (đường NÚT BẤM reactive) — lượt trước tôi chỉ gate ở
+          // `performParry` (đường lệnh text) nên nút bấm vẫn spam được.
+          if ((target.currentStamina ?? 0) <= 0) {
+            return interaction.reply({
+              content: "❌ Bạn đã cạn Stamina — **không thể Parry**. Parry không tốn Stamina nhưng vẫn cần còn Stamina để thực hiện.",
+              flags: MessageFlags.Ephemeral,
+            }).catch(() => {});
+          }
           if (!opts.parry.available) throw new Error("Parry bị khoá cho nhóm này (Unparriable).");
           target.parryRolls = target.parryRolls ?? [];
           target.parryHitSelections = target.parryHitSelections ?? [];
