@@ -21,6 +21,10 @@ const path = require("path");
 
 // Xem bgmAttachment ở message-create-handler.js — thiếu file nhạc thì bỏ đính
 // kèm chứ không để discord.js ném ENOENT làm hỏng cả tương tác.
+// specialActionInFlight — khoá CHỐNG BẤM ĐÚP cho panel Special (Manifest E.G.O,
+// Shin/Mang, Overcharge...). Những hành động này đổi chỉ số VĨNH VIỄN trong trận
+// nên bấm 2 lần là cộng dồn 2 lần. Khoá theo (channel, user, action).
+const specialActionInFlight = new Set();
 let bgmAttachmentLastMissing = null;
 /** bgmAttachmentIH — trả [AttachmentBuilder] nếu file CÓ THẬT trên disk.
  *
@@ -1269,7 +1273,11 @@ client.on("interactionCreate", async (interaction) => {
           const dashCd = parseSkillCooldownTurns(dashSkill.cd);
           if (dashCd > 0) {
             target.skillCooldowns = target.skillCooldowns ?? {};
-            target.skillCooldowns[cdKeyFor(dashKeyNorm)] = dashCd;
+            // ❗ BUG ĐÃ SỬA (Fragaria/user: "light dash cd nhanh hơn bình thường").
+            // Mọi đường khác đặt `cooldownTurns + 1` (resolve-pending-action:1797,
+            // clash:1496) — cái `+1` bù cho cú đếm ngược chạy NGAY cuối turn này.
+            // Riêng dash đặt trần `dashCd` ⇒ mất đúng 1 turn CD so với mọi page khác.
+            target.skillCooldowns[cdKeyFor(dashKeyNorm)] = dashCd + 1;
           }
           // Né THẬT cho nhóm hit này — cùng field với nhánh "evade" (evadeCharges
           // + evadeHitSelections) để resolveOnePendingAction xử lý y hệt, KHÔNG
@@ -1491,6 +1499,12 @@ client.on("interactionCreate", async (interaction) => {
       clasher.skillCooldowns = clasher.skillCooldowns ?? {};
       clasher.skillCooldowns[cdKeyFor(chosenKey)] = cdTurns + 1;
 
+      // ❗ SẮC LỆNH #4 ("Clash với 1 skill của kẻ địch trong turn") — cờ
+      // `prescriptClashed` TRƯỚC ĐÂY KHÔNG AI SET, nên sắc lệnh này KHÔNG BAO GIỜ
+      // hoàn thành được: người chơi clash đúng vẫn bị tính trượt + ăn 5 Karmic.
+      // Đánh dấu ngay tại nơi clash THỰC SỰ diễn ra (thắng hay thua đều tính —
+      // luật chỉ đòi "clash", không đòi "thắng clash").
+      clasher.prescriptClashed = true;
       const clasherLabel = clasherId === targetId ? "Bạn" : clasherResolved.label;
       let choiceNote;
       let choiceNote2Unbreakable = "";
@@ -1834,48 +1848,64 @@ client.on("interactionCreate", async (interaction) => {
           }
         } else if (findWeaponAnywhere(combatant.weaponName)?.caduceus) {
           // ── ORACLE DEVICE [CADUCEUS] — "Will of Hermes" ───────────────────
-          // Vũ khí này KHÔNG có đòn đánh thường cố định: MỖI hit roll 1–9, mỗi
-          // mặt là một vũ khí khác với base dmg / type / Stamina riêng. Nên
-          // dmgStr là TỔNG các mặt đã roll, không phải `base x hitCount`.
+          // ❗ ĐÃ SỬA THỨ TỰ (Fragaria: "logic đánh thường của Caduceus chưa trơn
+          // tru — có vẻ nó random thuật toán RỒI MỚI consume stamina"; và "khi
+          // đánh M1 mà không đủ stamina để act, huỷ kết quả dmg + MẤT stamina").
+          // Trình tự ĐÚNG: roll → tính giá → **KIỂM ĐỦ STAMINA** → mới trừ.
+          // Không đủ thì THOÁT SỚM, KHÔNG trừ gì cả, KHÔNG vào CD.
           const rolled = Array.from({ length: hitCount }, () => CADUCEUS_DICE[Math.floor(Math.random() * CADUCEUS_DICE.length)]);
-          // ── GRACE OF GOD (The Oracle's Proxy Prescript Device, Unlock ≥ II) ──
-          // "Dice ĐẦU TIÊN của Caduceus ở MỖI TURN do bạn lựa chọn tuỳ ý."
-          // Người chơi điền số 1–9 vào ô tuỳ chọn của Modal; chỉ dùng được MỘT
-          // LẦN mỗi vòng turn (cờ reset ở advanceCombatantTurn).
-          {
-            const encGG = await getEncounter(channelId);
-            const meGG = encGG?.players?.[interaction.user.id];
-            const eligible = meGG?.hasPrescriptDevice && (meGG?.prescriptUnlockLevel ?? 0) >= 2 && !meGG?.graceOfGodUsedThisTurn;
-            const wantFace = parseInt((() => { try { return interaction.fields.getTextInputValue("caduceusface"); } catch { return ""; } })(), 10);
-            if (eligible && wantFace >= 1 && wantFace <= 9) {
-              rolled[0] = CADUCEUS_DICE[wantFace - 1];
-              meGG.graceOfGodUsedThisTurn = true;
-              await saveEncounter(channelId, encGG);
-            }
-          }
-          dmgStr = rolled.map(d => `${d.dmg}${d.type[0]}`).join("+");
-          const staTotal = rolled.reduce((a, d) => a + d.stamina, 0);
           const encCad = await getEncounter(channelId);
           const meCad = encCad?.players?.[interaction.user.id];
+          // ── GRACE OF GOD (Prescript Device, Unlock ≥ II) ──────────────────
+          const wantFace = parseInt((() => { try { return interaction.fields.getTextInputValue("caduceusface"); } catch { return ""; } })(), 10);
+          if (meCad?.hasPrescriptDevice && (meCad?.prescriptUnlockLevel ?? 0) >= 2
+              && !meCad?.graceOfGodUsedThisTurn && wantFace >= 1 && wantFace <= 9) {
+            rolled[0] = CADUCEUS_DICE[wantFace - 1];
+            meCad.graceOfGodUsedThisTurn = true;
+          }
+          let staTotal = rolled.reduce((a, d) => a + d.stamina, 0);
+          // Singleton (The Index Oracle's Proxy) — "refund 1/5 Stamina khi đánh
+          // thường". Refund = giảm 20% giá phải trả, tính TRƯỚC khi kiểm đủ.
+          let refunded = 0;
+          if (meCad?.singleton && meCad?.hasIndexOraclesProxy) {
+            refunded = Math.round(staTotal / 5);
+            staTotal -= refunded;
+          }
+          if ((meCad?.currentStamina ?? 0) < staTotal) {
+            return interaction.reply({
+              content: `❌ Không đủ Stamina — cần **${staTotal}** cho ${hitCount} hit Caduceus`
+                + (refunded > 0 ? ` *(đã trừ ${refunded} refund từ Singleton)*` : "")
+                + `, còn **${Math.round(meCad?.currentStamina ?? 0)}**.`
+                + `\n> Các mặt vừa roll: ${rolled.map(d => `Dice ${d.n} (${d.stamina} Sta)`).join(" · ")}`
+                + `\n> *Chưa trừ Stamina, chưa vào CD — chọn số hit ít hơn rồi thử lại.*`,
+              flags: MessageFlags.Ephemeral,
+            }).catch(() => {});
+          }
+          dmgStr = rolled.map(d => `${d.dmg}${d.type[0]}`).join("+");
           const newFaces = [];
           if (meCad) {
-            // Procuration [Hermes] — "1 stack khi xài LẦN ĐẦU" cho MỖI mặt ⇒ lưu
-            // TẬP các mặt đã dùng, KHÔNG phải bộ đếm (đếm sẽ vượt 9 khi lặp mặt).
+            // Procuration [Hermes] — lưu TẬP mặt đã dùng (không phải bộ đếm).
             meCad.procurationHermes = meCad.procurationHermes ?? [];
             for (const d of rolled) {
               if (!meCad.procurationHermes.includes(d.n)) { meCad.procurationHermes.push(d.n); newFaces.push(d.n); }
             }
-            // Stamina: mỗi mặt có giá riêng — trừ ĐÚNG tổng.
             meCad.currentStamina = Math.max(0, (meCad.currentStamina ?? 0) - staTotal);
-            // Charge phòng thủ: 20 Stamina = 1 charge (Fragaria chốt).
             meCad.caduceusHitsPerCharge = Math.max(1,
               Math.round(CADUCEUS_STAMINA_PER_CHARGE / Math.max(1, Math.round(staTotal / Math.max(1, hitCount)))));
+            // "Caduceus bị mặc định base dmg là 8 trong khi đáng lẽ nó KHÔNG có
+            // base dmg cố định" — mọi logic dựa vào base dmg (Renegade…) phải lấy
+            // theo MẶT CUỐI CÙNG vừa dùng. Ghi đè luôn weaponBaseDamage/Type/Weight.
+            const last = rolled[rolled.length - 1];
+            meCad.weaponBaseDamage = last.dmg;
+            meCad.weaponType = last.type;
+            meCad.caduceusLastFace = last.n;
             await saveEncounter(channelId, encCad);
           }
           caduceusMeta = {
-            faces: rolled.map(d => d.n), staminaTotal: staTotal,
+            faces: rolled.map(d => d.n), staminaTotal: staTotal, refunded,
             hitsPerCharge: meCad?.caduceusHitsPerCharge ?? 1,
             newProcuration: newFaces, procurationTotal: (meCad?.procurationHermes ?? []).length,
+            lastFace: rolled[rolled.length - 1],
           };
         } else {
           dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${normalTypeLetter}` : `${combatant.weaponBaseDamage}${normalTypeLetter}`;
@@ -1894,6 +1924,8 @@ client.on("interactionCreate", async (interaction) => {
           content: `<:Prescript:1528452494945157281> **Will of Hermes** — ${facesTxt}`
             + `\n> - Tiêu **${caduceusMeta.staminaTotal} Stamina**`
             + `\n> - **${caduceusMeta.hitsPerCharge} hit / 1 charge** phòng thủ`
+            + (caduceusMeta.refunded > 0 ? `\n> - Singleton refund **${caduceusMeta.refunded} Stamina** (1/5)` : "")
+            + `\n> - Base Dmg hiện tại theo mặt cuối: **${caduceusMeta.lastFace.dmg} ${caduceusMeta.lastFace.type}**`
             + `\n> - Procuration [Hermes]: **${caduceusMeta.procurationTotal}/9**`
             + (caduceusMeta.newProcuration.length ? ` *(+${caduceusMeta.newProcuration.length} mặt mới)*` : ""),
           flags: MessageFlags.Ephemeral,
@@ -2361,7 +2393,27 @@ client.on("interactionCreate", async (interaction) => {
         // nó thì resolveReuseTimes hiểu là "max" và tự reuse hết mức.
         verify = await resolveSkillVerification(channelId, combatant, critSkillName, null, true, critReuseKey ?? undefined);
       } catch (err) {
-        return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+        // ❗ BUG ĐÃ SỬA (user: "chiêu lỗi hoặc dùng khi chưa xong CD, KHÔNG REFUND
+        // mà còn ĐẶT Ở CD, không cho sử dụng skill khác mà bắt phải aim chiêu đã
+        // bị huỷ đó").
+        // GỐC: verification ném lỗi ở GIỮA CHỪNG — có thể đã trừ Light/Sanity và
+        // đã ghi cooldown (resolveSkillVerification mutate combatant khi roll()).
+        // Trả lời rồi `return` mà KHÔNG dọn ⇒ combatant kẹt ở trạng thái dở dang,
+        // còn `pendingCriticalRolls` vẫn giữ entry cũ nên panel cứ bắt aim lại.
+        // ⚠️ KHÔNG dùng `pendingKey` ở đây — nó khai MÃI PHÍA DƯỚI (TDZ).
+        // Dựng lại key tại chỗ bằng cùng công thức.
+        pendingCriticalRolls.delete(`${channelId}:${interaction.user.id}`);
+        await interaction.reply({
+          content: `❌ ${err.message}\n> *Đã hoàn lại Light/Sanity và KHÔNG tính cooldown — chọn hành động khác bình thường.*`,
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+        // Dọn mọi mutate dở dang: nạp lại combatant TỪ REDIS (bản chưa bị đụng)
+        // thay vì tự đoán phải hoàn cái gì — an toàn hơn hẳn việc trừ ngược tay.
+        try {
+          const encFresh = await getEncounter(channelId);
+          if (encFresh?.players?.[interaction.user.id]) await saveEncounter(channelId, encFresh);
+        } catch { /* không nạp lại được thì thôi, đã báo lỗi cho người chơi */ }
+        return;
       }
       // GAP ĐÃ SỬA (phát hiện qua rà soát khi thêm Shock Round): resolveSkillVerification
       // CÓ THỂ mutate combatant NGAY lúc roll() (VD Shock Round trừ bulletStack,
@@ -2371,33 +2423,6 @@ client.on("interactionCreate", async (interaction) => {
       // đã chọn mới save — nhưng bước đó fetch encounter MỚI (getEncounter),
       // làm MẤT TRẮNG mutation vừa làm ở đây. Save NGAY để không mất.
       await saveEncounter(channelId, encounter);
-      // ── Skill KHÔNG có dmg nhưng CẦN chọn đồng đội (Designant.) ───────────
-      // Phải chặn TRƯỚC nhánh `!verify.autoDmgStr` bên dưới: nhánh đó dựng
-      // pendingAction với `targets: []` rồi resolve NGAY, không chỗ nào hỏi ai.
-      const critSkillObj = findSkill(critSkillName);
-      if (!verify.autoDmgStr && critSkillObj?.needsAllyTarget) {
-        const allyOptions = buildAllyTargetOptions(encounter, interaction.user.id);
-        if (allyOptions.length === 0) {
-          return interaction.reply({ content: "⚠️ Không còn đồng đội nào (còn sống) để chỉ định.", flags: MessageFlags.Ephemeral }).catch(() => {});
-        }
-        pendingCriticalRolls.set(pendingKey, {
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns,
-          emotionDelta: verify.emotionDelta ?? 0, lightCost: verify.lightCost,
-          sanityCost: verify.sanityCost, skillRollEmbed: verify.skillRollEmbed,
-          expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
-        });
-        await interaction.update({
-          embeds: [verify.skillRollEmbed, { title: `⚡ ${critSkillName} — chọn người được chỉ định`, description: critSkillObj.allyTargetPrompt ?? "Chọn 1 đồng đội (hoặc chính bạn):", color: 0x3498db }],
-          components: [new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId(`encallytarget:${channelId}:${encodeURIComponent(critSkillName)}`)
-              .setPlaceholder("Chọn người được chỉ định...")
-              .setMinValues(1).setMaxValues(1)
-              .addOptions(...allyOptions),
-          )],
-        }).catch(() => {});
-        return;
-      }
       if (!verify.autoDmgStr) {
         // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua ảnh chụp thật của user — "Durandal"
         // Critical không có dmg trực tiếp): TRƯỚC ĐÂY nhánh này chỉ hiện embed rồi
@@ -2440,6 +2465,37 @@ client.on("interactionCreate", async (interaction) => {
         }).catch(() => {});
       }
       const pendingKey = `${channelId}:${interaction.user.id}`;
+      // ⚠️ ĐÃ DI CHUYỂN — khối này TRƯỚC ĐÂY nằm PHÍA TRÊN dòng khai
+      // `const pendingKey` ⇒ "Cannot access 'pendingKey' before initialization"
+      // (Fragaria gửi ảnh: Designant chết ngay khi bấm). Đúng lớp lỗi TDZ tôi
+      // đã cảnh báo nhiều lần trong chính file HAND-OFF này mà vẫn tái phạm.
+      // ── Skill KHÔNG có dmg nhưng CẦN chọn đồng đội (Designant.) ───────────
+      // Phải chặn TRƯỚC nhánh `!verify.autoDmgStr` bên dưới: nhánh đó dựng
+      // pendingAction với `targets: []` rồi resolve NGAY, không chỗ nào hỏi ai.
+      const critSkillObj = findSkill(critSkillName);
+      if (!verify.autoDmgStr && critSkillObj?.needsAllyTarget) {
+        const allyOptions = buildAllyTargetOptions(encounter, interaction.user.id);
+        if (allyOptions.length === 0) {
+          return interaction.reply({ content: "⚠️ Không còn đồng đội nào (còn sống) để chỉ định.", flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+        pendingCriticalRolls.set(pendingKey, {
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns,
+          emotionDelta: verify.emotionDelta ?? 0, lightCost: verify.lightCost,
+          sanityCost: verify.sanityCost, skillRollEmbed: verify.skillRollEmbed,
+          expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
+        });
+        await interaction.update({
+          embeds: [verify.skillRollEmbed, { title: `⚡ ${critSkillName} — chọn người được chỉ định`, description: critSkillObj.allyTargetPrompt ?? "Chọn 1 đồng đội (hoặc chính bạn):", color: 0x3498db }],
+          components: [new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`encallytarget:${channelId}:${encodeURIComponent(critSkillName)}`)
+              .setPlaceholder("Chọn người được chỉ định...")
+              .setMinValues(1).setMaxValues(1)
+              .addOptions(...allyOptions),
+          )],
+        }).catch(() => {});
+        return;
+      }
       pendingCriticalRolls.set(pendingKey, {
         dmgStr: verify.autoDmgStr,
         skillRollEmbed: verify.skillRollEmbed,
@@ -2820,7 +2876,26 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     const isAdmin = ADMIN_IDS.has(interaction.user.id);
+    // ❗ BUG NẶNG ĐÃ SỬA (Fragaria: "Manifest E.G.O bấm KHÔNG PHẢN HỒI, không thấy
+    // thông báo nhưng VẪN XỬ LÝ NGẦM thành công. User spam liên tục dẫn tới được
+    // thực thi ngầm liên tục, hệ lụy là 500 Max Stamina, -45 Sanity").
+    // GỐC: `interaction.reply(...)` ở CUỐI hàm chạy SAU khi đã xử lý xong. Nếu quá
+    // 3 giây (Redis chậm/lock) Discord huỷ token ⇒ reply ném ⇒ `.catch(()=>{})`
+    // nuốt ⇒ người chơi thấy "không phản hồi" và bấm lại, mỗi lần bấm là một lần
+    // CỘNG DỒN +100 Max Stamina / −30 Sanity.
+    // SỬA 2 LỚP:
+    //  (1) `deferReply` NGAY để giữ token 15 phút — hết cảnh "không phản hồi".
+    //  (2) KHOÁ CHỐNG BẤM ĐÚP theo (user, action): lần bấm thứ 2 khi lần 1 chưa
+    //      xong thì bị chặn, KHÔNG chạy tiếp.
+    const specialLockKey = `${channelId}:${interaction.user.id}:${value}`;
+    if (specialActionInFlight.has(specialLockKey)) {
+      return interaction.reply({ content: "⏳ Hành động trước chưa xong — đừng bấm lại, chờ kết quả nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+    specialActionInFlight.add(specialLockKey);
+    let deferred = false;
+    try { await interaction.deferReply(); deferred = true; } catch { /* token đã chết, xử lý xong vẫn gửi được qua channel */ }
     let resultMsg;
+    try {
     if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
     else if (value === "manifestego") resultMsg = await performManifestEgo(channelId, interaction.user.id);
     else if (value === "overcharge") resultMsg = await performOvercharge(channelId, interaction.user.id);
@@ -2829,8 +2904,40 @@ client.on("interactionCreate", async (interaction) => {
     // dựng từ state lúc mở panel, nếu người chơi mở 2 panel rồi bấm cả hai thì
     // toggle sẽ lật qua lật lại; ghi rõ đích thì bấm mấy lần cũng ra đúng dạng đó.
     else if (value.startsWith("mimicryform:")) resultMsg = await performMimicryForm(channelId, interaction.user.id, value.slice(12));
+    // Shin - Rien follow-up — TÙY CHỌN, người chơi tự bấm mới chạy.
+    else if (value === "shinrienfurioso") {
+      resultMsg = await (async () => {
+        let out = "";
+        await withLock(encounterKey(channelId), async () => {
+          const enc = await getEncounter(channelId);
+          const me = enc?.players?.[interaction.user.id];
+          if (!me) throw new Error("Bạn chưa tham gia encounter này.");
+          if (!me.shinRienFuriosoOffer) throw new Error("Cửa sổ **Shin - Rien follow-up** không mở (chỉ mở 1 turn sau khi Wound-Casing Mask vỡ).");
+          if (me.shinRienFuriosoUsed) throw new Error("**Shin - Rien follow-up** chỉ dùng được **1 lần mỗi Encounter**.");
+          me.shinRienFuriosoUsed = true;
+          me.shinRienFuriosoReady = true;   // mở Furioso ở panel Moves (không cần đủ 9 Procuration)
+          me.indulgenceInPrescript = (me.indulgenceInPrescript ?? 0) + 1;
+          // ⚠️ **+35 Karmic** — đây là CÁI GIÁ phải NHẬN THÊM (debuff), không phải
+          // tiêu hao trừ đi. Karmic càng nhiều càng ăn nhiều dmg (+1%/stack).
+          const before = me.karmicConsequence ?? 0;
+          me.karmicConsequence = Math.min(100, before + 35);
+          await saveEncounter(channelId, enc);
+          out = `🩸 **Shin - Rien** — nhận **+1 Indulgence in Prescript** và mở **Furioso follow-up** ngay turn này.`
+            + `\n> ⚠️ Cái giá: **+35 Karmic Consequence** (${before} → **${me.karmicConsequence}** — bạn nhận thêm ${me.karmicConsequence}% Dmg).`
+            + `\n> Chọn Furioso ở panel **Moves**; không dùng trong turn này thì cửa sổ đóng.`;
+        });
+        return out;
+      })();
+    }
     else if (value.startsWith("useitem:")) resultMsg = await performUseItem(channelId, interaction.user.id, value.slice(8));
-    else { await interaction.reply({ content: "⚠️ Hành động không hợp lệ.", flags: MessageFlags.Ephemeral }).catch(() => {}); return; }
+    else {
+      specialActionInFlight.delete(specialLockKey);
+      const bad = deferred
+        ? interaction.editReply({ content: "⚠️ Hành động không hợp lệ." })
+        : interaction.reply({ content: "⚠️ Hành động không hợp lệ.", flags: MessageFlags.Ephemeral });
+      await bad.catch(() => {});
+      return;
+    }
     // BGM riêng của Manifested E.G.O (ego.js `bgm`) — đính kèm NGAY lúc kích hoạt
     // để nó bắt đầu phát. Discord không phát nhạc nền liên tục được, nên "kéo dài
     // tới hết Manifest" thể hiện bằng: `resolveEncounterBgm` trả về bài này ở MỌI
@@ -2850,7 +2957,20 @@ client.on("interactionCreate", async (interaction) => {
         log("error", "egoBgm", interaction.user?.id ?? "unknown", bgmErr.message);
       }
     }
-    await interaction.reply({ content: resultMsg, files: egoBgmFiles });
+    // deferReply đã dùng ⇒ phải editReply. Nếu token chết từ đầu thì gửi thẳng
+    // vào channel để người chơi VẪN thấy kết quả (thay vì "không phản hồi").
+    if (deferred) {
+      await interaction.editReply({ content: resultMsg, files: egoBgmFiles }).catch(async () => {
+        const ch = await client.channels.fetch(channelId).catch(() => null);
+        if (ch) await ch.send({ content: `${interaction.user} ${resultMsg}`, files: egoBgmFiles }).catch(() => {});
+      });
+    } else {
+      const ch = await client.channels.fetch(channelId).catch(() => null);
+      if (ch) await ch.send({ content: `${interaction.user} ${resultMsg}`, files: egoBgmFiles }).catch(() => {});
+    }
+    } finally {
+      specialActionInFlight.delete(specialLockKey);
+    }
   } catch (err) {
     log("error", "encMenuSelect", interaction.user?.id ?? "unknown", err.message);
     await interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -3054,7 +3174,11 @@ client.on("interactionCreate", async (interaction) => {
   const critSkillName = decodeURIComponent(parts.slice(2).join(":"));
   const chosenAllyId = interaction.values[0];
   await interaction.deferUpdate().catch(() => {});
-  const pendingKey = `${channelId}:${interaction.user.id}:${critSkillName}`;
+  // ⚠️ KEY PHẢI KHỚP bên ĐẶT. Bên đặt (nhánh Critical) dùng
+  // `${channelId}:${userId}` — tôi viết bên đọc thành
+  // `${channelId}:${userId}:${critSkillName}` nên KHÔNG BAO GIỜ tìm thấy, luôn
+  // báo "lượt roll đã hết hạn". Hai đầu của một cái Map phải dựng key CÙNG CÔNG THỨC.
+  const pendingKey = `${channelId}:${interaction.user.id}`;
   try {
     const pendingRoll = pendingCriticalRolls.get(pendingKey);
     if (!pendingRoll || pendingRoll.expiresAt < Date.now()) {

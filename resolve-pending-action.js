@@ -934,7 +934,47 @@ async function resolveOnePendingAction(encounter, p) {
               // skipShield: khiên ĐÃ được hấp thụ ngay phía trên (tách riêng vì
               // Renegade cần biết khiên lúc BỊ ĐÁNH). Không truyền cờ này thì
               // applyHpLoss sẽ trừ khiên LẦN HAI.
-              applyHpLoss(target, finalDmg, { skipShield: true });
+              // ── ÁP DMG THEO TỪNG HIT ────────────────────────────────────
+              // ❗ Fragaria: "per hit khi Stagger giữa chừng chưa đúng — 1 chuỗi
+              // 10 hit 10 dmg Blunt, Res địch 1x, sau đòn thứ 5 địch bị Stagger
+              // thì 5 đòn sau phải thành 20 dmg mỗi đòn. Hiện tại một khi quyết
+              // 1 chuỗi dmg thì giữa chừng không thay đổi."
+              // Stagger giữa chuỗi đến từ Tremor Burst / Guard Break / Parry fail.
+              //
+              // GỐC: `calcMathCore` tính `resValues` MỘT LẦN ngoài vòng lặp hit,
+              // và chỗ này áp `finalDmg` MỘT LẦN cho cả đòn ⇒ không có chỗ nào
+              // để Res kịp đổi.
+              //
+              // Nay: đi TỪNG hit, sau mỗi hit gọi `checkStaggerPanic`; hit nào rơi
+              // vào lúc mục tiêu ĐÃ Stagger mà lúc tính còn chưa Stagger thì
+              // **scale lại** theo tỉ lệ `2 / resUsed` (Stagger = 2x mọi loại).
+              // Phụ phẩm: mọi hiệu ứng "on hit" cũng tính đúng thời điểm hơn.
+              {
+                const insts = t.preview?.instanceResults ?? [];
+                const scaleTotal = finalDmg / Math.max(1e-9, (t.preview?.totalDmg ?? finalDmg) || finalDmg);
+                if (insts.length > 1) {
+                  let appliedSum = 0;
+                  for (const inst of insts) {
+                    let hitDmg = (inst.instanceDmg ?? 0) * scaleTotal;
+                    // MỌI hit rơi vào lúc mục tiêu ĐANG Stagger đều phải chịu Res
+                    // Stagger (2x). `resUsed < 2` lọc sẵn trường hợp preview vốn
+                    // đã tính bằng 2x (mục tiêu Stagger từ trước khi đòn bắt đầu)
+                    // — không nhân đôi lần thứ hai.
+                    if (target.staggered) {
+                      const used = inst.resUsed ?? 1;
+                      if (used > 0 && used < 2) hitDmg = hitDmg * (2 / used);
+                    }
+                    applyHpLoss(target, hitDmg, { skipShield: true });
+                    appliedSum += hitDmg;
+                    // Stagger có thể xảy ra NGAY tại hit này (Tremor Burst /
+                    // Guard Break / Parry fail) ⇒ hit KẾ TIẾP mới ăn 2x.
+                    checkStaggerPanic(target);
+                  }
+                  finalDmg = Math.round(appliedSum * 1000) / 1000;
+                } else {
+                  applyHpLoss(target, finalDmg, { skipShield: true });
+                }
+              }
               // Dmg NGƯỜI TẤN CÔNG gây ra trong turn, TÁCH RIÊNG THEO TỪNG MỤC
               // TIÊU — "Astral Quantization" tính % trên dmg gây cho **từng** kẻ
               // địch, không phải trên tổng.

@@ -93,7 +93,7 @@ const ACCESSORIES = {
     requiresFaction: "The Index Syndicate",
     passives: [
       { name: "Providence of the Prescript", mechanicId: "index_providence",
-        desc: "Khi gây <:Sinking:1513762793436741652>Sinking/<:Rupture:1513762822620479488>Rupture, nhận thêm 3 <:Poise:1513762945715142736>Poise\n> - Nhận Poise theo cách trên **3 lần** thì turn kế **Crit Mul +0.3**\n> - Khi bản thân có **≥20 Poise**: mỗi đòn đánh trúng gây thêm 1 Sinking và 1 Rupture" },
+        desc: "Khi gây <:Sinking:1513762793436741652>Sinking/<:Rupture:1513762812722155682>Rupture, nhận thêm 3 <:Poise:1513762945715142736>Poise\n> - Nhận Poise theo cách trên **3 lần** thì turn kế **Crit Mul +0.3**\n> - Khi bản thân có **≥20 Poise**: mỗi đòn đánh trúng gây thêm 1 Sinking và 1 Rupture" },
     ],
   },
   "composition tool": {

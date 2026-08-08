@@ -134,7 +134,13 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     const resLine = combatant.staggered
       ? `2x/2x/2x (STAGGER, gốc ${r.B}xB ${r.P}xP ${r.S}xS)`
       : combatant.shinMangActive
-        ? `${Math.max(0, r.B - 0.2)}xB ${Math.max(0, r.P - 0.2)}xP ${Math.max(0, r.S - 0.2)}xS (gốc ${r.B}xB ${r.P}xP ${r.S}xS, đang Shin -0,2x)`
+        ? (() => {
+          // round1 — phép trừ số thực JS cho ra rác kiểu 1.1 - 0.2 =
+          // 0.9000000000000001, lọt thẳng ra màn hình người chơi (Fragaria gửi
+          // ảnh). combatantResStr đã làm tròn từ lâu; CHỖ NÀY thì quên.
+          const round1 = (v) => Math.round(Math.max(0, v) * 10) / 10;
+          return `${round1(r.B - 0.2)}xB ${round1(r.P - 0.2)}xP ${round1(r.S - 0.2)}xS (gốc ${r.B}xB ${r.P}xP ${r.S}xS, đang Shin -0,2x)`;
+        })()
         : `${r.B}xB ${r.P}xP ${r.S}xS`;
     const lines = [
       `**${label}**${combatant.currentHp <= 0 ? " — ĐÃ HẠ! 💀" : ""}`,
@@ -236,9 +242,63 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if ((combatant.darkCloudOutfitStacks ?? 0) > 0) statusParts.push(`Dark Cloud${combatant.darkCloudOutfitStacks}`);
     if ((combatant.graceOfPrescript ?? 0) > 0) statusParts.push(`Grace of Prescript${combatant.graceOfPrescript}`);
     if ((combatant.imitation ?? 0) > 0) statusParts.push(`<:Imitation:1513769425063514173>${combatant.imitation}`);
-    if (combatant.prescriptRoll !== null && combatant.prescriptRoll !== undefined) {
-      const PRESCRIPT_ROLL_LABELS = { 1: "Tấn công 1 lần", 2: "Né 1 lần", 3: "Block 1 lần", 4: "Parry 1 lần", 5: "1 phòng thủ + 1 tấn công", 6: "Không làm gì", 7: "Clash với 1 skill" };
-      statusParts.push(`<:Prescript:1528452494945157281>Sắc lệnh #${combatant.prescriptRoll} (${PRESCRIPT_ROLL_LABELS[combatant.prescriptRoll] ?? "?"})`);
+    // ❗ BUG ĐÃ SỬA (Fragaria: "không thấy phát 2 trong 7 sắc lệnh, khiến không
+    // bao giờ hoàn thành sắc lệnh được"). Sắc lệnh VẪN được gieo đúng — chỗ này
+    // mới là chỗ hỏng: đọc `prescriptRoll` (SỐ ÍT, bản cũ 1 dice) trong khi
+    // combat-utils đã ghi `prescriptRolls` (MẢNG 2 dice) từ lúc đổi luật.
+    // Bảng nhãn cũng còn là bảng CŨ (Né/Block/Parry/Không làm gì) — sai hoàn toàn
+    // so với bảng mới (5/6/7 = đánh bằng Blunt/Pierce/Slash).
+    // ⇒ Người chơi không biết phải làm gì ⇒ luôn trượt ⇒ chỉ ăn Karmic.
+    {
+      // HAI BẢNG khác nhau theo outfit (cùng faction The Index nhưng luật khác):
+      //   • Index Oracle's Proxy — 2 dice, bảng mới
+      //   • Index Proselyte      — 1 dice, bảng cũ
+      const PRESCRIPT_LABELS_PROXY = {
+        1: "Tấn công ít nhất 1 lần",
+        2: "Phòng thủ ít nhất 1 lần",
+        3: "1 phòng thủ VÀ 1 tấn công",
+        4: "Clash với 1 skill của địch",
+        5: "Đánh bằng vũ khí Blunt",
+        6: "Đánh bằng vũ khí Pierce",
+        7: "Đánh bằng vũ khí Slash",
+      };
+      const PRESCRIPT_LABELS_PROSELYTE = {
+        1: "Tấn công ít nhất 1 lần", 2: "Né ít nhất 1 lần", 3: "Block ít nhất 1 lần",
+        4: "Parry ít nhất 1 lần", 5: "1 phòng thủ VÀ 1 tấn công", 6: "Không làm gì cả",
+        7: "Clash với 1 skill của địch",
+      };
+      const isProselyte = combatant.prescriptVariant === "proselyte"
+        || (!combatant.hasIndexOraclesProxy && combatant.hasIndexProselyte);
+      const PRESCRIPT_ROLL_LABELS = isProselyte ? PRESCRIPT_LABELS_PROSELYTE : PRESCRIPT_LABELS_PROXY;
+      // Chấp nhận CẢ dữ liệu cũ (số ít) lẫn mới (mảng) — encounter đang chạy dở
+      // lúc deploy vẫn còn field cũ trong Redis.
+      const rolls = Array.isArray(combatant.prescriptRolls)
+        ? combatant.prescriptRolls
+        : (combatant.prescriptRoll != null ? [combatant.prescriptRoll] : []);
+      if (rolls.length > 0) {
+        // Đánh dấu ✅/⬜ theo tiến độ hiện tại để người chơi biết còn thiếu gì —
+        // Fragaria: "nên hiện ở encounter display để player nhìn và biết mình
+        // đang có sắc lệnh gì để thực thi nó".
+        const att = !!combatant.prescriptAttacked;
+        const ev = !!combatant.prescriptEvaded, bl = !!combatant.prescriptBlocked, pa = !!combatant.prescriptParried;
+        const def = ev || bl || pa;
+        const ty = combatant.prescriptAttackTypes ?? {};
+        const met = isProselyte
+          ? { 1: att, 2: ev, 3: bl, 4: pa, 5: att && def, 6: !att && !def && !combatant.prescriptClashed, 7: !!combatant.prescriptClashed }
+          : { 1: att, 2: def, 3: att && def, 4: !!combatant.prescriptClashed, 5: !!ty.Blunt, 6: !!ty.Pierce, 7: !!ty.Slash };
+        statusParts.push(`<:Prescript:1528452494945157281>Sắc lệnh: ` +
+          rolls.map(rn => `${met[rn] ? "✅" : "⬜"} **#${rn}** ${PRESCRIPT_ROLL_LABELS[rn] ?? "?"}`).join(" · "));
+      }
+      if ((combatant.karmicConsequence ?? 0) > 0) {
+        statusParts.push(`<:Karmic_Consequence:1532503901687779338>Karmic ${combatant.karmicConsequence} *(+${combatant.karmicConsequence}% Dmg nhận vào)*`);
+      }
+      if ((combatant.prescriptUnlockLevel ?? 0) > 0) {
+        statusParts.push(`<:Unlock:1528452595859849406>Unlock - ${["I", "II", "III"][combatant.prescriptUnlockLevel - 1]}`);
+      }
+      if (combatant.singleton) statusParts.push(`Singleton ✅`);
+      if ((combatant.procurationHermes ?? []).length > 0) {
+        statusParts.push(`Procuration ${combatant.procurationHermes.length}/9`);
+      }
     }
     if (combatant.prescriptTargetId) {
       statusParts.push(`<:The_Prescripts_Target:1528452363159998525>Đã đánh dấu: **${combatant.prescriptTargetName ?? combatant.prescriptTargetId}**`);
@@ -260,7 +320,11 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     if (combatant.fairy > 0) statusParts.push(`<:Fairy:1513782007602216960>${combatant.fairy} (còn ${combatant.fairyTurnsLeft ?? 0}T)`);
     if (combatant.airborne) statusParts.push(`Airborne`);
     if (combatant.chains) statusParts.push(`<:chained:1513782041307643984>Chains`);
-    if (combatant.sizzlingWound) statusParts.push(`Sizzling Wound`);
+    // Sizzling Wound CHỈ hiện khi thật sự đang hoạt động. Mặt nạ còn nguyên thì
+    // nó "bị vô hiệu hoá" — hiện ra là gây hiểu nhầm (Fragaria: "Sizzling Wound
+    // chưa bị ẩn, nó chỉ nên hiện khi vỡ mặt nạ khiến chấn thương quay trở lại").
+    if (combatant.sizzlingWound && !combatant.woundCasingMaskIntact) statusParts.push(`Sizzling Wound`);
+    if (combatant.woundCasingMaskIntact) statusParts.push(`🎭 Wound-Casing Mask *(Sizzling Wound đang bị vô hiệu hoá)*`);
     if (combatant.perceptionBlockingMask) statusParts.push(`Perception Blocking Mask`);
     if (combatant.blackSilence) statusParts.push(`Struggling`);
     if (combatant.tremorEverlasting > 0) statusParts.push(`Tremor Everlasting${combatant.tremorEverlasting}`);

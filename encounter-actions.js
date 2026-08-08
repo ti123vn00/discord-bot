@@ -40,7 +40,14 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
         if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
         label = `<@${userId}>`;
       }
+      // Panic chặn hành động Y HỆT Stagger (Fragaria: "tuy panic và -45 sanity
+      // nhưng VẪN ACT TIẾP ĐƯỢC… theo logic thì panic sẽ hoạt động như stagger").
+      // Khác Stagger ở 2 điểm: KHÔNG giảm Res (xem combatantResStr) và chỉ 1 turn.
       if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
+      if (combatant.panic) throw new Error(`${label} đang **PANIC** — không thể hành động (còn ${combatant.panicTurnsLeft ?? 1} turn).`);
+      // Sắc lệnh #2/#3 — Guard/Evade qua LỆNH TEXT cũng phải đánh dấu.
+      combatant.prescriptBlocked = true;
+      combatant.prescriptEvaded = true;
       if (type === "evade" && (combatant.injuries ?? []).includes("Mất Chân")) {
         throw new Error(`${label} đã Mất Chân — không thể Evade được nữa.`);
       }
@@ -162,7 +169,11 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
         if (!combatant) throw new Error("Bạn chưa tham gia encounter này.");
         label = `<@${userId}>`;
       }
+      // Panic chặn hành động Y HỆT Stagger (Fragaria: "tuy panic và -45 sanity
+      // nhưng VẪN ACT TIẾP ĐƯỢC… theo logic thì panic sẽ hoạt động như stagger").
+      // Khác Stagger ở 2 điểm: KHÔNG giảm Res (xem combatantResStr) và chỉ 1 turn.
       if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
+      if (combatant.panic) throw new Error(`${label} đang **PANIC** — không thể hành động (còn ${combatant.panicTurnsLeft ?? 1} turn).`);
       // ── GATE STAMINA = 0 ─────────────────────────────────────────────────
       // Fragaria: *"do cost parry là 0 nên vài trường hợp có kháng hay MIỄN NHIỄM
       // Stagger thì có thể SPAM PARRY mà không bị chút rủi ro nào."*
@@ -173,6 +184,9 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
       if ((combatant.currentStamina ?? 0) <= 0) {
         throw new Error(`${label} đã cạn Stamina — **không thể Parry**. Parry không tốn Stamina nhưng vẫn cần còn Stamina để thực hiện.`);
       }
+      // Sắc lệnh #2/#3 — đánh dấu ĐÃ PHÒNG THỦ. Đường nút bấm đã set từ lâu,
+      // đường LỆNH TEXT thì chưa ⇒ ai dùng lệnh text sẽ luôn trượt sắc lệnh.
+      combatant.prescriptParried = true;
       const rawRoll = 1 + Math.floor(Math.random() * 20);
       const penalty = getParryClashPenalty(combatant);
       const roll = rawRoll - penalty;

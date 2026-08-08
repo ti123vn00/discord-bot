@@ -1417,8 +1417,11 @@ const SKILLS = {
   "unlock": {
     name: "Unlock",
     cost: "0 <:Light:1513786082502770719>Light", cd: "0 Turn", diceMul: "1x",
-    // FACTION lock — xem ghi chú ở "yield my flesh".
-    requiresFaction: "Blade Lineage",
+    // ⚠️ ĐÍNH CHÍNH (Fragaria): "Unlock là page riêng của **The Index Syndicate**
+    // chứ KHÔNG PHẢI Blade Lineage. Gate rất sai nặng." Lượt trước tôi tự suy từ
+    // việc nó nằm cạnh Yield My Flesh trong file — SAI. Không được đoán faction
+    // của page theo vị trí trong file; phải hỏi.
+    requiresFaction: "The Index Syndicate",
     // BUG ĐÃ SỬA (Fragaria báo trực tiếp: "unlock và castigation hoạt động không
     // đúng"). TRƯỚC ĐÂY stage được chọn NGẪU NHIÊN (`Math.random()*3+1`) — hoàn
     // toàn trái mô tả của chính page: Unlock-2 ghi rõ "(cần Unlock Blade - 1)",
@@ -2727,6 +2730,11 @@ roll(v = "no") {
   "caduceus crit1 blunt": {
     name: "Slam Down with Weight, Topple the Body", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon",
     cost: "—", cd: "1 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit1",
     caduceusCrit: { tier: 1, rolls: 2, bonusPct: 30, type: "Blunt" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2745,13 +2753,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit1 pierce": {
     name: "Lay Vertical The End, Insert Up to the Wick", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon",
     cost: "—", cd: "1 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit1",
     caduceusCrit: { tier: 1, rolls: 2, bonusPct: 30, type: "Pierce" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2770,13 +2786,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit1 slash": {
     name: "Lay the Blade on its Side, Slice Like a Severed Breath", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon",
     cost: "—", cd: "1 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit1",
     caduceusCrit: { tier: 1, rolls: 2, bonusPct: 30, type: "Slash" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2795,13 +2819,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit2 blunt": {
     name: "Swing to Fell, Have it Meet the Ground", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break",
     cost: "—", cd: "2 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit2",
     caduceusCrit: { tier: 2, rolls: 3, bonusPct: 40, type: "Blunt" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2820,13 +2852,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit2 pierce": {
     name: "Aim Toward a Point, Let it Echo Within", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break",
     cost: "—", cd: "2 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit2",
     caduceusCrit: { tier: 2, rolls: 3, bonusPct: 40, type: "Pierce" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2845,13 +2885,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit2 slash": {
     name: "Carve at a Low Slant, Peel What Remains", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break",
     cost: "—", cd: "2 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit2",
     caduceusCrit: { tier: 2, rolls: 3, bonusPct: 40, type: "Slash" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2870,13 +2918,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit3 blunt": {
     name: "Destroy the Sound, Crush Flat the Thought", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break, Undodgeable",
     cost: "—", cd: "3 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit3",
     caduceusCrit: { tier: 3, rolls: 4, bonusPct: 50, type: "Blunt" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2895,13 +2951,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit3 pierce": {
     name: "Stab the Silence's Heart, Penetrate the Memory", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break, Undodgeable",
     cost: "—", cd: "3 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit3",
     caduceusCrit: { tier: 3, rolls: 4, bonusPct: 50, type: "Pierce" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2920,13 +2984,21 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
   "caduceus crit3 slash": {
     name: "With Tempered Secret, Cut the Form", weaponOf: "Oracle Device [Caduceus]", tags: "Weapon, Guard Break, Undodgeable",
     cost: "—", cd: "3 Turn", diceMul: "1x",
+    // cdGroup — Fragaria: "toàn bộ các crit đều có CD riêng biệt trong khi đáng lẽ
+    // Crit 1 Pierce/Blunt/Slash SHARE CHUNG CD với nhau… khi Critical CD xong thì
+    // chỉ được chọn 1 trong 3 loại dmg type thôi."
+    // Dùng cơ chế `cdGroup` có sẵn (Atelier Logic) — cdKeyFor() quy về CÙNG ô đếm.
+    cdGroup: "caduceus crit3",
     caduceusCrit: { tier: 3, rolls: 4, bonusPct: 50, type: "Slash" },
     roll(ctx = {}) {
       const karmic = Math.max(0, Number(ctx.karmic) || 0);
@@ -2945,7 +3017,10 @@ roll(v = "no") {
         total += val;
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
-      lines.push(`*Dice Value tổng (dùng cho clash): **${Math.round(total * 100) / 100}***`);
+      // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
+      // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
+      // Crit này, và không ghi "tổng dùng cho clash" nữa (gây hiểu nhầm).
+      lines.push(`*Clash bằng **Dice đầu tiên**. Tổng dmg ${Math.round(total * 100) / 100}*`);
       return lines;
     },
   },
@@ -2954,6 +3029,8 @@ roll(v = "no") {
     cost: "—", cd: "—", diceMul: "1x",
     // Gate: ĐỦ 9 Procuration [Hermes] VÀ Unlock - I. Kiểm ở nơi dựng panel
     // (encounter-panels.js) — thiếu 1 trong 2 thì option không hiện.
+    // CHỈ Furioso clash bằng TỔNG 9 Dice (3 Critical thường dùng dice đầu).
+    clashUsesTotalDice: true,
     caduceusFurioso: { unlock: 1, bleed: 3, bind: 1, fragile: 1 },
     roll() {
       // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
@@ -2975,6 +3052,8 @@ roll(v = "no") {
     cost: "—", cd: "—", diceMul: "1,25x",
     // Gate: ĐỦ 9 Procuration [Hermes] VÀ Unlock - II. Kiểm ở nơi dựng panel
     // (encounter-panels.js) — thiếu 1 trong 2 thì option không hiện.
+    // CHỈ Furioso clash bằng TỔNG 9 Dice (3 Critical thường dùng dice đầu).
+    clashUsesTotalDice: true,
     caduceusFurioso: { unlock: 2, bleed: 4, bind: 2, fragile: 2 },
     roll() {
       // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
@@ -2996,6 +3075,8 @@ roll(v = "no") {
     cost: "—", cd: "—", diceMul: "1,5x",
     // Gate: ĐỦ 9 Procuration [Hermes] VÀ Unlock - III. Kiểm ở nơi dựng panel
     // (encounter-panels.js) — thiếu 1 trong 2 thì option không hiện.
+    // CHỈ Furioso clash bằng TỔNG 9 Dice (3 Critical thường dùng dice đầu).
+    clashUsesTotalDice: true,
     caduceusFurioso: { unlock: 3, bleed: 5, bind: 3, fragile: 3 },
     roll() {
       // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
@@ -3196,6 +3277,11 @@ roll(v = "no") {
   "eliminate": {
     name: "Eliminate", weaponOf: "Index Longsword", tags: "Weapon",
     cost: "—", cd: "1 Turn", diceMul: "1x",
+    // Fragaria: "khi có Unlocked Blade thì dùng Eliminate sẽ TỰ ĐỘNG biến thành
+    // Castigation, điều đó đồng nghĩa cả 2 SHARE CHUNG CD."
+    // ⇒ cùng `cdGroup` (cdKeyFor quy về một ô đếm), và panel chỉ hiện MỘT trong
+    // hai (xem encounter-panels.js) thay vì bày cả hai như trước.
+    cdGroup: "index longsword strike",
     roll() {
       const d1 = r(6,12);
       return [
@@ -3206,6 +3292,11 @@ roll(v = "no") {
   "castigation": {
     name: "Castigation", weaponOf: "Index Longsword", tags: "Weapon",
     cost: "—", cd: "1 Turn", diceMul: "1x",
+    // Fragaria: "khi có Unlocked Blade thì dùng Eliminate sẽ TỰ ĐỘNG biến thành
+    // Castigation, điều đó đồng nghĩa cả 2 SHARE CHUNG CD."
+    // ⇒ cùng `cdGroup` (cdKeyFor quy về một ô đếm), và panel chỉ hiện MỘT trong
+    // hai (xem encounter-panels.js) thay vì bày cả hai như trước.
+    cdGroup: "index longsword strike",
     roll() {
       const d1 = r(4,10), d2 = r(4,10), d3 = r(4,10), d4 = r(1,4);
       return [

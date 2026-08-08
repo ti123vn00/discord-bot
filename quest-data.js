@@ -161,6 +161,11 @@ const QUEST_MOBS = {
     // Boss 3 đòn/turn + có đòn 200 True AOE → khoá mục tiêu là wipe chắc chắn.
     // Cờ này tắt hẳn aggro lock: MỖI đòn rút lại mục tiêu từ đầu.
     aiSpreadTargets: true,
+    // Fragaria: "Nothing There bị bug có thể hồi stamina và biết guard/evade/parry
+    // trong khi đã gate là sẽ KHÔNG THỂ hồi hay xài parry/guard/evade do đặc trưng
+    // của boss." 2 cờ này TRƯỚC ĐÂY không tồn tại — "đã gate" chỉ là ý định.
+    noStaminaRegen: true,
+    cannotDefend: true,
     skills: ["Swing", "Triple Swing", "Jump Attack", "Running Attack", "HELP", "Goodbye"],
     // Pattern CỐ ĐỊNH theo turn, lặp lại từ đầu sau turn 3 (Fragaria: "Turn 4:
     // lặp lại từ đầu"). Mỗi turn tung 3 đòn theo ĐÚNG thứ tự này.

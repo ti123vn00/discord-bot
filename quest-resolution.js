@@ -257,7 +257,13 @@ module.exports = function ({
     const pendingLeft = (encounter.pendingActions ?? []).length;
     const diagLines = [
       `🏁 **ENCOUNTER KẾT THÚC** — lý do: ${expired ? "QUÁ HẠN (treo quá lâu)" : (questOutcome.won ? "HOÀN THÀNH mục tiêu" : "cả team GỤC NGÃ")}`,
-      `📊 Turn ${encounter.turnNumber ?? "?"} · pendingActions còn lại: ${pendingLeft}${pendingLeft > 0 ? " ⚠️ (đòn chưa resolve — dấu hiệu treo)" : ""}`,
+      // ❗ BUG ĐÃ SỬA (Fragaria: "End Encounter/Contract kết thúc lúc nào cũng LUÔN
+      // LUÔN báo hiệu 1 pendingAction treo dù không phải").
+      // GỐC: dòng này chạy TRONG lúc action cuối cùng đang được resolve — chính
+      // nó vẫn còn trong `pendingActions`, chưa kịp bị gỡ. Nên "còn lại: 1" là
+      // trạng thái BÌNH THƯỜNG của mọi lần kết thúc, không phải dấu hiệu treo.
+      // Chỉ cảnh báo khi còn **từ 2 trở lên**, và ghi rõ 1 là bình thường.
+      `📊 Turn ${encounter.turnNumber ?? "?"} · pendingActions còn lại: ${pendingLeft}${pendingLeft > 1 ? " ⚠️ (nhiều đòn chưa resolve — dấu hiệu treo)" : (pendingLeft === 1 ? " *(là chính đòn kết thúc trận — bình thường)*" : "")}`,
       ...snapshot,
     ];
     appendActionLog(encounter, [...diagLines, ...resultLines], "end");

@@ -185,6 +185,19 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
     if (criticalSkill) {
       options.push(new StringSelectMenuOptionBuilder().setLabel(`⚡ Critical: ${criticalSkill.name}${mimicryNote}`.slice(0, 100)).setValue(`critical:${criticalSkill.name}`));
     }
+    // ── ELIMINATE → CASTIGATION (Index Longsword) ────────────────────────────
+    // Fragaria: "description Eliminate và Castigation thừa thãi, có thể chọn dùng
+    // Castigation mà không cần dùng Eliminate ngay khi có Unlocked Blade. Logic
+    // đúng là khi có Unlocked Blade thì dùng Eliminate sẽ TỰ BIẾN thành Castigation."
+    // ⇒ chỉ bày MỘT lựa chọn: chưa có Unlocked Blade → Eliminate; có rồi → Castigation.
+    {
+      const hasUnlockedBlade = (combatant.unlockedBladeStage ?? 0) > 0 || combatant.unlockedBlade === true;
+      const drop = hasUnlockedBlade ? "Eliminate" : "Castigation";
+      for (let i = options.length - 1; i >= 0; i--) {
+        const v = options[i]?.data?.value ?? "";
+        if (v === `critical:${drop}` || v === `page:${drop}`) options.splice(i, 1);
+      }
+    }
     // ── ORACLE DEVICE [CADUCEUS] ─────────────────────────────────────────────
     // 9 Critical (3 bậc × 3 type) — người chơi tự chọn type, bậc quyết định số
     // dice roll (2/3/4) và bonus khi ra đúng type (30/40/50%).
@@ -208,10 +221,13 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
       const unlock = combatant.prescriptUnlockLevel ?? 0;
       const furiosoKey = ["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][unlock - 1];
       const fSkill = furiosoKey ? findSkill(furiosoKey) : null;
-      if (fSkill && proc >= 9) {
+      // Shin - Rien follow-up: mở Furioso KHÔNG cần đủ 9 Procuration (đã trả giá
+      // bằng 35 Karmic ở turn-advance).
+      const shinRienReady = combatant.shinRienFuriosoReady === true;
+      if (fSkill && (proc >= 9 || shinRienReady)) {
         options.push(new StringSelectMenuOptionBuilder()
           .setLabel(`💥 ${fSkill.name}`.slice(0, 100))
-          .setDescription(`Unlock ${["I", "II", "III"][unlock - 1]} · 9 Dice · ${fSkill.diceMul} Dice Mul`.slice(0, 100))
+          .setDescription(`Unlock ${["I", "II", "III"][unlock - 1]} · 9 Dice · ${fSkill.diceMul} Dice Mul${shinRienReady && proc < 9 ? " · Shin-Rien follow-up" : ""}`.slice(0, 100))
           .setValue(`critical:${fSkill.name}`.slice(0, 100)));
       } else if (fSkill || proc < 9) {
         options.push(new StringSelectMenuOptionBuilder()
@@ -380,6 +396,16 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
     // turn tùy ý thích" ⇒ không giới hạn số lần/turn, không tốn Light/lượt.
     // Gate bằng `mimicSyncActive` (cờ do combat-utils bật) chứ không phải
     // weaponName — cờ đó chỉ bật khi ĐANG Manifest VÀ vốn cầm Mimicry Blade.
+    // ── SHIN - RIEN: follow-up Furioso (TÙY CHỌN, CÓ RỦI RO) ────────────────
+    // Fragaria: "là 1 optional option CÓ RISK, không nên cho tự động sử dụng,
+    // nên làm thêm 1 nút ở Special." Nút chỉ hiện trong cửa sổ 1 turn sau khi
+    // Wound-Casing Mask vỡ, và chỉ dùng được 1 lần mỗi Encounter.
+    if (combatant.shinRienFuriosoOffer && !combatant.shinRienFuriosoUsed) {
+      options.push(new StringSelectMenuOptionBuilder()
+        .setLabel("🩸 Shin - Rien: nhận Furioso follow-up")
+        .setDescription("Giá: +35 Karmic Consequence · +1 Indulgence · mở Furioso turn này".slice(0, 100))
+        .setValue("shinrienfurioso"));
+    }
     if (combatant.mimicSyncActive) {
       const toScythe = combatant.mimicryForm !== "scythe";
       options.push(new StringSelectMenuOptionBuilder()

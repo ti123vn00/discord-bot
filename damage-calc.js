@@ -477,6 +477,11 @@ function calcMathCore(opts) {
       poiseAfterGain,                 // sau gain, trước critDiv — để hiển thị gain chính xác
       poiseShortfall,
       instanceDmg, ruptureBonus, sinkingBonus,
+      // resUsed — hệ số Res ĐÃ DÙNG cho hit này. Cần để `resolve-pending-action`
+      // TÍNH LẠI được khi mục tiêu bị Stagger GIỮA CHUỖI (Tremor Burst / Guard
+      // Break / Parry fail): các hit SAU phải chịu Res mới (2x) chứ không giữ
+      // nguyên con số đã tính một lần cho cả đòn.
+      resUsed: currentRes,
       sinkingApplied: sinkingToApply,
       ruptureApplied: ruptureToApply,
       poiseApplied: poiseToApply,

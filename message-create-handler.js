@@ -52,7 +52,7 @@ function bgmAttachment(AttachmentBuilder, name) {
   return [];
 }
 
-module.exports = function ({ CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ PAID_HEAL_PER_CYCLE, SEVERE_INJURIES, CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -539,7 +539,10 @@ client.on("messageCreate", async (message) => {
           const injuryList = profileData.injuries ?? [];
           const idx = injuryList.findIndex(i => i.toLowerCase().includes(kv["injury"].toLowerCase()));
           if (idx === -1) throw new Error(`Không tìm thấy chấn thương "${kv["injury"]}" trong danh sách của bạn — dùng \`-balance\` để xem.`);
-          const INJURY_HEAL_COST = 50000; // GIẢ ĐỊNH — xem note ở trên
+          // Fragaria chốt giá: chấn thương NHẸ **50k**, chấn thương NẶNG
+          // (mất tay/mất chân/vết thương lớn) **250k**.
+          const isSevere = SEVERE_INJURIES.some(x => x.toLowerCase() === String(injuryList[idx]).toLowerCase());
+          const INJURY_HEAL_COST = isSevere ? 250000 : 50000;
           if ((profileData.ahn ?? 0) < INJURY_HEAL_COST) throw new Error(`Cần ${formatNumber(INJURY_HEAL_COST)} Ahn để chữa chấn thương này — bạn chỉ có ${formatNumber(profileData.ahn ?? 0)} Ahn.`);
           const removedName = injuryList[idx];
           injuryList.splice(idx, 1);
@@ -562,17 +565,28 @@ client.on("messageCreate", async (message) => {
         // Giới hạn 1 lần/chu kỳ: dùng CHUNG mốc 0h/12h giờ VN với reset HP
         // (mostRecentHpResetBoundaryUtc) thay vì tự đếm 12 tiếng từ lần heal —
         // nếu tự đếm sẽ lệch dần khỏi mốc reset HP và người chơi không đoán được.
+        // ❗ ĐỔI LUẬT (Fragaria): heal-bằng-Ahn nay **2 lần mỗi chu kỳ**, và phải
+        // TÁCH KHỎI reset HP tự nhiên — trước đây dùng chung một cột mốc nên
+        // "một player đã qua chu kỳ rồi nhưng không được heal trở lại".
+        // GỐC LỖI: chỉ lưu MỐC THỜI GIAN `lastPaidHealAt` mà không lưu SỐ LẦN,
+        // nên không phân biệt được "đã dùng hết lượt" với "sang chu kỳ mới".
+        // Nay lưu CẶP (mốc chu kỳ, số lần đã dùng): sang chu kỳ mới thì bộ đếm
+        // tự về 0 vì mốc đã khác.
         const healBoundary = mostRecentHpResetBoundaryUtc(Date.now());
-        if ((profileData.lastPaidHealAt ?? 0) >= healBoundary) {
-          throw new Error(`Bạn đã dùng lượt hồi HP bằng Ahn của chu kỳ này rồi — mỗi chu kỳ **1 lần**, làm mới ở mốc **0h/12h giờ VN** (cùng mốc reset HP).`);
+        const usedThisCycle = (profileData.paidHealCycle === healBoundary) ? (profileData.paidHealCount ?? 0) : 0;
+        if (usedThisCycle >= PAID_HEAL_PER_CYCLE) {
+          throw new Error(`Bạn đã dùng hết **${PAID_HEAL_PER_CYCLE}** lượt hồi HP bằng Ahn của chu kỳ này — làm mới ở mốc **0h/12h giờ VN**.`);
         }
         const cost = actualHeal * HP_HEAL_RATE_AHN;
         if ((profileData.ahn ?? 0) < cost) throw new Error(`Cần ${formatNumber(cost)} Ahn để hồi ${actualHeal} HP (rate ${formatNumber(HP_HEAL_RATE_AHN)} Ahn/HP) — bạn chỉ có ${formatNumber(profileData.ahn ?? 0)} Ahn.`);
         profileData.ahn = (profileData.ahn ?? 0) - cost;
         profileData.currentHp = currentHp + actualHeal;
-        profileData.lastPaidHealAt = Date.now();
+        profileData.paidHealCycle = healBoundary;
+        profileData.paidHealCount = usedThisCycle + 1;
+        profileData.lastPaidHealAt = Date.now(); // giữ cho tương thích dữ liệu cũ
         await savePlayerData(userId, profileData, slot);
-        message.reply(`❤️ Đã hồi **${actualHeal} HP** (${currentHp} → ${profileData.currentHp}/${effectiveMaxHp}) — tốn ${formatNumber(cost)} Ahn (còn ${formatNumber(profileData.ahn)} Ahn).\n> ⚠️ Đây là **lượt hồi duy nhất** của chu kỳ này — làm mới ở mốc 0h/12h giờ VN.`);
+        const leftHeal = PAID_HEAL_PER_CYCLE - profileData.paidHealCount;
+        message.reply(`❤️ Đã hồi **${actualHeal} HP** (${currentHp} → ${profileData.currentHp}/${effectiveMaxHp}) — tốn ${formatNumber(cost)} Ahn (còn ${formatNumber(profileData.ahn)} Ahn).\n> Còn **${leftHeal}/${PAID_HEAL_PER_CYCLE}** lượt hồi bằng Ahn trong chu kỳ này.`);
       });
     } catch (err) {
       message.reply(`❌ ${err.message}`);

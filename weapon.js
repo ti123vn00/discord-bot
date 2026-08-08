@@ -36,7 +36,7 @@ const WEAPONS = {
     criticalSkillKey: "designant.",
     // Critical thứ 2 — panel Moves đọc qua EXTRA_CRITICALS (xem encounter-panels.js).
     passives: [
-      { name: "Renegade", desc: "Khi bản thân hoặc đồng đội có <:Shield:1449582220481134705>Shield HP bị đối phương tấn công, người tấn công sẽ bị phản lại bằng **50% sát thương đánh thường** của mục tiêu bị tấn công." },
+      { name: "Renegade", desc: "Khi bản thân hoặc đồng đội có <:shield:1449582220481134705>Shield HP bị đối phương tấn công, người tấn công sẽ bị phản lại bằng **50% sát thương đánh thường** của mục tiêu bị tấn công." },
       { name: "Swan Song", desc: "Cuối turn, bản thân và đồng đội hồi phục một lượng HP bằng **20% lượng Shield HP đã mất trong turn này**." },
     ],
   },

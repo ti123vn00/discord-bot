@@ -135,8 +135,13 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // Will of Prescript (Index Longsword/Cleaver): +5% Dmg/Grace of Prescript,
     // CHỈ khi target hiện tại ĐÚNG LÀ enemy đang bị đánh dấu "The Prescript
     // Target's - The Index" (prescriptTargetId).
+    // ❗ GỘP (trước đây CỘNG HAI LẦN): khối này (+5%/Grace, Index Longsword) và
+    // khối tôi thêm cho Caduceus (+10%/Grace) đều chạy ⇒ 4 Grace ra **60%** thay
+    // vì 40%. Hai vũ khí có cùng TÊN passive "Will of Prescript" nhưng KHÁC hệ số,
+    // nên phải chọn hệ số theo VŨ KHÍ ĐANG CẦM, không cộng dồn cả hai.
     if (targetId && attacker.prescriptTargetId === targetId) {
-      bonusPct += 5 * (attacker.graceOfPrescript ?? 0);
+      const isCaduceus = attacker.weaponName === "Oracle Device [Caduceus]";
+      bonusPct += (isCaduceus ? 10 : 5) * (attacker.graceOfPrescript ?? 0);
     }
     // GAP ĐÃ SỬA (dự án tự động hoá toàn bộ weapon/outfit) — "Ambitious Fixer"
     // (outfit): "Gia tăng 10% Dmg Slash" — dùng weaponType làm proxy hợp lý
@@ -186,12 +191,7 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // Trả ra `resBonusFlat` để nơi gọi cộng vào resStr của mục tiêu.
     const myErosion = (target?.erosionBy ?? {})[attackerId] ?? 0;
     const resBonusFlat = myErosion * 0.1; // +0,1x Res mỗi stack, CHỈ người gây được hưởng
-    // ── WILL OF PRESCRIPT (Oracle Device [Caduceus]) ─────────────────────────
-    // "+10% Dmg lên kẻ địch có The Prescript Target's - The Index, với MỖI Grace".
-    if (attacker.prescriptTargetId && targetId && attacker.prescriptTargetId === targetId) {
-      const grace = attacker.graceOfPrescript ?? 0;
-      if (grace > 0) bonusPct += grace * 10;
-    }
+    // (Will of Prescript đã gộp ở khối phía trên — KHÔNG cộng lại ở đây.)
     // Shattered E.G.O — "mọi sát thương của bản thân bị giảm MỘT NỬA" trong 3
     // Turn. Đây là chia đôi dmg CUỐI, không phải -50% bonus: -50 vào bonusPct sẽ
     // đi qua saturateBonusPct (đường cong bão hoà) nên KHÔNG ra đúng một nửa.

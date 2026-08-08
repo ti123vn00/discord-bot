@@ -104,6 +104,22 @@ module.exports = {
     7: { label: "Dùng vũ khí Slash tấn công kẻ địch" },
   },
   PRESCRIPT_DICE_PER_TURN: 2,
+
+  // ⚠️ HAI OUTFIT CÙNG FACTION NHƯNG BẢNG SẮC LỆNH KHÁC NHAU — tôi đã lỡ gộp làm
+  // một khi viết lại luật cho Oracle's Proxy, khiến **Index Proselyte** bị áp
+  // nhầm bảng mới (5/6/7 thành Blunt/Pierce/Slash thay vì Né/Block/Parry).
+  //   • Index Proselyte      : **1 dice**, bảng CŨ
+  //   • Index Oracle's Proxy : **2 dice**, bảng MỚI (PRESCRIPT_RULES ở trên)
+  PRESCRIPT_RULES_PROSELYTE: {
+    1: { label: "Tấn công ít nhất một lần" },
+    2: { label: "Né ít nhất một lần" },
+    3: { label: "Block ít nhất một lần" },
+    4: { label: "Parry ít nhất một lần" },
+    5: { label: "Một hành động phòng thủ VÀ một hành động tấn công" },
+    6: { label: "Không làm gì cả" },
+    7: { label: "Clash với 1 skill của kẻ địch" },
+  },
+  PRESCRIPT_DICE_PROSELYTE: 1,
   KARMIC_PER_FAILURE: 5,
   KARMIC_MAX: 100,
   // Grace cần cho Unlock I / II / III.
@@ -131,6 +147,14 @@ module.exports = {
   // theo weight như vũ khí thường (Caduceus đổi weight mỗi lần roll nên bảng
   // theo weight vô nghĩa với nó).
   CADUCEUS_STAMINA_PER_CHARGE: 20,
+
+  // Heal bằng Ahn — Fragaria: "nên nâng heal bằng Ahn mỗi chu kỳ TỐI ĐA 2 LẦN
+  // để dễ thở hơn". Đếm bằng CẶP (mốc chu kỳ, số lần) chứ không chỉ mốc thời
+  // gian: chỉ lưu mốc thì không phân biệt được "hết lượt" với "sang chu kỳ mới".
+  PAID_HEAL_PER_CYCLE: 2,
+  // Chấn thương NHẸ tự khỏi khi qua chu kỳ 12h; NẶNG thì phải chữa ở shop.
+  INJURY_HEAL_COST_MINOR: 50000,
+  INJURY_HEAL_COST_SEVERE: 250000,
 
   // -encounter setstatus: 5 biến thể Tremor (Everlasting/Fracture/Reverb/Decay/
   // Chain) — max cap dùng CHUNG 99, xác nhận trực tiếp: "các stack tremor này đều

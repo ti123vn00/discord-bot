@@ -8,7 +8,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON_UNLOCK_PROTECTION, applySanityGain, syncCompassionPhantomHp, healHpCapped, applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
+module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON_UNLOCK_PROTECTION, applySanityGain, syncCompassionPhantomHp, healHpCapped, applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
 
   function advanceCombatantTurn(combatant) {
     // LƯỚI AN TOÀN — Memories: Compassion chỉ hiệu lực khi CẦM Lucent Historia
@@ -126,7 +126,8 @@ module.exports = function ({ SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON
       // Nhánh "hồi FULL sau khi hết Stagger" nằm ở trên và áp cho MỌI combatant
       // nên không phải làm gì thêm — đúng luật Fragaria mô tả.
       const regenPerTurn = combatant.staminaRegenPerTurn ?? ENCOUNTER_STAMINA_REGEN_PER_TURN;
-      combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + regenPerTurn);
+      // Nothing There (và mọi mob khai `noStaminaRegen`) KHÔNG hồi Stamina mỗi turn.
+      if (!combatant.noStaminaRegen) combatant.currentStamina = Math.min(combatant.maxStamina, combatant.currentStamina + regenPerTurn);
       // "Airborne" (GAP ĐÃ SỬA — Fragaria: "Airborne cũng chưa được implement"):
       // "kẻ địch bị hất tung nhận 10 Dmg vào End Turn. Biến mất sau End Turn
       // hoặc sau bị dính đòn có condition Airborne".
@@ -484,11 +485,26 @@ module.exports = function ({ SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON
         const lost = Math.max(0, (combatant.maxHp ?? 0) - (combatant.currentHp ?? 0));
         combatant.diceUp = (combatant.diceUp ?? 0) + Math.floor(lost / 20);
       }
-      // Cửa sổ Furioso chỉ sống ĐÚNG 1 turn (Fragaria: "sau khi end turn, nếu
-      // không sử dụng Furioso trong turn đó, kĩ năng nói trên sẽ biến mất").
+      // ── Follow-up Furioso của Shin - Rien ────────────────────────────────
+      // Spec mới nhất: *"TURN SAU, Rien SẼ NHẬN ĐƯỢC 1 stack Indulgence in
+      // Prescript, và follow-up bằng Furioso… với cái giá là 35 Karmic
+      // Consequences"* — TỰ ĐỘNG, không phải "có lựa chọn" như bản trước.
+      // "Chỉ kích hoạt MỘT LẦN mỗi Encounter"; "nếu không dùng Furioso trong
+      // turn đó thì kĩ năng biến mất khi qua turn sau".
+      // ── Cửa sổ follow-up Furioso của Shin - Rien ─────────────────────────
+      // ⚠️ Fragaria đính chính: đây là **TÙY CHỌN CÓ RỦI RO**, KHÔNG được tự động
+      // chạy. Turn-advance chỉ MỞ CỬA SỔ; người chơi tự bấm nút ở panel Special
+      // nếu muốn trả giá. Cũng đính chính cách nói: là **+35 Karmic Consequence**
+      // (NHẬN THÊM debuff), không phải "trừ 35" — Karmic là stack xấu.
       if ((combatant.shinRienFuriosoWindow ?? 0) > 0) {
+        combatant.shinRienFuriosoOffer = true;
         combatant.shinRienFuriosoWindow -= 1;
-        if (combatant.shinRienFuriosoWindow <= 0) combatant.shinRienFuriosoUsed = false;
+        if (combatant.shinRienFuriosoWindow <= 0) {
+          combatant.shinRienFuriosoOffer = false;
+          combatant.shinRienFuriosoReady = false;
+          combatant.shinRienNote = (combatant.shinRienNote ? combatant.shinRienNote + " " : "")
+            + "🩸 Cửa sổ **Furioso follow-up** đã đóng (không dùng trong turn đó).";
+        }
       }
     }
 

@@ -12,7 +12,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU, UNLOCK_THRESHOLDS, PRESCRIPT_DICE_PER_TURN, PRESCRIPT_RULES, KARMIC_PER_FAILURE, KARMIC_MAX, hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
+module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE, CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU, UNLOCK_THRESHOLDS, PRESCRIPT_DICE_PER_TURN, PRESCRIPT_RULES, KARMIC_PER_FAILURE, KARMIC_MAX, hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
 
   /** rollSpeedValue — roll trong Range Speed của combatant, cộng Haste trừ Bind
    *  ("1 Haste +1 Speed, 1 Bind -1 Speed" theo update mới). */
@@ -166,10 +166,30 @@ module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU
    *  ⚠️ "turn" = MỘT VÒNG TURN ORDER. Hàm này chỉ được gọi từ
    *  validateAndRerollPrescriptRound (mốc hết vòng), KHÔNG phải lượt riêng.
    */
+  /** prescriptVariantOf — outfit nào thì dùng bảng nào.
+   *  Hai outfit CÙNG faction The Index nhưng bảng KHÁC NHAU (xem constants.js). */
+  function prescriptVariantOf(c) {
+    return c?.hasIndexOraclesProxy ? "proxy" : (c?.hasIndexProselyte ? "proselyte" : null);
+  }
+
   function evaluateOnePrescript(c, roll) {
     const attacked = !!c.prescriptAttacked;
-    const defended = !!(c.prescriptEvaded || c.prescriptBlocked || c.prescriptParried);
+    const evaded = !!c.prescriptEvaded, blocked = !!c.prescriptBlocked, parried = !!c.prescriptParried;
+    const defended = evaded || blocked || parried;
     const types = c.prescriptAttackTypes ?? {};
+    if (prescriptVariantOf(c) === "proselyte") {
+      // Bảng CŨ của Index Proselyte — GIỮ NGUYÊN, KHÔNG dùng bảng mới.
+      const mapOld = {
+        1: attacked,
+        2: evaded,
+        3: blocked,
+        4: parried,
+        5: attacked && defended,
+        6: !attacked && !defended && !c.prescriptClashed, // "Không làm gì cả"
+        7: !!c.prescriptClashed,
+      };
+      return !!mapOld[roll];
+    }
     const map = {
       1: attacked,
       2: defended,
@@ -245,10 +265,15 @@ module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU
         const label = enteringEntry.type === "enemy" ? (encounter.enemies[enteringEntry.id]?.name ?? enteringEntry.id) : `<@${enteringEntry.id}>`;
         // `hasIndexProselyte` GIỮ LẠI cho dữ liệu cũ; cờ mới là hasIndexOraclesProxy.
         if (c.hasIndexOraclesProxy || c.hasIndexProselyte) {
-          c.prescriptRolls = Array.from({ length: DICE_PER_TURN }, () => Math.floor(Math.random() * 7) + 1);
-          const rules = PRESCRIPT_RULES ?? {};
+          // Số dice và bảng nhãn PHỤ THUỘC OUTFIT: Proselyte 1 dice/bảng cũ,
+          // Oracle's Proxy 2 dice/bảng mới.
+          const variant = prescriptVariantOf(c);
+          const nDice = variant === "proselyte" ? (PRESCRIPT_DICE_PROSELYTE ?? 1) : DICE_PER_TURN;
+          const rules = (variant === "proselyte" ? PRESCRIPT_RULES_PROSELYTE : PRESCRIPT_RULES) ?? {};
+          c.prescriptRolls = Array.from({ length: nDice }, () => Math.floor(Math.random() * 7) + 1);
+          c.prescriptVariant = variant; // để encounter-display hiện ĐÚNG bảng nhãn
           const lines = c.prescriptRolls.map(rn => `**#${rn}** — ${rules[rn]?.label ?? "?"}`);
-          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh mới** cho ${label} (${DICE_PER_TURN} dice): ${lines.join(" · ")}`);
+          notes.push(`<:Prescript:1528452494945157281> **Sắc lệnh mới** cho ${label} (${nDice} dice): ${lines.join(" · ")}`);
         }
         const weaponInfo = findWeaponAnywhere(c.weaponName);
         const hasWillOfPrescript = (weaponInfo?.passives ?? []).some(pa => pa.name === "Will of Prescript");
@@ -368,11 +393,25 @@ module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU
     // Shin - Rien — "khi nhận sát thương vượt ngưỡng NỬA Max HP, bạn NGỪNG NHẬN
     // DMG ở turn này". Chặn tại choke point nên mọi nguồn (đòn đánh, Bleed, phản,
     // Astral…) đều dừng, không phải vá từng nơi.
-    if (combatant.hasIndexOraclesProxy
-        && (combatant.hpLostThisTurn ?? 0) >= (combatant.maxHp ?? 0) * 0.5
-        && (combatant.maxHp ?? 0) > 0) {
-      combatant.shinRienBlockedDmg = (combatant.shinRienBlockedDmg ?? 0) + amount;
-      return 0;
+    // ❗ BUG ĐÃ SỬA (Fragaria: "Shin - Rien chưa gatekeep đúng mốc HP — Eye Gouger
+    // dồn 57 hit M1 gồm 15 group hit thì chết luôn").
+    // GỐC: điều kiện cũ đòi `hpLostThisTurn` ĐÃ vượt nửa Max HP TRƯỚC khi chặn.
+    // Nhưng `hpLostThisTurn` chỉ cộng lên SAU khi trừ HP xong — nên với một chuỗi
+    // 57 hit, HP về 0 từ giữa chừng mà ngưỡng vẫn chưa "đã vượt" ở đúng hit làm
+    // chết. Phải chặn ngay tại hit LÀM VƯỢT ngưỡng: cắt phần dmg vượt quá.
+    if (combatant.hasIndexOraclesProxy && (combatant.maxHp ?? 0) > 0) {
+      const cap = (combatant.maxHp ?? 0) * 0.5;
+      const already = combatant.hpLostThisTurn ?? 0;
+      if (already >= cap) {
+        combatant.shinRienBlockedDmg = (combatant.shinRienBlockedDmg ?? 0) + amount;
+        return 0;
+      }
+      if (already + amount > cap) {
+        // Cho ăn ĐÚNG phần còn thiếu tới ngưỡng, chặn phần dư.
+        combatant.shinRienBlockedDmg = (combatant.shinRienBlockedDmg ?? 0) + (already + amount - cap);
+        amount = cap - already;
+        if (!(amount > 0)) return 0;
+      }
     }
     const before = combatant.currentHp ?? 0;
     // Wound-Casing Mask — "Dmg từ Burn và Bleed sẽ KHÔNG THỂ GIẾT được bạn".
@@ -623,6 +662,10 @@ module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU
   /** Đổi { B, P, S } resistance object thành resStr cho calcMathCore — Stagger thì
    *  ĐÈ TOÀN BỘ về 2x bất kể resistance gốc, đúng luật "Khi bị Stagger Resistance set 2x". */
   function combatantResStr(combatant) {
+    // Fragaria: "theo logic thì Panic sẽ hoạt động NHƯ STAGGER nhưng KHÔNG giảm
+    // Res và chỉ kéo dài 1 turn (thay vì 2 + 1 từ Choáng)."
+    // ⇒ Panic KHÔNG chạm vào Res ở đây; nó chỉ chặn hành động (xem nơi kiểm
+    //   `staggered || panic` khi act).
     if (combatant.staggered) return "2xB 2xP 2xS";
     const r = combatant.resistance;
     // Shin (đang active): -0,2x mọi Res BẢN THÂN khi combatant này là bên BỊ TẤN
@@ -638,7 +681,15 @@ module.exports = function ({ CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU
       // rác kiểu `1 - 0.7 = 0.30000000000000004`, lọt thẳng vào resStr rồi hiển thị
       // cho người chơi (và phải parse lại ở trueDmgResStr/damage-calc).
       const round1 = (v) => Math.round(Math.max(0, v) * 10) / 10;
-      return `${round1(r.B - totalReduction)}xB ${round1(r.P - totalReduction)}xP ${round1(r.S - totalReduction)}xS`;
+      // ❗ BUG ĐÃ SỬA (Fragaria: "giảm res của Memories Compassion và Day One of
+      // My New Life KHÔNG CÒN HOẠT ĐỘNG"). Nhánh Shin này TRẢ VỀ SỚM nên toàn bộ
+      // phần Res penalty của 2 accessory ở dưới BỊ BỎ QUA — hễ bật Shin là 2 món
+      // đó mất tác dụng. Cộng luôn tại đây thay vì để rơi xuống dưới.
+      let shinExtra = 0;
+      if (combatant.compassionResPenalty) shinExtra += 0.2;
+      if (combatant.dayOneAuraActive) shinExtra += 0.1;
+      const tot = totalReduction + shinExtra;
+      return `${round1(r.B - tot)}xB ${round1(r.P - tot)}xP ${round1(r.S - tot)}xS`;
     }
     // ── Res penalty từ 2 accessory MỚI (Fragaria) ────────────────────────
     // Gộp CHUNG ở đây thay vì rải mỗi chỗ một kiểu — Res là 1 con số, tính rời
