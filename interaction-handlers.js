@@ -66,7 +66,7 @@ function bgmAttachmentIH(AttachmentBuilder, name) {
   return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -537,6 +537,11 @@ client.on("interactionCreate", async (interaction) => {
           // (HP/status) do action trước vừa đổi (VD: 2 player cùng đánh 1 enemy).
           for (const p of encounter.pendingActions) {
             const lines = await resolveOnePendingAction(encounter, p);
+            announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
+        // ❗ Cờ `bgmAnnounceNow` (Furioso → Saikai1/2) TRƯỚC ĐÂY được GHI mà KHÔNG
+        // AI ĐỌC ⇒ "lúc xài Furioso không thấy phát gửi file". Đúng lớp lỗi
+        // "ghi-mà-không-đọc". Gửi NGAY tại đây, không đợi tới lúc kết thúc turn.
+        announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
             resultLines.push(...lines);
           }
         } else {
@@ -1307,9 +1312,33 @@ client.on("interactionCreate", async (interaction) => {
           // Ai miễn nhiễm Stagger thì mất sạch rủi ro ⇒ spam vô hạn.
           // Gate ở ĐÂY (đường NÚT BẤM reactive) — lượt trước tôi chỉ gate ở
           // `performParry` (đường lệnh text) nên nút bấm vẫn spam được.
-          if ((target.currentStamina ?? 0) <= 0) {
+          // ❗ SỬA LẠI (Fragaria: "gate parry VẪN SAI — Eye Gouger đánh 1 group
+          // 16 đòn lúc tôi còn 2 Stamina, tôi cứ bấm parry mãi vì Wound-Casing
+          // Mask không cho stagger, tới lúc tổng kết thì 1 lượt parry 16 group").
+          //
+          // GỐC của lần sửa hỏng trước: Parry tốn **0 Stamina lúc CHỌN**; khoản
+          // −40 khi THUA chỉ trừ lúc RESOLVE (cuối đòn). Nên trong suốt lúc chọn,
+          // `currentStamina` vẫn nguyên 2 ⇒ gate `<= 0` không bao giờ chạm.
+          //
+          // Nay tính **CHI PHÍ ĐÃ ĐẶT CỌC**: mỗi nhóm đã chọn Parry là một khoản
+          // −40 tiềm tàng. Chỉ cho chọn thêm khi Stamina còn đủ cho TẤT CẢ các
+          // lượt parry đã đặt + lượt này.
+          // ⚠️ ĐÍNH CHÍNH (Fragaria): gate "đặt cọc" này **CHỈ áp cho người MIỄN
+          // NHIỄM Stagger** (Wound-Casing Mask). Người BÌNH THƯỜNG không cần gate:
+          // thua parry là tụt Stamina → Stagger NGAY GIỮA CHUỖI, và Stagger tự
+          // chặn các nhóm sau — đó mới là cơ chế hãm tự nhiên của game.
+          // Gate cứng cho cả hai sẽ tước mất lựa chọn hợp lệ của người chơi thường.
+          const PARRY_FAIL_STA = (hasPerk(target, "Mastered Breaths") ? 30 : 40)
+            * ((target.injuries ?? []).includes("Gãy tay") ? 2 : 1);
+          const staggerImmune = !!target.hasWoundCasingMask;
+          const parriesChosen = (t.perHitChoices ?? []).filter(c => typeof c === "string" && /parry/i.test(c)).length;
+          const staAfterAllParries = (target.currentStamina ?? 0) - PARRY_FAIL_STA * (parriesChosen + 1);
+          if ((target.currentStamina ?? 0) <= 0 || (staggerImmune && staAfterAllParries <= -PARRY_FAIL_STA)) {
             return interaction.reply({
-              content: "❌ Bạn đã cạn Stamina — **không thể Parry**. Parry không tốn Stamina nhưng vẫn cần còn Stamina để thực hiện.",
+              content: `❌ Không đủ Stamina để Parry thêm — bạn còn **${Math.round(target.currentStamina ?? 0)}** Sta`
+                + (parriesChosen > 0 ? ` và đã đặt **${parriesChosen}** lượt Parry (mỗi lượt thua tốn ${PARRY_FAIL_STA} Sta)` : "")
+                + `.\n> Parry không tốn Stamina lúc chọn, nhưng THUA thì mất ${PARRY_FAIL_STA} Sta.`
+                + (staggerImmune ? `\n> Bạn đang **miễn nhiễm Stagger** nên không thể đặt cược nhiều hơn số Stamina đang có.` : ""),
               flags: MessageFlags.Ephemeral,
             }).catch(() => {});
           }
@@ -2456,6 +2485,10 @@ client.on("interactionCreate", async (interaction) => {
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
+        // ❗ Cờ `bgmAnnounceNow` (Furioso → Saikai1/2) TRƯỚC ĐÂY được GHI mà KHÔNG
+        // AI ĐỌC ⇒ "lúc xài Furioso không thấy phát gửi file". Đúng lớp lỗi
+        // "ghi-mà-không-đọc". Gửi NGAY tại đây, không đợi tới lúc kết thúc turn.
+        announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
         await saveEncounter(channelId, encounter);
@@ -2766,6 +2799,10 @@ client.on("interactionCreate", async (interaction) => {
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
+        // ❗ Cờ `bgmAnnounceNow` (Furioso → Saikai1/2) TRƯỚC ĐÂY được GHI mà KHÔNG
+        // AI ĐỌC ⇒ "lúc xài Furioso không thấy phát gửi file". Đúng lớp lỗi
+        // "ghi-mà-không-đọc". Gửi NGAY tại đây, không đợi tới lúc kết thúc turn.
+        announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
         await saveEncounter(channelId, encounter);
@@ -3156,15 +3193,22 @@ client.on("interactionCreate", async (interaction) => {
  */
 async function announceBgmIfChanged(channelId, encounter, label = "") {
   try {
-    const want = resolveEncounterBgm(encounter);
-    if (!want || encounter.lastAnnouncedBgm === want) return;
+    // `bgmAnnounceNow` — cờ ÉP GỬI do Furioso đặt: phải phát NGAY cả khi trùng
+    // bài đang có (dùng Furioso lần 2 vẫn muốn nghe lại). Đọc xong xoá cờ.
+    let forced = null;
+    for (const pl of Object.values(encounter?.players ?? {})) {
+      if (pl?.bgmAnnounceNow) { forced = pl.bgmAnnounceNow; pl.bgmAnnounceNow = null; break; }
+    }
+    const want = forced ?? resolveEncounterBgm(encounter);
+    if (!want) return;
+    if (!forced && encounter.lastAnnouncedBgm === want) return;
     encounter.lastAnnouncedBgm = want;
     const ch = await client.channels.fetch(channelId).catch(() => null);
     if (!ch) return;
     const files = bgmAttachmentIH(AttachmentBuilder, want);
     await ch.send({
       content: files.length
-        ? `> 🎵 BGM đổi sang **${want}**${label ? ` — ${label}` : ""}`
+        ? `> 🎵 BGM đổi sang **${want}** — ${describeEncounterBgm(encounter)?.label ?? label ?? "BGM trận này"}`
         : `> ⚠️ BGM cần đổi sang **${want}** nhưng KHÔNG tìm thấy file — đặt vào \`assets/audio/bgm/\` rồi deploy lại.`,
       files,
     }).catch(() => {});
@@ -3219,6 +3263,7 @@ client.on("interactionCreate", async (interaction) => {
         lightCost: pendingRoll.lightCost, sanityCost: pendingRoll.sanityCost,
       };
       outLines = await resolveOnePendingAction(encounter, p);
+      announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
       await saveEncounter(channelId, encounter);
     });
     await interaction.editReply({

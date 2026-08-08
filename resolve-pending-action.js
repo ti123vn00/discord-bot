@@ -504,6 +504,14 @@ async function resolveOnePendingAction(encounter, p) {
                       const failCost = (target.injuries ?? []).includes("Gãy tay") ? baseFailCost * 2 : baseFailCost;
                       target.currentStamina = Math.max(0, target.currentStamina - failCost);
                       noteParts.push(`🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta — ăn full ${hitLabel})`);
+                      // ❗ Fragaria: "trường hợp bình thường thì nếu họ fail parry
+                      // thì họ sẽ STAGGER GIỮA CHỪNG rồi". Trước đây chỉ trừ Stamina
+                      // rồi đi tiếp — Stagger mãi tới cuối đòn mới được chấm, nên
+                      // các nhóm parry sau vẫn resolve như chưa có gì.
+                      // Chấm NGAY: người thường sẽ Stagger từ đây, các hit còn lại
+                      // ăn Res 2x (per-hit đã xử lý) và không parry tiếp được.
+                      checkStaggerPanic(target);
+                      if (target.staggered) noteParts.push(`⭐**STAGGER giữa chuỗi** — các hit còn lại chịu Res 2x`);
                     }
                   }
                   target.parryHitSelections = target.parryHitSelections.filter(h => !(h >= 1 && h <= totalHits));
@@ -525,6 +533,8 @@ async function resolveOnePendingAction(encounter, p) {
                     const failCost = (target.injuries ?? []).includes("Gãy tay") ? baseFailCost * 2 : baseFailCost;
                     target.currentStamina = Math.max(0, target.currentStamina - failCost);
                     noteParts.push(`🗡️**Parry THẤT BẠI** (${defRoll} vs ${atkRoll}, -${failCost} Sta — ăn full hit ${coverStart + 1}-${hitIdx})`);
+                    checkStaggerPanic(target);
+                    if (target.staggered) noteParts.push(`⭐**STAGGER giữa chuỗi** — các hit còn lại chịu Res 2x`);
                   }
                 }
                 const canAttemptGuard = (target.guardHitSelections ?? []).length > 0
@@ -1163,7 +1173,11 @@ async function resolveOnePendingAction(encounter, p) {
               // gục thì hãy ghi là tự dùng Fpoon tự sát"). Chỉ áp cho người mặc
               // The Index Oracle's Proxy; thuần HIỂN THỊ, không đổi cơ chế nào.
               const fpoonDeath = justDied && target.hasIndexOraclesProxy === true;
-              if (fpoonDeath) target.deathFlavor = "🥄 Caduceus biến thành **Fpoon** — buộc phải tự sát.";
+              if (fpoonDeath) {
+                // Bỏ hẳn field `deathFlavor` — push THẲNG vào log. Giữ một cờ chỉ
+                // để ghi rồi không ai đọc chính là lớp lỗi vừa dọn.
+                resultLines.push(`🥄 **${targetResolved.label}** — Caduceus biến thành **Fpoon**, buộc Rien phải tự sát.`);
+              }
               // HP Persistence (luật: "HP vẫn giữ nguyên" sau khi encounter kết
               // thúc) — đồng bộ NGAY mỗi lần HP player thay đổi (không chỉ lúc
               // -encounter end, để không mất dữ liệu nếu encounter bị bỏ dở/quên
@@ -2074,6 +2088,13 @@ async function resolveOnePendingAction(encounter, p) {
                 }
                 verifyNote += ` 💥[${furiosoSkill.name}: turn SAU gây ${F.bleed} <:Bleed:1513762688226955285>Bleed · ${F.bind} <:Fix_Bind:1513768025881317457>Bind · ${F.fragile} <:Fix_Fragile:1513763336167100536>Fragile]`;
                 // Wound-Casing Mask — "vỡ khi dùng bất kỳ biến thể Furioso LẦN ĐẦU".
+                // Đã có Sizzling Wound (mặt nạ vỡ từ trước) + dùng Furioso ⇒ Saikai2.
+                if (attacker.combatant.sizzlingWound && !attacker.combatant.woundCasingMaskIntact) {
+                  attacker.combatant.saikai2TurnsLeft = 2;
+                  attacker.combatant.lastFuriosoName = furiosoSkill.name;
+                  attacker.combatant.bgmAnnounceNow = "Saikai2.mp3";
+                  verifyNote += ` 🎵[BGM → **Saikai2.mp3** (${furiosoSkill.name}, 2 Turn)]`;
+                }
                 if (attacker.combatant.woundCasingMaskIntact) {
                   // Fragaria: *"Khi Furioso được sử dụng mà player VẪN CÒN mặt nạ
                   // thì sẽ ghi đè và phát BGM Saikai1.mp3 TRONG TURN VÀ TURN KẾ."*

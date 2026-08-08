@@ -176,8 +176,11 @@ function resolveEncounterBgm(encounter) {
   for (const p of Object.values(encounter?.players ?? {})) {
     if ((p?.saikai1TurnsLeft ?? 0) > 0) return "Saikai1.mp3";
   }
+  // ⚠️ Saikai2 CHỈ phát khi **DÙNG Furioso** trong lúc đã có Sizzling Wound
+  // (mặt nạ đã vỡ) — KHÔNG phát chỉ vì mặt nạ vỡ. Fragaria: "chưa xài Furioso mà
+  // Saikai2 đã phát rồi". Nên nó cũng cần bộ đếm riêng như Saikai1.
   for (const p of Object.values(encounter?.players ?? {})) {
-    if (p?.hasWoundCasingMask && p?.woundCasingMaskIntact === false && p?.sizzlingWound) return "Saikai2.mp3";
+    if ((p?.saikai2TurnsLeft ?? 0) > 0) return "Saikai2.mp3";
   }
   // Ưu tiên 2 — BGM của Manifested E.G.O đang bật.
   for (const p of Object.values(encounter?.players ?? {})) {
@@ -200,8 +203,9 @@ function describeEncounterBgm(encounter) {
     }
   }
   for (const p of Object.values(encounter?.players ?? {})) {
-    if (p?.hasWoundCasingMask && p?.woundCasingMaskIntact === false && p?.sizzlingWound) {
-      return { name, label: "BGM **Sizzling Wound** — Wound-Casing Mask đã vỡ (tới hết Encounter)" };
+    if ((p?.saikai2TurnsLeft ?? 0) > 0) {
+      const v = p.lastFuriosoName ?? "Furioso";
+      return { name, label: `BGM **${v}** — Sizzling Wound (kéo dài 2 Turn)` };
     }
   }
   for (const p of Object.values(encounter?.players ?? {})) {

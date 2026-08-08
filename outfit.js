@@ -104,7 +104,7 @@ const OUTFITS = {
       "**Singleton** (loadout Page thường có 5 mức Light cost KHÁC NHAU): nhận 5 Dice Up và refund 1/5 Stamina khi đánh thường",
       "**Singleton** — nhận 5/10/20 Protection và Regen mỗi turn khi **Unlock - I/II/III**",
       "**Singleton** — dùng biến thể **Furioso** bất kỳ cho 1 stack **Indulgence in Prescript**: mỗi đòn có áp Sinking sẽ inflict thêm 2 count. Mất khi end turn",
-      "**Shin - Rien**: khi nhận sát thương vượt ngưỡng nửa Max HP, ngừng nhận dmg ở turn này. End turn tháo **Wound-Casing Mask**, vào trạng thái Shin vĩnh viễn tới hết Encounter, nhận thêm 1 Dice Up với mỗi 20 HP đã mất",
+      "**Shin - Rien**: khi trúng đòn vượt ngưỡng nửa thanh HP, ngừng nhận dmg ở turn này. End turn tháo **Wound-Casing Mask**, vào trạng thái Shin tới hết Encounter, nhận thêm 1 Dice Up với mỗi 20 HP đã mất\n> - Nếu lúc đó bạn **chưa có tầng Unlock nào**, Shin - Rien **tự cấp Unlock - I** (để follow-up Furioso luôn dùng được)\n> - Turn sau: mở tuỳ chọn ở panel Special — nhận 1 **Indulgence in Prescript** và follow-up **Furioso**, giá **+35 Karmic Consequence**. Chỉ 1 lần mỗi Encounter, không dùng trong turn đó thì mất",
     ],
   },
   "hana association": {

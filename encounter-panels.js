@@ -219,7 +219,10 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
       // không xài"), và hiện dòng nhắc để người chơi biết còn thiếu gì.
       const proc = (combatant.procurationHermes ?? []).length;
       const unlock = combatant.prescriptUnlockLevel ?? 0;
-      const furiosoKey = ["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][unlock - 1];
+      // Shin - Rien tự cấp Unlock I nếu người chơi chưa có tầng nào, nên `unlock`
+      // ở đây luôn ≥1 khi Shin đã bật — không còn cảnh "mở follow-up mà không có
+      // biến thể Furioso nào dùng được".
+      const furiosoKey = ["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][Math.max(1, unlock) - 1];
       const fSkill = furiosoKey ? findSkill(furiosoKey) : null;
       // Shin - Rien follow-up: mở Furioso KHÔNG cần đủ 9 Procuration (đã trả giá
       // bằng 35 Karmic ở turn-advance).

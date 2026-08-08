@@ -453,6 +453,7 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
     // mỗi turn nên phải cộng LẠI ở đây (khuôn blackSuitPersistentBonus).
     // Saikai1.mp3 — "trong turn VÀ turn kế" ⇒ đúng 2 vòng turn order.
     if ((combatant.saikai1TurnsLeft ?? 0) > 0) combatant.saikai1TurnsLeft -= 1;
+    if ((combatant.saikai2TurnsLeft ?? 0) > 0) combatant.saikai2TurnsLeft -= 1;
     // ── Status HẸN TURN SAU (Furioso) ────────────────────────────────────────
     // "Gây … ở TURN SAU khi đòn tấn công này kết thúc" — áp ở đầu vòng turn kế,
     // không phải ngay lúc đánh (sai một nhịp turn).
@@ -476,6 +477,16 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
       if (!combatant.shinRienActive && (combatant.hpLostThisTurn ?? 0) >= halfMax && halfMax > 0) {
         combatant.shinRienActive = true;   // kéo dài TỚI HẾT ENCOUNTER (không reset ở đâu)
         combatant.shinMangActive = true;   // vào trạng thái Shin thật sự (Res/hiển thị)
+        // ❗ LỖ HỔNG THIẾT KẾ Fragaria phát hiện: địch dồn dmg quá nhanh ⇒ Shin -
+        // Rien bật SỚM khi người chơi chưa kịp có Unlock nào ⇒ follow-up Furioso
+        // vô dụng vì không có biến thể nào mở. Chốt: **tự cấp Unlock - I** nếu
+        // đang ở tầng 0 lúc Shin kích hoạt.
+        if ((combatant.prescriptUnlockLevel ?? 0) === 0) {
+          combatant.prescriptUnlockLevel = 1;
+          combatant.prescriptUnlockJustReached = 1;
+          combatant.shinRienNote = (combatant.shinRienNote ? combatant.shinRienNote + " " : "")
+            + "<:Unlock:1528452595859849406> Chưa có Unlock nào ⇒ **Shin - Rien tự cấp Unlock - I** để follow-up Furioso dùng được.";
+        }
         // Tháo mặt nạ (nếu đang đeo) — Sizzling Wound quay lại, ĐÚNG như khi vỡ.
         if (combatant.woundCasingMaskIntact) {
           combatant.woundCasingMaskIntact = false;

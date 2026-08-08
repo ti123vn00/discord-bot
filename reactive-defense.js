@@ -164,6 +164,28 @@ async function performEndTurn(channelId, userId, isAdmin) {
     }
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);
+
+    // ── GOM CÁC "NOTE" SỰ KIỆN ────────────────────────────────────────────────
+    // ❗ 7 cờ ghi chú (shinRienNote, maskBrokenNote, manifestEndNote,
+    // compassionSyncNote, theStrongestPenaltyNote, deathFlavor,
+    // accessoryDupWarning) TRƯỚC ĐÂY được GHI mà **KHÔNG NƠI NÀO ĐỌC** ⇒ người
+    // chơi không hề biết Shin - Rien đã kích hoạt, mặt nạ đã vỡ, Manifest đã hết,
+    // hay bị phạt Stamina. Đúng lớp lỗi "ghi-mà-không-đọc" đã dính nhiều lần.
+    // Gom tại ĐÂY — mốc kết thúc turn, chạy cho mọi combatant, một chỗ duy nhất.
+    for (const [pid, c] of Object.entries(encounter.players ?? {})) {
+      for (const key of ["shinRienNote", "maskBrokenNote", "manifestEndNote",
+                         "compassionSyncNote", "theStrongestPenaltyNote", "accessoryDupWarning"]) {
+        if (c[key]) { shroudedNotes.push(`<@${pid}> ${String(c[key]).trim()}`); c[key] = null; }
+      }
+      if ((c.shinRienBlockedDmg ?? 0) > 0) {
+        shroudedNotes.push(`<@${pid}> 🩸 **Shin - Rien** đã chặn **${Math.round(c.shinRienBlockedDmg)}** dmg trong turn này.`);
+      }
+    }
+    for (const [ekey, c] of Object.entries(encounter.enemies ?? {})) {
+      for (const key of ["manifestEndNote", "staggerForcedNote"]) {
+        if (c[key]) { shroudedNotes.push(`**${c.name ?? ekey}** ${String(c[key]).trim()}`); c[key] = null; }
+      }
+    }
     // Sắc lệnh (Index) — chấm + roll lại theo VÒNG TURN ORDER, không theo lượt
     // riêng từng người (xem validateAndRerollPrescriptRound trong combat-utils.js).
     const roundPrescriptNotes = validateAndRerollPrescriptRound(encounter);
