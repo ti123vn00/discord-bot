@@ -163,6 +163,16 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
         label = `<@${userId}>`;
       }
       if (combatant.staggered) throw new Error(`${label} đang bị Stagger — không thể hành động.`);
+      // ── GATE STAMINA = 0 ─────────────────────────────────────────────────
+      // Fragaria: *"do cost parry là 0 nên vài trường hợp có kháng hay MIỄN NHIỄM
+      // Stagger thì có thể SPAM PARRY mà không bị chút rủi ro nào."*
+      // Đúng: Parry không tốn Stamina, và rủi ro duy nhất của nó là tụt Stamina →
+      // Stagger. Ai miễn nhiễm Stagger (Wound-Casing Mask) hoặc đang kháng
+      // (Composition Tool "Reactive") thì mất sạch rủi ro ⇒ parry vô hạn.
+      // Chặn ở ĐÂY — choke point chung của cả `-encounter parry` lẫn dropdown.
+      if ((combatant.currentStamina ?? 0) <= 0) {
+        throw new Error(`${label} đã cạn Stamina — **không thể Parry**. Parry không tốn Stamina nhưng vẫn cần còn Stamina để thực hiện.`);
+      }
       const rawRoll = 1 + Math.floor(Math.random() * 20);
       const penalty = getParryClashPenalty(combatant);
       const roll = rawRoll - penalty;

@@ -46,7 +46,7 @@ function bgmAttachmentIH(name) {
   return [];
 }
 
-module.exports = function ({ validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -1785,6 +1785,7 @@ client.on("interactionCreate", async (interaction) => {
         // và phần "cận chiến" (type/dmg gốc vũ khí, cho các hit CÒN LẠI không
         // đủ đạn) — số đạn tiêu = ĐÚNG số hit thật sự được chuyển đổi.
         var effectiveBulletCountForM1 = 0;
+        var caduceusMeta = null;
         // ⚠️ ĐỪNG "SỬA" M1 ĐỂ ĂN DICE UP — đã thử và Fragaria bác thẳng:
         // "Dice Up chỉ tăng cho critical và page thôi, tức là những thứ CÓ DICE.
         //  Sanity cũng tương tự. M1 KHÔNG bị ảnh hưởng bởi Dice Up."
@@ -1806,11 +1807,57 @@ client.on("interactionCreate", async (interaction) => {
             // đánh cận chiến hết (người chơi tưởng đã bắn nhưng thực ra không).
             throw new Error(`Không còn viên đạn nào trong súng — không thể dùng Firing. Bỏ trống ô "Dùng đạn?" để đánh cận chiến bình thường, hoặc Reload trước.`);
           }
+        } else if (findWeaponAnywhere(combatant.weaponName)?.caduceus) {
+          // ── ORACLE DEVICE [CADUCEUS] — "Will of Hermes" ───────────────────
+          // Vũ khí này KHÔNG có đòn đánh thường cố định: MỖI hit roll 1–9, mỗi
+          // mặt là một vũ khí khác với base dmg / type / Stamina riêng. Nên
+          // dmgStr là TỔNG các mặt đã roll, không phải `base x hitCount`.
+          const rolled = Array.from({ length: hitCount }, () => CADUCEUS_DICE[Math.floor(Math.random() * CADUCEUS_DICE.length)]);
+          dmgStr = rolled.map(d => `${d.dmg}${d.type[0]}`).join("+");
+          const staTotal = rolled.reduce((a, d) => a + d.stamina, 0);
+          const encCad = await getEncounter(channelId);
+          const meCad = encCad?.players?.[interaction.user.id];
+          const newFaces = [];
+          if (meCad) {
+            // Procuration [Hermes] — "1 stack khi xài LẦN ĐẦU" cho MỖI mặt ⇒ lưu
+            // TẬP các mặt đã dùng, KHÔNG phải bộ đếm (đếm sẽ vượt 9 khi lặp mặt).
+            meCad.procurationHermes = meCad.procurationHermes ?? [];
+            for (const d of rolled) {
+              if (!meCad.procurationHermes.includes(d.n)) { meCad.procurationHermes.push(d.n); newFaces.push(d.n); }
+            }
+            // Stamina: mỗi mặt có giá riêng — trừ ĐÚNG tổng.
+            meCad.currentStamina = Math.max(0, (meCad.currentStamina ?? 0) - staTotal);
+            // Charge phòng thủ: 20 Stamina = 1 charge (Fragaria chốt).
+            meCad.caduceusHitsPerCharge = Math.max(1,
+              Math.round(CADUCEUS_STAMINA_PER_CHARGE / Math.max(1, Math.round(staTotal / Math.max(1, hitCount)))));
+            await saveEncounter(channelId, encCad);
+          }
+          caduceusMeta = {
+            faces: rolled.map(d => d.n), staminaTotal: staTotal,
+            hitsPerCharge: meCad?.caduceusHitsPerCharge ?? 1,
+            newProcuration: newFaces, procurationTotal: (meCad?.procurationHermes ?? []).length,
+          };
         } else {
           dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${normalTypeLetter}` : `${combatant.weaponBaseDamage}${normalTypeLetter}`;
         }
       } else {
         dmgStr = interaction.fields.getTextInputValue("dmgStr");
+      }
+      if (typeof caduceusMeta !== "undefined" && caduceusMeta) {
+        // Báo rõ Caduceus vừa roll ra gì — không thấy dice thì người chơi không
+        // hiểu vì sao mỗi hit một con số khác nhau.
+        const facesTxt = caduceusMeta.faces.map(fn => {
+          const d = CADUCEUS_DICE[fn - 1];
+          return `**Dice ${d.n}** ${d.dmg} ${d.type} *(${d.stamina} Sta)*`;
+        }).join(" · ");
+        await interaction.followUp({
+          content: `<:Prescript:1528452494945157281> **Will of Hermes** — ${facesTxt}`
+            + `\n> - Tiêu **${caduceusMeta.staminaTotal} Stamina**`
+            + `\n> - **${caduceusMeta.hitsPerCharge} hit / 1 charge** phòng thủ`
+            + `\n> - Procuration [Hermes]: **${caduceusMeta.procurationTotal}/9**`
+            + (caduceusMeta.newProcuration.length ? ` *(+${caduceusMeta.newProcuration.length} mặt mới)*` : ""),
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
       }
       const { embed } = await doPlayerAttack(channelId, interaction.user.id, interaction.user.toString(), dmgStr, targetStr, { ammotype: ammoTypeInput, usebullet: useBulletInputValue, bulletcount: effectiveBulletCountForM1 });
       // GAP ĐÃ SỬA (xác nhận trực tiếp: "Xóa HẳN embed này... XÓA LUÔN tin

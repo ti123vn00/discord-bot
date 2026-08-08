@@ -197,7 +197,7 @@ const WEAPONS = {
     },
     passives: [
       { name: "The Imitation", mechanicId: "mimicry_imitation", desc: "Mỗi 1 Imitation đã tiêu thụ sẽ gia tăng cho bạn 5% Dmg Bonus [Max: 50%]. Ở dạng lưỡi hái, hiệu ứng này được **gia tăng gấp đôi**." },
-      { name: "The Mimic", desc: "Hai dạng: **Kiếm** (28 Base Dmg · Slash · Medium) và **Lưỡi hái** (56 Base Dmg · Slash · Heavy). Yêu cầu HP để dùng **Great Split: Horizontal** được gỡ bỏ." },
+      { name: "The Mimic", desc: "Hai dạng: **Kiếm** (28 Base Dmg\n> - Slash\n> - Medium) và **Lưỡi hái** (56 Base Dmg\n> - Slash\n> - Heavy). Yêu cầu HP để dùng **Great Split: Horizontal** được gỡ bỏ." },
     ],
     criticalSkillKey: "upstanding slash",
   },
@@ -266,7 +266,7 @@ const WEAPONS = {
     name: "Atelier Logic", weight: "heavy", type: "Blunt", baseDamage: 26,
     passives: [{ name: "Orlando Furioso", mechanicId: "orlando_furioso", desc: "Cho phép sử dụng Critical ngay lập tức mà không tốn CD của vũ khí khi vũ khí này được swap qua." }, {
       name: "2 dạng vũ khí",
-      desc: "Vũ khí có 2 form: Shotgun (Heavy · Blunt · 26 dmg) và Pistols (Light · Pierce · 6.5 dmg). Dùng Critical của form nào thì đổi sang form còn lại — chỉ số M1, chi phí Stamina và số hit mỗi nhóm phòng thủ đổi theo.",
+      desc: "Vũ khí có 2 form: Shotgun (Heavy\n> - Blunt · 26 dmg) và Pistols (Light\n> - Pierce · 6.5 dmg). Dùng Critical của form nào thì đổi sang form còn lại — chỉ số M1, chi phí Stamina và số hit mỗi nhóm phòng thủ đổi theo.",
     }],
     criticalSkillKey: "atelier logic shotgun",
   },

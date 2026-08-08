@@ -178,8 +178,14 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // ⇒ Erosion KHÔNG phải debuff Res chung trên mục tiêu — nó là bonus RIÊNG cho
     //   người đã áp. Nên lưu theo NGƯỜI GÂY (`erosionBy[attackerId]`) chứ không
     //   phải một con số chung; nếu lưu chung thì cả party ăn ké, sai luật.
+    // ⚠️ ĐÍNH CHÍNH (Fragaria): *"Logic Erosion +10% Dmg sẽ gây BÃO HOÀ, còn
+    // +0,1x res như text description thì KHÔNG."*
+    // Đúng — `bonusPct` đi qua `saturateBonusPct()` nên +10%/stack bị cắt dần khi
+    // bonus đã cao. Res thì nhân THẲNG vào dmg (`instanceDmg * currentRes`), tuyến
+    // tính hoàn toàn. Nên Erosion phải là **cộng Res**, không phải cộng bonusPct.
+    // Trả ra `resBonusFlat` để nơi gọi cộng vào resStr của mục tiêu.
     const myErosion = (target?.erosionBy ?? {})[attackerId] ?? 0;
-    if (myErosion > 0) bonusPct += myErosion * 10; // +0.1x Res ≙ +10% dmg mỗi stack
+    const resBonusFlat = myErosion * 0.1; // +0,1x Res mỗi stack, CHỈ người gây được hưởng
     // ── WILL OF PRESCRIPT (Oracle Device [Caduceus]) ─────────────────────────
     // "+10% Dmg lên kẻ địch có The Prescript Target's - The Index, với MỖI Grace".
     if (attacker.prescriptTargetId && targetId && attacker.prescriptTargetId === targetId) {
@@ -357,7 +363,7 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
     if (attacker.providenceCritMulNextTurn) critMul = (critMul ?? 1) + 0.3;
 
-    return { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus, outgoingDmgMul };
+    return { resBonusFlat, bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus, outgoingDmgMul };
   }
   
 

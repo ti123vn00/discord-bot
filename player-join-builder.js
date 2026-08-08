@@ -21,7 +21,7 @@
 const SHIN_MAX_LEVEL = 50;
 const MANG_MAX_LEVEL = 5;
 
-module.exports = function ({ parseSkillCost, isEgoSkill, syncCompassionPhantomHp, dedupeEquippedAccessories, isConsumableItem, createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_SANITY_MAX }) {
+module.exports = function ({ findSkill, parseSkillCost, isEgoSkill, syncCompassionPhantomHp, dedupeEquippedAccessories, isConsumableItem, createCombatant, findWeaponAnywhere, findOutfit, normalizeWeaponWeight, calcGrade, GRADE_MIN, calcInjuryMaxHpPenalty, getEffectiveCurrentHp, getPlayerDataWithSlot, savePlayerData, hasEncounterStarted, validateAndRerollPrescript, hasPerk, POISE_MAX, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_SANITY_MAX }) {
   async function buildJoinedCombatant(encounter, userId, displayName, profileDataForDefaults, kv = {}) {
     const hp = parseInt(kv["hp"] ?? "", 10);
     const stamina = parseInt(kv["stamina"] ?? "", 10);

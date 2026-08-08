@@ -18,7 +18,7 @@ const ACCESSORIES = {
     // ứng bên dưới đều kiểm `weaponName === "Lucent Historia"` trong code.
     requiresWeapon: "Lucent Historia",
     passives: [
-      { name: "Memories: Compassion", desc: "*Chỉ có tác dụng khi dùng **Lucent Historia***\n• Gia tăng **100 Max HP**, nhưng bạn KHÔNG BAO GIỜ đạt được hay heal lên ngưỡng 100 máu thêm này\n• Gia tăng **x2 hiệu quả nhận Shield** cho đồng đội khi họ dưới 30% HP\n• Đồng đội nhận được Shield sẽ **giảm 0,2x mọi Resistance** cho bản thân" },
+      { name: "Memories: Compassion", desc: "*Chỉ có tác dụng khi dùng **Lucent Historia***\n> - Gia tăng **100 Max HP**, nhưng bạn KHÔNG BAO GIỜ đạt được hay heal lên ngưỡng 100 máu thêm này\n> - Gia tăng **x2 hiệu quả nhận Shield** cho đồng đội khi họ dưới 30% HP\n> - Đồng đội nhận được Shield sẽ **giảm 0,2x mọi Resistance** cho bản thân" },
     ],
   },
   "day one of my new life": {
@@ -30,7 +30,7 @@ const ACCESSORIES = {
     // 16% + 2%/tầng vượt 1 ⇒ tầng 5 = 16 + 2×4 = 24%.
     refinable: { maxTier: 5, baseShieldPct: 16, perTierShieldPct: 2 },
     passives: [
-      { name: "At This Very Moment", desc: "• Gia tăng **16% hiệu suất tạo khiên** (mỗi tầng tinh luyện +2%, tối đa **24%** ở tầng 5)\n• Giảm **0,1x Res** của TOÀN BỘ đồng đội khi bạn còn ở trên sân *(không stack nếu người khác cũng có passive này)*" },
+      { name: "At This Very Moment", desc: "• Gia tăng **16% hiệu suất tạo khiên** (mỗi tầng tinh luyện +2%, tối đa **24%** ở tầng 5)\n> - Giảm **0,1x Res** của TOÀN BỘ đồng đội khi bạn còn ở trên sân *(không stack nếu người khác cũng có passive này)*" },
       { name: "Nón Ánh Sáng", desc: "Độc nhất — không thể equip Accessory khác thuộc loại **Nón Ánh Sáng**. Khi trang bị, bạn chuyển thành vận mệnh của nó." },
     ],
   },
@@ -69,7 +69,7 @@ const ACCESSORIES = {
     requiresInjury: "Sizzling Wound",
     passives: [
       { name: "Wound-Casing Mask", mechanicId: "index_wound_casing_mask",
-        desc: "Vô hiệu hoá **Sizzling Wound** của bạn. Mặt nạ **VỠ** khi bạn bị Stagger hoặc dùng biến thể **Furioso** lần đầu — vết thương cũ quay lại, **Sizzling Wound** hoạt động tới hết Encounter\n• Miễn nhiễm **Stagger** · **50% Dmg Reduction** · Sanity bị cap ở **-40** (không thể giảm thêm) · Dmg từ Burn/Bleed **không thể giết** bạn\n• Start Encounter: Sanity set về **45**. Khi **Sizzling Wound** hoạt động: Dmg Reduction **50% → 75%** và nhận **3 Dice Up**\n• Mỗi Turn Start, nếu có **Unlock - I/II/III**: nhận **5/10/20 Poise**; mỗi 1 Poise thừa sau 20 cho **+2% Dmg Bonus**" },
+        desc: "Vô hiệu hoá **Sizzling Wound** của bạn. Mặt nạ **VỠ** khi bạn bị Stagger hoặc dùng biến thể **Furioso** lần đầu — vết thương cũ quay lại, **Sizzling Wound** hoạt động tới hết Encounter\n> - Miễn nhiễm **Stagger**\n> - **50% Dmg Reduction**\n> - Sanity bị cap ở **-40** (không thể giảm thêm)\n> - Dmg từ Burn/Bleed **không thể giết** bạn\n> - Start Encounter: Sanity set về **45**. Khi **Sizzling Wound** hoạt động: Dmg Reduction **50% → 75%** và nhận **3 Dice Up**\n> - Mỗi Turn Start, nếu có **Unlock - I/II/III**: nhận **5/10/20 Poise**; mỗi 1 Poise thừa sau 20 cho **+2% Dmg Bonus**" },
     ],
   },
   "the oracles proxy prescript device": {
@@ -93,7 +93,7 @@ const ACCESSORIES = {
     requiresFaction: "The Index Syndicate",
     passives: [
       { name: "Providence of the Prescript", mechanicId: "index_providence",
-        desc: "Khi gây <:Sinking:1513762793436741652>Sinking/<:Rupture:1513762822620479488>Rupture, nhận thêm 3 <:Poise:1513762945715142736>Poise\n• Nhận Poise theo cách trên **3 lần** thì turn kế **Crit Mul +0.3**\n• Khi bản thân có **≥20 Poise**: mỗi đòn đánh trúng gây thêm 1 Sinking và 1 Rupture" },
+        desc: "Khi gây <:Sinking:1513762793436741652>Sinking/<:Rupture:1513762822620479488>Rupture, nhận thêm 3 <:Poise:1513762945715142736>Poise\n> - Nhận Poise theo cách trên **3 lần** thì turn kế **Crit Mul +0.3**\n> - Khi bản thân có **≥20 Poise**: mỗi đòn đánh trúng gây thêm 1 Sinking và 1 Rupture" },
     ],
   },
   "composition tool": {
