@@ -12,6 +12,15 @@ module.exports = function ({ mostRecentHpResetBoundaryUtc, getMinorInjuries, MAX
 
 // ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
 function migratePlayerData(data) {
+  // ── MIGRATE: Borrowed Eyes từ `books` → `items` ──────────────────────────
+  // Nó là **Singularity**, trước đây rơi nhầm vào category SÁCH. Ai đã nhận
+  // trước bản vá thì nó kẹt ở books (không equip được, `-openbook` mở nhầm).
+  // Chuyển 1 lần, giữ nguyên số lượng.
+  if (data?.books && data.books["Borrowed Eyes"] > 0) {
+    data.items = data.items ?? {};
+    data.items["Borrowed Eyes"] = Math.min(99, (data.items["Borrowed Eyes"] ?? 0) + data.books["Borrowed Eyes"]);
+    delete data.books["Borrowed Eyes"];
+  }
   if (data.books !== undefined || data.items !== undefined) {
     data.books = data.books ?? {};
     data.items = data.items ?? {};

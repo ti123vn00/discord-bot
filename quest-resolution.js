@@ -109,7 +109,13 @@ module.exports = function ({
       // Drop hiếm 1% — ĐỘC LẬP với book thường, áp cho MỌI contract.
       if (Math.random() < RARE_DROP_CHANCE) {
         profileData.books = profileData.books ?? {};
-        profileData.books[RARE_DROP_BOOK] = Math.min(99, (profileData.books[RARE_DROP_BOOK] ?? 0) + 1);
+        // ❗ BUG ĐÃ SỬA (Fragaria: "Borrowed Eyes phần thưởng bị rơi vào category
+        // SÁCH; một số người đã drop ra và giờ nó tồn tại dưới dạng sách, cần
+        // clear ra và chuyển về item category Singularity").
+        // Borrowed Eyes là **Singularity**, phải nằm ở `items` để equip được vào
+        // slot Singularity — nằm ở `books` thì `-openbook` còn mở nhầm.
+        profileData.items = profileData.items ?? {};
+        profileData.items[RARE_DROP_BOOK] = Math.min(99, (profileData.items[RARE_DROP_BOOK] ?? 0) + 1);
         dropNotes.push(`✨ **${RARE_DROP_BOOK}** (Singularity, 1%)`);
       }
       await withTimeout(redis.set(key, JSON.stringify(data), { ex: DAILY_KEY_TTL_SECONDS }));

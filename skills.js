@@ -784,7 +784,7 @@ const SKILLS = {
     //   variants: [{ key, label, emoji }]  — key phải KHÔNG chứa ":" hay "|"
     //   roll(variantKey)                   — mặc định = variants[0].key
     variants: [
-      { key: "ground", label: "Mặt đất", emoji: "🦶" },
+      { key: "ground", label: "Mặt đất", emoji: "⬇️" },
       { key: "air", label: "Trên không", emoji: "🕊️" },
       { key: "low", label: "Dưới 33% HP", emoji: "🩸" },
     ],
@@ -805,7 +805,7 @@ const SKILLS = {
       }
       const normal = r(7, 8);
       return [
-        `*🦶 **Mặt đất***`,
+        `*⬇️ **Mặt đất***`,
         `<:Dice1:1508173590078558369> **${normal}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Knockback] — gây 5 <:Bleed:1513762688226955285>Bleed và 2 <:DefenseDown:1513767463337066576>Defense Down`,
       ];
     },
@@ -1223,6 +1223,9 @@ const SKILLS = {
   "borrowed eyes": {
     name: "Borrowed Eyes", tags: "Singularity",
     cost: "0 <:Light:1513786082502770719>Light", cd: "6 Turn", diceMul: "1x",
+    // Dice CHỈ để đếm charge né, KHÔNG gây dmg — khai rõ để AI không dùng đi clash
+    // và mọi nơi khác nhận diện đúng bản chất utility.
+    noDirectDamage: true,
     roll() {
       const d1 = r(5, 10);
       return [
@@ -2770,7 +2773,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2803,7 +2810,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2836,7 +2847,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2869,7 +2884,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2902,7 +2921,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2935,7 +2958,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2968,7 +2995,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -3001,7 +3032,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -3034,7 +3069,11 @@ roll(v = "no") {
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
         const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
         total += val;
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}] [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
+        // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
+        // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
+        // mọi page khác), thay vì code riêng cho Caduceus.
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -5792,6 +5831,20 @@ const DICE_SIDE_EFFECT_MAP = {
   "DefenseUp":      { field: "defenseUp", side: "self" },
   "Imitation":      { field: "imitation", side: "self" },
   "Regen":          { field: "regen", side: "self" },
+  // ❗❗ GAP HỆ THỐNG ĐÃ SỬA (Fragaria: "khi Crit cũng chưa xử lý Poise ở dmg
+  // parse của encounter; điều này cũng là minh chứng cho thấy hiện tại encounter
+  // chỉ lấy dmg thuần, Dice Up và Dmg Bonus, ngoài ra còn THIẾU RẤT NHIỀU THỨ").
+  // Bảng này TRƯỚC ĐÂY thiếu hẳn các status CỐT LÕI — nên MỌI page ghi hiệu ứng
+  // theo từng dice (không riêng Caduceus) đều mất sạch phần đó.
+  "Poise":          { field: "poise", side: "self" },
+  "Sinking":        { field: "sinking", side: "target" },
+  "Rupture":        { field: "rupture", side: "target" },
+  "Bleed":          { field: "bleed", side: "target" },
+  "Burn":           { field: "burn", side: "target" },
+  "Tremor":         { field: "tremor", side: "target" },
+  "Charge":         { field: "charge", side: "self" },
+  "Light":          { field: "light", side: "self" },
+  "Blind":          { field: "blind", side: "target" },
 };
 // Đặt tên DÀI trước tên NGẮN cùng tiền tố ("Defense Down" trước "Defense Up"
 // không quan trọng, nhưng "DiceUp" vs "Dice Up" thì có) — sort theo độ dài giảm.

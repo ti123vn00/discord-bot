@@ -59,6 +59,11 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
     for (const skillName of target.unlockedPagesSnapshot ?? []) {
       const skill = findSkill(skillName);
       if (!skill || skill.promptArg) continue;
+      // ❗ Fragaria: "AI này toàn dùng Borrowed Eyes để CLASH trong khi mục đích
+      // chính của nó là dùng để NÉ ĐÒN." Dice của Borrowed Eyes không gây dmg —
+      // clash bằng nó là ném đi cả lượt phòng thủ.
+      // Loại mọi page UTILITY (không gây dmg trực tiếp) khỏi danh sách clash.
+      if (skill.noDirectDamage || /^borrowed eyes$/i.test(skillName.trim())) continue;
       const cost = parseSkillCost(skill.cost);
       if ((cost.light ?? 0) > (target.currentLight ?? 0)) continue;
       const cdLeft = target.skillCooldowns?.[cdKeyFor(skillName)] ?? 0;
@@ -538,7 +543,30 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
     const sortedTargets = pickAiTargets(encounter, mob);
     if (sortedTargets.length === 0) return false;
     const availableTargets = sortedTargets.filter(t => !hasUnresolvedTargetPending(encounter, t.pid));
-    if (availableTargets.length === 0) return false; // mọi target đều đang chờ phản hồi đòn trước — đợi hook resolve gọi lại
+    // ❗❗ BUG ĐÃ SỬA — GỐC CHUNG của "encounter đơ" VÀ "Goodbye chưa AOE".
+    // Fragaria: "AI tấn công xong kẹt ở encounter pending, player KHÔNG THẤY
+    // được reactive defense dẫn tới encounter treo cứng".
+    //
+    // GỐC: `return false` ở đây có ghi chú "đợi hook resolve gọi lại" — nhưng nếu
+    // prompt phòng thủ KHÔNG TỚI được người chơi (message lỗi, bot restart, nút
+    // hết hạn) thì **không hook nào gọi lại nữa** ⇒ treo VĨNH VIỄN, AI im lặng
+    // "bỏ qua lượt" mà không ai hiểu vì sao.
+    //
+    // Nay: thay vì im lặng bỏ cuộc, **GỬI LẠI prompt** cho những pendingAction
+    // đang chặn — người chơi thấy nút và trận chạy tiếp.
+    if (availableTargets.length === 0) {
+      try {
+        for (const pend of (encounter.pendingActions ?? [])) {
+          const unreacted = (pend.targets ?? [])
+            .map(t => t.targetId)
+            .filter(tid => !(pend.reactedTargetIds ?? []).includes(tid));
+          if (unreacted.length === 0) continue;
+          await aiHooks?.sendReactiveDefensePrompt?.(channelId, pend.id);
+          break; // gửi lại 1 cái đang chặn là đủ để mở khoá luồng
+        }
+      } catch (err) { log("error", "aiResendPrompt", "system", err.message); }
+      return false;
+    }
 
     // 1) Skill trước (nếu đủ Light + không cooldown + không cần promptArg).
     const chosen = pickOffensiveSkill(mob);
@@ -593,9 +621,13 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
           // AOE (Goodbye) vẫn phải trúng TẤT CẢ, nên chỉ thu về 1 mục tiêu khi
           // đòn KHÔNG phải AOE.
           const isAoeSkill = /\[AOE\]/i.test(rolled.lines.join(" "));
-          const targetsForThisHit = (chosen.fromPattern && !isAoeSkill)
-            ? availableTargets.slice(0, 1)
-            : availableTargets;
+          // ❗ Fragaria: "Goodbye của Nothing There chưa có AOE".
+          // `availableTargets` đã bị bộ lọc pending cắt bớt ⇒ AOE chỉ trúng số ít.
+          // AOE là MỘT hành động trúng TẤT CẢ — bộ lọc pending sinh ra để chặn
+          // *chồng nhiều đòn RIÊNG* lên một người, không áp cho AOE.
+          const targetsForThisHit = isAoeSkill
+            ? sortedTargets
+            : (chosen.fromPattern ? availableTargets.slice(0, 1) : availableTargets);
           for (const t of targetsForThisHit) {
             try {
               await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { rollDescription, coin: String(rolled.totalEmotionDelta ?? 0), isAiCall: true });

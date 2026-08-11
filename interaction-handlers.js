@@ -67,8 +67,12 @@ function takePendingBgmFiles(encounter) {
   for (const pl of Object.values(encounter?.players ?? {})) {
     if (!pl?.bgmAnnounceNow) continue;
     const name = pl.bgmAnnounceNow;
+    // Nhãn RIÊNG theo nguồn (Furioso / Manifest E.G.O / …) — Fragaria: "phần
+    // description là của Furioso BGM, đừng lẫn hai cái vào nhau như phiên trước".
+    const label = pl.bgmAnnounceLabel ?? null;
     pl.bgmAnnounceNow = null;
-    return { files: bgmAttachmentIH(AttachmentBuilder, name), name };
+    pl.bgmAnnounceLabel = null;
+    return { files: bgmAttachmentIH(AttachmentBuilder, name), name, label };
   }
   return { files: [], name: null };
 }
@@ -115,7 +119,7 @@ function bgmAttachmentIH(AttachmentBuilder, name) {
   return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -1144,7 +1148,7 @@ client.on("interactionCreate", async (interaction) => {
         }
         const targetResolved = resolveCombatant(encounter, targetId);
         if (!targetResolved) throw new Error("Không tìm thấy target.");
-        const target = targetResolved.combatant;
+        let target = targetResolved.combatant; // `let` — nhánh Zwei "block giùm" đổi sang người đỡ
         const attacker = resolveCombatant(encounter, p.attackerId);
         if (!attacker) throw new Error("Không tìm thấy attacker.");
         const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
@@ -1196,6 +1200,32 @@ client.on("interactionCreate", async (interaction) => {
         // NGOÀI if/else-if (giống choiceNote) vì cần đọc lại SAU t.perHitChoices[groupIdx]
         // = choiceNote (nằm ngoài khối if/else-if) để gộp nhóm hit kế tiếp.
         let chainDashesBonusConsumedThisTurn = false;
+        // ── ZWEI ASSOCIATION: BLOCK GIÙM ĐỒNG MINH ──────────────────────────
+        // Người mặc Zwei bấm nút này ⇒ CHUYỂN mục tiêu của nhóm hit sang CHÍNH HỌ
+        // rồi xử lý như một cú Guard bình thường của họ.
+        // Luật: chỉ mỗi BLOCK · mỗi turn chỉ đỡ cho ĐÚNG 1 người.
+        if (choice === "zweiblock") {
+          const zweiId = interaction.user.id;
+          const zwei = encounter.players?.[zweiId];
+          if (!zwei?.hasZweiAssociation) throw new Error("Chỉ người mặc **Zwei Association** mới đỡ đòn giùm được.");
+          if (zweiId === t.targetId) throw new Error("Đây là đòn nhắm vào chính bạn — dùng nút Guard thường.");
+          if ((zwei.currentHp ?? 0) <= 0 || zwei.staggered) throw new Error("Bạn không ở trạng thái đỡ đòn được.");
+          if (zwei.zweiProtectingId && zwei.zweiProtectingId !== t.targetId) {
+            throw new Error(`Turn này bạn đã nhận đỡ cho **${encounter.players?.[zwei.zweiProtectingId]?.name ?? "người khác"}** — mỗi turn chỉ đỡ giùm cho **1 người**.`);
+          }
+          if (thisGroupBypass.blockGuard) throw new Error("Nhóm hit này có tag Unblockable — không đỡ giùm được.");
+          const guardCost = opts.guard.cost ?? 0;
+          if ((zwei.currentStamina ?? 0) < guardCost) {
+            throw new Error(`Không đủ Stamina để đỡ giùm (cần ${guardCost}, bạn có ${Math.round(zwei.currentStamina ?? 0)}).`);
+          }
+          zwei.zweiProtectingId = t.targetId;
+          const protectedName = target.name ?? "đồng minh";
+          // CHUYỂN mục tiêu: từ đây nhóm hit này đánh vào người mặc Zwei.
+          t.targetId = zweiId;
+          target = zwei;
+          choice = "guard"; // xử lý tiếp y hệt Guard thường của người đỡ
+          choiceNote = `🛡️ **Zwei Association** — ${zwei.name ?? "Người đỡ"} chịu đòn thay **${protectedName}**`;
+        }
         if (choice === "guard") {
           if (!opts.guard.available) {
             if (thisGroupBypass.blockGuard) throw new Error("Nhóm hit này có tag Unblockable — không thể Guard.");
@@ -2595,7 +2625,7 @@ client.on("interactionCreate", async (interaction) => {
           {
             const bgm = takePendingBgmFiles(encounter);
             return interaction.reply({
-              content: bgm.name ? `🎵 BGM đổi sang **${bgm.name}**${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
+              content: bgm.name ? `🎵 ${bgm.label ?? `BGM đổi sang **${bgm.name}**`}${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
               embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
               files: bgm.files,
             }).catch(() => {});
@@ -2607,7 +2637,7 @@ client.on("interactionCreate", async (interaction) => {
           // Manifest E.G.O (đã xác nhận chạy), thay cho channel.send riêng.
           const bgm = takePendingBgmFiles(encounter);
           return interaction.reply({
-            content: bgm.name ? `🎵 BGM đổi sang **${bgm.name}**${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
+            content: bgm.name ? `🎵 ${bgm.label ?? `BGM đổi sang **${bgm.name}**`}${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
             embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
             files: bgm.files,
           }).catch(() => {});
@@ -2888,7 +2918,7 @@ client.on("interactionCreate", async (interaction) => {
         if (encounter._deleteAfterSave) {
           await deleteEncounter(channelId).catch((err) => log("error", "page-deleteEncounter", interaction.user.id, err.message));
           return interaction.update({
-            content: bgmCrit.name ? `🎵 BGM đổi sang **${bgmCrit.name}**` : "", // BGM Furioso đính THẲNG vào reply (giống Manifest E.G.O)
+            content: bgmCrit.name ? `🎵 ${bgmCrit.label ?? `BGM đổi sang **${bgmCrit.name}**`}${bgmCrit.files.length ? "" : " ⚠️ *(không tìm thấy file)*"}` : "", // BGM Furioso đính THẲNG vào reply (giống Manifest E.G.O)
             embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
             components: [],
             files: bgmCrit.files,
@@ -2896,7 +2926,7 @@ client.on("interactionCreate", async (interaction) => {
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.update({
-            content: bgmCrit.name ? `🎵 BGM đổi sang **${bgmCrit.name}**` : "", // BGM Furioso đính THẲNG vào reply (giống Manifest E.G.O)
+            content: bgmCrit.name ? `🎵 ${bgmCrit.label ?? `BGM đổi sang **${bgmCrit.name}**`}${bgmCrit.files.length ? "" : " ⚠️ *(không tìm thấy file)*"}` : "", // BGM Furioso đính THẲNG vào reply (giống Manifest E.G.O)
           embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
           components: [],
             files: bgmCrit.files,
@@ -3344,7 +3374,7 @@ client.on("interactionCreate", async (interaction) => {
     });
     const bgmAlly = takePendingBgmFiles(await getEncounter(channelId).catch(() => null) ?? {});
     await interaction.editReply({
-      content: bgmAlly.name ? `🎵 BGM đổi sang **${bgmAlly.name}**` : undefined,
+      content: bgmAlly.name ? `🎵 ${bgmAlly.label ?? `BGM đổi sang **${bgmAlly.name}**`}` : undefined,
       embeds: [pendingRoll.skillRollEmbed, { description: outLines.join("\n") || "*(không có gì để hiện)*", color: 0x95a5a6 }],
       components: [], files: bgmAlly.files,
     }).catch(() => {});
@@ -3993,8 +4023,8 @@ client.on("interactionCreate", async (interaction) => {
     }
     // Gỡ trước, equip sau (xem comment trên).
     const ordered = [
-      ...picks.filter(v => v.startsWith("unacc:") || v.startsWith("unoutfit:")),
-      ...picks.filter(v => !v.startsWith("unacc:") && !v.startsWith("unoutfit:")),
+      ...picks.filter(v => v.startsWith("unacc:") || v.startsWith("unoutfit:") || v.startsWith("unsing:")),
+      ...picks.filter(v => !v.startsWith("unacc:") && !v.startsWith("unoutfit:") && !v.startsWith("unsing:")),
     ];
     await withLock(ownerId, async () => {
       const { data, slot } = await getPlayerDataWithSlot(ownerId);
@@ -4008,6 +4038,23 @@ client.on("interactionCreate", async (interaction) => {
             const removed = data.equippedOutfit;
             data.equippedOutfit = null;
             results.push(`🗑️ Đã gỡ Outfit **${removed}**.`);
+            continue;
+          }
+          if (chosenType === "unsing") {
+            if (!data.equippedSingularity) throw new Error("Bạn không mang Singularity nào.");
+            const removedS = data.equippedSingularity;
+            data.equippedSingularity = null;
+            results.push(`🗑️ Đã gỡ Singularity **${removedS}**.`);
+            continue;
+          }
+          if (chosenType === "singularity") {
+            const sg = findSingularity ? findSingularity(chosenName) : null;
+            if (!sg) throw new Error("Không tìm thấy Singularity này.");
+            if ((data.items?.[sg.name] ?? 0) < 1) throw new Error("Không còn sở hữu — dùng lại `-balance` để cập nhật.");
+            // ĐÚNG 1 SLOT: đeo món mới thì món cũ tự bị thay.
+            const prevS = data.equippedSingularity;
+            data.equippedSingularity = sg.name;
+            results.push(`✅ Singularity **${sg.name}**${prevS && prevS !== sg.name ? ` *(thay **${prevS}**)*` : ""}.`);
             continue;
           }
           if (chosenType === "unacc") {

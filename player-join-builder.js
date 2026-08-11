@@ -215,6 +215,9 @@ module.exports = function ({ findSkill, parseSkillCost, isEgoSkill, syncCompassi
     // syncCompassionPhantomHp — MỘT hàm duy nhất quyết định bật/tắt 100 máu ảo,
     // dùng chung với lưới an toàn mỗi vòng turn (turn-advance) và các chỗ đổi vũ
     // khí. Trước đây cộng tay ở đây nên đổi vũ khí giữa trận là sai luật ngay.
+    // Shi Association — 60 HP ảo, dùng CHUNG hàm sync với Compassion.
+    joined.hasShiAssociation = findOutfit(profileData.equippedOutfit)?.name === "Shi Association";
+    joined.equippedOutfitName = findOutfit(profileData.equippedOutfit)?.name ?? null;
     syncCompassionPhantomHp(joined);
 
     // ── THE INDEX ORACLE'S PROXY ──────────────────────────────────────────

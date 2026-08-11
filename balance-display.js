@@ -14,7 +14,7 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, isConsumableItem, UNIVERSALLY_KNOWN_WEAPONS }) {
+module.exports = function ({ findSingularity, EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, isConsumableItem, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
@@ -252,6 +252,22 @@ module.exports = function ({ EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfil
         ...ownedWeapons.map(n => new StringSelectMenuOptionBuilder().setLabel(`➕ ${n}`.slice(0, 100)).setDescription("Vũ khí — thay cây đang cầm").setValue(`weapon:${n}`).setEmoji("⚔️")),
         ...ownedOutfits.map(n => new StringSelectMenuOptionBuilder().setLabel(`➕ ${n}`.slice(0, 100)).setDescription("Outfit — thay bộ đang mặc").setValue(`outfit:${n}`).setEmoji("🧥")),
       );
+      // ── SINGULARITY — ĐÚNG 1 SLOT (Fragaria: "chưa có option equip Singularity
+      // ở -balance; singularity là 1 slot riêng biệt, chỉ có 1 slot duy nhất").
+      if (data.equippedSingularity) {
+        gearOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`➖ Gỡ Singularity: ${data.equippedSingularity}`.slice(0, 100))
+          .setDescription("Bỏ Singularity đang mang")
+          .setValue(`unsing:${data.equippedSingularity}`.slice(0, 100)).setEmoji("🌌"));
+      }
+      {
+        const ownedSing = Object.keys(data.items ?? {}).filter(n =>
+          (data.items[n] ?? 0) > 0 && findSingularity && findSingularity(n) && n !== data.equippedSingularity);
+        gearOptions.push(...ownedSing.map(n => new StringSelectMenuOptionBuilder()
+          .setLabel(`➕ ${n}`.slice(0, 100))
+          .setDescription("Singularity — chỉ 1 slot duy nhất")
+          .setValue(`singularity:${n}`.slice(0, 100)).setEmoji("🌌")));
+      }
       if (!accSlotsFull) {
         gearOptions.push(...ownedAccessories.map(n => new StringSelectMenuOptionBuilder()
           .setLabel(`➕ ${n}`.slice(0, 100))

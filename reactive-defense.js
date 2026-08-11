@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ getPlayerDataWithSlot, savePlayerData, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, appendActionLog, cdKeyFor, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
+module.exports = function ({ extractDefenseBypassTags, getPlayerDataWithSlot, savePlayerData, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, appendActionLog, cdKeyFor, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -598,7 +598,28 @@ async function commitAutoSkippedTargets(channelId, pendingId) {
       const ironHorusPreGuard = tr.combatant.hasIronHorus
         && tr.combatant.ironHorusGuardActiveThisTurn
         && (tr.combatant.guardCharges ?? 0) > 0;
-      if (zeroDmg || staggered || ironHorusPreGuard) {
+      // ── BORROWED EYES: NÉ TỰ ĐỘNG, BỎ QUA reactive defense ─────────────────
+      // Fragaria: "roll ra 8 thì cho player 8 charge né tự động — nên BỎ QUA
+      // reactive defense, khiến họ TỰ ĐỘNG né những đòn có thể né được cho đến
+      // khi hết free charge (dĩ nhiên không né được Undodgeable — đòn
+      // Undodgeable VẪN phải hiện reactive defense ra)."
+      let borrowedAuto = false;
+      if ((tr.combatant.borrowedEyeCharges ?? 0) > 0 && !zeroDmg && !staggered) {
+        const bypassTags = extractDefenseBypassTags
+          ? extractDefenseBypassTags(p.skillRollEmbed?.description ?? "", p.tags ?? "")
+          : {};
+        if (!bypassTags.blockEvade) {
+          const hitsHere = Math.max(1, t.preview?.dmgValues?.length ?? 1);
+          const use = Math.min(tr.combatant.borrowedEyeCharges, hitsHere);
+          tr.combatant.borrowedEyeCharges -= use;
+          // Né ĐÚNG số hit trả được — dùng chung field với Evade thường.
+          tr.combatant.evadeHitSelections = Array.from({ length: use }, (_, i2) => i2 + 1);
+          tr.combatant.evadeCharges = Math.max(0, (tr.combatant.evadeCharges ?? 0));
+          t.borrowedEyesAutoNote = `👁️ **Borrowed Eyes** — tự động né **${use}** hit (còn ${tr.combatant.borrowedEyeCharges} charge)`;
+          borrowedAuto = true;
+        }
+      }
+      if (zeroDmg || staggered || ironHorusPreGuard || borrowedAuto) {
         p.reactedTargetIds.push(t.targetId);
         changed = true;
       }
@@ -862,6 +883,22 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
           .setLabel(`🛡️ Guard (-${opts.guard.cost} Sta)`)
           .setStyle(ButtonStyle.Primary)
           .setDisabled(!opts.guard.available),
+        // ── ZWEI ASSOCIATION — BLOCK GIÙM ĐỒNG MINH ──────────────────────────
+        // Fragaria: "phải để cho người mang outfit này bấm reactive defense CHO
+        // ĐỒNG MINH được (chỉ mỗi Block); khi bấm thì HỌ sẽ là người chịu đòn
+        // thay; và chỉ block giùm được cho 1 người mỗi 1 turn."
+        // Nút chỉ hiện khi trong party CÓ người mặc Zwei, KHÁC người đang bị đánh,
+        // và chưa khoá vào người khác trong turn này.
+        ...((() => {
+          const zwei = Object.entries(encounter.players ?? {}).find(([pid, pl]) =>
+            pl?.hasZweiAssociation && (pl.currentHp ?? 0) > 0 && !pl.staggered && pid !== t.targetId
+            && (!pl.zweiProtectingId || pl.zweiProtectingId === t.targetId));
+          if (!zwei) return [];
+          return [new ButtonBuilder()
+            .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:zweiblock:${currentGroupIdx}`)
+            .setLabel(`🛡️ Zwei: Block giùm (${zwei[1].name ?? "đồng minh"})`.slice(0, 80))
+            .setStyle(ButtonStyle.Secondary)];
+        })()),
         new ButtonBuilder()
           .setCustomId(`encreactivedef:${channelId}:${pendingId}:${t.targetId}:evade:${currentGroupIdx}`)
           .setLabel(`💨 Evade (-${opts.evade.cost} Sta)`)

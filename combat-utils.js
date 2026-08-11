@@ -533,6 +533,30 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
    *  @returns dòng ghi chú nếu trạng thái ĐỔI, "" nếu không đổi gì.
    */
   function syncCompassionPhantomHp(combatant) {
+    // ── Shi Association (outfit) — CÙNG CƠ CHẾ, khác con số ──────────────────
+    // Fragaria: "Outfit Shi Association cũng có 60 HP máu ảo y hệt 100 máu ảo của
+    // Compassion; hai thứ dùng CHUNG logic."
+    // Keypage: "nhận thêm 60 Max HP, tuy nhiên HP KHÔNG THỂ VƯỢT QUÁ mốc 60 Max HP
+    // được cho thêm đó" ⇒ đúng khuôn `healCapHp` (hồi chỉ tới maxHp GỐC).
+    // Gate theo OUTFIT đang mặc, y như Compassion gate theo vũ khí.
+    if (combatant?.hasShiAssociation) {
+      const onShi = combatant.equippedOutfitName === "Shi Association" || combatant.hasShiAssociation === true;
+      const isOnShi = (combatant.shiPhantomHp ?? 0) > 0;
+      if (onShi && !isOnShi) {
+        combatant.maxHp = (combatant.maxHp ?? 0) + 60;
+        combatant.shiPhantomHp = 60;
+        combatant.healCapHp = combatant.maxHp - 60;
+      } else if (!onShi && isOnShi) {
+        const ph = combatant.shiPhantomHp ?? 60;
+        combatant.maxHp = Math.max(1, (combatant.maxHp ?? 0) - ph);
+        combatant.shiPhantomHp = 0;
+        combatant.healCapHp = undefined;
+        combatant.currentHp = Math.min(combatant.currentHp ?? 0, combatant.maxHp);
+      } else if (onShi) {
+        // Tính LẠI trần mỗi lần (maxHp có thể đổi giữa chừng do chữa injury…).
+        combatant.healCapHp = combatant.maxHp - (combatant.shiPhantomHp ?? 60);
+      }
+    }
     if (!combatant?.hasMemoriesCompassion) return "";
     const shouldBeOn = combatant.weaponName === "Lucent Historia";
     const isOn = (combatant.compassionPhantomHp ?? 0) > 0;

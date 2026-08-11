@@ -2176,6 +2176,8 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.saikai2TurnsLeft = 2;
                   attacker.combatant.lastFuriosoName = furiosoSkill.name;
                   attacker.combatant.bgmAnnounceNow = "Saikai2.mp3";
+                  // Nhãn RIÊNG của Furioso — Fragaria: "đừng lẫn hai cái vào nhau".
+                  attacker.combatant.bgmAnnounceLabel = `BGM **${furiosoSkill.name}** (kéo dài 2 Turn)`;
                   verifyNote += ` 🎵[BGM → **Saikai2.mp3** (${furiosoSkill.name}, 2 Turn)]`;
                 }
                 if (attacker.combatant.woundCasingMaskIntact) {
@@ -2188,6 +2190,7 @@ async function resolveOnePendingAction(encounter, p) {
                   // Crescendo / Lacrimosa-Crescendo), thay vì dán "Manifested E.G.O".
                   attacker.combatant.lastFuriosoName = furiosoSkill.name;
                   attacker.combatant.bgmAnnounceNow = "Saikai1.mp3";
+                  attacker.combatant.bgmAnnounceLabel = `BGM **${furiosoSkill.name}** (kéo dài 2 Turn)`;
                   attacker.combatant.woundCasingMaskIntact = false;
                   attacker.combatant.sizzlingWound = true;
                   verifyNote += ` 🎭[**Wound-Casing Mask VỠ** vì dùng Furioso — Sizzling Wound quay lại tới hết Encounter]`;

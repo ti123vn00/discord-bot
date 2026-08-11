@@ -586,6 +586,8 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     if ((combatant.indulgenceInPrescript ?? 0) > 0) combatant.indulgenceInPrescript = 0;
     // Grace of God — 1 lần MỖI VÒNG TURN ORDER.
     combatant.graceOfGodUsedThisTurn = false;
+    // Zwei Association — mỗi turn chỉ đỡ giùm cho 1 người; sang turn mới chọn lại.
+    combatant.zweiProtectingId = null;
     combatant.shinRienBlockedDmg = 0;
     combatant.shinRienTriggered = false;
     // Providence of the Prescript — "nhận Poise theo cách trên 3 lần thì TURN KẾ
