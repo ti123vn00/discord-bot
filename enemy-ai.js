@@ -146,7 +146,14 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
       // Thua Clash — TIẾP TỤC thử Counter nếu có (không waste toàn bộ lượt phòng thủ chỉ vì thua Clash).
     }
 
-    const counterPick = pickCounterSkill(target);
+    // ❗ BUG ĐÃ SỬA (Fragaria: "Furioso Replica bị Counter được trong khi nó có
+    // tag Uncounterable"). Đường NÚT BẤM của người chơi có kiểm `uncounterable`
+    // (reactive-defense.js), nhưng đường **AI tự phòng thủ** thì KHÔNG — nó gọi
+    // thẳng pickCounterSkill. Đúng lớp lỗi "gate một đường, quên đường kia".
+    const bypassTags = extractDefenseBypassTags
+      ? extractDefenseBypassTags(p.skillRollEmbed?.description ?? "", p.tags ?? "")
+      : {};
+    const counterPick = bypassTags.uncounterable ? null : pickCounterSkill(target);
     if (counterPick) {
       const cost = parseSkillCost(counterPick.skill.cost);
       const effect = counterPick.skill.counterEffect ?? {};

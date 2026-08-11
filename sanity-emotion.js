@@ -57,7 +57,11 @@ module.exports = function ({ healHpCapped, hasPerk, getMaxEmotionLevel, EMOTION_
   
   function applyEmotionDelta(combatant, delta) {
     const notes = [];
-    if (!delta) return notes;
+    // ❗ KHÔNG thoát sớm khi delta = 0.
+    // `applyEmotionDelta(c, 0)` là cách turn-advance kích lại vòng level-up khi
+    // Emotion CD vừa hết (Coin đã đọng sẵn, chỉ chờ được phép lên cấp).
+    // Thoát sớm ở đây khiến cờ đó vô dụng — chính test này lôi ra.
+    if (!delta && (combatant.emotionLevelCooldownLeft ?? 0) > 0) return notes;
     // "Energetic" (Composition Tool) — GAP ĐÃ SỬA (Fragaria: "toàn bộ accessory
     // trong accessory.js đều chưa được implement"): "Gia tăng x2 hiệu quả nhận
     // Emotion Coin". CHỈ nhân chiều DƯƠNG (nhận coin) — chiều âm là chi phí
@@ -71,6 +75,9 @@ module.exports = function ({ healHpCapped, hasPerk, getMaxEmotionLevel, EMOTION_
     while (
       combatant.emotionLevel < maxLevel &&
       (combatant.emotionLevel > 0 || (combatant.emotionLevelCooldownLeft ?? 0) <= 0) &&
+      // Chặn cứng: bảng có thể KHÔNG có cấp kế tiếp (dữ liệu thiếu / mock trong
+      // test). Trước đây truy thẳng `.coinNeeded` ⇒ TypeError làm chết cả action.
+      EMOTION_LEVEL_TABLE[combatant.emotionLevel + 1] != null &&
       combatant.emotionCoin >= EMOTION_LEVEL_TABLE[combatant.emotionLevel + 1].coinNeeded
     ) {
       const nextLevel = combatant.emotionLevel + 1;

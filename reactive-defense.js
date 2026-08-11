@@ -9,7 +9,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó).
 
-module.exports = function ({ applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, appendActionLog, cdKeyFor, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
+module.exports = function ({ getPlayerDataWithSlot, savePlayerData, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, appendActionLog, cdKeyFor, ActionRowBuilder, ButtonBuilder, ButtonStyle, POISE_MAX, WEAPON_DEFENSE_HITS, advanceCombatantTurn, advanceToNextTurnHolder, aiHooks, finalizeQuestOutcome, buildBossActionPanel, buildEncounterActionPanel, buildEncounterBoardEmbed, calcMathCore, checkStaggerPanic, client, combatantResStr, computeDefenseOptions, deleteEncounter, determineTurnOrder, encounterKey, findSkill, getEncounter, hasPerk, log, parsePerHitBypass, parseSkillCost, resolveCombatant, resolveOnePendingAction, saveEncounter, validateAndRerollPrescript, validateAndRerollPrescriptRound, withLock }) {
 
 /** finalizeReactiveChoice — sau khi ĐÃ áp dụng 1 lựa chọn phòng thủ (guard/evade/
  *  parry/none, hoặc guardHitSelections/evadeHitSelections cho chọn hit cụ thể)
@@ -172,6 +172,27 @@ async function performEndTurn(channelId, userId, isAdmin) {
     // chơi không hề biết Shin - Rien đã kích hoạt, mặt nạ đã vỡ, Manifest đã hết,
     // hay bị phạt Stamina. Đúng lớp lỗi "ghi-mà-không-đọc" đã dính nhiều lần.
     // Gom tại ĐÂY — mốc kết thúc turn, chạy cho mọi combatant, một chỗ duy nhất.
+    // ── ĐỒNG BỘ HP VỀ PROFILE ────────────────────────────────────────────────
+    // ❗ BUG ĐÃ SỬA (Fragaria: "đang 150 HP, được heal lên 165 nhờ Emotion Level 1
+    // thì khi hết encounter LẠI LƯU 150").
+    // GỐC: HP chỉ được sync ở nhánh **BỊ ĐÁNH** (resolve-pending-action) — mọi
+    // nguồn HỒI (Emotion Level, healHpCapped, Perfect Cube, Regen, page heal…)
+    // KHÔNG có đường nào ghi ngược về profile.
+    // Nay sync ở mốc KẾT THÚC TURN — chạy cho MỌI người chơi, bắt được mọi nguồn
+    // thay đổi HP bất kể đến từ đâu.
+    for (const [pid, c] of Object.entries(encounter.players ?? {})) {
+      try {
+        const { data: hpD, slot: hpS } = await getPlayerDataWithSlot(pid);
+        // `compassionPhantomHp` là máu ẢO chỉ tồn tại trong trận — trừ ra trước
+        // khi lưu, nếu không profile sẽ phình Max HP sau mỗi trận.
+        const realHp = Math.max(0, Math.round((c.currentHp ?? 0) * 100) / 100);
+        if (hpD.currentHp !== realHp) {
+          hpD.currentHp = realHp;
+          hpD.hpLastResetCheck = Date.now();
+          await savePlayerData(pid, hpD, hpS);
+        }
+      } catch { /* sync HP lỗi không được chặn việc kết thúc turn */ }
+    }
     for (const [pid, c] of Object.entries(encounter.players ?? {})) {
       for (const key of ["shinRienNote", "maskBrokenNote", "manifestEndNote",
                          "compassionSyncNote", "theStrongestPenaltyNote", "accessoryDupWarning"]) {

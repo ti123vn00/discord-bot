@@ -24,6 +24,55 @@ const path = require("path");
 // specialActionInFlight — khoá CHỐNG BẤM ĐÚP cho panel Special (Manifest E.G.O,
 // Shin/Mang, Overcharge...). Những hành động này đổi chỉ số VĨNH VIỄN trong trận
 // nên bấm 2 lần là cộng dồn 2 lần. Khoá theo (channel, user, action).
+// ❗ shortTokenFor — customId của Discord CHẶN CỨNG 100 KÝ TỰ.
+// `enctarget:<channelId 19>:criticalhit:<encodeURIComponent(tên skill)>` vượt trần
+// với các tên Critical DÀI của Caduceus ⇒ discord.js ném **"Invalid string length"**
+// và người chơi kẹt luôn lượt. Đo thật:
+//   Crit1 Blunt  94 ✅ · Crit1 Pierce 103 ❌ · Crit1 Slash 118 ❌ · Crit3 Pierce 102 ❌
+// — khớp CHÍNH XÁC danh sách Fragaria báo.
+// Nay nhét TOKEN NGẮN vào customId, tra ngược ra tên qua Map này.
+const shortTokenRegistry = new Map();
+let shortTokenSeq = 0;
+function shortTokenFor(name) {
+  const token = `k${(shortTokenSeq = (shortTokenSeq + 1) % 100000)}`;
+  shortTokenRegistry.set(token, { name, at: Date.now() });
+  // Dọn rác: bỏ token cũ hơn 30 phút (một trận dài cũng không quá mốc này).
+  if (shortTokenRegistry.size > 500) {
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [k, v] of shortTokenRegistry) if (v.at < cutoff) shortTokenRegistry.delete(k);
+  }
+  return token;
+}
+/** resolveShortToken — nhận lại tên thật; nếu không phải token thì trả nguyên
+ *  chuỗi (tương thích ngược với message CŨ đang còn trên màn hình). */
+function resolveShortToken(raw) {
+  const hit = shortTokenRegistry.get(raw);
+  return hit ? hit.name : decodeURIComponent(raw);
+}
+
+/** takePendingBgmFiles — lấy file BGM đang chờ phát, ĐỌC XONG XOÁ CỜ.
+ *
+ *  ❗ Fragaria báo 2 lượt liền: "xài Furioso nhưng KHÔNG thấy gửi file BGM ngay như
+ *  Manifested E.G.O Red Mist" — dù file ĐÃ CÓ trên server và dòng chữ vẫn hiện.
+ *  Khác biệt giữa hai đường:
+ *    • Manifest E.G.O — đính `files` THẲNG vào `interaction.reply` ⇒ CHẠY
+ *    • Furioso        — gọi `announceBgmIfChanged` → `client.channels.fetch(...)`
+ *                       → `channel.send(...)`, một message RIÊNG, và toàn bộ bọc
+ *                       `.catch(() => {})` nên hỏng ở bất kỳ khâu nào cũng im lặng.
+ *  Không lấy được log server ⇒ thay vì đoán tiếp khâu nào hỏng, **bỏ hẳn đường
+ *  channel.send** và dùng ĐÚNG cơ chế đã được xác nhận là chạy.
+ *  @returns { files, name } — `files` rỗng nếu không có gì để phát.
+ */
+function takePendingBgmFiles(encounter) {
+  for (const pl of Object.values(encounter?.players ?? {})) {
+    if (!pl?.bgmAnnounceNow) continue;
+    const name = pl.bgmAnnounceNow;
+    pl.bgmAnnounceNow = null;
+    return { files: bgmAttachmentIH(AttachmentBuilder, name), name };
+  }
+  return { files: [], name: null };
+}
+
 const specialActionInFlight = new Set();
 let bgmAttachmentLastMissing = null;
 /** bgmAttachmentIH — trả [AttachmentBuilder] nếu file CÓ THẬT trên disk.
@@ -1932,6 +1981,11 @@ client.on("interactionCreate", async (interaction) => {
               if (!meCad.procurationHermes.includes(d.n)) { meCad.procurationHermes.push(d.n); newFaces.push(d.n); }
             }
             meCad.currentStamina = Math.max(0, (meCad.currentStamina ?? 0) - staTotal);
+            // ❗ BUG ĐÃ SỬA (Fragaria: "M1 của Caduceus chưa cho nhận Light").
+            // Luật chung: mỗi 20 Stamina đã dùng trong turn = 1 Light
+            // (turn-advance đọc `staminaUsedThisTurn`). Caduceus trừ Stamina bằng
+            // đường RIÊNG nên không đi qua chỗ ghi field này ⇒ mãi không có Light.
+            meCad.staminaUsedThisTurn = (meCad.staminaUsedThisTurn ?? 0) + staTotal;
             meCad.caduceusHitsPerCharge = Math.max(1,
               Math.round(CADUCEUS_STAMINA_PER_CHARGE / Math.max(1, Math.round(staTotal / Math.max(1, hitCount)))));
             // "Caduceus bị mặc định base dmg là 8 trong khi đáng lẽ nó KHÔNG có
@@ -2465,6 +2519,43 @@ client.on("interactionCreate", async (interaction) => {
       // đã chọn mới save — nhưng bước đó fetch encounter MỚI (getEncounter),
       // làm MẤT TRẮNG mutation vừa làm ở đây. Save NGAY để không mất.
       await saveEncounter(channelId, encounter);
+      // ❗ BUG ĐÃ SỬA (Fragaria: "Designant không target được và Astral
+      // Quantization vừa không target được vừa không hoạt động").
+      // GỐC: khối này nằm SAU nhánh `if (!verify.autoDmgStr)` — mà nhánh đó
+      // resolve rồi `return` NGAY ⇒ code chọn đồng đội KHÔNG BAO GIỜ chạy tới.
+      // Lượt trước tôi dời nó xuống để né TDZ `pendingKey`, vô tình đặt sau
+      // điểm return. Nay đặt ĐÚNG CHỖ (trước nhánh đó) và dựng key tại chỗ.
+      // ⚠️ ĐÃ DI CHUYỂN — khối này TRƯỚC ĐÂY nằm PHÍA TRÊN dòng khai
+      // `const pendingKey` ⇒ "Cannot access 'pendingKey' before initialization"
+      // (Fragaria gửi ảnh: Designant chết ngay khi bấm). Đúng lớp lỗi TDZ tôi
+      // đã cảnh báo nhiều lần trong chính file HAND-OFF này mà vẫn tái phạm.
+      // ── Skill KHÔNG có dmg nhưng CẦN chọn đồng đội (Designant.) ───────────
+      // Phải chặn TRƯỚC nhánh `!verify.autoDmgStr` bên dưới: nhánh đó dựng
+      // pendingAction với `targets: []` rồi resolve NGAY, không chỗ nào hỏi ai.
+      const critSkillObj = findSkill(critSkillName);
+      if (!verify.autoDmgStr && critSkillObj?.needsAllyTarget) {
+        const allyOptions = buildAllyTargetOptions(encounter, interaction.user.id);
+        if (allyOptions.length === 0) {
+          return interaction.reply({ content: "⚠️ Không còn đồng đội nào (còn sống) để chỉ định.", flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+        pendingCriticalRolls.set(`${channelId}:${interaction.user.id}`, {
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns,
+          emotionDelta: verify.emotionDelta ?? 0, lightCost: verify.lightCost,
+          sanityCost: verify.sanityCost, skillRollEmbed: verify.skillRollEmbed,
+          expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
+        });
+        await interaction.update({
+          embeds: [verify.skillRollEmbed, { title: `⚡ ${critSkillName} — chọn người được chỉ định`, description: critSkillObj.allyTargetPrompt ?? "Chọn 1 đồng đội (hoặc chính bạn):", color: 0x3498db }],
+          components: [new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`encallytarget:${channelId}:${shortTokenFor(critSkillName)}`)
+              .setPlaceholder("Chọn người được chỉ định...")
+              .setMinValues(1).setMaxValues(1)
+              .addOptions(...allyOptions),
+          )],
+        }).catch(() => {});
+        return;
+      }
       if (!verify.autoDmgStr) {
         // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua ảnh chụp thật của user — "Durandal"
         // Critical không có dmg trực tiếp): TRƯỚC ĐÂY nhánh này chỉ hiện embed rồi
@@ -2501,47 +2592,28 @@ client.on("interactionCreate", async (interaction) => {
         // liệu lỗi thời — giờ return SỚM, bỏ qua hẳn bước đó khi đã kết thúc.
         if (encounter._deleteAfterSave) {
           await deleteEncounter(channelId).catch((err) => log("error", "critical-deleteEncounter", interaction.user.id, err.message));
-          return interaction.reply({
-            embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
-          }).catch(() => {});
+          {
+            const bgm = takePendingBgmFiles(encounter);
+            return interaction.reply({
+              content: bgm.name ? `🎵 BGM đổi sang **${bgm.name}**${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
+              embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
+              files: bgm.files,
+            }).catch(() => {});
+          }
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
-        return interaction.reply({
-          embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
-        }).catch(() => {});
+        {
+          // BGM (Furioso → Saikai1/2) đính THẲNG vào reply này — cùng cơ chế với
+          // Manifest E.G.O (đã xác nhận chạy), thay cho channel.send riêng.
+          const bgm = takePendingBgmFiles(encounter);
+          return interaction.reply({
+            content: bgm.name ? `🎵 BGM đổi sang **${bgm.name}**${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
+            embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
+            files: bgm.files,
+          }).catch(() => {});
+        }
       }
       const pendingKey = `${channelId}:${interaction.user.id}`;
-      // ⚠️ ĐÃ DI CHUYỂN — khối này TRƯỚC ĐÂY nằm PHÍA TRÊN dòng khai
-      // `const pendingKey` ⇒ "Cannot access 'pendingKey' before initialization"
-      // (Fragaria gửi ảnh: Designant chết ngay khi bấm). Đúng lớp lỗi TDZ tôi
-      // đã cảnh báo nhiều lần trong chính file HAND-OFF này mà vẫn tái phạm.
-      // ── Skill KHÔNG có dmg nhưng CẦN chọn đồng đội (Designant.) ───────────
-      // Phải chặn TRƯỚC nhánh `!verify.autoDmgStr` bên dưới: nhánh đó dựng
-      // pendingAction với `targets: []` rồi resolve NGAY, không chỗ nào hỏi ai.
-      const critSkillObj = findSkill(critSkillName);
-      if (!verify.autoDmgStr && critSkillObj?.needsAllyTarget) {
-        const allyOptions = buildAllyTargetOptions(encounter, interaction.user.id);
-        if (allyOptions.length === 0) {
-          return interaction.reply({ content: "⚠️ Không còn đồng đội nào (còn sống) để chỉ định.", flags: MessageFlags.Ephemeral }).catch(() => {});
-        }
-        pendingCriticalRolls.set(pendingKey, {
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns,
-          emotionDelta: verify.emotionDelta ?? 0, lightCost: verify.lightCost,
-          sanityCost: verify.sanityCost, skillRollEmbed: verify.skillRollEmbed,
-          expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
-        });
-        await interaction.update({
-          embeds: [verify.skillRollEmbed, { title: `⚡ ${critSkillName} — chọn người được chỉ định`, description: critSkillObj.allyTargetPrompt ?? "Chọn 1 đồng đội (hoặc chính bạn):", color: 0x3498db }],
-          components: [new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-              .setCustomId(`encallytarget:${channelId}:${encodeURIComponent(critSkillName)}`)
-              .setPlaceholder("Chọn người được chỉ định...")
-              .setMinValues(1).setMaxValues(1)
-              .addOptions(...allyOptions),
-          )],
-        }).catch(() => {});
-        return;
-      }
       pendingCriticalRolls.set(pendingKey, {
         dmgStr: verify.autoDmgStr,
         skillRollEmbed: verify.skillRollEmbed,
@@ -2581,7 +2653,7 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [verify.skillRollEmbed, { title: `⚡ Critical: ${critSkillName} — chọn target`, description: isAoeThisCritical ? `Chọn tối đa ${Math.min(aoeMaxThisCritical, targetOptions.length)} enemy muốn nhắm:` : "Chọn 1 enemy muốn nhắm:", color: 0x3498db }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
-            .setCustomId(`enctarget:${channelId}:criticalhit:${encodeURIComponent(critSkillName)}`)
+            .setCustomId(`enctarget:${channelId}:criticalhit:${shortTokenFor(critSkillName)}`)
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
             .setMaxValues(isAoeThisCritical ? Math.min(aoeMaxThisCritical, targetOptions.length) : 1)
@@ -2805,6 +2877,8 @@ client.on("interactionCreate", async (interaction) => {
         announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
+        // Lấy file BGM đang chờ TRƯỚC khi save (đọc xong xoá cờ, save luôn thấy sạch).
+        const bgmCrit = takePendingBgmFiles(encounter);
         await saveEncounter(channelId, encounter);
         // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
         // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
@@ -2814,16 +2888,18 @@ client.on("interactionCreate", async (interaction) => {
         if (encounter._deleteAfterSave) {
           await deleteEncounter(channelId).catch((err) => log("error", "page-deleteEncounter", interaction.user.id, err.message));
           return interaction.update({
-            content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
+            content: bgmCrit.name ? `🎵 BGM đổi sang **${bgmCrit.name}**` : "", // BGM Furioso đính THẲNG vào reply (giống Manifest E.G.O)
             embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
             components: [],
+            files: bgmCrit.files,
           }).catch(() => {});
         }
         announceCurrentTurn(channelId, encounter).catch(() => {});
         return interaction.update({
-          content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
+            content: bgmCrit.name ? `🎵 BGM đổi sang **${bgmCrit.name}**` : "", // BGM Furioso đính THẲNG vào reply (giống Manifest E.G.O)
           embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
           components: [],
+            files: bgmCrit.files,
         }).catch(() => {});
       }
       // BUG BẢO MẬT ĐÃ SỬA (cùng nguyên nhân với M1/Critical): isAoe/maxTargets
@@ -2839,7 +2915,7 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [verify.skillRollEmbed, { title: `📖 ${pageName} — chọn target`, description: isAoeThisPage ? `Chọn tối đa ${Math.min(aoeMaxThisPage, targetOptions.length)} enemy muốn nhắm:` : "Chọn 1 enemy muốn nhắm:", color: 0x3498db }],
         components: [new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
-            .setCustomId(`enctarget:${channelId}:hit:${encodeURIComponent(pageName)}`)
+            .setCustomId(`enctarget:${channelId}:hit:${shortTokenFor(pageName)}`)
             .setPlaceholder("Chọn target...")
             .setMinValues(1)
             .setMaxValues(isAoeThisPage ? Math.min(aoeMaxThisPage, targetOptions.length) : 1)
@@ -3228,7 +3304,7 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.customId.startsWith("encallytarget:")) return;
   const parts = interaction.customId.split(":");
   const channelId = parts[1];
-  const critSkillName = decodeURIComponent(parts.slice(2).join(":"));
+  const critSkillName = resolveShortToken(parts.slice(2).join(":"));
   const chosenAllyId = interaction.values[0];
   await interaction.deferUpdate().catch(() => {});
   // ⚠️ KEY PHẢI KHỚP bên ĐẶT. Bên đặt (nhánh Critical) dùng
@@ -3266,9 +3342,11 @@ client.on("interactionCreate", async (interaction) => {
       announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
       await saveEncounter(channelId, encounter);
     });
+    const bgmAlly = takePendingBgmFiles(await getEncounter(channelId).catch(() => null) ?? {});
     await interaction.editReply({
+      content: bgmAlly.name ? `🎵 BGM đổi sang **${bgmAlly.name}**` : undefined,
       embeds: [pendingRoll.skillRollEmbed, { description: outLines.join("\n") || "*(không có gì để hiện)*", color: 0x95a5a6 }],
-      components: [],
+      components: [], files: bgmAlly.files,
     }).catch(() => {});
   } catch (err) {
     log("error", "encallytarget", interaction.user?.id ?? "unknown", err.message);
@@ -3373,7 +3451,7 @@ client.on("interactionCreate", async (interaction) => {
       // rủi ro gian lận. Giờ KHÔNG còn Modal nào nữa cho cả 2 nhánh này — dmgStr
       // đã roll thật + lưu server-side lúc chọn dropdown, thực thi NGAY sau khi
       // chọn target (giống followup), không còn bước nào để "tưởng sửa được".
-      const skillName = decodeURIComponent(extra);
+      const skillName = resolveShortToken(extra);
       const pendingKey = `${channelId}:${interaction.user.id}`;
       const pending = pendingCriticalRolls.get(pendingKey);
       if (!pending) {

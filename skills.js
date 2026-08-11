@@ -820,7 +820,7 @@ const SKILLS = {
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>Bleed`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] [Unblockable] — gây 2 <:Bleed:1513762688226955285>Bleed`,
         `**Trên không:** *Nhận 6 <:Poise:1513762945715142736>Poise*`,
-        `<:Dice1:1508173590078558369> **${dAir}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Uptilt] — gây 5 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
+        `<:Dice1:1508173590078558369> **${dAir}** [<:Slash:1513768633434640517>Slash] [Undodgeable] [Airborne] — gây 5 <:DefenseDown:1513767463337066576>Defense Down <:DefenseDown:1513767463337066576>`,
       ];
     },
   },
@@ -1251,7 +1251,7 @@ const SKILLS = {
     roll() {
       const d1 = r(3,5), d2 = r(3,6), d3 = r(4,7), d4 = r(4,8);
       return [
-        `*Nếu địch có trên 5 <:Tremor:1513762737388257380>Tremor: **[Uptilt]***`,
+        `*Nếu địch có trên 5 <:Tremor:1513762737388257380>Tremor: **[Airborne]***`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
         `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [On Hit] — gây 1 <:Paralyze:1513763316479295548>Paralyze`,
@@ -1277,7 +1277,7 @@ const SKILLS = {
       const d1 = r(4,9), d2 = r(10,16);
       return [
         `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 <:Paralyze:1513763316479295548>Paralyze và 3 <:Tremor:1513762737388257380>Tremor`,
-        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Uptilt] — gây 1 <:Paralyze:1513763316479295548>Paralyze và 3 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Airborne] — gây 1 <:Paralyze:1513763316479295548>Paralyze và 3 <:Tremor:1513762737388257380>Tremor`,
       ];
     },
   },
@@ -2681,6 +2681,9 @@ roll(v = "no") {
   "upstanding slash": {
     name: "Upstanding Slash", weaponOf: "Mimicry Blade", tags: "Weapon",
     cost: "—", cd: "2 Turn", diceMul: "1x",
+    // Fragaria: "Upstanding Slash phải share chung CD với cả 2 Great Split —
+    // đúng hơn là CẢ 3 share chung CD với nhau là 2 Turn."
+    cdGroup: "mimicry blade strike",
     roll() {
       const d1 = r(6,10), d2 = r(9,15);
       return [
@@ -2691,7 +2694,10 @@ roll(v = "no") {
   },
   "great split vertical": {
     name: "Great Split: Vertical", weaponOf: "Mimicry Blade", tags: "Weapon",
-    cost: "Tiêu 5 Imitation", cd: "—", diceMul: "2x",
+    cost: "Tiêu 5 Imitation", cd: "2 Turn", diceMul: "2x",
+    // Fragaria: "Upstanding Slash phải share chung CD với cả 2 Great Split —
+    // đúng hơn là CẢ 3 share chung CD với nhau là 2 Turn."
+    cdGroup: "mimicry blade strike",
     roll() {
       const d1 = r(15,26);
       return [
@@ -3059,7 +3065,7 @@ roll(v = "no") {
         lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×3 · <:Fix_Bind:1513768025881317457>Bind ×1 · <:Fix_Fragile:1513763336167100536>Fragile ×1 (code tự áp ở đầu turn sau)*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×3 · <:Fix_Bind:1513768025881317457>Bind ×1 · <:Fix_Fragile:1513763336167100536>Fragile ×1*`);
       return lines;
     },
   },
@@ -3085,7 +3091,7 @@ roll(v = "no") {
         lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×4 · <:Fix_Bind:1513768025881317457>Bind ×2 · <:Fix_Fragile:1513763336167100536>Fragile ×2 (code tự áp ở đầu turn sau)*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×4 · <:Fix_Bind:1513768025881317457>Bind ×2 · <:Fix_Fragile:1513763336167100536>Fragile ×2*`);
       return lines;
     },
   },
@@ -3111,13 +3117,16 @@ roll(v = "no") {
         lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×5 · <:Fix_Bind:1513768025881317457>Bind ×3 · <:Fix_Fragile:1513763336167100536>Fragile ×3 (code tự áp ở đầu turn sau)*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×5 · <:Fix_Bind:1513768025881317457>Bind ×3 · <:Fix_Fragile:1513763336167100536>Fragile ×3*`);
       return lines;
     },
   },
   "great split horizontal": {
     name: "Great Split: Horizontal", weaponOf: "Mimicry Blade", tags: "Weapon",
-    cost: "Tiêu 5 Imitation, cần bản thân dưới 30% HP", cd: "—", diceMul: "3x",
+    cost: "Tiêu 5 Imitation, cần bản thân dưới 30% HP", cd: "2 Turn", diceMul: "3x",
+    // Fragaria: "Upstanding Slash phải share chung CD với cả 2 Great Split —
+    // đúng hơn là CẢ 3 share chung CD với nhau là 2 Turn."
+    cdGroup: "mimicry blade strike",
     roll() {
       const d1 = r(32,43);
       return [
@@ -5914,6 +5923,10 @@ function extractNonDmgStrEffects(lines) {
     // Airborne — debuff LÊN ĐỊCH ("đá kẻ địch lên trời gây 1 [Airborne]").
     // Cho phép markdown xen giữa: text thật là "gây 1 **[Airborne]**".
     out.airborne      += sum(/g[âaăằ]y\s*(\d+)\s*[*\[\s]*Airborne/i);
+    // Fragaria: "[Airborne] đã tự động chưa? … nếu chưa thì hãy tự động hoá, và
+    // một số skill ghi [Uptilt] — Uptilt và Airborne LÀ MỘT, sửa về Airborne."
+    // Dạng TAG trần `[Airborne]` (không kèm số) = 1 stack cho dice đó.
+    if (/\[Airborne\]/i.test(line) && !/g[âaăằ]y\s*\d+\s*[*\[\s]*Airborne/i.test(line)) out.airborne += 1;
   }
   return out;
 }
@@ -5996,6 +6009,16 @@ function buildReuseVariants(skill, resourceNow) {
 }
 
 function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDice = false, diceModifier = 0, rollArgs = [], repeatTimes = 1 } = {}) {
+  // ❗ BUG ĐÃ SỬA (Fragaria: "không thấy áp luôn cả Dice Multiplier của Dice").
+  // `skill.diceMul` TRƯỚC ĐÂY chỉ được IN RA trong embed (skill-verification.js
+  // dòng ~508) mà KHÔNG nhân vào giá trị dice nào cả — mọi page có Dice Mul
+  // 1.5x/2x/2.5x đều đánh như 1x.
+  // Đọc dạng "1,25x" / "1.5x" / "2x" (dữ liệu dùng cả dấu phẩy lẫn dấu chấm).
+  const diceMulNum = (() => {
+    const raw = String(skill?.diceMul ?? "1").replace(",", ".").replace(/x/gi, "").trim();
+    const v = parseFloat(raw);
+    return Number.isFinite(v) && v > 0 ? v : 1;
+  })();
   startEmotionTracking();
   if (forceMinDice) startForceMinDice();
   else if (forceMaxDice) startForceMaxDice();
@@ -6125,7 +6148,10 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDic
   if (diceTypeByLine.length === 0) {
     return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
   }
-  const dmgStr = diceTypeByLine.map(d => `${d.result}${d.type}${d.statusTags ?? ""}`).join(" + ");
+  // Áp DICE MULTIPLIER vào giá trị dice thật (làm tròn 2 số để không ra rác thập phân).
+  const dmgStr = diceTypeByLine
+    .map(d => `${Math.round(d.result * diceMulNum * 100) / 100}${d.type}${d.statusTags ?? ""}`)
+    .join(" + ");
   return { dmgStr, warnings, tracked, totalEmotionDelta, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
 }
 

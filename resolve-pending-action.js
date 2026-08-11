@@ -310,10 +310,22 @@ async function resolveOnePendingAction(encounter, p) {
               // TYPE vũ khí đã dùng. Sắc lệnh 5/6/7 đòi đúng type Blunt/Pierce/Slash.
               if (attacker.combatant) {
                 attacker.combatant.prescriptAttacked = true;
-                const wType = attacker.combatant.weaponType;
-                if (wType) {
-                  attacker.combatant.prescriptAttackTypes = attacker.combatant.prescriptAttackTypes ?? {};
-                  attacker.combatant.prescriptAttackTypes[wType] = true;
+                // ❗ BUG ĐÃ SỬA (Fragaria: "sắc lệnh yêu cầu đánh ra dmg Slash mà
+                // xài Dice Blunt/Pierce vẫn được pass").
+                // GỐC: lấy `weaponType` — với Caduceus đó là type của MẶT CUỐI
+                // vừa roll, không phải type THẬT SỰ đã gây ra. Một đòn Caduceus
+                // có thể trộn cả 3 type.
+                // ⇒ Đọc TỪ dmgStr đã roll: mỗi hạng `<số><B|P|S>` là một type thật.
+                attacker.combatant.prescriptAttackTypes = attacker.combatant.prescriptAttackTypes ?? {};
+                const TYPE_OF = { B: "Blunt", P: "Pierce", S: "Slash" };
+                let markedAny = false;
+                for (const term of String(p.dmgStr ?? "").split("+")) {
+                  const m = term.trim().match(/^\d+(?:\.\d+)?\s*x?\d*\s*([BPS])/);
+                  if (m) { attacker.combatant.prescriptAttackTypes[TYPE_OF[m[1]]] = true; markedAny = true; }
+                }
+                // dmgStr không đọc được (skill thuần buff…) thì mới rơi về weaponType.
+                if (!markedAny && attacker.combatant.weaponType) {
+                  attacker.combatant.prescriptAttackTypes[attacker.combatant.weaponType] = true;
                 }
               }
               const hitCount = Math.max(1, t.preview.dmgValues?.length ?? 1);
@@ -487,6 +499,17 @@ async function resolveOnePendingAction(encounter, p) {
                   // Cụm CUỐI có thể ngắn hơn (nhóm cuối của đòn ít hit hơn) —
                   // chunk theo thứ tự đã push nên vẫn khớp 1-1 với roll.
                   for (let ci = 0; ci < validSelected.length; ci += hitsPerCharge) {
+                    // ❗ BUG ĐÃ SỬA (Fragaria kèm ảnh: "player spam nhiều parry liên
+                    // tục, bị STAGGER GIỮA CHỪNG rồi VẪN ĐƯỢC TÍNH PARRY").
+                    // Đã Stagger thì mất quyền hành động ⇒ huỷ toàn bộ lượt Parry
+                    // còn lại, các hit sau ăn full (và ăn Res 2x theo per-hit).
+                    if (target.staggered) {
+                      if ((target.parryRolls ?? []).length > 0) {
+                        noteParts.push(`⭐**STAGGER** — huỷ **${target.parryRolls.length}** lượt Parry còn lại`);
+                        target.parryRolls = [];
+                      }
+                      break;
+                    }
                     const chunk = validSelected.slice(ci, ci + hitsPerCharge);
                     const defRoll = target.parryRolls.shift();
                     if (defRoll === undefined) break;
@@ -516,7 +539,11 @@ async function resolveOnePendingAction(encounter, p) {
                   }
                   target.parryHitSelections = target.parryHitSelections.filter(h => !(h >= 1 && h <= totalHits));
                   hitIdx = Math.max(hitIdx, ...validSelected, 0);
-                } else while (!(t.perHitBypass?.[hitIdx] ?? bypass).blockParry && (target.parryRolls ?? []).length > 0 && hitIdx < totalHits) {
+                // ❗ BUG ĐÃ SỬA (Fragaria, kèm ảnh: "player spam nhiều parry liên
+                // tục, bị STAGGER GIỮA CHỪNG rồi VẪN ĐƯỢC TÍNH PARRY").
+                // Thêm `!target.staggered`: đã Stagger thì KHÔNG parry tiếp được —
+                // các nhóm còn lại ăn full (và ăn Res 2x theo per-hit).
+                } else while (!target.staggered && !(t.perHitBypass?.[hitIdx] ?? bypass).blockParry && (target.parryRolls ?? []).length > 0 && hitIdx < totalHits) {
                   const defRoll = target.parryRolls.shift();
                   const atkRoll = 1 + Math.floor(Math.random() * 20);
                   const won = defRoll >= atkRoll;
@@ -609,6 +636,18 @@ async function resolveOnePendingAction(encounter, p) {
                     } else {
                       forceStagger(target);
                       noteParts.push(`💥**Guard Break** — bị Stagger ngay (Res 2x từ giờ)`);
+                      // ❗ LỖ HỔNG ĐÃ VÁ (Fragaria: "do Wound-Casing Mask cho miễn
+                      // nhiễm Stagger nên có thể THOẢI MÁI GUARD đòn Guard Break mà
+                      // không bị tác hại gì").
+                      // Guard Break trừng phạt bằng Stagger; ai miễn nhiễm Stagger
+                      // thì hình phạt biến mất hoàn toàn ⇒ guard vô tư.
+                      // Chốt: miễn nhiễm Stagger mà ăn Guard Break thì **mất SẠCH
+                      // Stamina** — vẫn là hình phạt thật, vẫn không bị Stagger.
+                      if (!target.staggered) {
+                        const lostAll = target.currentStamina ?? 0;
+                        target.currentStamina = 0;
+                        noteParts.push(`⚡**Miễn nhiễm Stagger** — không bị Stagger nhưng **mất sạch ${Math.round(lostAll)} Stamina** vì ăn Guard Break`);
+                      }
                     }
                   }
                   // Task yêu cầu trực tiếp: tính lại banked hits MỚI cho lần sau —
@@ -714,7 +753,7 @@ async function resolveOnePendingAction(encounter, p) {
                         attacker.combatant[field] = capForField != null
                           ? Math.min(capForField, (attacker.combatant[field] ?? 0) + amount)
                           : (attacker.combatant[field] ?? 0) + amount;
-                        // BUG ĐÃ SỬA: verifyNote CHƯA tồn tại ở scope này (khai
+                        // BUG ĐÃ SỬA: defenseNote CHƯA tồn tại ở scope này (khai
                         // báo sau, gây TDZ error "Cannot access before
                         // initialization") — dùng defenseNote (đã tồn tại sẵn).
                         defenseNote += ` 🎲[Dice ${i + 1} +${amount} ${key}]`;
@@ -1025,7 +1064,7 @@ async function resolveOnePendingAction(encounter, p) {
               if ((attacker.combatant?.indulgenceInPrescript ?? 0) > 0
                   && (target.sinking ?? 0) > (sinkingBeforeHit ?? 0)) {
                 target.sinking = Math.min(99, (target.sinking ?? 0) + 2);
-                verifyNote += ` 📜[Indulgence in Prescript: +2 Sinking]`;
+                defenseNote += ` 📜[Indulgence in Prescript: +2 Sinking]`;
               }
               if (attacker.combatant?.hasProvidenceOfPrescript && finalDmg > 0) {
                 // "Khi bản thân ≥20 Poise: mỗi đòn ĐÁNH TRÚNG gây thêm 1 Sinking
@@ -1044,7 +1083,7 @@ async function resolveOnePendingAction(encounter, p) {
                 if (gaveSinkOrRupt) {
                   attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 3);
                   attacker.combatant.providencePoiseProcsThisTurn = (attacker.combatant.providencePoiseProcsThisTurn ?? 0) + 1;
-                  verifyNote += ` ⚖️[Providence: +3 Poise (${attacker.combatant.providencePoiseProcsThisTurn}/3 lần turn này)`
+                  defenseNote += ` ⚖️[Providence: +3 Poise (${attacker.combatant.providencePoiseProcsThisTurn}/3 lần turn này)`
                     + (providenceInflicted ? ` · ≥20 Poise → +1 Sinking +1 Rupture` : "") + `]`;
                 }
               }
@@ -2069,6 +2108,50 @@ async function resolveOnePendingAction(encounter, p) {
               // trong trận này trong 1 Turn (4 Light, mọi Buff trừ Emotion Level
               // bị reset)". TRƯỚC ĐÂY chỉ là chữ.
               // ── FURIOSO (Caduceus) ────────────────────────────────────────
+              // ❗ BUG ĐÃ SỬA (Fragaria: "Procuration Hermes đếm sai — báo thiếu
+              // Dice 9 Slash nhưng M1 và Crit 3 Slash ra Dice 9 Slash thì không
+              // được đếm"). Chỉ nhánh M1 mới cộng Procuration; Critical/Furioso
+              // cũng roll ra mặt Caduceus nhưng KHÔNG đếm.
+              // Quét dmgStr đã roll: mỗi hạng `<dmg><type>` khớp một mặt trong bảng.
+              if (attacker.combatant && /^caduceus crit|^furioso /.test(p.skillKey ?? "")) {
+                const FACE = { "8Blunt": 1, "8Pierce": 2, "15Slash": 3, "15Pierce": 4, "15Blunt": 5,
+                  "24Slash": 6, "24Pierce": 7, "24Blunt": 8, "30Slash": 9 };
+                const TL = { B: "Blunt", P: "Pierce", S: "Slash" };
+                attacker.combatant.procurationHermes = attacker.combatant.procurationHermes ?? [];
+                const gained = [];
+                for (const term of String(p.dmgStr ?? "").split("+")) {
+                  const m = term.trim().match(/^(\d+(?:\.\d+)?)\s*([BPS])/);
+                  if (!m) continue;
+                  // Crit nhân bonus % nên dmg lệch — quy về mặt gần nhất theo type.
+                  const raw = parseFloat(m[1]), ty = TL[m[2]];
+                  let best = null, bestDiff = Infinity;
+                  for (const [k, n2] of Object.entries(FACE)) {
+                    if (!k.endsWith(ty)) continue;
+                    const base = parseInt(k, 10);
+                    for (const mul of [1, 1.3, 1.4, 1.5]) {
+                      const d = Math.abs(raw - base * mul);
+                      if (d < bestDiff) { bestDiff = d; best = n2; }
+                    }
+                  }
+                  if (best && bestDiff <= 0.6 && !attacker.combatant.procurationHermes.includes(best)) {
+                    attacker.combatant.procurationHermes.push(best); gained.push(best);
+                  }
+                }
+                if (gained.length > 0) {
+                  defenseNote += ` <:Unlock:1528452595859849406>[+${gained.length} Procuration (Dice ${gained.join(", ")}) → ${attacker.combatant.procurationHermes.length}/9]`;
+                }
+              }
+              // ❗ Fragaria: "Degraded Fairy không cộng Light ngay trong turn sau
+              // khi sử dụng". Text ghi "Nhận 1 Light NẾU đánh dính kẻ thù" — có
+              // ĐIỀU KIỆN nên parser chung CỐ Ý bỏ qua (đúng nguyên tắc: thà sót
+              // còn hơn áp nhầm). Xử lý thật ở đây: đánh dính thì cộng NGAY.
+              if (p.skillKey === "degraded fairy" && attacker.combatant && finalDmg > 0) {
+                const before = attacker.combatant.currentLight ?? 0;
+                attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 5, before + 1);
+                if (attacker.combatant.currentLight > before) {
+                  defenseNote += ` <:Light:1513786082502770719>[Degraded Fairy: +1 Light (đánh dính)]`;
+                }
+              }
               const furiosoSkill = p.skillKey ? findSkill(p.skillKey) : null;
               if (furiosoSkill?.caduceusFurioso && attacker.combatant) {
                 const F = furiosoSkill.caduceusFurioso;

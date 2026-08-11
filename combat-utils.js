@@ -399,8 +399,30 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
     // Nhưng `hpLostThisTurn` chỉ cộng lên SAU khi trừ HP xong — nên với một chuỗi
     // 57 hit, HP về 0 từ giữa chừng mà ngưỡng vẫn chưa "đã vượt" ở đúng hit làm
     // chết. Phải chặn ngay tại hit LÀM VƯỢT ngưỡng: cắt phần dmg vượt quá.
+    // ❗ BUG ĐÃ SỬA (Fragaria: "player start trận với 20% HP thì bị đánh vẫn KHÔNG
+    // KÍCH"). Điều kiện cũ đòi **MẤT** ≥50% Max HP trong turn — người đang ở 20%
+    // HP thì chết trước khi mất nổi 50% ⇒ không bao giờ kích hoạt được.
+    // Luật đúng: *"khi trúng đòn vượt ngưỡng NỬA THANH HP"* = HP **tụt xuống
+    // dưới vạch giữa thanh máu**. Ai đã ở dưới vạch đó thì đòn TIẾP THEO kích ngay.
     if (combatant.hasIndexOraclesProxy && (combatant.maxHp ?? 0) > 0) {
-      const cap = (combatant.maxHp ?? 0) * 0.5;
+      const halfBar = (combatant.maxHp ?? 0) * 0.5;
+      const hpNow = combatant.currentHp ?? 0;
+      // Đã ở dưới vạch giữa ⇒ chặn TOÀN BỘ dmg còn lại của turn.
+      if (hpNow <= halfBar) {
+        combatant.shinRienTriggered = true;
+        combatant.shinRienBlockedDmg = (combatant.shinRienBlockedDmg ?? 0) + amount;
+        return 0;
+      }
+      // Đòn này làm TỤT QUA vạch ⇒ cho ăn đúng phần tới vạch, chặn phần dư.
+      if (hpNow - amount < halfBar) {
+        combatant.shinRienTriggered = true;
+        combatant.shinRienBlockedDmg = (combatant.shinRienBlockedDmg ?? 0) + (amount - (hpNow - halfBar));
+        amount = hpNow - halfBar;
+        if (!(amount > 0)) return 0;
+      }
+    }
+    if (false) {
+      const cap = 0;
       const already = combatant.hpLostThisTurn ?? 0;
       if (already >= cap) {
         combatant.shinRienBlockedDmg = (combatant.shinRienBlockedDmg ?? 0) + amount;

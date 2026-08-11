@@ -8,7 +8,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON_UNLOCK_PROTECTION, applySanityGain, syncCompassionPhantomHp, healHpCapped, applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
+module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BURN_BLEED_MUL, POISE_MAX, SINGLETON_UNLOCK_PROTECTION, applySanityGain, syncCompassionPhantomHp, healHpCapped, applyHpLoss, endManifestedEgoState, hasPerk, ENCOUNTER_STAMINA_REGEN_PER_TURN, EMOTION_LEVEL_COOLDOWN_TURNS }) {
 
   function advanceCombatantTurn(combatant) {
     // LƯỚI AN TOÀN — Memories: Compassion chỉ hiệu lực khi CẦM Lucent Historia
@@ -257,6 +257,20 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
       }
     } else if ((combatant.emotionLevelCooldownLeft ?? 0) > 0) {
       combatant.emotionLevelCooldownLeft -= 1;
+      // ❗ BUG ĐÃ SỬA (Fragaria: "khi toàn bộ Emotion Level đang CD, Coin THỪA sẽ
+      // ĐỌNG LẠI — VD 9/3 — đến khi Emotion Level hết CD thì TỰ ĐỘNG mở luôn").
+      // Trước đây Coin đọng đúng, nhưng KHÔNG AI kích lại lúc CD về 0 ⇒ người
+      // chơi phải chờ tới lần nhận Coin kế tiếp mới lên level.
+      // Nay CD vừa hết thì gọi lại applyEmotionDelta(0) — nó chạy vòng while
+      // level-up với số Coin đang có, tự lên NHIỀU cấp một lúc nếu đủ (heal lần
+      // lượt từng cấp), và cấp CAO HƠN ghi đè cấp thấp (đúng luật "luôn lấy
+      // Emotion Level cao hơn").
+      if (combatant.emotionLevelCooldownLeft <= 0 && applyEmotionDelta) {
+        const lvNotes = applyEmotionDelta(combatant, 0) ?? [];
+        if (lvNotes.length > 0) {
+          combatant.emotionAutoLevelNote = `⏳ Hết CD Emotion Level — Coin đọng đủ, lên cấp ngay: ${lvNotes.join(" · ")}`;
+        }
+      }
     }
     // Giảm cooldown skill — xoá hẳn khi về 0 (không giữ key rác trong object).
     if (combatant.skillCooldowns) {
@@ -287,7 +301,12 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
     combatant.mangDiceUpApplied = 0;
     combatant.clashPowerUp = 0;
     // mangLevel là chỉ số profile — KHÔNG reset theo turn.
-    combatant.shinMangActive = false;
+    // ❗ BUG ĐÃ SỬA (Fragaria: "kích hoạt Shin của Shin - Rien chỉ kéo dài 1 turn
+    // trong khi đáng lẽ phải VĨNH VIỄN cho tới hết Encounter").
+    // GỐC: dòng này reset Shin MỖI TURN — đúng cho Shin/Mang thường (bật theo
+    // lượt), nhưng Shin do **Shin - Rien** cấp là tới hết Encounter.
+    // `shinRienActive` là cờ đánh dấu nguồn ⇒ giữ Shin bật.
+    if (!combatant.shinRienActive) combatant.shinMangActive = false;
     combatant.shinMangUsedThisTurn = false;
     combatant.bleedFirstHitUsedThisTurn = false;
     if ((combatant.breakTheDamsCdLeft ?? 0) > 0) combatant.breakTheDamsCdLeft -= 1;
@@ -474,7 +493,9 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
     // trong CÙNG hàm này nên đọc muộn hơn là luôn ra 0.
     if (combatant.hasIndexOraclesProxy) {
       const halfMax = (combatant.maxHp ?? 0) * 0.5;
-      if (!combatant.shinRienActive && (combatant.hpLostThisTurn ?? 0) >= halfMax && halfMax > 0) {
+      // Dùng CỜ do applyHpLoss bật (nguồn sự thật duy nhất) thay vì tự tính lại
+      // theo hpLostThisTurn — cách cũ bỏ sót người đang ở dưới nửa thanh sẵn.
+      if (!combatant.shinRienActive && combatant.shinRienTriggered) {
         combatant.shinRienActive = true;   // kéo dài TỚI HẾT ENCOUNTER (không reset ở đâu)
         combatant.shinMangActive = true;   // vào trạng thái Shin thật sự (Res/hiển thị)
         // ❗ LỖ HỔNG THIẾT KẾ Fragaria phát hiện: địch dồn dmg quá nhanh ⇒ Shin -
@@ -566,6 +587,7 @@ module.exports = function ({ KARMIC_MAX, FURIOSO_KARMIC_COST, SIZZLING_WOUND_BUR
     // Grace of God — 1 lần MỖI VÒNG TURN ORDER.
     combatant.graceOfGodUsedThisTurn = false;
     combatant.shinRienBlockedDmg = 0;
+    combatant.shinRienTriggered = false;
     // Providence of the Prescript — "nhận Poise theo cách trên 3 lần thì TURN KẾ
     // Crit Mul +0.3". Chốt sổ ở đây rồi reset bộ đếm.
     if (combatant.hasProvidenceOfPrescript) {

@@ -8,7 +8,7 @@
 // factory function nhận dependency từ index.js (giống pattern các module đã
 // tách trước đó — xem comment ở encounter-panels.js).
 
-module.exports = function ({ MAX_PROFILES, RedisTimeoutError, VALID_ITEMS_SET, log, redis, withTimeout }) {
+module.exports = function ({ mostRecentHpResetBoundaryUtc, getMinorInjuries, MAX_PROFILES, RedisTimeoutError, VALID_ITEMS_SET, log, redis, withTimeout }) {
 
 // ─── PLAYER DATA HELPERS ──────────────────────────────────────────────────────
 function migratePlayerData(data) {
@@ -252,6 +252,34 @@ async function getPlayerData(userId) {
 
 // Giống getPlayerData nhưng trả về cả slot — dùng khi caller cần gọi savePlayerData
 // với cùng slot để tránh gọi getActiveProfileSlot 2 lần (2 Redis round-trips).
+/** applyHpCycleReset — reset HP + tự chữa CHẤN THƯƠNG NHẸ ở mốc 0h/12h giờ VN.
+ *
+ *  ❗ BUG ĐÃ SỬA (Fragaria: "chu kỳ 12h mỗi ngày reset HP và injury nhẹ chưa hoạt
+ *  động; KHÔNG player nào được heal sau mốc 12h/24h").
+ *  GỐC: việc reset chỉ chạy ở 3 chỗ (join encounter, party-board, một nhánh của
+ *  message-create-handler). Người chơi xem `-balance`, `-heal`, đi shop… thì
+ *  KHÔNG đường nào chạm tới ⇒ tưởng như chu kỳ không hoạt động.
+ *  Nay đặt ở `getPlayerDataWithSlot` — cửa ngõ CHUNG của mọi đường đọc profile.
+ *  @returns true nếu vừa reset (nơi gọi nên save).
+ */
+function applyHpCycleReset(data, deps) {
+  const { mostRecentHpResetBoundaryUtc, MINOR_INJURIES } = deps ?? {};
+  if (!mostRecentHpResetBoundaryUtc) return false;
+  const boundary = mostRecentHpResetBoundaryUtc(Date.now());
+  if ((data.hpLastResetCheck ?? 0) >= boundary) return false;
+  data.hpLastResetCheck = Date.now();
+  // Chấn thương NHẸ tự khỏi; NẶNG + Sizzling Wound (vĩnh viễn) thì giữ.
+  if (Array.isArray(data.injuries) && data.injuries.length > 0 && Array.isArray(MINOR_INJURIES)) {
+    const before = data.injuries.length;
+    data.injuries = data.injuries.filter(
+      i => !MINOR_INJURIES.some(m => String(m).toLowerCase() === String(i).toLowerCase()));
+    if (data.injuries.length !== before) data.minorInjuriesAutoHealed = before - data.injuries.length;
+  }
+  // HP về đầy: xoá currentHp để mọi nơi tính lại theo Max HP hiện tại.
+  delete data.currentHp;
+  return true;
+}
+
 async function getPlayerDataWithSlot(userId) {
   const slot = await getActiveProfileSlot(userId);
   const key = playerKeyForSlot(userId, slot);
@@ -262,6 +290,12 @@ async function getPlayerDataWithSlot(userId) {
       const data = raw
         ? migratePlayerData(typeof raw === "string" ? JSON.parse(raw) : raw)
         : { exp: 0, ahn: 0, lunacy: 0, redeemedCodes: [], books: {}, items: {}, pages: {}, unlockedSkillTree: [], equippedPages: [null,null,null,null,null], equippedEgoPages: [null,null,null,null,null], equippedWeapon: null, equippedOutfit: null, equippedAccessories: [null,null,null], ShinUnlock: false, LightSkillTreeUnlock: false, "50StatUnlock": false, ManifestedEGOUnlock: false };
+      // Áp chu kỳ 12h NGAY tại cửa ngõ đọc — mọi lệnh đều thấy HP đã reset.
+      // getMinorInjuries là HÀM gọi muộn — `MINOR_INJURIES` là const khai SAU
+      // dòng require này trong index.js (TDZ nếu truyền thẳng giá trị).
+      if (applyHpCycleReset(data, { mostRecentHpResetBoundaryUtc, MINOR_INJURIES: getMinorInjuries?.() })) {
+        savePlayerData(userId, data, slot).catch(() => {});
+      }
       return { data, slot };
     } catch (err) {
       lastErr = err;
