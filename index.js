@@ -2327,7 +2327,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       attackerId: ekey, attackerType: "enemy",
       targets: applySpreadFalloff(previews, findSkill(verify.skillKey ?? "")).map(p => ({ targetId: p.target.id, targetType: "player", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
       dmgStr: effectiveDmgStrFinal, defenseBypass, tags: effectiveTagsRawFinal,
-      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+      skillKey: verify.skillKey ?? verifyOpts.forcedSkillKey ?? null, // forcedSkillKey: AI tự roll page ⇒ verify không suy ra được; thiếu nó thì page của AI bị coi là M1 (né 1 lần hết cả nhóm) autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
       // Lưu mô tả roll của AI vào pendingAction để reactive-defense/resolve
       // dựng được perHitBypass ĐÚNG TỪNG HIT (xem parsePerHitBypass).
       skillRollEmbed: rollDescription ? { description: rollDescription } : verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,

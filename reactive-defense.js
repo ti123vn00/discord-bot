@@ -614,7 +614,12 @@ async function commitAutoSkippedTargets(channelId, pendingId) {
           tr.combatant.borrowedEyeCharges -= use;
           // Né ĐÚNG số hit trả được — dùng chung field với Evade thường.
           tr.combatant.evadeHitSelections = Array.from({ length: use }, (_, i2) => i2 + 1);
-          tr.combatant.evadeCharges = Math.max(0, (tr.combatant.evadeCharges ?? 0));
+          // ❗ BUG ĐÃ SỬA: lần trước tôi chỉ set `evadeHitSelections` mà giữ
+          // `evadeCharges` nguyên (thường = 0) ⇒ resolve thấy 0 charge nên KHÔNG
+          // né gì cả — đúng triệu chứng "Borrowed Eyes vẫn không tự động né".
+          // Charge của Borrowed Eyes là MIỄN PHÍ (không tốn Stamina) nên cấp thẳng.
+          tr.combatant.evadeCharges = (tr.combatant.evadeCharges ?? 0) + use;
+          tr.combatant.borrowedEyesFreeEvade = true; // đánh dấu để KHÔNG trừ Stamina
           t.borrowedEyesAutoNote = `👁️ **Borrowed Eyes** — tự động né **${use}** hit (còn ${tr.combatant.borrowedEyeCharges} charge)`;
           borrowedAuto = true;
         }

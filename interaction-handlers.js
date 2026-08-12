@@ -2508,12 +2508,32 @@ client.on("interactionCreate", async (interaction) => {
       // CHẶN: nếu đã có 1 roll pending CHƯA hết hạn cho user này, không cho
       // roll skill mới nào nữa cho tới khi roll cũ được dùng (chọn target)
       // hoặc tự hết hạn (PENDING_CRITICAL_ROLL_TTL_MS).
+      // ❗ BUG ĐÃ SỬA (Fragaria: "bấm page rồi lỡ bấm Back thì KHÔNG CHO XÀI SKILL
+      // LUÔN"). Cách chống-exploit CŨ là **CHẶN HẲN** mọi lần chọn skill khác cho
+      // tới khi roll cũ hết TTL ⇒ lỡ Back một cái là khoá cứng người chơi.
+      // Nay đã có `pageRollCache` (cache kết quả roll theo page + biến thể trong
+      // CÙNG TURN): chọn lại trả về ĐÚNG roll cũ, không roll lại, không cộng Coin
+      // ⇒ exploit đã bị chặn ở gốc mà KHÔNG cần khoá người chơi.
+      // Chỉ còn chặn khi chọn **skill KHÁC** trong lúc còn roll treo — đúng ý ban
+      // đầu (không cho đổi skill để né kết quả xấu), nhưng chọn LẠI CHÍNH NÓ thì
+      // cho phép, vì kết quả đã bị khoá bởi cache.
       const pendingKeyCheck = `${channelId}:${interaction.user.id}`;
       const existingPending = pendingCriticalRolls.get(pendingKeyCheck);
-      if (existingPending && existingPending.expiresAt > Date.now()) {
-        return interaction.reply({ content: `⚠️ Bạn đang có 1 kết quả roll (**${existingPending.skillKey ?? "skill trước"}**) chưa chọn target — phải chọn target cho roll đó trước (không thể roll skill khác/roll lại để đổi kết quả).`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      if (existingPending && existingPending.expiresAt > Date.now()
+          && existingPending.skillKey && existingPending.skillKey !== critSkillName) {
+        return interaction.reply({
+          content: `⚠️ Bạn đang có 1 kết quả roll (**${existingPending.skillKey}**) chưa chọn target.`
+            + `\n> Chọn target cho nó, hoặc bấm lại **chính ${existingPending.skillKey}** để tiếp tục — không đổi sang skill khác được.`,
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
       }
+      // Cache roll cho Critical — GIỐNG HỆT page (xem `pageRollCache`): bấm lại
+      // cùng Critical trong CÙNG TURN trả về đúng kết quả cũ, không roll lại.
+      const critCacheKey = `crit::${critSkillName}::${critReuseKey ?? ""}`;
+      const cachedCrit = combatant.pageRollCache?.key === critCacheKey ? combatant.pageRollCache.verify : null;
       let verify;
+      if (cachedCrit) { verify = cachedCrit; }
+      else
       try {
         // Truyền số lần Reuse người chơi vừa chọn (tham số variantKey) — thiếu
         // nó thì resolveReuseTimes hiểu là "max" và tự reuse hết mức.
@@ -2540,6 +2560,13 @@ client.on("interactionCreate", async (interaction) => {
           if (encFresh?.players?.[interaction.user.id]) await saveEncounter(channelId, encFresh);
         } catch { /* không nạp lại được thì thôi, đã báo lỗi cho người chơi */ }
         return;
+      }
+      if (!cachedCrit) {
+        try {
+          const encCC = await getEncounter(channelId);
+          const meCC = encCC?.players?.[interaction.user.id];
+          if (meCC) { meCC.pageRollCache = { key: critCacheKey, verify }; await saveEncounter(channelId, encCC); }
+        } catch { /* cache lỗi không chặn việc đánh */ }
       }
       // GAP ĐÃ SỬA (phát hiện qua rà soát khi thêm Shock Round): resolveSkillVerification
       // CÓ THỂ mutate combatant NGAY lúc roll() (VD Shock Round trừ bulletStack,
@@ -2612,6 +2639,9 @@ client.on("interactionCreate", async (interaction) => {
         announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
+        // Critical ĐÃ dùng thật ⇒ xoá cache roll (giữ lại thì turn sau bấm lại
+        // cùng Critical sẽ ăn kết quả cũ).
+        if (encounter.players?.[interaction.user.id]) encounter.players[interaction.user.id].pageRollCache = null;
         await saveEncounter(channelId, encounter);
         // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
         // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
@@ -2863,11 +2893,34 @@ client.on("interactionCreate", async (interaction) => {
       if (!isCurrentTurnHolder(encounter, interaction.user.id)) {
         return interaction.reply({ content: "⚠️ Chưa tới lượt bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
       }
+      // ❗❗ LỖ HỔNG ĐÃ VÁ (Fragaria): "bấm page, KHÔNG chọn target, back ra, M1,
+      // rồi bấm page lại — lặp liên tục sẽ RESET KẾT QUẢ DICE theo ý thích và
+      // được Emotion Coin thoải mái."
+      // GỐC: mỗi lần chọn page là `resolveSkillVerification` roll LẠI từ đầu —
+      // không có gì ràng buộc kết quả đã roll. Người chơi bấm-back-bấm tới khi ra
+      // dice đẹp, mỗi lần lại +Emotion Coin.
+      // SỬA: CACHE kết quả roll trên chính combatant theo (page, biến thể). Bấm
+      // lại cùng page trong CÙNG TURN ⇒ trả về ĐÚNG kết quả cũ, không roll lại,
+      // không cộng Coin lần nữa. Cache xoá ở advanceCombatantTurn.
+      const rollCacheKey = `${pageName}::${chosenVariantKey ?? ""}`;
       let verify;
-      try {
-        verify = await resolveSkillVerification(channelId, combatant, pageName, null, false, chosenVariantKey);
-      } catch (err) {
-        return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      const cachedRoll = combatant.pageRollCache?.key === rollCacheKey ? combatant.pageRollCache.verify : null;
+      if (cachedRoll) {
+        verify = cachedRoll;
+      } else {
+        try {
+          verify = await resolveSkillVerification(channelId, combatant, pageName, null, false, chosenVariantKey);
+        } catch (err) {
+          return interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
+        try {
+          const encCache = await getEncounter(channelId);
+          const meCache = encCache?.players?.[interaction.user.id];
+          if (meCache) {
+            meCache.pageRollCache = { key: rollCacheKey, verify };
+            await saveEncounter(channelId, encCache);
+          }
+        } catch { /* cache lỗi không được chặn việc đánh */ }
       }
       const pendingKey = `${channelId}:${interaction.user.id}`;
       pendingCriticalRolls.set(pendingKey, {
@@ -2909,6 +2962,9 @@ client.on("interactionCreate", async (interaction) => {
         // — không còn advance turn tự động sau hành động này nữa.
         // Lấy file BGM đang chờ TRƯỚC khi save (đọc xong xoá cờ, save luôn thấy sạch).
         const bgmCrit = takePendingBgmFiles(encounter);
+          // Page ĐÃ dùng thật ⇒ xoá cache roll (nếu giữ, turn sau bấm lại
+          // cùng page sẽ ăn kết quả cũ).
+          if (encounter.players?.[interaction.user.id]) encounter.players[interaction.user.id].pageRollCache = null;
         await saveEncounter(channelId, encounter);
         // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
         // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
@@ -3370,6 +3426,9 @@ client.on("interactionCreate", async (interaction) => {
       };
       outLines = await resolveOnePendingAction(encounter, p);
       announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
+      // Critical ĐÃ dùng thật ⇒ xoá cache roll (giữ lại thì turn sau bấm lại
+      // cùng Critical sẽ ăn kết quả cũ).
+      if (encounter.players?.[interaction.user.id]) encounter.players[interaction.user.id].pageRollCache = null;
       await saveEncounter(channelId, encounter);
     });
     const bgmAlly = takePendingBgmFiles(await getEncounter(channelId).catch(() => null) ?? {});
@@ -3401,7 +3460,10 @@ client.on("interactionCreate", async (interaction) => {
     // đây KHÔNG có cách quay lui nếu bấm nhầm — giờ thêm "◀ Back" làm option
     // ĐẦU TIÊN (xem chỗ buildEnemyTargetOptions được gọi phía trên), quay thẳng
     // về dropdown top-level Attack/Moves/Special.
-    if (interaction.values[0] === "back") {
+    // ❗ multi-select (AOE) cho chọn NHIỀU giá trị ⇒ "back" có thể KHÔNG nằm ở
+    // vị trí đầu. Kiểm `[0]` là bỏ sót — đúng lý do Fragaria thấy lỗi này "chỉ áp
+    // dụng với skill AOE".
+    if (interaction.values.includes("back")) {
       const encBackTarget = await getEncounter(channelId);
       const combatantBackTarget = encBackTarget?.players?.[interaction.user.id];
       if (!combatantBackTarget) return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});

@@ -2138,7 +2138,7 @@ async function resolveOnePendingAction(encounter, p) {
                   }
                 }
                 if (gained.length > 0) {
-                  defenseNote += ` <:Unlock:1528452595859849406>[+${gained.length} Procuration (Dice ${gained.join(", ")}) → ${attacker.combatant.procurationHermes.length}/9]`;
+                  verifyNote += ` <:Unlock:1528452595859849406>[+${gained.length} Procuration (Dice ${gained.join(", ")}) → ${attacker.combatant.procurationHermes.length}/9]`;
                 }
               }
               // ❗ Fragaria: "Degraded Fairy không cộng Light ngay trong turn sau
@@ -2149,7 +2149,7 @@ async function resolveOnePendingAction(encounter, p) {
                 const before = attacker.combatant.currentLight ?? 0;
                 attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight ?? 5, before + 1);
                 if (attacker.combatant.currentLight > before) {
-                  defenseNote += ` <:Light:1513786082502770719>[Degraded Fairy: +1 Light (đánh dính)]`;
+                  verifyNote += ` <:Light:1513786082502770719>[Degraded Fairy: +1 Light (đánh dính)]`;
                 }
               }
               const furiosoSkill = p.skillKey ? findSkill(p.skillKey) : null;

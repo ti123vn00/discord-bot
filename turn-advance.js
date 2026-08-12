@@ -588,6 +588,9 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     combatant.graceOfGodUsedThisTurn = false;
     // Zwei Association — mỗi turn chỉ đỡ giùm cho 1 người; sang turn mới chọn lại.
     combatant.zweiProtectingId = null;
+    // Cache roll của page — chỉ có ý nghĩa TRONG turn (chống bấm-back-reroll).
+    // Sang turn mới thì roll lại là hợp lệ.
+    combatant.pageRollCache = null;
     combatant.shinRienBlockedDmg = 0;
     combatant.shinRienTriggered = false;
     // Providence of the Prescript — "nhận Poise theo cách trên 3 lần thì TURN KẾ

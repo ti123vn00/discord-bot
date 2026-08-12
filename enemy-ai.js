@@ -630,7 +630,15 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
             : (chosen.fromPattern ? availableTargets.slice(0, 1) : availableTargets);
           for (const t of targetsForThisHit) {
             try {
-              await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { rollDescription, coin: String(rolled.totalEmotionDelta ?? 0), isAiCall: true });
+              // ❗❗ BUG NẶNG ĐÃ SỬA (Fragaria: "Eye Gouger sử dụng Sky Clearing Cut thế
+              // nhưng lại xài GROUP HIT M1 của Light — 1 lần né hết 4 đòn, trong khi
+              // đáng lẽ phải né TỪNG HIT do là page").
+              // GỐC: `isM1Type = kind === "enemyattack" && !p.skillKey`. AI truyền
+              // dmgStr THUẦN SỐ (đã tự roll) nên `verify.skillKey` = null ⇒
+              // pendingAction KHÔNG có skillKey ⇒ bị coi là M1 ⇒ gom hit theo
+              // weapon weight. Page phải là 1 hit/nhóm.
+              // Nay truyền `forcedSkillKey` để doEnemyAttack gắn đúng.
+              await doEnemyAttack(channelId, encounter.gmId, mobKey, rolled.dmgStr, `<@${t.pid}>`, { rollDescription, coin: String(rolled.totalEmotionDelta ?? 0), isAiCall: true, forcedSkillKey: chosen.key });
               // Narrative — doEnemyAttack ở trên chỉ nhận dmgStr THUẦN SỐ (đã tự
               // build qua autoBuildDmgStrFromSkillRoll, KHÔNG dùng skill:/
               // customskill: để tránh roll đôi — xem comment phía trên) nên
