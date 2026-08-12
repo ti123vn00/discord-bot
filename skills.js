@@ -6275,6 +6275,25 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDic
   return { dmgStr, warnings, tracked, totalEmotionDelta, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
 }
 
+
+/** applyIndulgenceToDmgStr — cộng `bonus` count vào MỌI dice có inflict Sinking.
+ *
+ *  ❗❗ BUG TÁI PHÁT — SỬA LẠI CHO ĐÚNG CHỖ (Fragaria lần 2, 12/08: "Indulgence in
+ *  the Prescript vẫn chưa hoạt động, vẫn chỉ áp 2 Sinking ở đòn stiletto thay vì 4").
+ *  LẦN SỬA TRƯỚC đặt phần cộng ở `resolve-pending-action.js` — cộng vào
+ *  `target.sinking` LÚC RESOLVE. Nó CÓ chạy, nhưng SAI TẦNG:
+ *    • Cộng 1 lần cho CẢ ĐÒN, trong khi luật là "mỗi dice có áp Sinking + 2 count"
+ *      (Illuminate Thy Vacuity 5 dice × 1 Sinking phải thành 5 × 3).
+ *    • `dmgStr` — thứ người chơi ĐỌC trong Action Log — vẫn in "+2Sinking", nên
+ *      con số hiện ra KHÁC con số áp thật. Đúng lớp lỗi "hai nguồn sự thật".
+ *  Nay cộng THẲNG vào dmgStr lúc dựng đòn: hiển thị và tính toán là MỘT.
+ *  `calcMathCore` đọc "+NSinking" (thiếu số = 1) nên chỉ cần viết lại con số.
+ */
+function applyIndulgenceToDmgStr(dmgStr, bonus) {
+  if (!dmgStr || !(bonus > 0)) return dmgStr;
+  return String(dmgStr).replace(/\+(\d+)?Sinking/gi, (_m, n) => `+${(parseInt(n ?? "1", 10) || 1) + bonus}Sinking`);
+}
+
 /** resolveSkillKey — trả về ĐÚNG KEY trong object SKILLS cho một chuỗi người
  *  chơi gõ (hoặc value dropdown). Đây là thứ mọi handler tự động hoá so sánh
  *  (`p.skillKey === "wheels industry"`), KHÔNG PHẢI tên hiển thị.
@@ -6348,4 +6367,5 @@ function resolveSkillKey(raw) {
   return null;
 }
 
-module.exports = { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, startForceMaxDice, stopForceMaxDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
+module.exports = {
+  applyIndulgenceToDmgStr, SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, startForceMaxDice, stopForceMaxDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };

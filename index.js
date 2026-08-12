@@ -2450,7 +2450,7 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 // nên đặt sớm là an toàn tuyệt đối. Xem thêm test t-boot.js.
 const { SINGULARITIES, findSingularity } = require("./singularity");
 const { MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor, egoPassivesFor, hasEgoMechanic, egoBgmFor, resolveEncounterBgm, describeEncounterBgm } = require("./ego");
-const { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll } = require("./skills");
+const { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, applyIndulgenceToDmgStr } = require("./skills");
 const { buildEncounterActionPanel, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildBossActionPanel } = require("./encounter-panels")({
   findWeaponAnywhere, findSkill, resolveSkillKey, cdKeyFor, findSingularity, egoSkillKeysFor, hasPerk, hasShinAccess,
   // parseSkillCost khai ở DƯỚI (require skill-verification.js) nên KHÔNG truyền
@@ -2582,7 +2582,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ findSkill, resolveSkillKey, cdKeyFor, computeDiceModifier, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll, r, combatantResStr, findWeaponAnywhere, getEncounter });
+const { parseSkillCooldownTurns, parseSkillCost, extractDefenseBypassTags, mergeDefenseBypassTags, forceStagger, resolveSkillVerification } = require("./skill-verification")({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey, cdKeyFor, computeDiceModifier, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, annotateLinesWithEmotion, autoBuildDmgStrFromSkillRoll, r, combatantResStr, findWeaponAnywhere, getEncounter });
 // Tăng giới hạn listener — kiến trúc CÓ CHỦ Ý dùng NHIỀU client.on("interactionCreate",
 // ...) riêng biệt (mỗi cái tự check customId prefix, return sớm nếu không khớp) thay
 // vì 1 handler khổng lồ — KHÔNG PHẢI memory leak thật, chỉ là số lượng listener hợp lệ

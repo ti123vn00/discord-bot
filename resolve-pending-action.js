@@ -1080,9 +1080,14 @@ async function resolveOnePendingAction(encounter, p) {
               // 2 count ở mỗi đòn có áp Sinking".
               const sinkingInflictedThisAction = (t.preview?.finalSinking ?? sinkingBeforeHit) > sinkingBeforeHit;
               const ruptureInflictedThisAction = (t.preview?.finalRupture ?? ruptureBeforeHit) > ruptureBeforeHit;
+              // ⚠️ KHÔNG cộng Sinking của Indulgence in Prescript Ở ĐÂY nữa.
+              // Fragaria báo lần 2: cộng lúc resolve thì (a) chỉ được 1 lần cho cả
+              // đòn thay vì +2 cho TỪNG dice có Sinking, và (b) `dmgStr` in ra
+              // trong Action Log vẫn là "+2Sinking" ⇒ số hiện KHÁC số áp.
+              // Nay cộng thẳng vào dmgStr lúc dựng đòn (skill-verification.js →
+              // applyIndulgenceToDmgStr), nên preview.finalSinking ĐÃ bao gồm sẵn.
               if ((attacker.combatant?.indulgenceInPrescript ?? 0) > 0 && sinkingInflictedThisAction) {
-                pendingSinkingBonus += 2;
-                defenseNote += ` 📜[Indulgence in Prescript: +2 Sinking]`;
+                defenseNote += ` 📜[Indulgence in Prescript: mỗi dice có Sinking +2 count]`;
               }
               if (attacker.combatant?.hasProvidenceOfPrescript && finalDmg > 0) {
                 // "Khi bản thân ≥20 Poise: mỗi đòn ĐÁNH TRÚNG gây thêm 1 Sinking

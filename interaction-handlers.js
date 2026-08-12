@@ -1053,11 +1053,8 @@ client.on("interactionCreate", async (interaction) => {
           for (const tier of [1, 2, 3]) {
             for (const ty of ["blunt", "pierce", "slash"]) candidateNames.push(`caduceus crit${tier} ${ty}`);
           }
-          const procCl = (clasher.procurationHermes ?? []).length;
-          const unlockCl = clasher.prescriptUnlockLevel ?? 0;
-          if (unlockCl >= 1 && (procCl >= 9 || clasher.shinRienFuriosoReady === true)) {
-            candidateNames.push(["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][unlockCl - 1]);
-          }
+          const furiosoKeyCl = furiosoClashKeyFor(clasher);
+          if (furiosoKeyCl) candidateNames.push(furiosoKeyCl);
         }
         const clashOptions = [];
         const addedClashKeys = new Set();
@@ -1630,6 +1627,21 @@ client.on("interactionCreate", async (interaction) => {
       const clasher = clasherResolved.combatant;
       const chosenSkill = findSkill(chosenKey);
       if (!chosenSkill) { displayText = "❌ Không tìm thấy skill đã chọn."; return; }
+
+      // ❗ KIỂM LẠI ĐIỀU KIỆN NGAY LÚC BẤM — dropdown có thể đã cũ (gửi từ lúc
+      // đòn địch bay tới, người chơi xài Furioso xong mới bấm). Xem giải thích
+      // đầy đủ ở `furiosoClashKeyFor`.
+      if (chosenSkill.caduceusFurioso) {
+        const stillEligible = furiosoClashKeyFor(clasher);
+        if (stillEligible !== chosenKey) {
+          const procNow = (clasher.procurationHermes ?? []).length;
+          displayText = `❌ Không đủ điều kiện Clash bằng **${chosenSkill.name}** — cần **9** <:Procuration:1528452494945157281>Procuration [Hermes] (đang có **${procNow}**). Dùng Furioso xong là Procuration về 0.`;
+          return;
+        }
+      }
+      // Skill khai `unclashable` (Light Dash, Borrowed Eyes, đòn Nothing There…)
+      // — chặn cả khi lọt qua menu cũ.
+      if (chosenSkill.unclashable) { displayText = `❌ **${chosenSkill.name}** không dùng để Clash được.`; return; }
 
       const myRoll = buildSkillRollResult({ skill: chosenSkill });
       // GỐC 2 của bug Caduceus: `firstDiceValue` chỉ có khi skill gọi `r()` —
@@ -3408,6 +3420,31 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply({ content: `❌ ${err.message}`, embeds: [], components: [] }).catch(() => {});
   }
 });
+
+
+/** furiosoClashKeyFor — biến thể Furioso mà `clasher` ĐỦ ĐIỀU KIỆN đem đi Clash,
+ *  hoặc null nếu không đủ.
+ *
+ *  ❗ BUG ĐÃ SỬA (Fragaria 12/08 lần 2: "sau khi sử dụng Furioso rồi thì tôi vẫn
+ *  clash tiếp bằng Furioso được; phải để check ở clash là đủ 9 Procuration thì
+ *  mới clash bằng Furioso được, tôi vừa xài Furioso nên số Procuration về 0 rồi
+ *  thì làm sao mà clash được nữa").
+ *  GỐC: điều kiện chỉ nằm ở chỗ DỰNG dropdown. Dropdown Clash được gửi TỪ TRƯỚC
+ *  (lúc đòn địch bay tới), người chơi xài Furioso xong mới bấm ⇒ menu đã cũ,
+ *  handler `encclashselect` KHÔNG kiểm lại gì cả nên lọt thẳng. Đây là lớp lỗi
+ *  "kiểm ở nơi HIỂN THỊ mà không kiểm ở nơi THỰC THI" — y như bài học "ẩn UI mà
+ *  không chặn logic thì đường còn lại vẫn lọt".
+ *  NAY: một hàm DUY NHẤT, gọi ở CẢ hai nơi — dựng menu và lúc bấm chọn.
+ */
+function furiosoClashKeyFor(clasher) {
+  if (!clasher) return null;
+  const unlock = clasher.prescriptUnlockLevel ?? 0;
+  if (unlock < 1) return null;
+  const proc = (clasher.procurationHermes ?? []).length;
+  // Đủ 9 Procuration, HOẶC được Shin - Rien mở sẵn (follow-up miễn phí 1 lần).
+  if (proc < 9 && clasher.shinRienFuriosoReady !== true) return null;
+  return ["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][unlock - 1] ?? null;
+}
 
 /** announceBgmIfChanged — GỬI FILE mỗi khi BGM đang-phát ĐỔI, không chỉ ghi chữ.
  *

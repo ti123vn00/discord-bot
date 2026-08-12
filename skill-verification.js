@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceModifier, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
+module.exports = function ({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey, cdKeyFor, computeDiceModifier, resolveReuseTimes, hasPerk, isEgoSkill, buildSkillRollResult, client, ENCOUNTER_SANITY_MAX, r, combatantResStr, autoBuildDmgStrFromSkillRoll, annotateLinesWithEmotion, findWeaponAnywhere, getEncounter }) {
 
   function parseSkillCooldownTurns(cdStr) {
     const m = (cdStr ?? "").match(/^(\d+)/);
@@ -505,6 +505,17 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceMo
         repeatTimes: skill.reuseSpec?.mode === "repeat" ? reuseTimesResolved + 1 : 1,
       });
       autoDmgStr = autoResult.dmgStr;
+      // ❗ Indulgence in Prescript — "đòn có áp Sinking sẽ inflict thêm 2 count".
+      // Cộng NGAY vào dmgStr, TỪNG DICE một (xem giải thích đầy đủ ở
+      // `applyIndulgenceToDmgStr` trong skills.js). Đặt ở đây để con số Action
+      // Log in ra CHÍNH LÀ con số được áp — lần sửa trước cộng lúc resolve nên
+      // log vẫn hiện "+2Sinking" còn thực tế lại khác.
+      // GIỮ NGUYÊN ngữ nghĩa cũ: CÓ Indulgence (>0 stack) ⇒ +2 count, KHÔNG nhân
+      // theo số stack — đúng như code cũ ở resolve-pending-action.js và đúng chữ
+      // hiện trong game "[+1 Indulgence in Prescript — đòn có áp Sinking sẽ
+      // inflict thêm 2 count]". ⚠️ Nếu Fragaria muốn 2 stack = +4 count thì đổi
+      // số 2 thành `2 * indulgenceInPrescript` — CHỈ ĐÚNG MỘT DÒNG NÀY.
+      autoDmgStr = applyIndulgenceToDmgStr(autoDmgStr, (attacker?.indulgenceInPrescript ?? 0) > 0 ? 2 : 0);
       autoWarnings = autoResult.warnings;
       // Hiệu ứng KHÔNG đi qua dmgStr được (Fragile/Paralyze/giảm Stamina địch/
       // nhận Imitation-Light/hồi HP) — xem extractNonDmgStrEffects trong skills.js.
