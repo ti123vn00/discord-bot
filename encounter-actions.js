@@ -210,6 +210,14 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
       // Cùng điều kiện với dropdown Special (encounter-panels.js) — nếu 2 nơi
       // lệch nhau thì nút hiện ra rồi bấm lại báo lỗi.
       if (!hasShinAccess(player)) throw new Error("Bạn chưa sở hữu Shin (GM cấp qua `-unlockskilltree @bạn Shin`).");
+      // ❗ Fragaria: "Gate Shin của người dùng và báo với họ là đã kích hoạt Shin
+      // rồi — Shin - Rien tự trigger Shin VĨNH VIỄN tới hết Encounter, để họ bấm
+      // được nữa chỉ khiến họ phí Sanity vô ích."
+      // Chặn ở ĐÂY (nguồn chung của cả lệnh text lẫn dropdown) chứ không chỉ ẩn
+      // option — ẩn UI mà không chặn logic thì đường còn lại vẫn tiêu 25 Sanity.
+      if (player.shinRienActive) {
+        throw new Error("Bạn **đã ở trạng thái Shin** rồi — **Shin - Rien** đã tự kích hoạt và kéo dài **tới hết Encounter**. Bấm thêm chỉ mất 25 Sanity vô ích.");
+      }
       if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
       // BUG ĐÃ SỬA (Fragaria làm rõ trực tiếp): "Bạn không thể hi sinh để xài Shin
       // và Mang VƯỢT HƠN mốc cap -10 Sanity" — cap áp lên **KẾT QUẢ SAU KHI TRỪ

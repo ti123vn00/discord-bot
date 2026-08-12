@@ -226,8 +226,16 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
           if (evaluateOnePrescript(c, roll)) succeeded++; else failed++;
         }
         if (succeeded > 0) {
-          c.graceOfPrescript = (c.graceOfPrescript ?? 0) + succeeded;
-          notes.push(`<:Prescript:1528452494945157281> ${label}: **${succeeded}/${rolls.length}** sắc lệnh THÀNH CÔNG — +${succeeded} Grace of the Prescript (tổng ${c.graceOfPrescript}).`);
+          // ❗ BUG ĐÃ SỬA (Fragaria: "Grace of Prescript tràn lên VÔ HẠN trong khi
+          // max cap là 9"). TRẦN = bậc Unlock cao nhất (UNLOCK_THRESHOLDS cuối =
+          // 9) — lấy TỪ ĐÓ chứ không gõ số rời, để không bao giờ lệch nhau.
+          // Quan trọng vì Will of Prescript cộng 10%/Grace (Caduceus): không kẹp
+          // thì %Dmg tăng vô hạn theo số turn.
+          const graceMax = (UNLOCK_THRESHOLDS ?? [3, 6, 9]).slice(-1)[0] ?? 9;
+          const graceBefore = c.graceOfPrescript ?? 0;
+          c.graceOfPrescript = Math.min(graceMax, graceBefore + succeeded);
+          const graceGained = c.graceOfPrescript - graceBefore;
+          notes.push(`<:Prescript:1528452494945157281> ${label}: **${succeeded}/${rolls.length}** sắc lệnh THÀNH CÔNG — +${graceGained} Grace of the Prescript (tổng ${c.graceOfPrescript}/${graceMax})${graceGained < succeeded ? " — đã chạm trần" : ""}.`);
           const newLvl = applyUnlockProgress(c);
           if (newLvl > 0) {
             c.prescriptUnlockJustReached = newLvl; // accessory đọc để hồi 10 Sanity 1 lần
@@ -404,7 +412,18 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
     // HP thì chết trước khi mất nổi 50% ⇒ không bao giờ kích hoạt được.
     // Luật đúng: *"khi trúng đòn vượt ngưỡng NỬA THANH HP"* = HP **tụt xuống
     // dưới vạch giữa thanh máu**. Ai đã ở dưới vạch đó thì đòn TIẾP THEO kích ngay.
-    if (combatant.hasIndexOraclesProxy && (combatant.maxHp ?? 0) > 0) {
+    // ❗❗ BUG NẶNG ĐÃ SỬA (Fragaria: "Shin - Rien khiến người dùng sau khi kích
+    // hoạt bị gate MÃI ở mức 50% HP thay vì hết sau turn nó được kích hoạt ⇒ BẤT
+    // TỬ VĨNH VIỄN").
+    // GỐC: điều kiện chỉ có `hasIndexOraclesProxy && hpNow <= halfBar` — mà mọi
+    // người chơi mặc outfit này, một khi đã tụt dưới nửa thanh máu thì KHÔNG BAO
+    // GIỜ lên lại được ⇒ nhánh "chặn TOÀN BỘ dmg" đúng nghĩa chạy mãi mãi, mọi
+    // turn, cả phần còn lại của Encounter.
+    // LUẬT ĐÚNG: miễn dmg CHỈ trong **turn kích hoạt**. Cuối turn đó
+    // `advanceCombatantTurn` bật `shinRienActive` (tháo mặt nạ, vào Shin tới hết
+    // Encounter) — đó chính là MỐC KẾT THÚC của phần miễn dmg, và cũng là cờ
+    // "đã dùng, không kích lại" (Shin - Rien chỉ xảy ra 1 lần mỗi Encounter).
+    if (combatant.hasIndexOraclesProxy && !combatant.shinRienActive && (combatant.maxHp ?? 0) > 0) {
       const halfBar = (combatant.maxHp ?? 0) * 0.5;
       const hpNow = combatant.currentHp ?? 0;
       // Đã ở dưới vạch giữa ⇒ chặn TOÀN BỘ dmg còn lại của turn.
@@ -1153,7 +1172,54 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
     }
   }
 
+  /** applyFuriosoUseCosts — CHI PHÍ + hệ quả của việc DÙNG một biến thể Furioso.
+   *
+   *  ⚠️ NGUỒN SỰ THẬT DUY NHẤT cho 2 đường: đòn tấn công thật
+   *  (resolve-pending-action.js) VÀ Clash (interaction-handlers.js). Fragaria
+   *  yêu cầu Furioso clash được — nhưng nếu đường Clash không trả giá thì thành
+   *  exploit: Furioso `cost: "—"`, `cd: "—"` nên đường Clash (vốn chỉ trừ Light
+   *  + CD) sẽ cho xài MIỄN PHÍ, lặp vô hạn. Đúng lỗi #12 trong HAND-OFF
+   *  ("thêm lựa chọn cho người chơi mà QUÊN tính chi phí").
+   *
+   *  KHÔNG bao gồm phần hàng đợi Bleed/Bind/Fragile lên MỤC TIÊU — đó là hiệu
+   *  ứng của đòn TRÚNG, không phải chi phí; Clash không trúng ai nên không áp.
+   *  @returns {string[]} các dòng ghi chú để nơi gọi tự nối vào output.
+   */
+  function applyFuriosoUseCosts(user, skill) {
+    if (!user || !skill?.caduceusFurioso) return [];
+    const notes = [];
+    // Đã vỡ mặt nạ từ trước + dùng Furioso ⇒ Saikai2.
+    if (user.sizzlingWound && !user.woundCasingMaskIntact) {
+      user.saikai2TurnsLeft = 2;
+      user.lastFuriosoName = skill.name;
+      user.bgmAnnounceNow = "Saikai2.mp3";
+      user.bgmAnnounceLabel = `BGM **${skill.name}** (kéo dài 2 Turn)`;
+      notes.push(` 🎵[BGM → **Saikai2.mp3** (${skill.name}, 2 Turn)]`);
+    }
+    // Còn mặt nạ ⇒ ghi đè Saikai1 (turn này + turn kế) RỒI mới làm vỡ — đặt sau
+    // khi vỡ thì điều kiện "vẫn còn mặt nạ" không bao giờ đúng.
+    if (user.woundCasingMaskIntact) {
+      user.saikai1TurnsLeft = 2;
+      user.lastFuriosoName = skill.name;
+      user.bgmAnnounceNow = "Saikai1.mp3";
+      user.bgmAnnounceLabel = `BGM **${skill.name}** (kéo dài 2 Turn)`;
+      user.woundCasingMaskIntact = false;
+      user.sizzlingWound = true;
+      notes.push(` 🎭[**Wound-Casing Mask VỠ** vì dùng Furioso — Sizzling Wound quay lại tới hết Encounter]`);
+      notes.push(` 🎵[BGM → **Saikai1.mp3** (turn này + turn kế), sau đó **Saikai2.mp3**]`);
+    }
+    // Singleton — "dùng biến thể Furioso bất kỳ cho 1 stack Indulgence in Prescript".
+    if (user.singleton && user.hasIndexOraclesProxy) {
+      user.indulgenceInPrescript = (user.indulgenceInPrescript ?? 0) + 1;
+      notes.push(` 📜[+1 **Indulgence in Prescript** — đòn có áp Sinking sẽ inflict thêm 2 count]`);
+    }
+    // "Sau khi sử dụng Furioso thì reset toàn bộ Procuration [Hermes] về 0."
+    user.procurationHermes = [];
+    return notes;
+  }
+
   return {
+    applyFuriosoUseCosts,
     rollSpeedValue,
     determineTurnOrder,
     isCurrentTurnHolder,

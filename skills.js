@@ -142,6 +142,25 @@ function stopEmotionTracking() {
   return rolls;
 }
 
+/** cadDice — GIÁ TRỊ DICE của một mặt Caduceus, ĐÃ ăn mọi buff/debuff dice.
+ *
+ *  ❗❗ BUG ĐÃ SỬA (Fragaria: "có vẻ Dice Up hay mọi loại buff khác không được áp
+ *  vào Furioso khiến Dmg của nó bị tụt thê thảm").
+ *  GỐC: `diceModifierActive` (Dice Up/Down, Mang, Freeble, Tremor Chain…) CHỈ
+ *  được cộng bên trong `r()`. Toàn bộ họ Caduceus (9 Critical + 3 Furioso) lấy
+ *  thẳng `CADUCEUS_FACES[i].dmg` — KHÔNG đi qua `r()` ⇒ mọi buff dice trượt sạch,
+ *  suốt từ lúc bộ vũ khí này ra đời. Đây cũng chính là lý do Clash của chúng hỏng
+ *  (xem `extractRolledDiceValues` ở index.js) — cùng một gốc "không qua r()".
+ *  Fragaria xác nhận Base Dmg mỗi mặt TRỞ THÀNH Dice Value khi dùng Critical,
+ *  nên buff dice phải cộng vào đây.
+ *  KHÔNG dùng cho M1 Caduceus — luật: M1 không ăn Dice Up (xem HAND-OFF).
+ *  Emotion Coin vẫn KHÔNG tính: mặt Caduceus là dice CỐ ĐỊNH (min = max).
+ */
+function cadDice(baseDmg) {
+  if (forceMinDiceActive) return Math.max(1, baseDmg);
+  return Math.max(1, Math.round((baseDmg + diceModifierActive) * 100) / 100);
+}
+
 function r(min, max) {
   let result;
   if (forceMinDiceActive) {
@@ -402,11 +421,16 @@ const SKILLS = {
     // buildMovesOptions (encounter-panels.js) lọc bỏ mọi skill có cờ này; nút
     // thật nằm ở prompt Reactive Defense (reactive-defense.js).
     reactiveOnly: true,
+    // Fragaria: "Thêm tag unclashable cho pounce, follow-up, light dash,
+    // fleetfoot steps và borrowed eyes" — `unclashable` là CỜ DỮ LIỆU (bộ chọn
+    // Clash của người chơi LẪN AI đều lọc theo nó), còn tag [Unclashable] viết
+    // trong dòng roll() là phần NGƯỜI CHƠI ĐỌC + để parser phòng thủ bắt được.
+    unclashable: true,
     cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "—",
     roll() {
       return [
         `*Không có Dice — page chỉ tự áp hiệu ứng lên bản thân*`,
-        `Lướt tới vị trí kẻ thù đồng thời hồi cho bản thân 2 <:Light:1513786082502770719>Light và né một đòn tấn công của kẻ địch (không thể né Undodgeable)`,
+        `[Unclashable] Lướt tới vị trí kẻ thù đồng thời hồi cho bản thân 2 <:Light:1513786082502770719>Light và né một đòn tấn công của kẻ địch (không thể né Undodgeable)`,
       ];
     },
   },
@@ -1226,13 +1250,23 @@ const SKILLS = {
     // Dice CHỈ để đếm charge né, KHÔNG gây dmg — khai rõ để AI không dùng đi clash
     // và mọi nơi khác nhận diện đúng bản chất utility.
     noDirectDamage: true,
+    // Fragaria: "chặn cho Borrowed Eyes không bị ảnh hưởng bởi Dice Up,
+    // Singularity rất mạnh nên việc có Dice Up ảnh hưởng tăng thêm charge Evade
+    // sẽ mất cân bằng game." Dice của page này KHÔNG phải sát thương — nó LÀ số
+    // charge né, nên mọi buff dice phải trượt qua nó. Đọc ở skill-verification.js.
+    ignoreDiceModifier: true,
+    // Fragaria: "Thêm tag unclashable cho pounce, follow-up, light dash,
+    // fleetfoot steps và borrowed eyes" — `unclashable` là CỜ DỮ LIỆU (bộ chọn
+    // Clash của người chơi LẪN AI đều lọc theo nó), còn tag [Unclashable] viết
+    // trong dòng roll() là phần NGƯỜI CHƠI ĐỌC + để parser phòng thủ bắt được.
+    unclashable: true,
     roll() {
       const d1 = r(5, 10);
       return [
         // Dice này KHÔNG GÂY DMG — chỉ dùng để quyết định SỐ CHARGE NÉ.
         // Xử lý thật ở resolve-pending-action.js (`p.skillKey === "borrowed eyes"`):
         // zero toàn bộ dmg rồi cộng đúng d1 charge né.
-        `<:Dice1:1508173590078558369> **${d1}** — Dice này KHÔNG gây dmg. Nhận buff **Borrowed Eye**: tự động nhận **${d1}** charge né cho các đòn kế tiếp [Không né được Undodgeable]`,
+        `<:Dice1:1508173590078558369> **${d1}** [Unclashable] — Dice này KHÔNG gây dmg. Nhận buff **Borrowed Eye**: tự động nhận **${d1}** charge né cho các đòn kế tiếp [Không né được Undodgeable]`,
       ];
     },
   },
@@ -2370,6 +2404,11 @@ roll(v = "no") {
 
   // ── NOTHING THERE — Weekly Boss (data Fragaria đưa nguyên văn) ──────────
   // 5 page dưới đây CHỈ boss dùng; không rơi vào kho page người chơi.
+  // ❗ Fragaria (12/08): "Sửa TOÀN BỘ đòn của Nothing There thành Unclashable."
+  // Tag [Unclashable] viết vào TỪNG DÒNG DICE — `parsePerHitBypass` đọc theo dòng,
+  // nên ghi ở dòng header là các hit sau sót. Hệ quả: nút Clash không hiện ở
+  // prompt phòng thủ (reactive-defense.js kiểm `thisGroupBypass.unclashable`),
+  // và AI cũng không clash lại được (cùng bộ cờ).
   // Attack Pattern (xem `attackPattern` trong quest-data.js):
   //   Turn 1: Jump Attack · Triple Swing · Swing
   //   Turn 2: Running Attack · Jump Attack · Triple Swing
@@ -2377,42 +2416,47 @@ roll(v = "no") {
   //   Turn 4: lặp lại từ Turn 1
   "nt swing": {
     name: "Swing", tags: "Nothing There", bossOnly: true,
+    unclashable: true,
     cost: "—", cd: "—", diceMul: "1x",
     roll() {
-      return [`${D1} **50** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung 1 đòn`];
+      return [`${D1} **50** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Unclashable] — Vung 1 đòn`];
     },
   },
   "nt triple swing": {
     name: "Triple Swing", tags: "Nothing There", bossOnly: true,
+    unclashable: true,
     cost: "—", cd: "—", diceMul: "1x",
     roll() {
       // 3 đòn LIÊN TỤC, mỗi đòn 30 — viết thành 3 dice riêng để hệ thống chia
       // nhóm phòng thủ đúng (mỗi hit là 1 nhóm với vũ khí heavy).
       return [
-        `${D1} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung đòn 1/3`,
-        `${D2} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung đòn 2/3`,
-        `${D3} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Vung đòn 3/3`,
+        `${D1} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Unclashable] — Vung đòn 1/3`,
+        `${D2} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Unclashable] — Vung đòn 2/3`,
+        `${D3} **30** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Unclashable] — Vung đòn 3/3`,
       ];
     },
   },
   "nt jump attack": {
     name: "Jump Attack", tags: "Nothing There", bossOnly: true,
+    unclashable: true,
     cost: "—", cd: "—", diceMul: "1x",
     roll() {
-      return [`${D1} **100** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] — Nhảy vụt lên rồi bổ xuống`];
+      return [`${D1} **100** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] [Unclashable] — Nhảy vụt lên rồi bổ xuống`];
     },
   },
   "nt running attack": {
     name: "Running Attack", tags: "Nothing There", bossOnly: true,
+    unclashable: true,
     cost: "—", cd: "—", diceMul: "1x",
     roll() {
       // Fragaria bổ sung số chính thức: "Chạy lại rồi vung chùy vào kẻ địch gây
       // 80 Dmg Blunt [Unblockable]". (Trước đó tôi để tạm 50 = bằng Swing.)
-      return [`${D1} **80** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Chạy lại rồi vung chùy vào kẻ địch`];
+      return [`${D1} **80** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Unclashable] — Chạy lại rồi vung chùy vào kẻ địch`];
     },
   },
   "nt help": {
     name: "HELP", tags: "Nothing There", bossOnly: true,
+    unclashable: true,
     cost: "—", cd: "—", diceMul: "1x",
     roll() {
       // "Hú một cái khiến 1 TRONG 10 ĐÒN tiếp theo sắp vung sẽ trở thành
@@ -2423,8 +2467,8 @@ roll(v = "no") {
       const lines = [`*Nothing There hú lên — đòn thứ **${cursedIdx + 1}** không thể chặn/né/parry*`];
       for (let i = 0; i < 10; i++) {
         const tags = i === cursedIdx
-          ? "[Unblockable] [Undodgeable] [Unparriable]"
-          : "[Unblockable]";
+          ? "[Unblockable] [Undodgeable] [Unparriable] [Unclashable]"
+          : "[Unblockable] [Unclashable]";
         lines.push(`${i === 0 ? D1 : D2} **10** [<:Blunt:1513768529718022254>Blunt] ${tags} — đòn ${i + 1}/10`);
       }
       return lines;
@@ -2432,9 +2476,10 @@ roll(v = "no") {
   },
   "nt goodbye": {
     name: "Goodbye", tags: "Nothing There", bossOnly: true,
+    unclashable: true,
     cost: "—", cd: "—", diceMul: "1x",
     roll() {
-      return [`${D1} **200** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] [AOE] [True] — Biến một cánh tay thành lưỡi hái rồi vung vào kẻ địch`];
+      return [`${D1} **200** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] [Unclashable] [AOE] [True] — Biến một cánh tay thành lưỡi hái rồi vung vào kẻ địch`];
     },
   },
 
@@ -2771,7 +2816,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Blunt";
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.3 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -2808,7 +2853,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Pierce";
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.3 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -2845,7 +2890,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Slash";
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.3 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.3 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -2882,7 +2927,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Blunt";
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.4 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -2919,7 +2964,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Pierce";
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.4 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -2956,7 +3001,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Slash";
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.4 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.4 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -2993,7 +3038,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Blunt";
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.5 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -3030,7 +3075,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Pierce";
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.5 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -3067,7 +3112,7 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Slash";
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
-        const val = Math.round(d.dmg * (match ? 1.5 : 1) * 100) / 100;
+        const val = Math.round(cadDice(d.dmg) * (match ? 1.5 : 1) * 100) / 100;
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
@@ -3097,14 +3142,16 @@ roll(v = "no") {
       let total = 0;
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
-        total += d.dmg;
+        // Dice Value = base dmg của mặt + mọi buff/debuff dice (xem cadDice).
+        const val = cadDice(d.dmg);
+        total += val;
         // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
         // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
         // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
-        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×3 · <:Fix_Bind:1513768025881317457>Bind ×1 · <:Fix_Fragile:1513763336167100536>Fragile ×1*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc, gây: <:Bleed:1513762688226955285>Bleed ×3 · <:Fix_Bind:1513768025881317457>Bind ×1 · <:Fix_Fragile:1513763336167100536>Fragile ×1*`);
       return lines;
     },
   },
@@ -3123,14 +3170,16 @@ roll(v = "no") {
       let total = 0;
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
-        total += d.dmg;
+        // Dice Value = base dmg của mặt + mọi buff/debuff dice (xem cadDice).
+        const val = cadDice(d.dmg);
+        total += val;
         // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
         // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
         // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
-        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×4 · <:Fix_Bind:1513768025881317457>Bind ×2 · <:Fix_Fragile:1513763336167100536>Fragile ×2*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc, gây: <:Bleed:1513762688226955285>Bleed ×4 · <:Fix_Bind:1513768025881317457>Bind ×2 · <:Fix_Fragile:1513763336167100536>Fragile ×2*`);
       return lines;
     },
   },
@@ -3149,14 +3198,16 @@ roll(v = "no") {
       let total = 0;
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
-        total += d.dmg;
+        // Dice Value = base dmg của mặt + mọi buff/debuff dice (xem cadDice).
+        const val = cadDice(d.dmg);
+        total += val;
         // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
         // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
         // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
-        lines.push(`${DICE_EMOJI_N[i]} **${d.dmg}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
       lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
-      lines.push(`*Turn SAU khi đòn này kết thúc — hàng đợi: <:Bleed:1513762688226955285>Bleed ×5 · <:Fix_Bind:1513768025881317457>Bind ×3 · <:Fix_Fragile:1513763336167100536>Fragile ×3*`);
+      lines.push(`*Turn SAU khi đòn này kết thúc, gây: <:Bleed:1513762688226955285>Bleed ×5 · <:Fix_Bind:1513768025881317457>Bind ×3 · <:Fix_Fragile:1513763336167100536>Fragile ×3*`);
       return lines;
     },
   },
@@ -4368,12 +4419,17 @@ roll(v = "no") {
     name: "Fleet Footsteps",
     tags: "Haste",
     reactiveOnly: true, // xem comment ở "light dash" — cùng lý do (né 1 đòn + 2 Haste)
+    // Fragaria: "Thêm tag unclashable cho pounce, follow-up, light dash,
+    // fleetfoot steps và borrowed eyes" — `unclashable` là CỜ DỮ LIỆU (bộ chọn
+    // Clash của người chơi LẪN AI đều lọc theo nó), còn tag [Unclashable] viết
+    // trong dòng roll() là phần NGƯỜI CHƠI ĐỌC + để parser phòng thủ bắt được.
+    unclashable: true,
 
     cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,10);
       return [
-        `${D1} **${d1}** — dịch chuyển lại gần kẻ địch, né 1 đòn tấn công (không thể né Undodgeable), sau đó nhận 2 <:Fix_Haste:1513768004222062632>Haste`,
+        `${D1} **${d1}** [Unclashable] — dịch chuyển lại gần kẻ địch, né 1 đòn tấn công (không thể né Undodgeable), sau đó nhận 2 <:Fix_Haste:1513768004222062632>Haste`,
       ];
     },
   },
@@ -5207,12 +5263,17 @@ Object.assign(SKILLS, {
     name: "Follow-Up",
     cost: "-", cd: "—", diceMul: "1x",
     incompatibleWith: ["pounce"],
+    // Fragaria: "Thêm tag unclashable cho pounce, follow-up, light dash,
+    // fleetfoot steps và borrowed eyes" — `unclashable` là CỜ DỮ LIỆU (bộ chọn
+    // Clash của người chơi LẪN AI đều lọc theo nó), còn tag [Unclashable] viết
+    // trong dòng roll() là phần NGƯỜI CHƠI ĐỌC + để parser phòng thủ bắt được.
+    unclashable: true,
     keywords: ["follow-up", "airborne", "blunt", "4th hit"],
     roll() {
       const d1 = r(10, 14);
       return [
         `*Kích hoạt sau đòn đánh thứ 4 mỗi turn — Không thể tồn tại chung với **Pounce***`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — gây 1 **[Airborne]**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unclashable] — gây 1 **[Airborne]**`,
       ];
     },
   },
@@ -5220,12 +5281,17 @@ Object.assign(SKILLS, {
     name: "Pounce",
     cost: "-", cd: "—", diceMul: "1x",
     incompatibleWith: ["follow-up"],
+    // Fragaria: "Thêm tag unclashable cho pounce, follow-up, light dash,
+    // fleetfoot steps và borrowed eyes" — `unclashable` là CỜ DỮ LIỆU (bộ chọn
+    // Clash của người chơi LẪN AI đều lọc theo nó), còn tag [Unclashable] viết
+    // trong dòng roll() là phần NGƯỜI CHƠI ĐỌC + để parser phòng thủ bắt được.
+    unclashable: true,
     keywords: ["pounce", "blunt", "4th hit"],
     roll() {
       const d1 = r(8, 30);
       return [
         `*Kích hoạt sau đòn đánh thứ 4 mỗi turn — Không thể tồn tại chung với **Follow-Up***`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unclashable]`,
       ];
     },
   },
@@ -5401,7 +5467,8 @@ Object.assign(SKILLS, {
   "tanglecleaver reload": {
     name: "Tanglecleaver Reload",
     weaponOf: "Tiantui Star's Blade [天退星刀]", tags: "Weapon",
-    cost: "3 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    // CD 4 Turn → 1 Turn (Fragaria chốt trực tiếp, lô 12/08).
+    cost: "3 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,10);
       return [

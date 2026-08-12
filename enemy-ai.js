@@ -32,7 +32,7 @@
 // (lúc CONSTRUCT factory) — an toàn vì mọi require() chạy xong TRƯỚC khi bot
 // bắt đầu nhận message/interaction thật.
 
-module.exports = function ({ applyHpLoss, cdKeyFor,
+module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKeyFor,
   withLock, encounterKey, getEncounter, saveEncounter, resolveCombatant,
   computeDefenseOptions, getParryClashPenalty, aiHooks,
   parsePerHitBypass, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, client, log,
@@ -64,13 +64,21 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
       // clash bằng nó là ném đi cả lượt phòng thủ.
       // Loại mọi page UTILITY (không gây dmg trực tiếp) khỏi danh sách clash.
       if (skill.noDirectDamage || /^borrowed eyes$/i.test(skillName.trim())) continue;
+      // Cờ `unclashable` (skills.js) — pounce / follow-up / light dash / fleet
+      // footsteps / borrowed eyes. Lọc CÙNG CHỖ với dropdown của người chơi
+      // (interaction-handlers.js) để 2 đường không lệch luật.
+      if (skill.unclashable) continue;
       const cost = parseSkillCost(skill.cost);
       if ((cost.light ?? 0) > (target.currentLight ?? 0)) continue;
       const cdLeft = target.skillCooldowns?.[cdKeyFor(skillName)] ?? 0;
       if (cdLeft > 0) continue;
       const rolled = buildSkillRollResult({ skill });
-      if (rolled.error || rolled.firstDiceValue === null) continue; // không có Dice thì không Clash được
-      candidates.push({ skillKey: skillName.toLowerCase(), skill, lightCost: cost.light ?? 0, rolled });
+      // `clashDiceOf` thay cho `firstDiceValue` trần — xem comment ở index.js:
+      // skill không gọi r() (họ Caduceus) vẫn phải clash được, và skill khai
+      // `clashUsesTotalDice` phải đem TỔNG dice ra so.
+      const clashDice = clashDiceOf(skill, rolled);
+      if (rolled.error || clashDice === null) continue; // không có Dice thì không Clash được
+      candidates.push({ skillKey: skillName.toLowerCase(), skill, lightCost: cost.light ?? 0, rolled, clashDice });
     }
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => b.lightCost - a.lightCost);
@@ -101,8 +109,9 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
    *  Trả về true nếu đã XỬ LÝ XONG toàn bộ pendingAction (thắng, huỷ hết đòn)
    *  — caller (resolveAiDefenseForTarget) SKIP vòng lặp per-group nếu true. */
   async function attemptAiClashOrCounter(channelId, encounter, p, target, targetId, attackerResolved) {
-    const attackerFirstDiceMatch = (p.dmgStr ?? "").match(/^([\d.]+)/);
-    const attackerFirstDiceValue = attackerFirstDiceMatch ? parseFloat(attackerFirstDiceMatch[1]) : null;
+    // Cùng hàm với đường của người chơi (interaction-handlers.js) — đòn khai
+    // `clashUsesTotalDice` (Furioso) đem TỔNG 9 Dice ra so, còn lại lấy dice đầu.
+    const attackerFirstDiceValue = attackerClashDiceOf(p);
     if (attackerFirstDiceValue === null) return false; // đòn không có Dice thì Clash vô nghĩa
 
     // BUG ĐÃ SỬA (Fragaria: "Bug AI có thể clash dù tốc chậm hơn").
@@ -120,7 +129,7 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
       target.skillCooldowns[cdKeyFor(clashPick.skillKey)] = cdTurns + 1;
       const myPenalty = getParryClashPenalty(target);
       const oppPenalty = getParryClashPenalty(attackerResolved.combatant);
-      const myEffectiveDice = clashPick.rolled.firstDiceValue - myPenalty + (target.clashAttackBoost ?? 0) + (target.clashPowerUp ?? 0);
+      const myEffectiveDice = clashPick.clashDice - myPenalty + (target.clashAttackBoost ?? 0) + (target.clashPowerUp ?? 0);
       const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0) + (attackerResolved.combatant.clashPowerUp ?? 0);
       if (myEffectiveDice > oppEffectiveDice) {
         const hitCount = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
@@ -318,12 +327,26 @@ module.exports = function ({ applyHpLoss, cdKeyFor,
         }
 
         const finalized = await aiHooks.finalizeReactiveChoice(channelId, encounter, p, targetId, decisionNotes.join(" | "), `🤖 **${target.name}**`);
-        postLockInfo = { resultText: finalized.resultText, channelId, isEnemyTarget: true };
+        // ❗ BGM (Furioso → Saikai1/2) — Fragaria: "khi kích hoạt không tự động
+        // gửi file phát lên như EGO Red Mist". Đòn Furioso của player nhắm vào
+        // mob aiControlled resolve NGAY TẠI ĐÂY, nên đây cũng phải là nơi đính
+        // file — dùng CHUNG `takePendingBgmFiles` với các đường khác (đọc xong
+        // xoá cờ). Lấy TRƯỚC khi ra khỏi lock để cờ không bị lượt sau ghi đè.
+        const bgmAi = aiHooks.takePendingBgmFiles?.(encounter) ?? { files: [], name: null };
+        if (bgmAi.name) await saveEncounter(channelId, encounter);
+        postLockInfo = { resultText: finalized.resultText, channelId, isEnemyTarget: true, bgm: bgmAi };
       });
       if (postLockInfo) {
         const ch = await client.channels.fetch(postLockInfo.channelId).catch(() => null);
         if (ch) {
-          await ch.send({ embeds: [{ title: "🤖 AI tự động phòng thủ", description: postLockInfo.resultText, color: 0x9b59b6 }] }).catch(() => {});
+          const bgm = postLockInfo.bgm ?? { files: [], name: null };
+          await ch.send({
+            content: bgm.name
+              ? `🎵 ${bgm.label ?? `BGM đổi sang **${bgm.name}**`}${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}`
+              : undefined,
+            embeds: [{ title: "🤖 AI tự động phòng thủ", description: postLockInfo.resultText, color: 0x9b59b6 }],
+            files: bgm.files,
+          }).catch(() => {});
         }
       }
     } catch (err) {

@@ -383,7 +383,10 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
     // BUG ĐÃ SỬA — dùng hasShinAccess thay hasPerk("Shin") trần: perk "Shin"
     // TRƯỚC ĐÂY không tồn tại trong PERK_POINT_COSTS/PERK_BRANCH nên không ai
     // cấp được, và người đã có perk NHÁNH shin vẫn bị chặn. Xem skill-tree.js.
-    if (hasShinAccess(combatant)) {
+    // Fragaria: Shin - Rien đã tự cấp Shin VĨNH VIỄN tới hết Encounter ⇒ ẩn hẳn
+    // option (bấm nữa chỉ phí 25 Sanity). `performShinMang` cũng chặn cùng điều
+    // kiện — ẩn UI mà không chặn logic thì lệnh text vẫn lọt.
+    if (hasShinAccess(combatant) && !combatant.shinRienActive) {
       // Dropdown ENCOUNTER → emoji <:Shin:1528452250861699215>, KHÔNG phải
       // Fix_Shin (Fix_Shin chỉ dùng ở -balance và phần mô tả).
       options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1528452250861699215", name: "Shin" }));

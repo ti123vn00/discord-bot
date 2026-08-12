@@ -415,7 +415,12 @@ module.exports = function ({ findSkill, resolveSkillKey, cdKeyFor, computeDiceMo
       // vũ khí" — CHỈ áp khi đây là Critical (isCritical=true), không áp cho Page
       // thường.
       const blackSilenceCritBonus = isCritical && attacker.blackSilence ? 4 : 0;
-      const diceModifier = computeDiceModifier(attacker, { blackSilenceCritBonus });
+      // ❗ Fragaria: "chặn cho Borrowed Eyes không bị ảnh hưởng bởi Dice Up —
+      // Singularity rất mạnh nên để Dice Up tăng thêm charge Evade sẽ mất cân
+      // bằng game." Skill khai `ignoreDiceModifier` (skills.js) ⇒ ÉP về 0.
+      // Chặn ở ĐÂY (nơi roll) chứ không phải lúc đọc charge: dice HIỆN cho người
+      // chơi và số charge THẬT phải là MỘT con số, không được lệch nhau.
+      const diceModifier = skill.ignoreDiceModifier ? 0 : computeDiceModifier(attacker, { blackSilenceCritBonus });
       // BUG NGHIÊM TRỌNG ĐÃ SỬA (xác nhận qua ảnh chụp thật của user, LẦN 2 — lần
       // đầu chỉ sửa cho Critical, giờ áp dụng luôn cho Page thường): "dù Blade
       // Flourish đã roll sẵn... nhưng vẫn bắt tôi nhập dmg... tôi có thể thử nhập

@@ -20,7 +20,7 @@ const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 // Suy TRỰC TIẾP từ 3 ví dụ Fragaria đưa: light 5→5 · medium 10/2 · heavy 20/4.
 const RENEGADE_DIVISOR = { light: 1, medium: 2, heavy: 4 };
 
-module.exports = function ({ IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -249,6 +249,22 @@ async function resolveOnePendingAction(encounter, p) {
               // để biết đòn này có THỰC SỰ gây thêm hay không (đã đầy trần thì
               // không tính là "gây ra").
               const sinkingBeforeHit = target.sinking ?? 0;
+              // ❗❗ BUG ĐÃ SỬA (Fragaria: "Indulgence in Prescript không cho +2
+              // count hoạt động — Dice 2 của Caduceus chỉ gây 2 Sinking thay vì 4,
+              // Illuminate Thy Vacuity cũng không được tăng").
+              // GỐC — HAI lỗi chồng nhau, cùng một nguyên nhân THỨ TỰ:
+              //   (1) Điều kiện cũ so `target.sinking > sinkingBeforeHit` — nhưng
+              //       `target.sinking` CHỈ được ghi ở dòng `= t.preview.finalSinking`
+              //       nằm PHÍA DƯỚI, nên tại chỗ kiểm nó vẫn bằng chính
+              //       sinkingBeforeHit ⇒ điều kiện KHÔNG BAO GIỜ đúng.
+              //   (2) Kể cả có đúng, `target.sinking += 2` viết ở đó cũng bị dòng
+              //       `= t.preview.finalSinking` GHI ĐÈ MẤT ngay sau.
+              // Sửa: phát hiện "đòn này CÓ áp Sinking" bằng PREVIEW (nguồn duy nhất
+              // biết kết quả sau đòn), rồi DỒN phần cộng thêm vào biến pending và
+              // áp SAU dòng ghi đè — đúng pattern `zweiAssociationPendingTremor`
+              // đã dùng ở file này.
+              let pendingSinkingBonus = 0;
+              let pendingRuptureBonus = 0;
               const ruptureBeforeHit = target.rupture ?? 0; // Craving Synergy/Thirst/Break the Dams cần biết TRƯỚC khi finalBleed ghi đè
               burnBeforeMap[t.targetId] = target.burn ?? 0;
               let finalDmg = t.preview.totalDmg;
@@ -870,7 +886,8 @@ async function resolveOnePendingAction(encounter, p) {
                 if (hasPerk(attacker.combatant, "Break the Dams") && bleedBeforeHit >= 7 && (attacker.combatant.breakTheDamsCdLeft ?? 0) <= 0) {
                   finalDmg += bleedBeforeHit;
                   // Lấy bleedStacksAfter của hit CUỐI (trước khi end-turn-tick giảm nửa) thay cho finalBleed — "giữ count không giảm turn này".
-                  const lastHit = t.preview.instanceResults[t.preview.instanceResults.length - 1];
+                  const lastHitIrs = t.preview.instanceResults ?? [];
+                  const lastHit = lastHitIrs[lastHitIrs.length - 1];
                   bleedOverride = lastHit?.bleedStacksAfter ?? bleedBeforeHit;
                   attacker.combatant.breakTheDamsCdLeft = 3;
                   perkNote += ` [💥Break the Dams +${bleedBeforeHit}dmg]`;
@@ -1061,9 +1078,10 @@ async function resolveOnePendingAction(encounter, p) {
               // ── PROVIDENCE OF THE PRESCRIPT (accessory) ──────────────────
               // Indulgence in Prescript (Singleton) — "cho khả năng inflict thêm
               // 2 count ở mỗi đòn có áp Sinking".
-              if ((attacker.combatant?.indulgenceInPrescript ?? 0) > 0
-                  && (target.sinking ?? 0) > (sinkingBeforeHit ?? 0)) {
-                target.sinking = Math.min(99, (target.sinking ?? 0) + 2);
+              const sinkingInflictedThisAction = (t.preview?.finalSinking ?? sinkingBeforeHit) > sinkingBeforeHit;
+              const ruptureInflictedThisAction = (t.preview?.finalRupture ?? ruptureBeforeHit) > ruptureBeforeHit;
+              if ((attacker.combatant?.indulgenceInPrescript ?? 0) > 0 && sinkingInflictedThisAction) {
+                pendingSinkingBonus += 2;
                 defenseNote += ` 📜[Indulgence in Prescript: +2 Sinking]`;
               }
               if (attacker.combatant?.hasProvidenceOfPrescript && finalDmg > 0) {
@@ -1071,15 +1089,17 @@ async function resolveOnePendingAction(encounter, p) {
                 // và 1 Rupture." Áp TRƯỚC vế dưới để chính nó cũng kích được +3 Poise.
                 let providenceInflicted = false;
                 if ((attacker.combatant.poise ?? 0) >= 20) {
-                  target.sinking = Math.min(99, (target.sinking ?? 0) + 1);
-                  target.rupture = Math.min(99, (target.rupture ?? 0) + 1);
+                  // CÙNG lỗi thứ tự với Indulgence ở trên — dồn vào pending, áp
+                  // SAU dòng ghi đè từ preview, nếu không thì mất trắng.
+                  pendingSinkingBonus += 1;
+                  pendingRuptureBonus += 1;
                   providenceInflicted = true;
                 }
                 // "Khi gây Sinking/Rupture, nhận thêm 3 Poise" — tính CẢ nguồn từ
                 // page lẫn từ chính vế trên.
                 const gaveSinkOrRupt = providenceInflicted
-                  || (target.sinking ?? 0) > (sinkingBeforeHit ?? 0)
-                  || (target.rupture ?? 0) > (ruptureBeforeHit ?? 0);
+                  || sinkingInflictedThisAction
+                  || ruptureInflictedThisAction;
                 if (gaveSinkOrRupt) {
                   attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 3);
                   attacker.combatant.providencePoiseProcsThisTurn = (attacker.combatant.providencePoiseProcsThisTurn ?? 0) + 1;
@@ -1307,8 +1327,13 @@ async function resolveOnePendingAction(encounter, p) {
               // !evadedCompletely — NÉ MỘT PHẦN (M1 nhiều hit, evadedCompletely vẫn
               // false) thì status vẫn áp bình thường (đúng — 1 phần đòn vẫn trúng).
               if (!evadedCompletely) {
-                target.sinking = t.preview.finalSinking;
-                target.rupture = t.preview.finalRupture;
+                target.sinking = t.preview.finalSinking ?? target.sinking;
+                target.rupture = t.preview.finalRupture ?? target.rupture;
+                // Phần Sinking/Rupture CỘNG THÊM (Indulgence in Prescript,
+                // Providence of the Prescript) — áp Ở ĐÂY, SAU 2 dòng ghi đè trên.
+                // Đặt trước chúng là bị xoá sạch (bug Fragaria báo).
+                if (pendingSinkingBonus > 0) target.sinking = Math.min(99, (target.sinking ?? 0) + pendingSinkingBonus);
+                if (pendingRuptureBonus > 0) target.rupture = Math.min(99, (target.rupture ?? 0) + pendingRuptureBonus);
                 // QUAN TRỌNG: dùng burnStacksAfter/bleedStacksAfter (giá trị NGAY SAU
                 // gain/consume từ dmgStr, TRƯỚC khi calcMathCore áp công thức "cuối
                 // turn") — KHÔNG dùng finalBurn/finalBleed (đã bị giảm nửa SẴN, vì
@@ -1318,7 +1343,13 @@ async function resolveOnePendingAction(encounter, p) {
                 // hoàn toàn với luật, và làm hỏng cả Break the Dams/Craving Synergy/
                 // Thirst (chúng cần biết bleed CHƯA bị giảm khi check điều kiện). Halving
                 // THẬT giờ chỉ xảy ra trong advanceCombatantTurn (xem comment ở đó).
-                const lastHitForStatus = t.preview.instanceResults[t.preview.instanceResults.length - 1];
+                // ❗ BUG ĐÃ SỬA (Fragaria: Designant./Astral Quantization chết với
+                // "Cannot read properties of undefined (reading 'length')").
+                // Skill CHỈ ĐỊNH đồng đội không có dice sát thương ⇒ pendingAction
+                // dựng preview RỖNG `{ totalDmg: 0, dmgValues: [] }` — KHÔNG có
+                // `instanceResults`. Mọi chỗ đọc mảng này phải chịu được vắng mặt.
+                const instanceResultsForStatus = t.preview.instanceResults ?? [];
+                const lastHitForStatus = instanceResultsForStatus[instanceResultsForStatus.length - 1];
                 target.burn = lastHitForStatus?.burnStacksAfter ?? target.burn;
                 const bleedBeforeThisHit = target.bleed ?? 0;
                 let rawNewBleed = bleedOverride ?? (lastHitForStatus?.bleedStacksAfter ?? target.bleed);
@@ -1345,14 +1376,14 @@ async function resolveOnePendingAction(encounter, p) {
                   target.hemorrhage = Math.min(HEMORRHAGE_MAX, target.hemorrhage + 1);
                   target.hemorrhageAppliedThisTurn = true;
                 }
-                target.tremor = t.preview.finalTremor;
+                target.tremor = t.preview.finalTremor ?? target.tremor;
                 // BUG NGHIÊM TRỌNG ĐÃ SỬA (phát hiện qua test thực tế của user
                 // — Burn tag "+NBurn" gõ tay hoàn toàn KHÔNG hoạt động) —
                 // calcMathCore đã tính đúng finalBurn (bao gồm cả +NBurn tag)
                 // từ trước, nhưng index.js CHƯA BAO GIỜ áp dụng nó vào
                 // target.burn thật — khác với finalTremor/finalSinking/
                 // finalRupture đều đã có sẵn dòng gán tương tự.
-                target.burn = t.preview.burnStackAfterHit;
+                target.burn = t.preview.burnStackAfterHit ?? target.burn;
                 // "Zwei Association": áp Tremor THẬT ở đây (SAU khi ghi đè từ
                 // preview đã chạy xong ở dòng trên) — finalizeReactiveChoice chỉ
                 // đánh dấu pending vì áp trực tiếp ở đó sẽ bị ghi đè mất bởi dòng
@@ -1369,7 +1400,7 @@ async function resolveOnePendingAction(encounter, p) {
                 // (nếu áp trước, dòng currentSanity=finalSanity ngay sau sẽ ghi đè
                 // mất — cùng lỗi thứ tự đã gặp với Contempt of the Gaze trước đó).
                 const haouSinkingTriggered = (target.haouSinking ?? 0) > 0 && target.currentSanity <= 0;
-                target.currentSanity = t.preview.finalSanity;
+                target.currentSanity = t.preview.finalSanity ?? target.currentSanity;
                 if (haouSinkingTriggered) {
                   applyHpLoss(target, target.haouSinking);
                   target.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, target.currentSanity - 1);
@@ -1574,13 +1605,13 @@ async function resolveOnePendingAction(encounter, p) {
               // vào pending để trừ sau — thay vì sửa calcMathCore (tránh đụng logic
               // dùng chung cho /math thường).
               if (hasPerk(attacker.combatant, "Smoke Overload")) {
-                const totalReducedThisAction = firstPreview.instanceResults.reduce(
+                const totalReducedThisAction = (firstPreview.instanceResults ?? []).reduce(
                   (sum, r) => sum + Math.max(0, (r.poiseAfterGain ?? 0) - (r.poiseStacksAfter ?? 0)), 0
                 );
-                attacker.combatant.poise = Math.min(POISE_MAX, firstPreview.finalPoiseStacks + totalReducedThisAction);
+                attacker.combatant.poise = Math.min(POISE_MAX, (firstPreview.finalPoiseStacks ?? attacker.combatant.poise ?? 0) + totalReducedThisAction);
                 attacker.combatant.poiseReductionPending = (attacker.combatant.poiseReductionPending ?? 0) + totalReducedThisAction;
               } else {
-                attacker.combatant.poise = firstPreview.finalPoiseStacks;
+                attacker.combatant.poise = firstPreview.finalPoiseStacks ?? attacker.combatant.poise;
               }
               // "Blade Lineage" (outfit) — GAP FIX (đặt SAU dòng ghi đè poise ở
               // trên, vì bất kể "Smoke Overload" hay không, dòng đó LUÔN chạy
@@ -1591,7 +1622,7 @@ async function resolveOnePendingAction(encounter, p) {
               if (attacker.combatant.equippedOutfit === "Blade Lineage" && (perHitMultForBulletEffect ?? []).some(m => m > 0 && m < 1)) {
                 attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 2);
               }
-              attacker.combatant.charge = firstPreview.finalCharge;
+              attacker.combatant.charge = firstPreview.finalCharge ?? attacker.combatant.charge;
               // Eye Of Horus — cộng THÊM (không ghi đè) SAU dòng gán finalCharge ở
               // trên — xem comment đầy đủ tại chỗ khai báo eyeOfHorusChargeGainedThisAction.
               if (eyeOfHorusChargeGainedThisAction > 0) {
@@ -2170,40 +2201,12 @@ async function resolveOnePendingAction(encounter, p) {
                   trf.combatant.pendingNextTurnStatus = q;
                 }
                 verifyNote += ` 💥[${furiosoSkill.name}: turn SAU gây ${F.bleed} <:Bleed:1513762688226955285>Bleed · ${F.bind} <:Fix_Bind:1513768025881317457>Bind · ${F.fragile} <:Fix_Fragile:1513763336167100536>Fragile]`;
-                // Wound-Casing Mask — "vỡ khi dùng bất kỳ biến thể Furioso LẦN ĐẦU".
-                // Đã có Sizzling Wound (mặt nạ vỡ từ trước) + dùng Furioso ⇒ Saikai2.
-                if (attacker.combatant.sizzlingWound && !attacker.combatant.woundCasingMaskIntact) {
-                  attacker.combatant.saikai2TurnsLeft = 2;
-                  attacker.combatant.lastFuriosoName = furiosoSkill.name;
-                  attacker.combatant.bgmAnnounceNow = "Saikai2.mp3";
-                  // Nhãn RIÊNG của Furioso — Fragaria: "đừng lẫn hai cái vào nhau".
-                  attacker.combatant.bgmAnnounceLabel = `BGM **${furiosoSkill.name}** (kéo dài 2 Turn)`;
-                  verifyNote += ` 🎵[BGM → **Saikai2.mp3** (${furiosoSkill.name}, 2 Turn)]`;
-                }
-                if (attacker.combatant.woundCasingMaskIntact) {
-                  // Fragaria: *"Khi Furioso được sử dụng mà player VẪN CÒN mặt nạ
-                  // thì sẽ ghi đè và phát BGM Saikai1.mp3 TRONG TURN VÀ TURN KẾ."*
-                  // Bật cờ TRƯỚC khi làm vỡ — sau khi vỡ thì không còn "vẫn còn
-                  // mặt nạ" nữa, đặt sau là không bao giờ chạy.
-                  attacker.combatant.saikai1TurnsLeft = 2;
-                  // Ghi tên biến thể để nhãn BGM nói ĐÚNG bài của ai (Replica /
-                  // Crescendo / Lacrimosa-Crescendo), thay vì dán "Manifested E.G.O".
-                  attacker.combatant.lastFuriosoName = furiosoSkill.name;
-                  attacker.combatant.bgmAnnounceNow = "Saikai1.mp3";
-                  attacker.combatant.bgmAnnounceLabel = `BGM **${furiosoSkill.name}** (kéo dài 2 Turn)`;
-                  attacker.combatant.woundCasingMaskIntact = false;
-                  attacker.combatant.sizzlingWound = true;
-                  verifyNote += ` 🎭[**Wound-Casing Mask VỠ** vì dùng Furioso — Sizzling Wound quay lại tới hết Encounter]`;
-                  verifyNote += ` 🎵[BGM → **Saikai1.mp3** (turn này + turn kế), sau đó **Saikai2.mp3**]`;
-                }
-                // Singleton — "dùng biến thể Furioso bất kỳ cho 1 stack
-                // Indulgence in Prescript" (mất khi end turn).
-                if (attacker.combatant.singleton && attacker.combatant.hasIndexOraclesProxy) {
-                  attacker.combatant.indulgenceInPrescript = (attacker.combatant.indulgenceInPrescript ?? 0) + 1;
-                  verifyNote += ` 📜[+1 **Indulgence in Prescript** — đòn có áp Sinking sẽ inflict thêm 2 count]`;
-                }
-                // "Sau khi sử dụng Furioso thì reset toàn bộ Procuration [Hermes] về 0."
-                attacker.combatant.procurationHermes = [];
+                // Chi phí + hệ quả của việc DÙNG Furioso (vỡ mặt nạ, BGM Saikai,
+                // Singleton, reset Procuration) — GỘP vào `applyFuriosoUseCosts`
+                // (combat-utils.js) để đường CLASH dùng CHUNG đúng một bản. Trước
+                // đây khối này chỉ tồn tại ở đây, nên Furioso đem đi Clash sẽ không
+                // trả giá gì cả.
+                for (const n of applyFuriosoUseCosts(attacker.combatant, furiosoSkill)) verifyNote += n;
               }
               if (p.skillKey === "false throne" && attacker.type === "player") {
                 const revived = [];

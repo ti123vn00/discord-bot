@@ -119,7 +119,7 @@ function bgmAttachmentIH(AttachmentBuilder, name) {
   return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -590,11 +590,15 @@ client.on("interactionCreate", async (interaction) => {
           // (HP/status) do action trước vừa đổi (VD: 2 player cùng đánh 1 enemy).
           for (const p of encounter.pendingActions) {
             const lines = await resolveOnePendingAction(encounter, p);
-            announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
-        // ❗ Cờ `bgmAnnounceNow` (Furioso → Saikai1/2) TRƯỚC ĐÂY được GHI mà KHÔNG
-        // AI ĐỌC ⇒ "lúc xài Furioso không thấy phát gửi file". Đúng lớp lỗi
-        // "ghi-mà-không-đọc". Gửi NGAY tại đây, không đợi tới lúc kết thúc turn.
-        announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
+        // ❗❗ BUG ĐÃ SỬA (Fragaria, lô 12/08: "Furioso Replica vẫn chưa tự động
+        // phát BGM ổn, BGM vẫn được chạy ngầm khi gọi -encounter status sẽ hiện
+        // ra; cái quan trọng là khi kích hoạt không tự động gửi file phát lên
+        // như EGO Red Mist").
+        // GỐC: `announceBgmIfChanged` ĐỌC XONG XOÁ cờ `bgmAnnounceNow` rồi tự gửi
+        // bằng `channel.send` — đúng con đường đã bị bác ở lượt (W) vì hỏng khâu
+        // nào cũng im lặng. Nó chạy TRƯỚC `takePendingBgmFiles` nên CƯỚP MẤT cờ:
+        // hàm đính-file-vào-reply (đường ĐÃ XÁC NHẬN CHẠY của Red Mist) luôn thấy
+        // rỗng ⇒ không bao giờ có file. Bỏ hẳn lời gọi này cho Furioso.
             resultLines.push(...lines);
           }
         } else {
@@ -1036,12 +1040,35 @@ client.on("interactionCreate", async (interaction) => {
         const clasherResolved = resolveCombatant(encounter, clasherId);
         if (!clasherResolved) { await interaction.reply({ content: "⚠️ Không tìm thấy bạn trong encounter.", flags: MessageFlags.Ephemeral }).catch(() => {}); return; }
         const clasher = clasherResolved.combatant;
+        // ❗❗ BUG ĐÃ SỬA (Fragaria: "Các Critical hiện tại của Caduceus bao gồm cả
+        // Furioso chưa cho phép người dùng sử dụng Clash").
+        // GỐC 1: danh sách ứng viên chỉ có `weaponCriticalKey` — mà Caduceus khai
+        // `criticalSkillKey: null` trong weapon.js (9 Critical của nó là SKILL
+        // RIÊNG, chọn theo bậc/type ở panel Moves) ⇒ KHÔNG món nào lọt vào đây.
+        // Bổ sung đúng bộ mà panel Moves đang bày, dùng CÙNG điều kiện gate
+        // (bậc Unlock cho Furioso, đủ 9 Procuration hoặc Shin - Rien follow-up) —
+        // hai nơi lệch nhau là hiện nút rồi bấm lại báo lỗi.
         const candidateNames = [clasher.weaponCriticalKey, ...(clasher.unlockedPagesSnapshot ?? [])].filter(Boolean);
+        if (findWeaponAnywhere(clasher.weaponName)?.caduceus) {
+          for (const tier of [1, 2, 3]) {
+            for (const ty of ["blunt", "pierce", "slash"]) candidateNames.push(`caduceus crit${tier} ${ty}`);
+          }
+          const procCl = (clasher.procurationHermes ?? []).length;
+          const unlockCl = clasher.prescriptUnlockLevel ?? 0;
+          if (unlockCl >= 1 && (procCl >= 9 || clasher.shinRienFuriosoReady === true)) {
+            candidateNames.push(["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][unlockCl - 1]);
+          }
+        }
         const clashOptions = [];
         const addedClashKeys = new Set();
         for (const name of candidateNames) {
           const sk = findSkill(name);
           if (!sk || sk.promptArg) continue; // promptArg cần input đặc biệt, giống hạn chế của "-encounter clash" gốc
+          // Fragaria: "Light Dash xuất hiện trong phần clashable trong khi đáng lẽ
+          // nó không phải là thứ sẽ có thể clash được." Cờ `unclashable` khai ở
+          // skills.js (pounce / follow-up / light dash / fleet footsteps /
+          // borrowed eyes) — lọc TẠI ĐÂY và ở `pickClashSkill` của AI (enemy-ai.js).
+          if (sk.unclashable) continue;
           const key = name.trim().toLowerCase();
           if (addedClashKeys.has(key)) continue; // GAP ĐÃ SỬA: tránh 2 option TRÙNG value nếu equip cùng tên vào 2 slot
           if ((clasher.skillCooldowns?.[cdKeyFor(key)] ?? 0) > 0) continue;
@@ -1133,6 +1160,9 @@ client.on("interactionCreate", async (interaction) => {
       let encounterSnapshot = null;
       let showHitPicker = null; // { maxAffordable, hitCount, choice, costPerCharge } — CHỈ dùng cho Eye Of Horus fixedBurst (giữ nguyên logic cũ)
       let needsNextHitPrompt = false;
+      // Khai NGOÀI khối `withLock` — gán bên trong, ĐỌC ở phần gửi tin nhắn phía
+      // sau (đúng bài học "biến khai trong khối lồng thì không dùng lại được").
+      let bgmReactive = { files: [], name: null };
       await withLock(encounterKey(channelId), async () => {
         const encounter = await getEncounter(channelId);
         encounterSnapshot = encounter;
@@ -1473,6 +1503,10 @@ client.on("interactionCreate", async (interaction) => {
         const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, `Đã chọn phòng thủ riêng cho từng hit (${hitCount} hit).`, interaction.user.toString());
         resultText = finalized.resultText;
         stillWaitingFor = finalized.stillWaitingFor;
+        // BGM (Furioso → Saikai1/2) — đòn resolve TẠI ĐÂY khi người bị đánh tự
+        // bấm phòng thủ, nên đây cũng phải đính file (cùng cơ chế Red Mist).
+        bgmReactive = takePendingBgmFiles(encounter);
+        if (bgmReactive.name) await saveEncounter(channelId, encounter);
       });
       if (needsNextHitPrompt) {
         await interaction.update({
@@ -1485,10 +1519,14 @@ client.on("interactionCreate", async (interaction) => {
       }
       const boardPayloadForUpdate = stillWaitingFor ? null : buildEncounterBoardEmbed(encounterSnapshot, channelId);
       await interaction.update({
+        content: bgmReactive.name
+          ? `🎵 ${bgmReactive.label ?? `BGM đổi sang **${bgmReactive.name}**`}${bgmReactive.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}`
+          : "",
         embeds: stillWaitingFor
           ? [{ title: "⏳ Đã ghi nhận — đang chờ người khác", description: resultText, color: 0xf39c12 }]
           : [{ title: "⚔️ Đã xử lý", description: resultText, color: 0x2ecc71 }, boardPayloadForUpdate.embed],
         components: boardPayloadForUpdate ? boardPayloadForUpdate.components : [],
+        files: bgmReactive.files,
       }).catch(() => {});
       // GAP ĐÃ SỬA (xác nhận trực tiếp qua ảnh chụp: "Dropdown vẫn còn bị che
       // rất nặng bởi các message sau khi kẻ địch đã thực thi xong reactive
@@ -1594,13 +1632,18 @@ client.on("interactionCreate", async (interaction) => {
       if (!chosenSkill) { displayText = "❌ Không tìm thấy skill đã chọn."; return; }
 
       const myRoll = buildSkillRollResult({ skill: chosenSkill });
-      if (myRoll.error || myRoll.firstDiceValue === null) { displayText = `❌ ${myRoll.error ?? "Skill này không có Dice để Clash."}`; return; }
+      // GỐC 2 của bug Caduceus: `firstDiceValue` chỉ có khi skill gọi `r()` —
+      // họ Caduceus tự bốc mặt bằng Math.random() nên LUÔN null ⇒ bị chặn ở
+      // đúng dòng này. `clashDiceOf` đọc dice TỪ DÒNG DICE ĐÃ ROLL (index.js),
+      // và tự áp luật "Furioso clash bằng TỔNG 9 Dice" qua `clashUsesTotalDice`.
+      const myClashDice = clashDiceOf(chosenSkill, myRoll);
+      if (myRoll.error || myClashDice === null) { displayText = `❌ ${myRoll.error ?? "Skill này không có Dice để Clash."}`; return; }
 
-      // firstDiceValue của attacker: LẤY TỪ p.dmgStr đã roll sẵn lúc declare
-      // (KHÔNG roll lại — dùng đúng giá trị người chơi đã thấy), số ĐẦU TIÊN
-      // trong chuỗi (VD "6S+8S+9S" → 6).
-      const attackerFirstDiceMatch = (p.dmgStr ?? "").match(/^([\d.]+)/);
-      const attackerFirstDiceValue = attackerFirstDiceMatch ? parseFloat(attackerFirstDiceMatch[1]) : null;
+      // Dice Clash của attacker: LẤY TỪ p.dmgStr đã roll sẵn lúc declare (KHÔNG
+      // roll lại — dùng đúng giá trị người chơi đã thấy). `attackerClashDiceOf`
+      // áp cùng luật cho chiều ngược lại: đòn Furioso bị clash phải đem TỔNG 9
+      // Dice ra so, không phải mỗi mặt đầu.
+      const attackerFirstDiceValue = attackerClashDiceOf(p);
       if (attackerFirstDiceValue === null) { displayText = "❌ Đòn tấn công này không có Dice hợp lệ để Clash."; return; }
 
       // "Clasher" (người BẤM và THỰC HIỆN Clash) roll/tiêu resource/nhận
@@ -1608,7 +1651,7 @@ client.on("interactionCreate", async (interaction) => {
       // dmg nếu clasher thắng) — xác nhận trực tiếp: "A Clash THAY cho B".
       const myPenalty = getParryClashPenalty(clasher);
       const oppPenalty = getParryClashPenalty(attackerResolved.combatant);
-      const myEffectiveDice = myRoll.firstDiceValue - myPenalty + (clasher.clashAttackBoost ?? 0) + (clasher.clashPowerUp ?? 0);
+      const myEffectiveDice = myClashDice - myPenalty + (clasher.clashAttackBoost ?? 0) + (clasher.clashPowerUp ?? 0);
       const oppEffectiveDice = attackerFirstDiceValue - oppPenalty + (attackerResolved.combatant.clashAttackBoost ?? 0) + (attackerResolved.combatant.clashPowerUp ?? 0);
 
       // Tiêu Light/CD cho skill VỪA DÙNG để Clash (của CLASHER, không phải
@@ -1626,6 +1669,15 @@ client.on("interactionCreate", async (interaction) => {
       // Đánh dấu ngay tại nơi clash THỰC SỰ diễn ra (thắng hay thua đều tính —
       // luật chỉ đòi "clash", không đòi "thắng clash").
       clasher.prescriptClashed = true;
+      // ❗ CHI PHÍ của Furioso khi đem đi Clash. Furioso khai `cost: "—"` và
+      // `cd: "—"` nên 2 dòng trừ Light/CD ở trên KHÔNG lấy gì cả — không có khối
+      // này thì clash bằng Furioso là MIỄN PHÍ và lặp vô hạn (9 Procuration không
+      // bị tiêu). Dùng CHUNG `applyFuriosoUseCosts` với đường tấn công thật
+      // (resolve-pending-action.js) để 2 đường không bao giờ lệch luật.
+      let furiosoClashNote = "";
+      if (chosenSkill.caduceusFurioso) {
+        furiosoClashNote = applyFuriosoUseCosts(clasher, chosenSkill).join("");
+      }
       const clasherLabel = clasherId === targetId ? "Bạn" : clasherResolved.label;
       let choiceNote;
       let choiceNote2Unbreakable = "";
@@ -1767,6 +1819,9 @@ client.on("interactionCreate", async (interaction) => {
         choiceNote = `💔 ${clasherLabel} THUA Clash! **${chosenSkill.name}** (${myEffectiveDice} vs ${oppEffectiveDice}) — ${targetResolved.label} ăn đủ dmg, đối thủ ${myDelta >= 0 ? "+" : ""}${myDelta} Sanity +2 Coin, ${clasherLabel} ${oppDelta >= 0 ? "+" : ""}${oppDelta} Sanity -1 Coin.`;
       }
 
+      // Ghi chú chi phí Furioso (vỡ mặt nạ / BGM / Procuration) nối vào KẾT QUẢ
+      // — người chơi phải thấy mình vừa trả giá gì, cả khi thắng lẫn thua clash.
+      if (furiosoClashNote) choiceNote += furiosoClashNote;
       const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, `<@${targetId}>`);
       displayText = finalized.resultText;
     });
@@ -2633,10 +2688,15 @@ client.on("interactionCreate", async (interaction) => {
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
-        // ❗ Cờ `bgmAnnounceNow` (Furioso → Saikai1/2) TRƯỚC ĐÂY được GHI mà KHÔNG
-        // AI ĐỌC ⇒ "lúc xài Furioso không thấy phát gửi file". Đúng lớp lỗi
-        // "ghi-mà-không-đọc". Gửi NGAY tại đây, không đợi tới lúc kết thúc turn.
-        announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
+        // ❗❗ BUG ĐÃ SỬA (Fragaria, lô 12/08: "Furioso Replica vẫn chưa tự động
+        // phát BGM ổn, BGM vẫn được chạy ngầm khi gọi -encounter status sẽ hiện
+        // ra; cái quan trọng là khi kích hoạt không tự động gửi file phát lên
+        // như EGO Red Mist").
+        // GỐC: `announceBgmIfChanged` ĐỌC XONG XOÁ cờ `bgmAnnounceNow` rồi tự gửi
+        // bằng `channel.send` — đúng con đường đã bị bác ở lượt (W) vì hỏng khâu
+        // nào cũng im lặng. Nó chạy TRƯỚC `takePendingBgmFiles` nên CƯỚP MẤT cờ:
+        // hàm đính-file-vào-reply (đường ĐÃ XÁC NHẬN CHẠY của Red Mist) luôn thấy
+        // rỗng ⇒ không bao giờ có file. Bỏ hẳn lời gọi này cho Furioso.
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
         // Critical ĐÃ dùng thật ⇒ xoá cache roll (giữ lại thì turn sau bấm lại
@@ -2954,10 +3014,15 @@ client.on("interactionCreate", async (interaction) => {
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
-        // ❗ Cờ `bgmAnnounceNow` (Furioso → Saikai1/2) TRƯỚC ĐÂY được GHI mà KHÔNG
-        // AI ĐỌC ⇒ "lúc xài Furioso không thấy phát gửi file". Đúng lớp lỗi
-        // "ghi-mà-không-đọc". Gửi NGAY tại đây, không đợi tới lúc kết thúc turn.
-        announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
+        // ❗❗ BUG ĐÃ SỬA (Fragaria, lô 12/08: "Furioso Replica vẫn chưa tự động
+        // phát BGM ổn, BGM vẫn được chạy ngầm khi gọi -encounter status sẽ hiện
+        // ra; cái quan trọng là khi kích hoạt không tự động gửi file phát lên
+        // như EGO Red Mist").
+        // GỐC: `announceBgmIfChanged` ĐỌC XONG XOÁ cờ `bgmAnnounceNow` rồi tự gửi
+        // bằng `channel.send` — đúng con đường đã bị bác ở lượt (W) vì hỏng khâu
+        // nào cũng im lặng. Nó chạy TRƯỚC `takePendingBgmFiles` nên CƯỚP MẤT cờ:
+        // hàm đính-file-vào-reply (đường ĐÃ XÁC NHẬN CHẠY của Red Mist) luôn thấy
+        // rỗng ⇒ không bao giờ có file. Bỏ hẳn lời gọi này cho Furioso.
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
         // Lấy file BGM đang chờ TRƯỚC khi save (đọc xong xoá cờ, save luôn thấy sạch).
@@ -3355,15 +3420,16 @@ client.on("interactionCreate", async (interaction) => {
  */
 async function announceBgmIfChanged(channelId, encounter, label = "") {
   try {
-    // `bgmAnnounceNow` — cờ ÉP GỬI do Furioso đặt: phải phát NGAY cả khi trùng
-    // bài đang có (dùng Furioso lần 2 vẫn muốn nghe lại). Đọc xong xoá cờ.
-    let forced = null;
-    for (const pl of Object.values(encounter?.players ?? {})) {
-      if (pl?.bgmAnnounceNow) { forced = pl.bgmAnnounceNow; pl.bgmAnnounceNow = null; break; }
-    }
-    const want = forced ?? resolveEncounterBgm(encounter);
+    // ❗ KHÔNG còn ĐỌC-XOÁ cờ `bgmAnnounceNow` ở đây nữa.
+    // Fragaria: "BGM vẫn được chạy ngầm khi gọi -encounter status sẽ hiện ra;
+    // cái quan trọng là khi kích hoạt không tự động gửi file phát lên."
+    // Chính hàm này là thủ phạm: nó nuốt cờ (đường `channel.send`, hỏng khâu nào
+    // cũng im lặng), khiến `takePendingBgmFiles` — đường đính file vào reply đã
+    // được xác nhận CHẠY với Red Mist — không còn gì để phát. Nay cờ THUỘC VỀ
+    // DUY NHẤT takePendingBgmFiles; hàm này chỉ lo BGM NỀN của encounter.
+    const want = resolveEncounterBgm(encounter);
     if (!want) return;
-    if (!forced && encounter.lastAnnouncedBgm === want) return;
+    if (encounter.lastAnnouncedBgm === want) return;
     encounter.lastAnnouncedBgm = want;
     const ch = await client.channels.fetch(channelId).catch(() => null);
     if (!ch) return;
@@ -3425,7 +3491,8 @@ client.on("interactionCreate", async (interaction) => {
         lightCost: pendingRoll.lightCost, sanityCost: pendingRoll.sanityCost,
       };
       outLines = await resolveOnePendingAction(encounter, p);
-      announceBgmIfChanged(channelId, encounter, "Furioso").catch(() => {});
+      // KHÔNG gọi announceBgmIfChanged ở đây — nó cướp cờ `bgmAnnounceNow` của
+      // `takePendingBgmFiles` ngay bên dưới (xem giải thích đầy đủ ở nhánh Critical).
       // Critical ĐÃ dùng thật ⇒ xoá cache roll (giữ lại thì turn sau bấm lại
       // cùng Critical sẽ ăn kết quả cũ).
       if (encounter.players?.[interaction.user.id]) encounter.players[interaction.user.id].pageRollCache = null;
@@ -5052,4 +5119,10 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 });
+
+  // Trả ra NGOÀI để enemy-ai.js dùng CÙNG hàm này (qua aiHooks) — đường AI tự
+  // phòng thủ cũng phải đính file BGM vào tin nhắn kết quả, nếu không thì đòn
+  // Furioso đánh vào mob do AI điều khiển sẽ lại "im lặng" y như trước.
+  return { takePendingBgmFiles };
+
 };
