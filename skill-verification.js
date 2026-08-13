@@ -205,7 +205,9 @@ module.exports = function ({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey
     let isOwnCriticalBypassed = false;
   
     if (skillNameRaw && skillNameRaw.trim()) {
-      const skill = findSkill(skillNameRaw.trim());
+      // `let` chứ không `const`: Mimicry Blade đủ 5 Imitation sẽ THAY skill này
+      // bằng Great Split ngay bên dưới (xem khối "upstanding slash").
+      let skill = findSkill(skillNameRaw.trim());
       if (!skill) throw new Error(`Không tìm thấy skill "${skillNameRaw}" — dùng \`-skill list\` để xem danh sách.`);
       // ── promptArg TỰ SUY TỪ STATE (BUG ĐÃ SỬA — Fragaria: "Vengeance
       // Retaliation chưa automate, có thể cũng còn nhiều skill khác tương tự") ──
@@ -319,6 +321,26 @@ module.exports = function ({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey
       }
       if ((skillKeyNoColon === "great split vertical" || skillKeyNoColon === "great split horizontal") && (attacker.imitation ?? 0) < 5) {
         throw new Error(`Skill "${skill.name}" cần ít nhất 5 Imitation để dùng — hiện có ${attacker.imitation ?? 0}.`);
+      }
+      // ❗❗ BUG ĐÃ SỬA (Fragaria 12/08: "sai logic Upstanding Slash / Great Split
+      // Vertical / Horizontal của Mimicry — hiện tại là xài Upstanding Slash SAU
+      // ĐÓ mới kích hoạt Great Split, trong khi đáng lẽ ĐỦ 5 Imitation thì xài
+      // Upstanding Slash sẽ THÀNH Great Split luôn").
+      // GỐC: phép BIẾN HÌNH này chỉ tồn tại ở panel Moves (encounter-panels.js —
+      // nó thay `criticalKeyFinal`). Đường gọi skill THEO TÊN (lệnh text, `-skill`,
+      // GM gõ tay) KHÔNG đi qua panel ⇒ vẫn ra Upstanding Slash, người chơi buộc
+      // phải bấm thêm lần nữa mới có Great Split — đúng "2 bước" Fragaria mô tả.
+      // NAY chuyển hoá NGAY TẠI ĐÂY, nơi MỌI đường gọi skill đều đi qua.
+      if (skillKeyNoColon === "upstanding slash"
+          && (attacker.weaponName === "Mimicry Blade" || attacker.mimicSyncActive)
+          && (attacker.imitation ?? 0) >= 5) {
+        // Dưới 30% HP ⇒ Horizontal (AOE), còn lại Vertical — CÙNG luật với panel.
+        // `mimicSyncActive` đã gỡ yêu cầu HP nên mặc định Vertical; muốn Horizontal
+        // thì gọi thẳng tên nó (vẫn qua gate 5 Imitation ở trên).
+        const lowHpMimic = (attacker.maxHp ?? 0) > 0 && (attacker.currentHp ?? 0) < (attacker.maxHp ?? 0) * 0.3;
+        const upgraded = (!attacker.mimicSyncActive && lowHpMimic) ? "great split horizontal" : "great split vertical";
+        skillKey = upgraded;
+        skill = findSkill(upgraded) ?? skill;
       }
       // "Shock Round" (Soldato Rifle) — GAP ĐÃ SỬA (xác nhận trực tiếp, sau đó
       // đổi điều kiện thành 5 viên đạn): field "cost: Tiêu 2 viên đạn" TRƯỚC ĐÂY

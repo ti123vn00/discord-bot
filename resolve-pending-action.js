@@ -20,7 +20,7 @@ const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 // Suy TRỰC TIẾP từ 3 ví dụ Fragaria đưa: light 5→5 · medium 10/2 · heavy 20/4.
 const RENEGADE_DIVISOR = { light: 1, medium: 2, heavy: 4 };
 
-module.exports = function ({ extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ isPermanentInjury, restoreInjuryMaxHp, extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -2418,6 +2418,33 @@ async function resolveOnePendingAction(encounter, p) {
             // Luật: dice [5~10] KHÔNG gây dmg; sau khi dùng, người dùng nhận số
             // charge né BẰNG ĐÚNG giá trị dice. Charge né không chặn [Undodgeable]
             // — điều này đã đúng sẵn ở nhánh tiêu charge (kiểm blockEvade).
+            // ── SERUM K — chữa mọi chấn thương của bản thân ──────────────────
+            // Fragaria 12/08: "đồng thời chữa mọi chấn thương của bản thân".
+            // ⚠️ TRỪ chấn thương VĨNH VIỄN (Sizzling Wound) — luật đã chốt:
+            // "không bao giờ chữa được bằng BẤT KỲ hình thức nào, chỉ GM gõ lệnh".
+            if (findSkill(p.skillKey ?? "")?.serumKHealInjuries && attacker.combatant) {
+              const inj = attacker.combatant.injuries ?? [];
+              const kept = inj.filter(isPermanentInjury);
+              const healed = inj.filter(x => !isPermanentInjury(x));
+              if (healed.length > 0) {
+                for (const x of healed) restoreInjuryMaxHp(attacker.combatant, x);
+                attacker.combatant.injuries = kept;
+                try {
+                  const { data: sd, slot: ss } = await getPlayerDataWithSlot(p.attackerId);
+                  sd.injuries = (sd.injuries ?? []).filter(isPermanentInjury);
+                  await savePlayerData(p.attackerId, sd, ss);
+                } catch { /* không chặn action chính nếu sync lỗi */ }
+                verifyNote += ` 💉[Serum K: chữa **${healed.length}** chấn thương (${healed.join(", ")})`
+                  + (kept.length ? ` — ${kept.join(", ")} là vĩnh viễn, không chữa được` : "") + `]`;
+              } else if (kept.length) {
+                verifyNote += ` 💉[Serum K: chỉ còn **${kept.join(", ")}** — chấn thương vĩnh viễn, không chữa được]`;
+              }
+              // Passive: "cho phép RESET số lần dùng K-Corp Ampule mà không chết".
+              if ((attacker.combatant.kCorpAmpuleUsesThisEncounter ?? 0) > 0) {
+                attacker.combatant.kCorpAmpuleUsesThisEncounter = 0;
+                verifyNote += ` 💉[Serum K: reset số lần dùng **K-Corp Ampule** — dùng lại không chết]`;
+              }
+            }
             if (p.skillKey === "borrowed eyes") {
               // ❗❗ BUG ĐÃ SỬA (Fragaria: "Borrowed Eyes chưa hoạt động, kích hoạt
               // rồi nhưng không hề tự động né cái nào hết").

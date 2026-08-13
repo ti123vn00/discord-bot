@@ -79,6 +79,10 @@ const commands = [
       opt.setName("dr").setDescription("% Damage Reduction flat. VD: 90%").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("bonus").setDescription("% DMG Bonus (VD: 20)").setRequired(false))
+    // Fragaria 12/08: "/math chưa có dmgtaken" — `-math` (prefix) đã có từ lô
+    // trước, slash là đường RIÊNG nên phải khai thêm ở đây MỚI hiện trên Discord.
+    .addNumberOption(opt =>
+      opt.setName("dmgtaken").setDescription("% Dmg Taken — debuff TRÊN ĐỊCH (Fragile, Karmic…). VD: 50").setRequired(false))
     .addNumberOption(opt =>
       opt.setName("sanitybonus").setDescription("Sanity của bản thân (VD: 15 = 15 Sanity → +15% DMG Bonus cho Dice)").setRequired(false))
     .addNumberOption(opt =>

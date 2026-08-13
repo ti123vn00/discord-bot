@@ -225,7 +225,7 @@ function calcMathCore(opts) {
   // "2+3Poise" thành hit giả "2 dmg +3% bonus Pierce"). Giờ khớp được CẢ 2, lấy bất
   // kỳ bên nào có giá trị.
   const damageRegex =
-    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+)%?)?\s*(Dice)?([BPSbps])(?:x([\d.]+))?((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*TremorBurst|[+-]\d*Tremor|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
+    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+(?:DT|DB)?)%?)?\s*(Dice)?([BPSbps])(?:x([\d.]+))?((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*TremorBurst|[+-]\d*Tremor|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
   // sumSignedTag — tách riêng GAIN (tổng "+N<tag>") và CONSUME (tổng "-N<tag>", dạng
   // số dương) trong effectsStr của 1 hit — KHÔNG gộp net ngay ở đây, vì cần biết riêng
   // 2 phần để phát hiện "tiêu thụ không đủ" (VD: +2Poise-6Poise mà lúc áp dụng chỉ có
@@ -247,7 +247,18 @@ function calcMathCore(opts) {
   while ((match = damageRegex.exec(dmgStr)) !== null) {
     const base = parseFloat(match[1]);
     const multiplier = match[2] ? parseInt(match[2]) : (match[6] ? parseInt(match[6]) : 1);
-    const extraPct = match[3] ? parseFloat(match[3]) : 0;
+    // ❗ NGỮ PHÁP MỚI (Fragaria 12/08): `+NDB%` = Dmg **Bonus**, `+NDT%` = Dmg
+    // **Taken**. Hai pool có đường bão hoà KHÁC NHAU nên phải phân biệt được ngay
+    // ở tầng dmgStr, nếu không mọi hiệu ứng on-hit đều rơi hết vào Bonus (đúng
+    // vấn đề Fragaria nêu: "vì DmgTaken được thêm rồi nên mấy hiệu ứng on-hit
+    // không hoạt động nữa").
+    // ⚠️ TƯƠNG THÍCH NGƯỢC: `+N%` không ghi hậu tố ⇒ hiểu là **DB** y như trước,
+    // nên mọi skill/GM đang gõ kiểu cũ KHÔNG đổi hành vi.
+    // Cài bằng cách cho group 3 nuốt luôn hậu tố ("10DT") rồi tách trong JS —
+    // KHÔNG thêm nhóm bắt mới, vì group 4..7 phía sau sẽ bị xô lệch chỉ số.
+    const extraRaw = match[3] ?? "";
+    const extraIsTaken = /DT$/i.test(extraRaw);
+    const extraPct = extraRaw ? (parseFloat(extraRaw) || 0) : 0;
     const isDice = !!match[4];
     const dmgType = match[5] ? match[5].toUpperCase() : "B";
     const effectsStr = match[7] || "";
@@ -271,12 +282,12 @@ function calcMathCore(opts) {
     const bleedTag = sumSignedTag(effectsStr, "Bleed");
     const tremorTag = sumSignedTag(effectsStr, "Tremor", "Burst");
     for (let i = 0; i < multiplier; i++) {
-      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, tremorTag, tremorBurstCount, livingToApply, departedToApply, effectsStr });
+      dmgValues.push({ value: base, type: dmgType, isDice, extraPct, extraIsTaken, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, tremorTag, tremorBurstCount, livingToApply, departedToApply, effectsStr });
     }
   }
   if (dmgValues.length === 0) {
     const zeroTag = { gain: 0, consume: 0 };
-    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, sinkingToApply: 0, ruptureToApply: 0, poiseTag: zeroTag, chargeTag: zeroTag, burnTag: zeroTag, bleedTag: zeroTag, tremorTag: zeroTag, tremorBurstCount: 0, livingToApply: 0, departedToApply: 0, effectsStr: "" });
+    dmgValues.push({ value: 0, type: "B", isDice: false, extraPct: 0, extraIsTaken: false, sinkingToApply: 0, ruptureToApply: 0, poiseTag: zeroTag, chargeTag: zeroTag, burnTag: zeroTag, bleedTag: zeroTag, tremorTag: zeroTag, tremorBurstCount: 0, livingToApply: 0, departedToApply: 0, effectsStr: "" });
   }
 
   let sanity = sanityInit;
@@ -304,7 +315,7 @@ function calcMathCore(opts) {
   const instanceResults = [];
 
   for (const dmgObj of dmgValues) {
-    const { value: dmg, type: dmgType, isDice, extraPct, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, tremorTag, tremorBurstCount, livingToApply, departedToApply, effectsStr } = dmgObj;
+    const { value: dmg, type: dmgType, isDice, extraPct, extraIsTaken, sinkingToApply, ruptureToApply, poiseTag, chargeTag, burnTag, bleedTag, tremorTag, tremorBurstCount, livingToApply, departedToApply, effectsStr } = dmgObj;
     const currentRes = resValues[dmgType] ?? 1.0;
     const currentDR  = drMult;
 
@@ -318,10 +329,11 @@ function calcMathCore(opts) {
     const didCrit = critChance >= 1 ? true : Math.random() < critChance;
 
     const multiplier = didCrit ? critMul : 1;
-    const rawTotalPct = bonusPct + extraPct;
+    // `+NDB%` (hoặc `+N%` kiểu cũ) → pool Dmg Bonus · `+NDT%` → pool Dmg Taken.
+    const rawTotalPct = bonusPct + (extraIsTaken ? 0 : extraPct);
     // %DmgTaken đi qua ĐƯỜNG BÃO HOÀ RIÊNG rồi mới cộng vào cùng dấu ngoặc —
     // KHÔNG gộp vào `bonusPct` nữa (xem saturateDmgTakenPct).
-    const effDmgTakenPct = saturateDmgTakenPct(dmgTakenPct);
+    const effDmgTakenPct = saturateDmgTakenPct(dmgTakenPct + (extraIsTaken ? extraPct : 0));
     const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0) + effDmgTakenPct;
     const bonusFactor = 1 + effTotalPct / 100;
     let instanceDmg = Math.max(0, dmg + flatDmgPerHit) * bonusFactor * multiplier * currentRes * currentDR * outgoingDmgMul * incomingDmgMul;

@@ -1134,7 +1134,15 @@ client.on("interactionCreate", async (interaction) => {
           // skills.js (pounce / follow-up / light dash / fleet footsteps /
           // borrowed eyes) — lọc TẠI ĐÂY và ở `pickClashSkill` của AI (enemy-ai.js).
           if (sk.unclashable) continue;
-          const key = name.trim().toLowerCase();
+          // ❗❗ BUG ĐÃ SỬA (user: "em xài Learn again Kid trước đó rồi, sau clash
+          // vẫn xài được Learn again Kid").
+          // GỐC: `key` chỉ `toLowerCase()` TÊN HIỂN THỊ — "Learn again, Kid" ra
+          // `"learn again, kid"` (CÓ DẤU PHẨY), trong khi CD được lưu dưới key
+          // chuẩn `"learn again kid"`. Tra `skillCooldowns` TRƯỢT ⇒ page đang CD
+          // vẫn lọt vào dropdown Clash, và dùng xong lại ghi CD vào ô SAI nốt.
+          // `resolveSkillKey` là hàm chuẩn hoá DUY NHẤT (bỏ dấu câu, alias…) —
+          // mọi nơi khác đã dùng nó, riêng chỗ này bị bỏ quên.
+          const key = resolveSkillKey(name) ?? name.trim().toLowerCase();
           if (addedClashKeys.has(key)) continue; // GAP ĐÃ SỬA: tránh 2 option TRÙNG value nếu equip cùng tên vào 2 slot
           if ((clasher.skillCooldowns?.[cdKeyFor(key)] ?? 0) > 0) continue;
           const cost = parseSkillCost(sk.cost);
@@ -2583,10 +2591,24 @@ client.on("interactionCreate", async (interaction) => {
         flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     }
+      // ❗❗ BUG ĐÃ SỬA (user: "Chọn Moves → Back. Chọn Moves khác thì sẽ bị LOCK
+      // hành động. Khá hên xui để get out"; góp ý: "bỏ luôn nút Back khi đang
+      // chọn target đi").
+      // GỐC: Back chỉ VẼ LẠI panel mà KHÔNG gỡ `pendingCriticalRolls` — kết quả
+      // roll cũ vẫn treo, nên mọi skill khác đều bị chặn bởi "đang có 1 kết quả
+      // roll chưa chọn target". Người chơi kẹt cho tới khi TTL hết.
+      // CÁCH SỬA (giữ được nút Back, không phải bỏ đi — nhẹ hơn cả việc bỏ):
+      // Back GỠ pending. Trước đây tôi cố ý KHÔNG gỡ vì sợ "Back = huỷ để roll
+      // lại" thành lối tắt farm dice đẹp — nhưng nỗi lo đó ĐÃ ĐƯỢC `pageRollCache`
+      // giải quyết: bấm lại CÙNG skill sẽ tái dùng đúng kết quả roll cũ, không
+      // roll mới. Nên gỡ pending là an toàn, và không tốn thêm tài nguyên gì.
     if (value === "back") {
       const encBack = await getEncounter(channelId);
       const combatantBack = encBack?.players?.[interaction.user.id];
       if (!combatantBack) return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      if (pendingCriticalRolls.delete(`${channelId}:${interaction.user.id}`)) {
+        // (không báo gì thêm — người chơi chỉ thấy panel quay lại như mong đợi)
+      }
       return interaction.update({ components: buildEncounterActionPanel(channelId, combatantBack, interaction.user.id) }).catch(() => {});
     }
     if (value === "openmoves" || value === "openspecial" || value === "openitems") {
@@ -3676,9 +3698,12 @@ client.on("interactionCreate", async (interaction) => {
   // `pendingCriticalRolls`: roll cũ vẫn phải bị khoá cho tới khi hết TTL, không
   // mở lối tắt "Back = huỷ để roll lại" (xem cùng lý do ở nhánh enctarget).
   if (chosenAllyId === "back") {
+    // Cùng lý do với nhánh `enctarget` ở trên — Back phải GỠ pending, nếu không
+    // người chơi bị khoá mọi hành động khác cho tới khi TTL hết.
     const encBackAlly = await getEncounter(channelId).catch(() => null);
     const meBackAlly = encBackAlly?.players?.[interaction.user.id];
     if (!meBackAlly) return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    pendingCriticalRolls.delete(`${channelId}:${interaction.user.id}`);
     return interaction.update({ components: buildEncounterActionPanel(channelId, meBackAlly, interaction.user.id) }).catch(() => {});
   }
   await interaction.deferUpdate().catch(() => {});
@@ -4923,6 +4948,8 @@ client.on("interactionCreate", async (interaction) => {
     const tremorInit = interaction.options.getInteger("tremor") ?? 0;
     const chargeInit = interaction.options.getInteger("charge") ?? 0;
     const bonusPct = interaction.options.getNumber("bonus") ?? 0;
+    // %DmgTaken — số hạng RIÊNG trong ngoặc, bão hoà riêng (saturateDmgTakenPct).
+    const dmgTakenPct = interaction.options.getNumber("dmgtaken") ?? 0;
     const sanityBonusPct = interaction.options.getNumber("sanitybonus") ?? 0;
     const errors = validateMathInputs({ bonusPct, sanityBonusPct, critMul, poiseInit, diceMul, sinkingInit, ruptureInit, sanityInit, theLiving, theDeparted, burnInit, bleedInit, bleedActions, tremorInit, chargeInit });
     if (errors.length > 0) { await interaction.editReply({ content: `❌ Input không hợp lệ:\n${errors.map(e => `• ${e}`).join("\n")}` }); return; }
@@ -4940,6 +4967,7 @@ client.on("interactionCreate", async (interaction) => {
       resStr: interaction.options.getString("res") ?? "",
       drStr: interaction.options.getString("dr") ?? "",
       bonusPct,
+      dmgTakenPct,
       sanityBonusPct,
       critMul,
       poiseInit,

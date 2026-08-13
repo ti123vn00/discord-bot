@@ -2839,13 +2839,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Blunt";
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.3 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+30DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+30DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2876,13 +2884,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Pierce";
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.3 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+30DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+30DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2913,13 +2929,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Slash";
         // Ra đúng type ⇒ bonus 30% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.3 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+30DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+30DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2950,13 +2974,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Blunt";
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.4 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+40DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+40DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -2987,13 +3019,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Pierce";
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.4 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+40DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+40DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -3024,13 +3064,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Slash";
         // Ra đúng type ⇒ bonus 40% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.4 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+40DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+40DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -3061,13 +3109,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Blunt";
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.5 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+50DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+50DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -3098,13 +3154,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Pierce";
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.5 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+50DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+50DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -3135,13 +3199,21 @@ roll(v = "no") {
         const d = pool[Math.floor(Math.random() * pool.length)];
         const match = d.type === "Slash";
         // Ra đúng type ⇒ bonus 50% Dmg cho RIÊNG dice đó.
-        const val = Math.round(cadDice(d.dmg) * (match ? 1.5 : 1) * 100) / 100;
+        // ❗ Fragaria 12/08: "Critical Caduceus đúng type được tính SẴN dmg bonus,
+        // thế có tính bão hoà chưa? Nếu parse thẳng 50% là 45 dice rồi tiếp tục
+        // với dmg bonus 100% ở sau nữa thì sẽ ra kết quả TO HƠN thực tế."
+        // Fragaria ĐÚNG: bonus đúng type nhân THẲNG vào dice value ⇒ (a) không
+        // qua `saturateBonusPct`, (b) còn bị %Bonus của người chơi nhân TIẾP.
+        // NAY dice giữ giá trị GỐC, bonus ghi thành tag `+50DB%` để vào ĐÚNG
+        // pool Dmg Bonus và chịu bão hoà chung với mọi nguồn khác.
+        const val = cadDice(d.dmg);
+        const matchTag = match ? "+50DB%" : "";
         total += val;
         // ❗ Fragaria: "khi Crit cũng CHƯA XỬ LÝ Poise ở dmg parse của encounter".
         // Mặt Caduceus nào cũng có hiệu ứng riêng — Furioso đã có, Crit thì quên.
         // Ghi vào dòng dice để `autoExtractDiceSideEffects` tự áp (cùng đường với
         // mọi page khác), thay vì code riêng cho Caduceus.
-        lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
+        lines.push(`${DICE_EMOJI_N[i]} **${val}**${matchTag} [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} [Guard Break] [Undodgeable] — *${d.name}*${match ? " ✅" : " ❌"}`);
       }
       // ⚠️ Fragaria: "3 Critical vẫn sử dụng Dice Value ĐẦU TIÊN để clash, CHỈ
       // RIÊNG Furioso xài tổng 9 Dice." Nên KHÔNG khai `clashUsesTotalDice` ở các
@@ -5574,14 +5646,21 @@ Object.assign(SKILLS, {
   },
 
   // ── Serum K (Singularity) ──
+  // ❗ Fragaria 12/08 bổ sung: ngoài hồi HP + giải 3 Debuff, Serum K còn
+  // "chữa MỌI chấn thương của bản thân". Cờ `serumKHealInjuries` để
+  // resolve-pending-action biết phải làm — KHÔNG viết riêng nhánh Caduceus-style.
+  // ⚠️ Sizzling Wound VẪN không chữa được (chấn thương VĨNH VIỄN — xem
+  // isPermanentInjury ở misc-helpers.js). Đây là luật đã chốt từ lô trước và
+  // Serum K không phải ngoại lệ, vì "chỉ GM gõ lệnh mới gỡ được".
   "serum k": {
     name: "Serum K", tags: "Singularity",
+    serumKHealInjuries: true,
     cost: "3 <:Light:1513786082502770719>Light", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,16);
       const heal = d1 * 2 + 25;
       return [
-        `${D1} **${d1}** — Hồi phục **${heal} HP** (= số dice × 2 + 25) và giải 3 Debuff bất kỳ của bản thân`,
+        `${D1} **${d1}** — Hồi phục **${heal} HP** (= số dice × 2 + 25), giải 3 Debuff bất kỳ của bản thân và chữa mọi chấn thương của bản thân`,
       ];
     },
   },
@@ -6197,6 +6276,15 @@ function buildReuseVariants(skill, resourceNow) {
   return opts;
 }
 
+/** extractDmgTakenGrantOfLine — grant "%Dmg Taken" của MỘT dòng dice.
+ *  Trả `{ all, byType:{B,P,S} }` hoặc null. Chỉ nhận khi chủ ngữ là ĐỊCH —
+ *  "bản thân +10% Dmg turn sau" là DmgBonus của người dùng, không được lọt vào.
+ */
+function extractDmgTakenGrantOfLine(line) {
+  const g = extractDmgTakenGrants([line]);
+  return g;
+}
+
 function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDice = false, diceModifier = 0, rollArgs = [], repeatTimes = 1 } = {}) {
   // ❗ BUG ĐÃ SỬA (Fragaria: "không thấy áp luôn cả Dice Multiplier của Dice").
   // `skill.diceMul` TRƯỚC ĐÂY chỉ được IN RA trong embed (skill-verification.js
@@ -6323,7 +6411,18 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDic
     if (!typeMatch) continue; // dice KHÔNG gây dmg (VD "chỉ giảm Stamina, không gây dmg") — bỏ qua AN TOÀN
     const valueMatch = line.match(/\*\*(-?[\d.]+)\*\*/); // giá trị ĐẦU TIÊN in ra trên dòng
     if (!valueMatch) continue; // dòng dice thuần mô tả, không có số
-    diceTypeByLine.push({ result: parseFloat(valueMatch[1]), type: TYPE_MAP[typeMatch[1]], statusTags: extractAutoStatusTags(line) });
+    // ❗ Fragaria chốt 12/08 (nguyên văn): "42DiceB + 42+10%DiceB + 42+20%DiceB
+    // + 42+30%DiceB — do đòn đầu là đòn SAU KHI DÙNG rồi mới khiến kẻ địch nhận
+    // thêm dmg nên ĐÒN SAU mới có +10%."
+    // ⇒ mỗi dòng dice "địch nhận thêm X% Dmg" áp cho các dice ĐỨNG SAU nó trong
+    // CÙNG đòn, CỘNG DỒN. Ghi lại grant của TỪNG dòng để cộng dồn ở bước dựng
+    // dmgStr bên dưới (không cộng ngay ở đây vì dice này chưa được hưởng).
+    diceTypeByLine.push({ result: parseFloat(valueMatch[1]), type: TYPE_MAP[typeMatch[1]],
+      statusTags: extractAutoStatusTags(line), dtGrant: extractDmgTakenGrantOfLine(line),
+      // Tag `+NDB%` viết NGAY SAU giá trị in đậm (Caduceus Critical đúng type) —
+      // phải đưa vào dmgStr thì nó mới đi qua `saturateBonusPct`, thay vì nhân
+      // thẳng vào dice như trước.
+      dbTag: (line.match(/\*\*-?[\d.]+\*\*\+([\d.]+)DB%/) ?? [])[1] ?? null });
   }
 
   // Tag phòng thủ/hiệu ứng phụ — CHỈ liệt kê để GM tự thêm tay, KHÔNG tự áp (xem
@@ -6345,8 +6444,31 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDic
     return { dmgStr: null, warnings, tracked, totalEmotionDelta, totalEmotionPlus, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
   }
   // Áp DICE MULTIPLIER vào giá trị dice thật (làm tròn 2 số để không ra rác thập phân).
+  // ❗❗ BUG NẶNG ĐÃ SỬA (Fragaria 12/08: "dmg của Furioso thực tế lên mục tiêu
+  // 1.5x Res là tận hơn 1k+ ở /math, còn ở encounter bot chỉ 400~600").
+  // GỐC: dmgStr auto-build ra `33P` — THIẾU marker **Dice**. Trong damage-calc,
+  // `%SanityBonus` CHỈ áp cho hit có `isDice` (`33DiceP`). Encounter VẪN truyền
+  // `sanityBonusPct: getEffectiveSanityForDiceBonus(player)` đàng hoàng, nhưng
+  // không hit nào nhận được ⇒ toàn bộ bonus Sanity bốc hơi im lặng.
+  // Người chơi 45 Sanity mất trắng +45% Dmg mỗi hit — đúng khoảng chênh mà
+  // Fragaria đo giữa /math (họ tự gõ `26DiceB`) và encounter.
+  // Mọi dice của skill page ĐỀU là Dice thật, nên gắn marker cho TẤT CẢ.
+  // Cộng dồn %DmgTaken từ các dice ĐỨNG TRƯỚC (xem comment ở diceTypeByLine.push).
+  // Dùng hậu tố `DT%` để nó vào ĐÚNG pool DmgTaken (bão hoà riêng), không phải
+  // pool Dmg Bonus như cú pháp `+N%` trần.
+  let dtRunAll = 0;
+  const dtRunByType = { B: 0, P: 0, S: 0 };
   const dmgStr = diceTypeByLine
-    .map(d => `${Math.round(d.result * diceMulNum * 100) / 100}${d.type}${d.statusTags ?? ""}`)
+    .map(d => {
+      const dtForThis = Math.round((dtRunAll + (dtRunByType[d.type] ?? 0)) * 100) / 100;
+      if (d.dtGrant) {   // grant của CHÍNH dice này chỉ có hiệu lực từ dice KẾ TIẾP
+        dtRunAll += d.dtGrant.all ?? 0;
+        for (const k of ["B", "P", "S"]) dtRunByType[k] += d.dtGrant.byType?.[k] ?? 0;
+      }
+      const val = Math.round(d.result * diceMulNum * 100) / 100;
+      const dbPart = d.dbTag ? `+${d.dbTag}DB%` : "";
+      return `${val}${dbPart}${dtForThis > 0 ? `+${dtForThis}DT%` : ""}Dice${d.type}${d.statusTags ?? ""}`;
+    })
     .join(" + ");
   return { dmgStr, warnings, tracked, totalEmotionDelta, totalEmotionPlus, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
 }
