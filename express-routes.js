@@ -87,6 +87,8 @@ app.post("/rtparry/:token/result", async (req, res) => {
     try {
       let displayText = "";
       let questEndedHere = false, questEndText = "";
+      // Khai NGOÀI khối `withLock` (gán bên trong, đọc sau khi nhả lock).
+      let bgmRtparry = { files: [], name: null };
       let needNextGroupPrompt = false;
       await withLock(encounterKey(encChannelId), async () => {
         const encounter = await getEncounter(encChannelId);
@@ -332,6 +334,9 @@ app.post("/rtparry/:token/result", async (req, res) => {
         // trận "tự dưng biến mất" mà không có thông báo nào.
         questEndedHere = !!encounter._deleteAfterSave;
         questEndText = finalized.resultText;
+        // BGM (Furioso → Saikai1/2) — đòn resolve ở đây (đường rtparry/page
+        // counter) cũng phải phát file. `finalizeReactiveChoice` trả sẵn.
+        bgmRtparry = finalized.bgm ?? bgmRtparry;
       });
       // Hỏi phòng thủ cho nhóm hit KẾ TIẾP — phải nằm NGOÀI withLock ở trên.
       if (needNextGroupPrompt) {
@@ -349,6 +354,17 @@ app.post("/rtparry/:token/result", async (req, res) => {
         // phần THÔNG BÁO — đó mới là cái bị sót.
       }
 
+      // File BGM gửi vào KÊNH ENCOUNTER — người chơi đang nhìn Discord, và
+      // `msg.edit` của message minigame không đính thêm file mới được.
+      if (bgmRtparry.name) {
+        const bgmCh = await client.channels.fetch(encChannelId).catch(() => null);
+        if (bgmCh) {
+          await bgmCh.send({
+            content: `🎵 ${bgmRtparry.label ?? `BGM đổi sang **${bgmRtparry.name}**`}${bgmRtparry.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}`,
+            files: bgmRtparry.files,
+          }).catch(() => {});
+        }
+      }
       const channel = await client.channels.fetch(session.channelId).catch(() => null);
       if (channel) {
         const msg = await channel.messages.fetch(session.messageId).catch(() => null);

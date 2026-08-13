@@ -33,6 +33,17 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
     resultText = `${interactionUserMention} chọn **${choiceNote}** — đang chờ ${allTargetIds.length - p.reactedTargetIds.length} người khác trong đòn AOE này.`;
     stillWaitingFor = allTargetIds.length - p.reactedTargetIds.length;
   }
+  // ❗❗ BUG TÁI PHÁT LẦN 3 — NAY GOM VỀ MỘT CHỖ (Fragaria: "Furioso Replica sau
+  // khi xài vẫn không thấy thông báo đổi BGM và gửi file lên, mà phải
+  // -encounter status mới thấy").
+  // GỐC lần này: `finalizeReactiveChoice` LÀ nơi đòn thật sự resolve, nhưng nó
+  // có TỚI 6 nơi gọi (nút phòng thủ per-hit · Your Shield · Clash · rtparry ·
+  // AI tự phòng thủ · AI clash/counter early-return). Lần trước tôi đi vá TỪNG
+  // nơi ⇒ sót đúng nhánh AI clash/counter và nhánh Clash của người chơi.
+  // NAY: chính hàm này lấy cờ BGM và TRẢ RA cho caller — thêm đường gọi mới sau
+  // này cũng tự có, không thể sót nữa. Lấy TRƯỚC saveEncounter để cờ đã bị xoá
+  // được ghi xuống Redis (không phát lại lần 2 sau restart).
+  const bgm = aiHooks.takePendingBgmFiles?.(encounter) ?? { files: [], name: null };
   await saveEncounter(channelId, encounter);
   // Stage 5 (quest system) — encounter._deleteAfterSave được resolveOnePendingAction
   // đánh dấu khi quest vừa kết thúc (thắng/thua) — XOÁ NGAY SAU KHI save (thứ tự
@@ -40,7 +51,7 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
   // xoá, tránh save-sau-xoá vô tình tạo lại encounter đã kết thúc).
   if (encounter._deleteAfterSave) {
     await deleteEncounter(channelId).catch((err) => log("error", "reactivedef-deleteEncounter", "system", err.message));
-    return { resultText, stillWaitingFor };
+    return { resultText, stillWaitingFor, bgm };
   }
   // Stage 4 hook — nếu đòn VỪA resolve xong (allReacted) do 1 enemy aiControlled
   // TỰ tấn công (attackerType "enemy"), báo cho AI biết để tự cân nhắc hành động
@@ -51,7 +62,7 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
   if (allReacted && p.attackerType === "enemy" && encounter.enemies[p.attackerId]?.aiControlled) {
     aiHooks.maybeRunAiTurn(channelId).catch(() => {});
   }
-  return { resultText, stillWaitingFor };
+  return { resultText, stillWaitingFor, bgm };
 }
 
 /** sendReactiveDefensePrompt — Yu-Gi-Oh Chain-style: khi A tấn công B, gửi NGAY

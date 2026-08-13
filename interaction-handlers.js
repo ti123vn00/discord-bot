@@ -1105,6 +1105,8 @@ client.on("interactionCreate", async (interaction) => {
       const entryId = counterSkillKey; // tái dùng field thứ 6 (xem comment ở nhánh "clash")
       try {
         let displayText = "";
+        // Khai NGOÀI khối `withLock` (gán bên trong, đọc lúc gửi tin nhắn).
+        let bgmYourShield = { files: [], name: null };
         await withLock(encounterKey(channelId), async () => {
           const encounter = await getEncounter(channelId);
           if (!encounter) { displayText = "⚠️ Encounter không còn tồn tại."; return; }
@@ -1132,12 +1134,16 @@ client.on("interactionCreate", async (interaction) => {
           // đòn thay cho 1 đồng đội" nguyên văn).
           target.evadeCharges = (target.evadeCharges ?? 0) + hitCount;
           const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, `🛡️ **${entry.name ?? entryId}** dùng Your Shield — Guard thay cho ${targetResolved.label} (-${opts.guard.cost} Sta của người dùng Shield).`, `<@${entryId}>`);
+          bgmYourShield = finalized.bgm ?? bgmYourShield;
           displayText = finalized.resultText;
         });
         await interaction.update({
-          content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
+          content: bgmYourShield.name
+            ? `🎵 ${bgmYourShield.label ?? `BGM đổi sang **${bgmYourShield.name}**`}${bgmYourShield.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}`
+            : "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
           embeds: [{ title: "🛡️ Your Shield — Kết quả", description: displayText, color: 0x9b59b6 }],
           components: [],
+          files: bgmYourShield.files,
         }).catch(() => {});
         {
           const encAfterYourShield = await getEncounter(channelId);
@@ -1502,8 +1508,7 @@ client.on("interactionCreate", async (interaction) => {
         stillWaitingFor = finalized.stillWaitingFor;
         // BGM (Furioso → Saikai1/2) — đòn resolve TẠI ĐÂY khi người bị đánh tự
         // bấm phòng thủ, nên đây cũng phải đính file (cùng cơ chế Red Mist).
-        bgmReactive = takePendingBgmFiles(encounter);
-        if (bgmReactive.name) await saveEncounter(channelId, encounter);
+        bgmReactive = finalized.bgm ?? bgmReactive;
       });
       if (needsNextHitPrompt) {
         await interaction.update({
@@ -1613,6 +1618,8 @@ client.on("interactionCreate", async (interaction) => {
   const chosenKey = interaction.values[0];
   try {
     let displayText = "";
+  // Khai NGOÀI khối `withLock` (gán bên trong, đọc lúc gửi tin nhắn).
+  let bgmClash = { files: [], name: null };
     await withLock(encounterKey(channelId), async () => {
       const encounter = await getEncounter(channelId);
       if (!encounter) { displayText = "⚠️ Encounter không còn tồn tại."; return; }
@@ -1836,11 +1843,17 @@ client.on("interactionCreate", async (interaction) => {
       if (furiosoClashNote) choiceNote += furiosoClashNote;
       const finalized = await finalizeReactiveChoice(channelId, encounter, p, targetId, choiceNote, `<@${targetId}>`);
       displayText = finalized.resultText;
+      // BGM (Furioso → Saikai1/2): `finalizeReactiveChoice` là nơi đòn resolve
+      // nên nó lấy sẵn cờ và trả ra — mọi caller chỉ việc đính vào tin nhắn.
+      bgmClash = finalized.bgm ?? bgmClash;
     });
     await interaction.update({
-      content: "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
+      content: bgmClash.name
+        ? `🎵 ${bgmClash.label ?? `BGM đổi sang **${bgmClash.name}**`}${bgmClash.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}`
+        : "", // xoá text/mention cũ — update KHÔNG tự xoá field không truyền
       embeds: [{ title: "⚔️ Clash — Kết quả", description: displayText, color: 0x2ecc71 }],
       components: [],
+      files: bgmClash.files,
     }).catch(() => {});
     // GAP ĐÃ SỬA (xác nhận trực tiếp): "sau khi responsive guard được thực thi
     // xong thì bị che mất luôn phần dropdown turn của người đang trong turn

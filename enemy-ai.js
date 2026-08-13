@@ -155,7 +155,7 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
           note += ` 🌵+${thornsRupture} Rupture (Thorns) lên attacker.`;
         }
         const finalized = await aiHooks.finalizeReactiveChoice(channelId, encounter, p, targetId, note, `🤖 **${target.name}**`);
-        return { handled: true, resultText: finalized.resultText };
+        return { handled: true, resultText: finalized.resultText, bgm: finalized.bgm };
       }
       // Thua Clash — TIẾP TỤC thử Counter nếu có (không waste toàn bộ lượt phòng thủ chỉ vì thua Clash).
     }
@@ -199,7 +199,7 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
       const hitCount2 = Math.max(1, p.targets.find(tg => tg.targetId === targetId)?.preview?.dmgValues?.length ?? 1);
       target.evadeCharges = (target.evadeCharges ?? 0) + hitCount2;
       const finalized = await aiHooks.finalizeReactiveChoice(channelId, encounter, p, targetId, note, `🤖 **${target.name}**`);
-      return { handled: true, resultText: finalized.resultText };
+      return { handled: true, resultText: finalized.resultText, bgm: finalized.bgm };
     }
     return false;
   }
@@ -306,7 +306,12 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
         // và SKIP hẳn vòng lặp Guard/Evade/Parry per-group bên dưới.
         const clashOrCounterResult = await attemptAiClashOrCounter(channelId, encounter, p, target, targetId, attackerResolved);
         if (clashOrCounterResult && clashOrCounterResult.handled) {
-          postLockInfo = { resultText: clashOrCounterResult.resultText, channelId, isEnemyTarget: true };
+          // ❗ NHÁNH TỪNG BỊ SÓT: AI Clash/Counter thành công cũng RESOLVE đòn
+          // (qua finalizeReactiveChoice bên trong), nên cũng phải mang file BGM
+          // theo. Đây chính là đường Fragaria gặp — Furioso xong không thấy BGM.
+          postLockInfo = { resultText: clashOrCounterResult.resultText, channelId, isEnemyTarget: true,
+            bgm: clashOrCounterResult.bgm ?? aiHooks.takePendingBgmFiles?.(encounter) ?? { files: [], name: null } };
+          if (postLockInfo.bgm?.name) await saveEncounter(channelId, encounter);
           return;
         }
         // Loop TOÀN BỘ nhóm còn lại (khác người thật — không cần round-trip
@@ -332,9 +337,8 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
         // mob aiControlled resolve NGAY TẠI ĐÂY, nên đây cũng phải là nơi đính
         // file — dùng CHUNG `takePendingBgmFiles` với các đường khác (đọc xong
         // xoá cờ). Lấy TRƯỚC khi ra khỏi lock để cờ không bị lượt sau ghi đè.
-        const bgmAi = aiHooks.takePendingBgmFiles?.(encounter) ?? { files: [], name: null };
-        if (bgmAi.name) await saveEncounter(channelId, encounter);
-        postLockInfo = { resultText: finalized.resultText, channelId, isEnemyTarget: true, bgm: bgmAi };
+        // `finalizeReactiveChoice` đã lấy sẵn cờ BGM và save — chỉ việc nhận lại.
+        postLockInfo = { resultText: finalized.resultText, channelId, isEnemyTarget: true, bgm: finalized.bgm };
       });
       if (postLockInfo) {
         const ch = await client.channels.fetch(postLockInfo.channelId).catch(() => null);
