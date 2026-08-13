@@ -2388,9 +2388,25 @@ async function resolveOnePendingAction(encounter, p) {
             // charge né BẰNG ĐÚNG giá trị dice. Charge né không chặn [Undodgeable]
             // — điều này đã đúng sẵn ở nhánh tiêu charge (kiểm blockEvade).
             if (p.skillKey === "borrowed eyes") {
-              // Lấy giá trị dice từ dmgStr ĐÃ ROLL (không roll lại — roll lại thì
-              // số charge sẽ lệch khỏi con số vừa hiện cho người chơi).
-              const diceVal = Math.round(parseFloat(String(p.dmgStr ?? "0").match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0"));
+              // ❗❗ BUG ĐÃ SỬA (Fragaria: "Borrowed Eyes chưa hoạt động, kích hoạt
+              // rồi nhưng không hề tự động né cái nào hết").
+              // GỐC: chỗ này đọc số charge từ `p.dmgStr`. Nhưng dice của Borrowed
+              // Eyes KHÔNG có tag loại dmg ([Slash]/[Blunt]/[Pierce]) — đúng theo
+              // thiết kế, vì "Dice này KHÔNG gây dmg" — nên
+              // `autoBuildDmgStrFromSkillRoll` trả `dmgStr = null`, và pendingAction
+              // rơi về chuỗi mô tả `"Critical: Borrowed Eyes"`. Chuỗi đó KHÔNG có
+              // chữ số nào ⇒ `diceVal = 0` ⇒ `if (diceVal > 0)` KHÔNG BAO GIỜ đúng
+              // ⇒ 0 charge được cấp. Page này CHƯA TỪNG chạy kể từ ngày ra mắt.
+              // (Cơ chế tiêu charge tự động thì vẫn tốt — đã chạy thật để xác nhận.)
+              // SỬA: lấy số TỪ DÒNG DICE trong embed roll — nguồn duy nhất, đúng
+              // bằng con số người chơi vừa nhìn thấy, không roll lại.
+              let diceVal = 0;
+              for (const line of String(p.skillRollEmbed?.description ?? "").split("\n")) {
+                if (!/^<:Dice\d+:/.test(line)) continue;
+                const m = line.match(/\*\*(\d+(?:[.,]\d+)?)\*\*/);
+                if (m) { diceVal = Math.round(parseFloat(m[1].replace(",", "."))); break; }
+              }
+              if (diceVal <= 0) diceVal = Math.round(parseFloat(String(p.dmgStr ?? "0").match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0"));
               if (diceVal > 0) {
                 attacker.combatant.evadeCharges = (attacker.combatant.evadeCharges ?? 0) + diceVal;
                 attacker.combatant.borrowedEyeCharges = diceVal;
