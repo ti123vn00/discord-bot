@@ -14,6 +14,11 @@
 
 module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE, CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU, UNLOCK_THRESHOLDS, PRESCRIPT_DICE_PER_TURN, PRESCRIPT_RULES, KARMIC_PER_FAILURE, KARMIC_MAX, hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
 
+  // Trần của Indulgence in Prescript — Fragaria chốt: max cap 1, hết sau end turn.
+  // Khai MỘT chỗ để 2 nơi cộng (Singleton ở đây + Prescript ở interaction-handlers)
+  // không bao giờ lệch nhau.
+  const INDULGENCE_MAX = 1;
+
   /** rollSpeedValue — roll trong Range Speed của combatant, cộng Haste trừ Bind
    *  ("1 Haste +1 Speed, 1 Bind -1 Speed" theo update mới). */
   function rollSpeedValue(combatant) {
@@ -1210,7 +1215,11 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
     }
     // Singleton — "dùng biến thể Furioso bất kỳ cho 1 stack Indulgence in Prescript".
     if (user.singleton && user.hasIndexOraclesProxy) {
-      user.indulgenceInPrescript = (user.indulgenceInPrescript ?? 0) + 1;
+      // ❗ TRẦN = 1 (Fragaria chốt 12/08: "max cap của Indulgence là 1, và nó sẽ
+      // hết sau khi end turn"). Hiệu ứng là +2 count PHẲNG khi có stack — không
+      // nhân theo số stack — nên để nó cộng dồn chỉ tạo con số vô nghĩa trên UI.
+      // Reset cuối turn nằm ở turn-advance.js.
+      user.indulgenceInPrescript = Math.min(INDULGENCE_MAX, (user.indulgenceInPrescript ?? 0) + 1);
       notes.push(` 📜[+1 **Indulgence in Prescript** — đòn có áp Sinking sẽ inflict thêm 2 count]`);
     }
     // "Sau khi sử dụng Furioso thì reset toàn bộ Procuration [Hermes] về 0."

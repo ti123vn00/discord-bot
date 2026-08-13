@@ -25,6 +25,15 @@ module.exports = function ({ SEVERE_INJURIES, MINOR_INJURIES }) {
     else return null;
   
     combatant.injuries = combatant.injuries ?? [];
+    // ❗❗ BUG ĐÃ SỬA (Fragaria 12/08: "Bug chấn thương có thể bị lặp lại x2, chỉ
+    // được 1 loại chấn thương thôi — như trên Gãy chân bị lặp tới 2 lần").
+    // GỐC: `rollInjury` push thẳng, KHÔNG kiểm trùng ⇒ roll trúng cùng tên lần 2
+    // là có 2 bản. Nguy hiểm gấp đôi ở "Gãy Xương"/"Vết thương lớn": mỗi bản
+    // TRỪ TIẾP -30/-100 Max HP, và `calcInjuryMaxHpPenalty` cũng đếm cả 2 ⇒ mất
+    // máu chồng chất. So khớp theo TÊN GỐC (bỏ phần "(-30 Max HP)") vì tên lưu
+    // trong list đã kèm hậu tố.
+    const already = combatant.injuries.some(x => String(x).startsWith(injuryName));
+    if (already) return null;   // đã có loại này rồi ⇒ không nhận thêm bản thứ 2
     if (injuryName === "Gãy Xương") {
       combatant.maxHp = Math.max(1, combatant.maxHp - 30);
       combatant.currentHp = Math.min(combatant.currentHp, combatant.maxHp);

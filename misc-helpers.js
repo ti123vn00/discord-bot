@@ -111,5 +111,21 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     return { entries };
   }
 
-  return { computeDefenderDmgReduction, resolveEquipTarget, buildPendingListText, parseBatchEntries };
+
+  /** isPermanentInjury — chấn thương VĨNH VIỄN, KHÔNG đường nào chữa được trừ
+   *  lệnh GM.
+   *
+   *  ❗ BUG ĐÃ SỬA (Fragaria 12/08: "Sizzling Wound có thể bị chữa được trong
+   *  shop trong khi đã note rõ là chấn thương vĩnh viễn không bao giờ chữa được
+   *  bằng bất kỳ hình thức nào kể cả K-Corp Ampule; chỉ có GM gõ lệnh mới chữa
+   *  được"). GỐC: mọi đường chữa đều thao tác trên `injuries` như một mảng
+   *  ĐỒNG NHẤT — shop `splice(idx,1)` theo index, K-Corp Ampule `injuries = []`
+   *  quét sạch. Không nơi nào biết có loại "không được đụng tới".
+   *  MỘT hàm dùng chung cho MỌI đường chữa, để không lần sau lại sót một đường.
+   */
+  function isPermanentInjury(injuryName) {
+    return /sizzling\s*wound/i.test(String(injuryName ?? ""));
+  }
+
+  return { isPermanentInjury, computeDefenderDmgReduction, resolveEquipTarget, buildPendingListText, parseBatchEntries };
 };

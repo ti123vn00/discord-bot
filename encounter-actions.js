@@ -21,7 +21,7 @@
 const MANG_MAX_LEVEL = 5;
 const SHIN_MAX_LEVEL = 50;
 
-module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMimicryForm, MIMICRY_SYNC_FORMS, healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
+module.exports = function ({ isPermanentInjury, hasEgoMechanic, applyMimicSynchronization, applyMimicryForm, MIMICRY_SYNC_FORMS, healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
 
   async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
     let result;
@@ -464,15 +464,22 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
             effectNote = ` ☠️ **DÙNG LẦN 2 TRONG CÙNG ENCOUNTER — CHẾT NGAY LẬP TỨC!**${deathNote}`;
           }
         } else {
-          for (const inj of player.injuries ?? []) restoreInjuryMaxHp(player, inj);
-          player.injuries = [];
+          // ❗ Sizzling Wound là chấn thương VĨNH VIỄN — K-Corp Ampule KHÔNG chữa
+          // được (Fragaria: "không bao giờ chữa được bằng bất kỳ hình thức nào kể
+          // cả K-Corp Ampule; chỉ có GM gõ lệnh mới chữa được"). Trước đây câu
+          // `injuries = []` quét sạch không chừa gì.
+          const keptPermanent = (player.injuries ?? []).filter(isPermanentInjury);
+          for (const inj of player.injuries ?? []) { if (!isPermanentInjury(inj)) restoreInjuryMaxHp(player, inj); }
+          player.injuries = keptPermanent;
           player.currentHp = player.maxHp;
           try {
             const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(userId);
-            injSyncData.injuries = [];
+            injSyncData.injuries = (injSyncData.injuries ?? []).filter(isPermanentInjury);
             await savePlayerData(userId, injSyncData, injSyncSlot);
           } catch { /* không chặn action chính nếu sync lỗi */ }
-          effectNote = ` 💊 Hồi ĐẦY HP (${player.currentHp}/${player.maxHp}) + Chữa TOÀN BỘ injury! (CD 2 turn — dùng lần 2 trong trận này sẽ CHẾT NGAY.)`;
+          effectNote = ` 💊 Hồi ĐẦY HP (${player.currentHp}/${player.maxHp}) + Chữa TOÀN BỘ injury!`
+            + (keptPermanent.length ? ` *(${keptPermanent.join(", ")} là vĩnh viễn — không chữa được)*` : "")
+            + ` (CD 2 turn — dùng lần 2 trong trận này sẽ CHẾT NGAY.)`;
         }
       } else if (isChuoi) {
         const before = player.currentHp;
@@ -487,11 +494,13 @@ module.exports = function ({ hasEgoMechanic, applyMimicSynchronization, applyMim
         effectNote = ` 🍉 +${(player.currentStamina - before).toFixed(0)} Stamina (${player.currentStamina}/${player.maxStamina}).`;
       } else if (isMedkit) {
         const before = [...(player.injuries ?? [])];
-        const healedMinor = before.filter(inj => MINOR_INJURIES.some(m => inj.startsWith(m)));
+        // (Medkit vốn chỉ đụng MINOR_INJURIES nên Sizzling Wound đã nằm ngoài,
+        // nhưng lọc tường minh để sau này thêm tên vào MINOR_INJURIES cũng không lọt.)
+        const healedMinor = before.filter(inj => !isPermanentInjury(inj) && MINOR_INJURIES.some(m => inj.startsWith(m)));
         if (healedMinor.length === 0) {
           effectNote = ` 🩹 Không có chấn thương nhẹ nào để chữa (Medkit KHÔNG chữa được chấn thương nặng).`;
         } else {
-          player.injuries = before.filter(inj => !MINOR_INJURIES.some(m => inj.startsWith(m)));
+          player.injuries = before.filter(inj => !healedMinor.includes(inj));
           for (const inj of healedMinor) restoreInjuryMaxHp(player, inj);
           try {
             const { data: injSyncData, slot: injSyncSlot } = await getPlayerDataWithSlot(userId);
