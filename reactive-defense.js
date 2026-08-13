@@ -43,7 +43,24 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
   // NAY: chính hàm này lấy cờ BGM và TRẢ RA cho caller — thêm đường gọi mới sau
   // này cũng tự có, không thể sót nữa. Lấy TRƯỚC saveEncounter để cờ đã bị xoá
   // được ghi xuống Redis (không phát lại lần 2 sau restart).
-  const bgm = aiHooks.takePendingBgmFiles?.(encounter) ?? { files: [], name: null };
+  // ❗❗❗ BỌC try/catch — BÀI HỌC ĐẮT NHẤT CỦA LÔ NÀY (Fragaria: "Bị kẹt Furioso
+  // ở encounter pending, tôi nghĩ lý do không ra BGM là đây" — ĐÚNG).
+  // CHUỖI NHÂN QUẢ ĐẦY ĐỦ:
+  //   `takePendingBgmFiles` ném ReferenceError (AttachmentBuilder ngoài scope)
+  //   → ném NGAY TẠI ĐÂY, TRƯỚC `saveEncounter`
+  //   → cả lượt phòng thủ abort, pendingAction KHÔNG bao giờ resolve
+  //   → đòn Furioso treo ở `-encounter pending`, và vì không resolve nên cũng
+  //     KHÔNG có BGM ⇒ đúng cái triệu chứng đã báo 3 lần.
+  //   Chỉ Furioso dính, vì chỉ nó mới đặt cờ `bgmAnnounceNow` để hàm kia chạm
+  //   tới nhánh có `AttachmentBuilder` — khớp chính xác "chỉ kẹt Furioso".
+  // LỖ HỔNG THIẾT KẾ: BGM là thứ TRANG TRÍ, không được phép nằm trên đường
+  // sống-chết của việc resolve đòn đánh. Nay hỏng BGM thì chỉ mất BGM.
+  let bgm = { files: [], name: null };
+  try {
+    bgm = aiHooks.takePendingBgmFiles?.(encounter) ?? bgm;
+  } catch (err) {
+    log("error", "finalizeReactiveChoice-bgm", "system", err.message);
+  }
   await saveEncounter(channelId, encounter);
   // Stage 5 (quest system) — encounter._deleteAfterSave được resolveOnePendingAction
   // đánh dấu khi quest vừa kết thúc (thắng/thua) — XOÁ NGAY SAU KHI save (thứ tự

@@ -310,8 +310,7 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
           // (qua finalizeReactiveChoice bên trong), nên cũng phải mang file BGM
           // theo. Đây chính là đường Fragaria gặp — Furioso xong không thấy BGM.
           postLockInfo = { resultText: clashOrCounterResult.resultText, channelId, isEnemyTarget: true,
-            bgm: clashOrCounterResult.bgm ?? aiHooks.takePendingBgmFiles?.(encounter) ?? { files: [], name: null } };
-          if (postLockInfo.bgm?.name) await saveEncounter(channelId, encounter);
+            bgm: clashOrCounterResult.bgm ?? { files: [], name: null } };
           return;
         }
         // Loop TOÀN BỘ nhóm còn lại (khác người thật — không cần round-trip

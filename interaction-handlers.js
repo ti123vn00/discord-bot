@@ -63,7 +63,26 @@ function resolveShortToken(raw) {
  *  channel.send** và dùng ĐÚNG cơ chế đã được xác nhận là chạy.
  *  @returns { files, name } — `files` rỗng nếu không có gì để phát.
  */
-function takePendingBgmFiles(encounter) {
+// ❗❗ BUG ĐÃ SỬA (Fragaria: "❌ AttachmentBuilder is not defined khi xài clash
+// của Furioso Replica"). HÀM NÀY nằm ở **module top-level**, NGOÀI thân factory,
+// nhưng lại dùng `AttachmentBuilder` — vốn là **tham số DI của factory**, không
+// tồn tại ở scope này ⇒ ReferenceError mỗi lần chạy.
+// ⚠️ ĐÚNG Y HỆT cái bẫy đã được ghi rõ ngay dưới, ở `bgmAttachmentIH` — tôi đọc
+// comment đó rồi vẫn viết lại hàm mới cùng hình dạng. Trước đây nó không lộ ra
+// vì `announceBgmIfChanged` cướp cờ trước nên hàm này gần như không bao giờ
+// chạm tới nhánh có `AttachmentBuilder`; sửa xong bug BGM thì lỗi này lộ ngay.
+// NAY: nhận `AttachmentBuilder` làm THAM SỐ (cùng cách `bgmAttachmentIH` đang
+// làm) — không mượn tên từ scope không có.
+/** takePendingBgmFilesSafe — bản KHÔNG BAO GIỜ NÉM. BGM là thứ trang trí; hỏng
+ *  nó không được phép làm hỏng luồng resolve/hiển thị (xem chuỗi nhân quả đầy đủ
+ *  ở comment trong reactive-defense.js: một ReferenceError ở đây từng làm KẸT
+ *  hẳn pendingAction Furioso). */
+function takePendingBgmFilesSafe(encounter, AttachmentBuilder) {
+  try { return takePendingBgmFiles(encounter, AttachmentBuilder); }
+  catch { return { files: [], name: null }; }
+}
+
+function takePendingBgmFiles(encounter, AttachmentBuilder) {
   for (const pl of Object.values(encounter?.players ?? {})) {
     if (!pl?.bgmAnnounceNow) continue;
     const name = pl.bgmAnnounceNow;
@@ -2738,7 +2757,7 @@ client.on("interactionCreate", async (interaction) => {
         if (encounter._deleteAfterSave) {
           await deleteEncounter(channelId).catch((err) => log("error", "critical-deleteEncounter", interaction.user.id, err.message));
           {
-            const bgm = takePendingBgmFiles(encounter);
+            const bgm = takePendingBgmFilesSafe(encounter, AttachmentBuilder);
             return interaction.reply({
               content: bgm.name ? `🎵 ${bgm.label ?? `BGM đổi sang **${bgm.name}**`}${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
               embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
@@ -2750,7 +2769,7 @@ client.on("interactionCreate", async (interaction) => {
         {
           // BGM (Furioso → Saikai1/2) đính THẲNG vào reply này — cùng cơ chế với
           // Manifest E.G.O (đã xác nhận chạy), thay cho channel.send riêng.
-          const bgm = takePendingBgmFiles(encounter);
+          const bgm = takePendingBgmFilesSafe(encounter, AttachmentBuilder);
           return interaction.reply({
             content: bgm.name ? `🎵 ${bgm.label ?? `BGM đổi sang **${bgm.name}**`}${bgm.files.length ? "" : " ⚠️ *(không tìm thấy file — đặt vào `assets/audio/bgm/`)*"}` : undefined,
             embeds: lines.length ? [verify.skillRollEmbed, { description: lines.join("\n"), color: 0x95a5a6 }] : [verify.skillRollEmbed],
@@ -3051,7 +3070,7 @@ client.on("interactionCreate", async (interaction) => {
         // GAP ĐÃ SỬA (xác nhận trực tiếp: "1 turn act bao nhiêu lần cũng được")
         // — không còn advance turn tự động sau hành động này nữa.
         // Lấy file BGM đang chờ TRƯỚC khi save (đọc xong xoá cờ, save luôn thấy sạch).
-        const bgmCrit = takePendingBgmFiles(encounter);
+        const bgmCrit = takePendingBgmFilesSafe(encounter, AttachmentBuilder);
           // Page ĐÃ dùng thật ⇒ xoá cache roll (nếu giữ, turn sau bấm lại
           // cùng page sẽ ăn kết quả cũ).
           if (encounter.players?.[interaction.user.id]) encounter.players[interaction.user.id].pageRollCache = null;
@@ -3462,8 +3481,13 @@ function furiosoClashKeyFor(clasher) {
   const unlock = clasher.prescriptUnlockLevel ?? 0;
   if (unlock < 1) return null;
   const proc = (clasher.procurationHermes ?? []).length;
-  // Đủ 9 Procuration, HOẶC được Shin - Rien mở sẵn (follow-up miễn phí 1 lần).
-  if (proc < 9 && clasher.shinRienFuriosoReady !== true) return null;
+  // ❗ ĐÍNH CHÍNH (Fragaria: "AttachmentBuilder is not defined khi xài clash của
+  // Furioso Replica — LÚC NÀY TÔI CHƯA ĐỦ 9 PROCURATION").
+  // Bản trước tôi cho `shinRienFuriosoReady` mở cả đường Clash. SAI: cửa sổ
+  // Shin - Rien nói rõ "Chọn Furioso ở panel **Moves**" — nó mở đường TẤN CÔNG
+  // follow-up, không phải đường Clash. Luật Clash Fragaria chốt chỉ có một vế:
+  // **đủ 9 Procuration** mới clash bằng Furioso được.
+  if (proc < 9) return null;
   return ["furioso replica", "furioso crescendo", "furioso lacrimosa crescendo"][unlock - 1] ?? null;
 }
 
@@ -3556,7 +3580,7 @@ client.on("interactionCreate", async (interaction) => {
       if (encounter.players?.[interaction.user.id]) encounter.players[interaction.user.id].pageRollCache = null;
       await saveEncounter(channelId, encounter);
     });
-    const bgmAlly = takePendingBgmFiles(await getEncounter(channelId).catch(() => null) ?? {});
+    const bgmAlly = takePendingBgmFilesSafe(await getEncounter(channelId).catch(() => null) ?? {}, AttachmentBuilder);
     await interaction.editReply({
       content: bgmAlly.name ? `🎵 ${bgmAlly.label ?? `BGM đổi sang **${bgmAlly.name}**`}` : undefined,
       embeds: [pendingRoll.skillRollEmbed, { description: outLines.join("\n") || "*(không có gì để hiện)*", color: 0x95a5a6 }],
@@ -5181,6 +5205,8 @@ client.on("interactionCreate", async (interaction) => {
   // Trả ra NGOÀI để enemy-ai.js dùng CÙNG hàm này (qua aiHooks) — đường AI tự
   // phòng thủ cũng phải đính file BGM vào tin nhắn kết quả, nếu không thì đòn
   // Furioso đánh vào mob do AI điều khiển sẽ lại "im lặng" y như trước.
-  return { takePendingBgmFiles };
+  // Bọc lại để nơi gọi bên ngoài (enemy-ai.js / reactive-defense.js qua aiHooks)
+  // KHÔNG phải tự biết tới AttachmentBuilder — nó là DI của factory này.
+  return { takePendingBgmFiles: (enc) => takePendingBgmFilesSafe(enc, AttachmentBuilder) };
 
 };
