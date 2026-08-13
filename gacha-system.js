@@ -64,7 +64,15 @@ async function performGachaPull(userId, count, bannerKey) {
       results.push(item);
       if (tier === 3) {
         rareHits.push(item);
-        profileData.gachaPity[pityKey] = 0; // roll ra Tier 3 thật — reset Pity (chung nhóm)
+        // ❗❗ BUG ĐÃ SỬA (Fragaria 12/08: "user đủ 100 pity bấm -gacha, không đổi
+        // ngay mà -gacha tiếp là MẤT SẠCH pity" — ảnh: "cần 100, hiện có 0").
+        // GỐC: rơi Tier 3 tự nhiên `= 0` xoá TRẮNG, kể cả phần đã đủ 100 mà người
+        // chơi CHƯA kịp đổi. Quyền đổi đã kiếm được bị bốc hơi chỉ vì họ pull thêm.
+        // LUẬT ĐÚNG: Tier 3 xoá **tiến độ đang tích dở**, KHÔNG xoá **quyền đổi đã
+        // đủ**. Giữ lại bội số nguyên của 100, bỏ phần lẻ.
+        //   pity 150 + Tier 3 → 100 (còn 1 quyền đổi)   ·   pity 50 → 0
+        const pityNow = profileData.gachaPity[pityKey] ?? 0;
+        profileData.gachaPity[pityKey] = Math.floor(pityNow / GACHA_PITY_MAX) * GACHA_PITY_MAX;
       } else {
         profileData.gachaPity[pityKey] += 1;
       }

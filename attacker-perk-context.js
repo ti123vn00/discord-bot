@@ -234,10 +234,15 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr, KARMIC_MAX 
     // (Stamina CAO mới buff) — ĐẢO NGƯỢC hoàn toàn ý nghĩa perk so với luật ("dưới
     // hoặc bằng 50 Stamina" — buff khi Stamina THẤP, hợp lý với tên "Backdraft").
     if (hasPerk(attacker, "Backdraft") && attacker.currentStamina <= 50) bonusPct += 20;
-    // Death Comes For All: target có Rupture → +30% Dmg
-    if (hasPerk(attacker, "Death Comes For All") && target.rupture > 0) bonusPct += 30;
-    // Break and Punish: target bị Stagger → +20% Dmg
-    if (hasPerk(attacker, "Break and Punish") && target.staggered) bonusPct += 20;
+    // ❗ Fragaria chốt 12/08: "Death Comes For All là DmgTaken", "Break and Punish
+    // là DmgTaken". Tôi đã xếp nhầm cả hai vào DmgBonus ở phiên trước (lý do:
+    // chúng là PERK của người tấn công). Luật thật đi theo CÁI MÀ HIỆU ỨNG NHÌN
+    // VÀO: cả hai đều kích khi ĐỊCH đang ở trạng thái nào đó (Rupture / Stagger)
+    // ⇒ thuộc pool DmgTaken, bão hoà theo saturateDmgTakenPct.
+    // (Đối chiếu: Kurokumo Wakashu và Middle Big/Little Sibling — Fragaria xác
+    // nhận VẪN là DmgBonus dù cũng nhìn vào status địch, vì chúng là OUTFIT.)
+    if (hasPerk(attacker, "Death Comes For All") && target.rupture > 0) dmgTakenPct += 30;
+    if (hasPerk(attacker, "Break and Punish") && target.staggered) dmgTakenPct += 20;
     // Kinetic Energy: CHỈ áp cho M1, cần ≥10 Charge → +10% Dmg
     if (isM1 && hasPerk(attacker, "Kinetic Energy") && attacker.charge >= 10) bonusPct += 10;
     // Tip-Toe Around (Wrath, [25 Points]): sau khi Parry thành công, đòn tấn công
@@ -261,6 +266,9 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr, KARMIC_MAX 
     // (ảnh hưởng lúc roll skill tay qua -skill, không phải lúc tính dmgStr ở đây) —
     // chỉ hiện trong status để player tự cộng tay lúc roll.
     if ((attacker.overchargedTurnsLeft ?? 0) > 0) bonusPct += attacker.overchargedDmgBonusPct ?? 0;
+    // Mặt 3 Caduceus "bản thân +10% Dmg turn sau" — BUFF trên NGƯỜI DÙNG ⇒ đúng
+    // là DmgBonus (không phải DmgTaken). turn-advance đổ pending → ô này.
+    bonusPct += attacker.caduceusDmgUpPct ?? 0;
   
     // Eye Of Horus — passive vũ khí "Foreclosure Task Force President" (CHỈ áp cho
     // M1 — "nếu đánh thường"). MÔ HÌNH ĐÃ SỬA HOÀN TOÀN LẦN THỨ 2 (xác nhận trực

@@ -585,6 +585,13 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     // Khoá nạp Procuration sau khi dùng Furioso — mở lại ở turn kế (xem
     // applyFuriosoUseCosts trong combat-utils.js).
     combatant.furiosoUsedThisTurn = false;
+    // Mặt 3 Caduceus "bản thân +10% Dmg turn SAU": ô CHỜ đổ sang ô hiệu lực ở
+    // ĐÚNG mốc sang turn, và ô hiệu lực cũ hết hạn cùng lúc. Làm 1 dòng theo thứ
+    // tự này để buff không bị ăn 2 turn liền.
+    combatant.caduceusDmgUpPct = combatant.caduceusDmgUpPendingPct ?? 0;
+    combatant.caduceusDmgUpPendingPct = 0;
+    // Trần "2 lần/turn" của mặt 3/4/6/7/8 — đếm lại từ đầu mỗi turn.
+    combatant.caduceusFaceUses = {};
     // "địch nhận thêm X% Dmg turn NÀY" — hết hiệu lực khi hết turn.
     combatant.dmgTakenPctTurn = 0;
     combatant.dmgTakenPctByType = { B: 0, P: 0, S: 0 };

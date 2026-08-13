@@ -1042,7 +1042,7 @@ const SKILLS = {
       const d1=r(3,6),d2=r(6,12);
       return [
         `*Skill đặc biệt của **Blade Lineage** — yêu cầu FACTION Blade Lineage (không phải outfit)*`,
-        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Né 4 đòn đánh thường hoặc clash`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Né 1 đòn đánh thường hoặc clash`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — Nếu địch không đánh để né/clash: chém và nhận 2 <:Light:1513786082502770719>Light`,
       ];
     },
@@ -1127,7 +1127,7 @@ const SKILLS = {
     roll() {
       const d1 = r(5,10);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — ngắt 4 đòn đánh thường của địch, nhận 2 Protection`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — ngắt 1 đòn đánh thường của địch, nhận 2 Protection`,
       ];
     },
     counterEffect: { protection: 2 },
@@ -1219,7 +1219,7 @@ const SKILLS = {
     roll() {
       const d1 = r(4,5), d2 = r(5,9), d3 = r(8,14);
       return [
-        `*Chặn 4 đòn đánh thường của địch — nhận 5 <:DefenseUp:1513767487894716497>Defense Up*`,
+        `*Chặn 1 đòn đánh thường của địch — nhận 5 <:DefenseUp:1513767487894716497>Defense Up*`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
         `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 3 <:DefenseDown:1513767463337066576>Defense Down`,
@@ -1290,11 +1290,16 @@ const SKILLS = {
   },
   "celestial sight": {
     name: "Celestial Sight",
-    cost: "2 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    // ❗ Fragaria 12/08: "Celestial Sight là page counter nên CD 4 Turn mới đúng
+    // (ngoại trừ Tanglecleaver Reload là 1 Turn)", và "có người bảo xài nó trong
+    // encounter bot nhưng KHÔNG HIỆN RA" — vì thiếu `counterEffect`, panel Moves
+    // và bộ chọn page-counter đều không nhận ra nó là counter.
+    counterEffect: {},
+    cost: "2 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — né 4 đòn thường của địch, phản công gây 6 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — né 1 đòn thường của địch, phản công gây 6 <:Tremor:1513762737388257380>Tremor`,
       ];
     },
   },
@@ -1908,7 +1913,7 @@ roll(v = "no") {
     roll() {
       const d1 = r(9,11);
       return [
-        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Counter] [Undodgeable] — né 4 đòn đánh thường; phản công gây 2 lần sát thương, mỗi lần gây 2 <:Smoke:1513778039610282015>Smoke; rồi gây 1 <:Paralyze:1513763316479295548>Paralyze`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Counter] [Undodgeable] — né 1 đòn đánh thường; phản công gây 2 lần sát thương, mỗi lần gây 2 <:Smoke:1513778039610282015>Smoke; rồi gây 1 <:Paralyze:1513763316479295548>Paralyze`,
       ];
     },
     counterEffect: { customHitMultiplier: 2, smokePerHit: 2, paralyzeAfter: 1 },

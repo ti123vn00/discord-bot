@@ -2123,6 +2123,7 @@ client.on("interactionCreate", async (interaction) => {
           // Trình tự ĐÚNG: roll → tính giá → **KIỂM ĐỦ STAMINA** → mới trừ.
           // Không đủ thì THOÁT SỚM, KHÔNG trừ gì cả, KHÔNG vào CD.
           const rolled = Array.from({ length: hitCount }, () => CADUCEUS_DICE[Math.floor(Math.random() * CADUCEUS_DICE.length)]);
+          let caduceusEffectNotes = [];
           const encCad = await getEncounter(channelId);
           const meCad = encCad?.players?.[interaction.user.id];
           // ── GRACE OF GOD (Prescript Device, Unlock ≥ II) ──────────────────
@@ -2150,7 +2151,10 @@ client.on("interactionCreate", async (interaction) => {
               flags: MessageFlags.Ephemeral,
             }).catch(() => {});
           }
-          dmgStr = rolled.map(d => `${d.dmg}${d.type[0]}`).join("+");
+          // Mặt 9 `self:alwaysCrit` — Fragaria: "dice 9 vẫn luôn luôn critical
+          // cho M1". Gắn `+Crit100` vào ĐÚNG hit của mặt đó (damage-calc đọc
+          // `+CritN` theo TỪNG hit), không phải cờ chung cho cả đòn.
+          dmgStr = rolled.map(d => `${d.dmg}${d.type[0]}${d.effect === "self:alwaysCrit" ? "+Crit100" : ""}`).join("+");
           const newFaces = [];
           if (meCad) {
             // Procuration [Hermes] — lưu TẬP mặt đã dùng (không phải bộ đếm).
@@ -2173,6 +2177,66 @@ client.on("interactionCreate", async (interaction) => {
             meCad.weaponBaseDamage = last.dmg;
             meCad.weaponType = last.type;
             meCad.caduceusLastFace = last.n;
+            // ❗❗ Fragaria 12/08: `CADUCEUS_DICE[].effect` từng là DỮ LIỆU CHẾT —
+            // 9 mặt khai `effect` mà KHÔNG NƠI NÀO ĐỌC. M1 Caduceus chỉ trừ
+            // Stamina + đổi base dmg; mọi hiệu ứng mặt đều KHÔNG chạy.
+            // Fragaria chốt: "cả dice 9 vẫn luôn luôn critical cho M1, nó được
+            // hưởng HẾT" ⇒ nối TOÀN BỘ 9 effect ngay tại đây.
+            const cadTargetKey = normalizeEnemyKey(targetStr ?? "");
+            const cadFoe = cadTargetKey ? encCad?.enemies?.[cadTargetKey] : null;
+            const TYPE_KEY_CAD = { Blunt: "B", Pierce: "P", Slash: "S" };
+            // Trần "2 lần/turn" ghi trong desc của mặt 3/4/6/7/8 (constants.js).
+            // Đếm theo SỐ MẶT đã kích trong turn, reset ở advanceCombatantTurn.
+            meCad.caduceusFaceUses = meCad.caduceusFaceUses ?? {};
+            const cadNotes = [];
+            for (const d of rolled) {
+              const [scope, kind, amtRaw] = String(d.effect ?? "").split(":");
+              const amt = parseFloat(amtRaw) || 0;
+              const LIMITED = new Set([3, 4, 6, 7, 8]);   // desc ghi "(2 lần/turn)"
+              if (LIMITED.has(d.n)) {
+                const used = meCad.caduceusFaceUses[d.n] ?? 0;
+                if (used >= 2) continue;                  // đã đủ 2 lần turn này
+                meCad.caduceusFaceUses[d.n] = used + 1;
+              }
+              if (scope === "foe") {
+                if (!cadFoe) continue;
+                if (kind === "takeDmg") {
+                  cadFoe.dmgTakenPctTurn = (cadFoe.dmgTakenPctTurn ?? 0) + amt;
+                  cadNotes.push(`địch +${amt}% Dmg Taken`);
+                } else if (kind === "takeDmgType") {
+                  cadFoe.dmgTakenPctByType = cadFoe.dmgTakenPctByType ?? { B: 0, P: 0, S: 0 };
+                  const tk = TYPE_KEY_CAD[d.type];
+                  if (tk) {
+                    cadFoe.dmgTakenPctByType[tk] = (cadFoe.dmgTakenPctByType[tk] ?? 0) + amt;
+                    cadNotes.push(`địch +${amt}% Dmg Taken từ ${d.type}`);
+                  }
+                } else if (kind === "sinking") {
+                  // ⚠️ `STATUS_CAPS_SHARED` là OBJECT tra theo tên status, KHÔNG
+                  // phải một con số — `Math.min(object, n)` ra **NaN** và sẽ phá
+                  // huỷ Sinking của địch. Sinking không nằm trong bảng đó (nó có
+                  // hằng riêng), nên kẹp 99 giống mọi nơi khác trong codebase.
+                  cadFoe.sinking = Math.min(99, (cadFoe.sinking ?? 0) + amt);
+                  cadNotes.push(`địch +${amt} Sinking`);
+                } else if (kind === "drainStamina") {
+                  cadFoe.currentStamina = Math.max(0, (cadFoe.currentStamina ?? 0) - amt);
+                  cadNotes.push(`địch −${amt} Stamina`);
+                }
+              } else if (scope === "self") {
+                if (kind === "poise") {
+                  meCad.poise = Math.min(POISE_MAX, (meCad.poise ?? 0) + amt);
+                  cadNotes.push(`+${amt} Poise`);
+                } else if (kind === "dmgUpNextTurn") {
+                  // "turn SAU" — cộng vào ô CHỜ, `advanceCombatantTurn` mới đổ
+                  // sang ô đang-hiệu-lực. Cộng thẳng vào ô hiệu lực là ăn ngay
+                  // turn này, sai luật.
+                  meCad.caduceusDmgUpPendingPct = (meCad.caduceusDmgUpPendingPct ?? 0) + amt;
+                  cadNotes.push(`+${amt}% Dmg turn sau`);
+                }
+                // `self:alwaysCrit` (mặt 9) KHÔNG xử lý ở đây — nó phải đi vào
+                // ĐÚNG HIT của mặt đó, nên gắn `+Crit100` vào dmgStr bên dưới.
+              }
+            }
+            if (cadNotes.length) caduceusEffectNotes = cadNotes;
             await saveEncounter(channelId, encCad);
           }
           caduceusMeta = {
@@ -2180,6 +2244,7 @@ client.on("interactionCreate", async (interaction) => {
             hitsPerCharge: meCad?.caduceusHitsPerCharge ?? 1,
             newProcuration: newFaces, procurationTotal: (meCad?.procurationHermes ?? []).length,
             lastFace: rolled[rolled.length - 1],
+            effectNotes: caduceusEffectNotes,
           };
         } else {
           dmgStr = hitCount > 1 ? `${combatant.weaponBaseDamage}x${hitCount}${normalTypeLetter}` : `${combatant.weaponBaseDamage}${normalTypeLetter}`;
@@ -2201,7 +2266,8 @@ client.on("interactionCreate", async (interaction) => {
             + (caduceusMeta.refunded > 0 ? `\n> - Singleton refund **${caduceusMeta.refunded} Stamina** (1/5)` : "")
             + `\n> - Base Dmg hiện tại theo mặt cuối: **${caduceusMeta.lastFace.dmg} ${caduceusMeta.lastFace.type}**`
             + `\n> - Procuration [Hermes]: **${caduceusMeta.procurationTotal}/9**`
-            + (caduceusMeta.newProcuration.length ? ` *(+${caduceusMeta.newProcuration.length} mặt mới)*` : ""),
+            + (caduceusMeta.newProcuration.length ? ` *(+${caduceusMeta.newProcuration.length} mặt mới)*` : "")
+            + (caduceusMeta.effectNotes?.length ? `\n> - Hiệu ứng mặt: **${caduceusMeta.effectNotes.join("**, **")}**` : ""),
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }

@@ -165,7 +165,16 @@ client.on("messageCreate", async (message) => {
     const TYPE_KEYS = { blunt: "Blunt", pierce: "Pierce", slash: "Slash" };
     const TYPE_COLORS = { Blunt: 0xe67e22, Pierce: 0x3498db, Slash: 0xe74c3c };
     const TYPE_ICONS = { Blunt: "<:Fix_Blunt:1513768529718022254>", Pierce: "<:Fix_Pierce:1513768511179329556>", Slash: "<:Fix_Slash:1513768633434640517>" };
-    const lineOf = (d) => `**Dice ${d.n}** · *${d.name}* — **${d.dmg} Dmg** [${TYPE_ICONS[d.type]}${d.type}] · ${d.desc} *[${d.stamina} Stamina]*`;
+    // Fragaria 12/08: "Sinking với Poise trong phần -caduceus bị mất emoji rồi."
+    // `desc` trong constants.js là CHỮ TRẦN (dùng chung cho nhiều nơi), nên gắn
+    // emoji ở TẦNG HIỂN THỊ chứ không sửa dữ liệu gốc — tránh làm hỏng chỗ khác.
+    const CAD_DESC_EMOJI = [
+      [/\bSinking\b/g, "<:Sinking:1513762793436741652>Sinking"],
+      [/\bPoise\b/g, "<:Poise:1513762945715142736>Poise"],
+      [/\bStamina\b/g, "<:Fix_Stamina:1513768090410647573>Stamina"],
+    ];
+    const decorateDesc = (txt) => CAD_DESC_EMOJI.reduce((acc, [re, rep]) => acc.replace(re, rep), String(txt ?? ""));
+    const lineOf = (d) => `**Dice ${d.n}** · *${d.name}* — **${d.dmg} Dmg** [${TYPE_ICONS[d.type]}${d.type}] · ${decorateDesc(d.desc)} *[${d.stamina} Stamina]*`;
 
     const tokens = message.content.replace(/-caduceus/i, "").trim().split(/\s+/).filter(Boolean);
     const typeKey = TYPE_KEYS[(tokens[0] ?? "").toLowerCase()];
@@ -222,8 +231,10 @@ client.on("messageCreate", async (message) => {
             `\n> **Đúng type:** ${hits}/${tierObj.rolls} → bonus **+${tierObj.bonusPct}% Dmg** cho ${hits} dice đó` +
             `${liveNote}\n\n` +
             picked.map((d, i) => `${i + 1}. ${lineOf(d)}${d.type === typeKey ? " ✅" : " ❌"}`).join("\n") +
-            `\n\n> 🎲 **Dice Value tổng (dùng cho clash):** ${totalClash}` +
-            `\n> 📋 dmgStr gợi ý: \`${dmgStr}\``,
+            // Fragaria 12/08: "Xoá hai phần Dice Value tổng (dùng cho clash) và
+            // dmgStr gợi ý ra đi; không cần thiết." — CHỈ nhánh Critical.
+            // Nhánh đánh thường (Will of Hermes) VẪN GIỮ dmgStr/Stamina/Charge.
+            ``,
         }],
       });
       return;
