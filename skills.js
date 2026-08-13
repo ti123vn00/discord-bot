@@ -3139,18 +3139,23 @@ roll(v = "no") {
       // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
       // là lưỡi hái. Base dmg của mặt tương ứng chính là Dice Value.
       const lines = [];
-      let total = 0;
+      let total = 0, totalClashBase = 0;
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
         // Dice Value = base dmg của mặt + mọi buff/debuff dice (xem cadDice).
         const val = cadDice(d.dmg);
         total += val;
+        // ❗ Fragaria: "toàn bộ mọi Dice Up sẽ KHÔNG thể áp dụng vào khi Clash mà
+        // chỉ dice GỐC; chỉ có Clash Power Up và Clash Power Boost mới tăng dice
+        // khi clash." ⇒ cộng riêng TỔNG DICE GỐC (chưa ăn buff) để in ra ở dòng
+        // "Clash bằng TỔNG 9 Dice" — con số HIỆN RA phải đúng con số ĐEM ĐI SO.
+        totalClashBase += d.dmg;
         // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
         // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
         // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
-      lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
+      lines.push(`*Clash bằng TỔNG 9 Dice: **${Math.round(totalClashBase * 100) / 100}** (dice gốc — Dice Up KHÔNG tính khi Clash)* [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
       lines.push(`*Turn SAU khi đòn này kết thúc, gây: <:Bleed:1513762688226955285>Bleed ×3 · <:Fix_Bind:1513768025881317457>Bind ×1 · <:Fix_Fragile:1513763336167100536>Fragile ×1*`);
       return lines;
     },
@@ -3167,18 +3172,23 @@ roll(v = "no") {
       // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
       // là lưỡi hái. Base dmg của mặt tương ứng chính là Dice Value.
       const lines = [];
-      let total = 0;
+      let total = 0, totalClashBase = 0;
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
         // Dice Value = base dmg của mặt + mọi buff/debuff dice (xem cadDice).
         const val = cadDice(d.dmg);
         total += val;
+        // ❗ Fragaria: "toàn bộ mọi Dice Up sẽ KHÔNG thể áp dụng vào khi Clash mà
+        // chỉ dice GỐC; chỉ có Clash Power Up và Clash Power Boost mới tăng dice
+        // khi clash." ⇒ cộng riêng TỔNG DICE GỐC (chưa ăn buff) để in ra ở dòng
+        // "Clash bằng TỔNG 9 Dice" — con số HIỆN RA phải đúng con số ĐEM ĐI SO.
+        totalClashBase += d.dmg;
         // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
         // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
         // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
-      lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
+      lines.push(`*Clash bằng TỔNG 9 Dice: **${Math.round(totalClashBase * 100) / 100}** (dice gốc — Dice Up KHÔNG tính khi Clash)* [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
       lines.push(`*Turn SAU khi đòn này kết thúc, gây: <:Bleed:1513762688226955285>Bleed ×4 · <:Fix_Bind:1513768025881317457>Bind ×2 · <:Fix_Fragile:1513763336167100536>Fragile ×2*`);
       return lines;
     },
@@ -3195,18 +3205,23 @@ roll(v = "no") {
       // 9 Dice: 1–8 roll như Will of Hermes (KHÔNG tốn Stamina), Dice 9 CHẮC CHẮN
       // là lưỡi hái. Base dmg của mặt tương ứng chính là Dice Value.
       const lines = [];
-      let total = 0;
+      let total = 0, totalClashBase = 0;
       for (let i = 0; i < 9; i++) {
         const d = (i === 8) ? CADUCEUS_FACES[8] : CADUCEUS_FACES[Math.floor(Math.random() * 9)];
         // Dice Value = base dmg của mặt + mọi buff/debuff dice (xem cadDice).
         const val = cadDice(d.dmg);
         total += val;
+        // ❗ Fragaria: "toàn bộ mọi Dice Up sẽ KHÔNG thể áp dụng vào khi Clash mà
+        // chỉ dice GỐC; chỉ có Clash Power Up và Clash Power Boost mới tăng dice
+        // khi clash." ⇒ cộng riêng TỔNG DICE GỐC (chưa ăn buff) để in ra ở dòng
+        // "Clash bằng TỔNG 9 Dice" — con số HIỆN RA phải đúng con số ĐEM ĐI SO.
+        totalClashBase += d.dmg;
         // Fragaria: "toàn bộ 9 dice của Furioso đều ĐƯỢC HIỆU ỨNG — ví dụ rìu
         // được 2 Poise, lưỡi hái chắc chắn crit." Ghi thẳng vào dòng dice để
         // parser chung (extractNonDmgStrEffects / autoBuildDmgStr) tự áp.
         lines.push(`${DICE_EMOJI_N[i]} **${val}** [${TYPE_EMOJI_CAD[d.type]}${d.type}]${CADUCEUS_FACE_FX[d.n] ?? ""} — *${d.name}*${i === 8 ? " 🗡️ *(luôn là lưỡi hái)*" : ""}`);
       }
-      lines.push(`*Clash bằng TỔNG 9 Dice: **${total}*** [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
+      lines.push(`*Clash bằng TỔNG 9 Dice: **${Math.round(totalClashBase * 100) / 100}** (dice gốc — Dice Up KHÔNG tính khi Clash)* [Unfocused Volley] [Unevadeable] [Unblockable] [Unparriable] [Uncounterable]`);
       lines.push(`*Turn SAU khi đòn này kết thúc, gây: <:Bleed:1513762688226955285>Bleed ×5 · <:Fix_Bind:1513768025881317457>Bind ×3 · <:Fix_Fragile:1513763336167100536>Fragile ×3*`);
       return lines;
     },

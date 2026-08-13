@@ -2737,15 +2737,33 @@ function clashDiceOf(skill, rollResult) {
  * Nếu không có hàm này, đòn Furioso của player bị AI clash sẽ chỉ đem **1 mặt**
  * ra so trong khi luật là TỔNG 9 mặt — thua oan.
  */
-function attackerClashDiceOf(p) {
+function attackerClashDiceOf(p, attackerCombatant = null) {
   const dmgStr = String(p?.dmgStr ?? "");
   const skill = p?.skillKey ? findSkill(p.skillKey) : null;
+
+  // ❗❗ LUẬT CLASH (Fragaria: "toàn bộ mọi Dice Up sẽ KHÔNG thể áp dụng vào khi
+  // Clash mà chỉ dice GỐC; chỉ có Clash Power Up và Clash Power Boost mới tăng
+  // dice khi clash. Có thể nhiều chỗ cũng bị sai chỗ này").
+  // Bên PHÒNG THỦ đã đúng sẵn: `buildSkillRollResult({ skill })` không truyền
+  // `diceModifier` nên roll ra dice gốc. Bên TẤN CÔNG thì SAI: `p.dmgStr` là
+  // con số ĐÃ ăn Dice Up (và đã nhân Dice Multiplier).
+  // Gỡ ngược: value = (diceGốc + diceModifier) × diceMul ⇒ gốc = value/mul − mod.
+  const mulMatch = String(skill?.diceMul ?? "1x").match(/([\d.]+)\s*x/i);
+  const mul = mulMatch ? (parseFloat(mulMatch[1]) || 1) : 1;
+  const mod = attackerCombatant ? (computeDiceModifier(attackerCombatant) ?? 0) : 0;
+  const toBase = (v) => Math.max(1, Math.round((v / mul - mod) * 100) / 100);
+
   if (skill?.clashUsesTotalDice) {
+    // Furioso: ưu tiên đọc THẲNG con số base đã in trong embed roll ("Clash bằng
+    // TỔNG 9 Dice: **185** (dice gốc…)") — CHÍNH XÁC tuyệt đối, không phải gỡ
+    // ngược, và đúng bằng con số người chơi nhìn thấy.
+    const printed = String(p?.skillRollEmbed?.description ?? "").match(/Clash bằng TỔNG 9 Dice: \*\*([\d.]+)\*\*/);
+    if (printed) return parseFloat(printed[1]);
     const all = [...dmgStr.matchAll(/(\d+(?:\.\d+)?)\s*(?:x\d+)?\s*[BPSbps]/g)].map(m => parseFloat(m[1]));
-    if (all.length) return Math.round(all.reduce((s, v) => s + v, 0) * 100) / 100;
+    if (all.length) return Math.round(all.reduce((sum, v) => sum + toBase(v), 0) * 100) / 100;
   }
   const first = dmgStr.match(/^([\d.]+)/);
-  return first ? parseFloat(first[1]) : null;
+  return first ? toBase(parseFloat(first[1])) : null;
 }
 
 /**
@@ -3018,12 +3036,26 @@ function parsePerHitBypass(skillRollEmbedDescription, manualTagsRaw, totalHits) 
       unfocusedVolley: rawLineBypass.unfocusedVolley || pageWideBypass.unfocusedVolley,
     };
     // Gộp tag gõ tay (áp dụng cho MỌI hit, cộng thêm — không thể tắt tag dòng đó tự có).
+    // ❗❗ BUG ĐÃ SỬA (Fragaria: "Furioso bị sai logic Unfocused Volley — sân có 3
+    // Rats, target Rat 2 thì đáng lẽ mỗi dice random nảy giữa cả 3, đằng này chỉ
+    // mỗi Rat 2 ăn dmg").
+    // GỐC: object dựng ở đây CHỈ mang 5 field và **ĐÁNH RƠI 3 field** vừa được
+    // tính công phu ngay phía trên: `uncounterable`, `unbreakableDice`,
+    // `unfocusedVolley`. Nhánh fallback (perLine rỗng) thì có đủ — nên nhìn qua
+    // tưởng đã xử lý. Hệ quả: `doPlayerHit` đọc `[0].unfocusedVolley` ra
+    // `undefined` ⇒ khối phân bổ dice sang các địch khác KHÔNG BAO GIỜ chạy.
+    // ⚠️ Không chỉ Unfocused Volley: `uncounterable` (page-counter không ngắt
+    // được) và `unbreakableDice` (thua clash vẫn đánh, còn 50% dmg) cũng CHẾT
+    // theo — cả 3 đều là tag lõi của Furioso rework.
     perLine.push({
       blockEvade: lineBypass.blockEvade || manualBypass.blockEvade,
       blockGuard: lineBypass.blockGuard || manualBypass.blockGuard,
       blockParry: lineBypass.blockParry || manualBypass.blockParry,
       guardBreak: lineBypass.guardBreak || manualBypass.guardBreak,
       unclashable: lineBypass.unclashable || manualBypass.unclashable,
+      uncounterable: lineBypass.uncounterable,
+      unbreakableDice: lineBypass.unbreakableDice,
+      unfocusedVolley: lineBypass.unfocusedVolley,
     });
   }
   if (perLine.length === 0) return Array.from({ length: totalHits }, () => ({

@@ -111,7 +111,7 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
   async function attemptAiClashOrCounter(channelId, encounter, p, target, targetId, attackerResolved) {
     // Cùng hàm với đường của người chơi (interaction-handlers.js) — đòn khai
     // `clashUsesTotalDice` (Furioso) đem TỔNG 9 Dice ra so, còn lại lấy dice đầu.
-    const attackerFirstDiceValue = attackerClashDiceOf(p);
+    const attackerFirstDiceValue = attackerClashDiceOf(p, attackerResolved?.combatant ?? null);
     if (attackerFirstDiceValue === null) return false; // đòn không có Dice thì Clash vô nghĩa
 
     // BUG ĐÃ SỬA (Fragaria: "Bug AI có thể clash dù tốc chậm hơn").

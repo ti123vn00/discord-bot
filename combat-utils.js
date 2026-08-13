@@ -1224,6 +1224,10 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
     }
     // "Sau khi sử dụng Furioso thì reset toàn bộ Procuration [Hermes] về 0."
     user.procurationHermes = [];
+    // Fragaria: khoá cửa nạp lại Procuration cho tới HẾT TURN — nếu không,
+    // chính đòn Furioso này roll ra mặt Caduceus và nạp đầy lại ngay ⇒ loop vô
+    // hạn. Đọc ở resolve-pending-action.js, reset ở advanceCombatantTurn.
+    user.furiosoUsedThisTurn = true;
     return notes;
   }
 

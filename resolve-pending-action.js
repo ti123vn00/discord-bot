@@ -2149,7 +2149,17 @@ async function resolveOnePendingAction(encounter, p) {
               // được đếm"). Chỉ nhánh M1 mới cộng Procuration; Critical/Furioso
               // cũng roll ra mặt Caduceus nhưng KHÔNG đếm.
               // Quét dmgStr đã roll: mỗi hạng `<dmg><type>` khớp một mặt trong bảng.
-              if (attacker.combatant && /^caduceus crit|^furioso /.test(p.skillKey ?? "")) {
+              // ❗ Fragaria (12/08): "hãy gate cho KHÔNG thể nhận được Procuration
+              // thêm vào turn mà Furioso được sử dụng, để tránh việc spam Furioso
+              // liên tục; Furioso có thể tạo ra thêm Procuration ⇒ loop Furioso mãi."
+              // Chính Furioso cũng roll ra mặt Caduceus nên nó TỰ NẠP LẠI
+              // Procuration vừa bị reset ⇒ vòng lặp vô hạn (ảnh: dùng Furioso xong
+              // lập tức +4/+5 Procuration ngay trong cùng turn).
+              // Cờ `furiosoUsedThisTurn` do `applyFuriosoUseCosts` bật, reset ở
+              // `advanceCombatantTurn` (mốc "turn" = HẾT một vòng turn order).
+              if (attacker.combatant?.furiosoUsedThisTurn && /^caduceus crit|^furioso /.test(p.skillKey ?? "")) {
+                verifyNote += ` <:Unlock:1528452595859849406>[Đã dùng Furioso turn này — KHÔNG nhận thêm Procuration cho tới hết turn]`;
+              } else if (attacker.combatant && /^caduceus crit|^furioso /.test(p.skillKey ?? "")) {
                 const FACE = { "8Blunt": 1, "8Pierce": 2, "15Slash": 3, "15Pierce": 4, "15Blunt": 5,
                   "24Slash": 6, "24Pierce": 7, "24Blunt": 8, "30Slash": 9 };
                 const TL = { B: "Blunt", P: "Pierce", S: "Slash" };

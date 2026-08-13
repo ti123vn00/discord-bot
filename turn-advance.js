@@ -582,6 +582,9 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
       if (combatant.prescriptUnlockJustReached) { sanityGain += 10; combatant.prescriptUnlockJustReached = 0; }
       if (sanityGain > 0 && applySanityGain) applySanityGain(combatant, sanityGain);
     }
+    // Khoá nạp Procuration sau khi dùng Furioso — mở lại ở turn kế (xem
+    // applyFuriosoUseCosts trong combat-utils.js).
+    combatant.furiosoUsedThisTurn = false;
     // Indulgence in Prescript — "sẽ biến mất khi end turn".
     if ((combatant.indulgenceInPrescript ?? 0) > 0) combatant.indulgenceInPrescript = 0;
     // Grace of God — 1 lần MỖI VÒNG TURN ORDER.

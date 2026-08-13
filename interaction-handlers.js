@@ -1681,7 +1681,7 @@ client.on("interactionCreate", async (interaction) => {
       // roll lại — dùng đúng giá trị người chơi đã thấy). `attackerClashDiceOf`
       // áp cùng luật cho chiều ngược lại: đòn Furioso bị clash phải đem TỔNG 9
       // Dice ra so, không phải mỗi mặt đầu.
-      const attackerFirstDiceValue = attackerClashDiceOf(p);
+      const attackerFirstDiceValue = attackerClashDiceOf(p, attackerResolved.combatant);
       if (attackerFirstDiceValue === null) { displayText = "❌ Đòn tấn công này không có Dice hợp lệ để Clash."; return; }
 
       // "Clasher" (người BẤM và THỰC HIỆN Clash) roll/tiêu resource/nhận
