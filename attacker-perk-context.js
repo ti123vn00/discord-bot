@@ -9,7 +9,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
+module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr, KARMIC_MAX }) {
 
   function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, eyeOfHorusNewCount = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
     let bonusPct = attacker.gmBonusPctOverride ?? 0;
@@ -33,7 +33,10 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // DEBUFF lên chính TARGET (người đang có Karmic Consequence chịu thêm dmg
     // khi bị đánh), KHÔNG PHẢI buff cho attacker — check target, không phải
     // attacker (giống hệt pattern "target.staggered" ngay dưới).
-    if ((target.karmicConsequence ?? 0) > 0) bonusPct += target.karmicConsequence;
+    // ❗ DÒNG NÀY ĐÃ CHUYỂN XUỐNG KHỐI dmgTakenPct (Fragaria 12/08: "Karmic
+    // Consequence là DmgTaken"). Giữ lại ở đây là ĐẾM HAI LẦN — chính đo thật
+    // đã lôi ra: Karmic 40 cho `dmgTakenPct = 40` VÀ `bonusPct = 40`.
+    // (Karmic còn từng có đường thứ 3: `incomingDmgMul` ở index.js, cũng đã bỏ.)
     // "Thumb Capo IIII" (outfit) — xác nhận trực tiếp: "Các vũ khí/skill/page
     // sử dụng đạn sẽ được tăng thêm 20% Dmg gây ra" — "chỉ áp dụng khi đòn đó
     // THỰC SỰ tiêu đạn/Round nào đó trong lượt này" — check stack > 0 TRƯỚC
@@ -89,7 +92,20 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // còn BUFF nằm trên NGƯỜI DÙNG ⇒ DmgBonus. Mọi cách viết trong desc —
     // "tăng dmg nhận thêm", "địch nhận thêm dmg", "DmgTaken", "dmg phải nhận
     // thêm" — đều là MỘT thứ: DmgTaken.
+    // Karmic Consequence — Fragaria chốt 12/08: "Karmic Consequence LÀ DmgTaken".
+    // Trước đây nó là hệ số nhân riêng NGOÀI ngoặc (`incomingDmgMul`), không bão
+    // hoà gì. Nay vào đúng pool DmgTaken: +1%/stack, trần KARMIC_MAX.
+    dmgTakenPct += Math.min(KARMIC_MAX ?? 100, target.karmicConsequence ?? 0) * 1;
     dmgTakenPct += (target.fragile ?? 0) * 1;
+    // Dòng dice "địch nhận thêm X% Dmg [từ Type] turn này" (mặt Caduceus 4/6/7/8).
+    // Loại "mọi loại" cộng thẳng; loại theo TYPE chỉ cộng khi đòn này CÓ hit type
+    // đó — regex tránh nhầm "B" của Bleed / "S" của Sinking (cùng cách đã dùng
+    // cho The Middle Little Sibling ở trên).
+    dmgTakenPct += target.dmgTakenPctTurn ?? 0;
+    const dtByType = target.dmgTakenPctByType ?? {};
+    if ((dtByType.B ?? 0) > 0 && /\dB(?![a-zA-Z])/.test(dmgStr ?? "")) dmgTakenPct += dtByType.B;
+    if ((dtByType.P ?? 0) > 0 && /\dP(?![a-zA-Z])/.test(dmgStr ?? "")) dmgTakenPct += dtByType.P;
+    if ((dtByType.S ?? 0) > 0 && /\dS(?![a-zA-Z])/.test(dmgStr ?? "")) dmgTakenPct += dtByType.S;
     if (isM1) dmgTakenPct += (target.smoke ?? 0) * 2.5;
     if (isMiddleSkill) dmgTakenPct += (target.vengeanceMark ?? 0) * 5;
     if ((target.tremorDecay ?? 0) > 0) dmgTakenPct += Math.floor((target.tremor ?? 0) / 4) * 1;

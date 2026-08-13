@@ -20,7 +20,7 @@ const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 // Suy TRỰC TIẾP từ 3 ví dụ Fragaria đưa: light 5→5 · medium 10/2 · heavy 20/4.
 const RENEGADE_DIVISOR = { light: 1, medium: 2, heavy: 4 };
 
-module.exports = function ({ applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -733,6 +733,20 @@ async function resolveOnePendingAction(encounter, p) {
                     // "<:DiceN:".
                     ? autoExtractDiceSideEffects((p.skillRollEmbed?.description ?? "").split("\n"))
                     : null;
+                  // ❗ Fragaria 12/08: "địch nhận thêm 10% Dmg từ Blunt turn này"
+                  // CŨNG LÀ DmgTaken. Trước đây 4 mặt Caduceus (4/6/7/8) chỉ in
+                  // chữ, không field nào lưu ⇒ chưa từng chạy. Nay áp lên TARGET,
+                  // hết sau end turn (advanceCombatantTurn reset).
+                  const dtGrants = extractDmgTakenGrants((p.skillRollEmbed?.description ?? "").split("\n"));
+                  if (dtGrants && target) {
+                    if (dtGrants.all > 0) target.dmgTakenPctTurn = (target.dmgTakenPctTurn ?? 0) + dtGrants.all;
+                    const byT = target.dmgTakenPctByType = target.dmgTakenPctByType ?? { B: 0, P: 0, S: 0 };
+                    for (const k of ["B", "P", "S"]) if (dtGrants.byType[k] > 0) byT[k] = (byT[k] ?? 0) + dtGrants.byType[k];
+                    const parts = [];
+                    if (dtGrants.all > 0) parts.push(`+${dtGrants.all}% mọi loại`);
+                    for (const k of ["B", "P", "S"]) if (dtGrants.byType[k] > 0) parts.push(`+${dtGrants.byType[k]}% ${({ B: "Blunt", P: "Pierce", S: "Slash" })[k]}`);
+                    defenseNote += ` 💥[Dmg Taken turn này: ${parts.join(", ")}]`;
+                  }
                   const effectiveDiceEffects = diceEffectSkill?.diceEffects ?? autoDiceEffects;
                   if (effectiveDiceEffects && effectiveDiceEffects.length === totalHits) {
                     // MỞ RỘNG (GAP ĐÃ SỬA — Fragaria báo trực tiếp: "spear/level

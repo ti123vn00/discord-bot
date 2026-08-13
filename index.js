@@ -1312,7 +1312,7 @@ const { BOOK_GRANTS, getBookTopLevelChoices, getBookGroupChoices, isValidBookCho
  * áp cho Page/skill).
  * @returns { bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill }
  */
-const { computeAttackerPerkContext } = require("./attacker-perk-context")({ hasPerk, applyStatusMultiplierToDmgStr }); // ĐÃ TÁCH sang file riêng (attacker-perk-context.js)
+const { computeAttackerPerkContext } = require("./attacker-perk-context")({ KARMIC_MAX, hasPerk, applyStatusMultiplierToDmgStr }); // ĐÃ TÁCH sang file riêng (attacker-perk-context.js)
 /** computeDefenderDmgReduction — % giảm dmg NHẬN VÀO của bên BỊ tấn công, dựa trên
  *  perk tự thân (Smoldering Resolve) + trạng thái Manifested E.G.O (No Will To Break). */
 const { isPermanentInjury, computeDefenderDmgReduction, resolveEquipTarget, buildPendingListText, parseBatchEntries } = require("./misc-helpers")({ hasPerk, ADMIN_IDS }); // Gộp 4 hàm nhỏ vào 1 file chung (misc-helpers.js) — theo phản hồi trực tiếp: file 24-30 dòng không đáng tách riêng
@@ -1813,7 +1813,12 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
         // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
         // Erosion — cộng thẳng vào Res (tuyến tính, không bão hoà).
         _erosionRes: perkCtx.resBonusFlat,
-        incomingDmgMul: 1 + Math.min(KARMIC_MAX, t.combatant?.karmicConsequence ?? 0) / 100, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
+        // ❗ Karmic Consequence — Fragaria chốt 12/08: "Karmic Consequence LÀ
+        // DmgTaken". Trước đây nó là HỆ SỐ NHÂN RIÊNG nằm NGOÀI ngoặc
+        // (`incomingDmgMul`), tức không bão hoà gì cả. Nay dồn vào `dmgTakenPct`
+        // — vào TRONG ngoặc và đi qua `saturateDmgTakenPct` như mọi debuff
+        // "địch nhận thêm % dmg" khác. Đây là NERF có chủ đích, đúng ý update.
+        incomingDmgMul: 1,
         // Sanity dice bonus ("+1 Sanity = +1% dice value, -1 Sanity = -1%") LUÔN tự
         // áp dụng từ Sanity HIỆN TẠI của người tấn công — KHÔNG phải tham số tự gõ
         // tay (trước đây M1 hoàn toàn THIẾU dòng này, /hit thì có nhưng phải tự gõ
@@ -2072,7 +2077,12 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
         // Erosion — cộng thẳng vào Res (tuyến tính, không bão hoà).
         _erosionRes: perkCtx.resBonusFlat,
-        incomingDmgMul: 1 + Math.min(KARMIC_MAX, t.combatant?.karmicConsequence ?? 0) / 100, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
+        // ❗ Karmic Consequence — Fragaria chốt 12/08: "Karmic Consequence LÀ
+        // DmgTaken". Trước đây nó là HỆ SỐ NHÂN RIÊNG nằm NGOÀI ngoặc
+        // (`incomingDmgMul`), tức không bão hoà gì cả. Nay dồn vào `dmgTakenPct`
+        // — vào TRONG ngoặc và đi qua `saturateDmgTakenPct` như mọi debuff
+        // "địch nhận thêm % dmg" khác. Đây là NERF có chủ đích, đúng ý update.
+        incomingDmgMul: 1,
         // Tự động cộng Sanity HIỆN TẠI của người dùng Page vào dice bonus (xem
         // comment đầy đủ ở doPlayerAttack) — sanityBonusPct (tham số tự gõ tay nếu
         // có) CỘNG THÊM vào, không thay thế, để vẫn linh hoạt cho trường hợp đặc biệt.
@@ -2336,7 +2346,12 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
         // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
         // Erosion — cộng thẳng vào Res (tuyến tính, không bão hoà).
         _erosionRes: perkCtx.resBonusFlat,
-        incomingDmgMul: 1 + Math.min(KARMIC_MAX, t.combatant?.karmicConsequence ?? 0) / 100, // Shattered E.G.O — nhân THẲNG, xem damage-calc.js
+        // ❗ Karmic Consequence — Fragaria chốt 12/08: "Karmic Consequence LÀ
+        // DmgTaken". Trước đây nó là HỆ SỐ NHÂN RIÊNG nằm NGOÀI ngoặc
+        // (`incomingDmgMul`), tức không bão hoà gì cả. Nay dồn vào `dmgTakenPct`
+        // — vào TRONG ngoặc và đi qua `saturateDmgTakenPct` như mọi debuff
+        // "địch nhận thêm % dmg" khác. Đây là NERF có chủ đích, đúng ý update.
+        incomingDmgMul: 1,
         sanityBonusPct: getEffectiveSanityForDiceBonus(enemy),
         poiseInit: enemy.poise, chargeInit: enemy.charge,
         // Attack Power Up/Down (50-Status Nhóm 1) — enemy ĐANG TẤN CÔNG.
@@ -2511,7 +2526,7 @@ const { executeCraft } = require("./craft-system")({ CRAFT_RECIPES, getPlayerDat
 // nên đặt sớm là an toàn tuyệt đối. Xem thêm test t-boot.js.
 const { SINGULARITIES, findSingularity } = require("./singularity");
 const { MANIFESTED_EGOS, findManifestedEgo, resolveManifestedEgo, egoSkillKeysFor, egoPassivesFor, hasEgoMechanic, egoBgmFor, resolveEncounterBgm, describeEncounterBgm } = require("./ego");
-const { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, applyIndulgenceToDmgStr } = require("./skills");
+const { SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, applyIndulgenceToDmgStr, extractDmgTakenGrants } = require("./skills");
 const { buildEncounterActionPanel, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildBossActionPanel } = require("./encounter-panels")({
   findWeaponAnywhere, findSkill, resolveSkillKey, cdKeyFor, findSingularity, egoSkillKeysFor, hasPerk, hasShinAccess,
   // parseSkillCost khai ở DƯỚI (require skill-verification.js) nên KHÔNG truyền
@@ -3150,7 +3165,7 @@ const { performGachaPull, performPityExchange, pityKeyFor, pityPoolFor, buildGac
 
 const { claimDailyLogin, markContractTaskDone, incrementKillTaskProgress } = require("./daily-quest")({ withLock, getActiveProfileSlot, playerKeyForSlot, dailyKeyForSlot, savePlayerData, redis, withTimeout, getVNDateString, getVNNow, secondsUntilVNMidnight, clampExpWithLunacy, DAILY_KEY_TTL_SECONDS, DAILY_STREAK_EXP_BONUS, DAILY_STREAK_AHN_BONUS, DAILY_STREAK_LUNACY_BONUS, formatNumber }); // module MỚI — Stage 5 (cuối): rework -daily thành 3 nhiệm vụ/ngày
 const { checkQuestOutcome, grantContractReward, finalizeQuestOutcome } = require("./quest-resolution")({ getVNNow, RARE_DROP_BOOK, RARE_DROP_CHANCE, withLock, getPlayerDataWithSlot, savePlayerData, clampExpWithLunacy, redis, withTimeout, getVNDateString, DAILY_KEY_TTL_SECONDS, markContractTaskDone, applyDeathPenalty, clearUserActiveEncounterChannel, appendActionLog }); // module MỚI — Stage 5: check thắng/thua quest + phát reward
-const { resolveOnePendingAction } = require("./resolve-pending-action")({ applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, cdKeyFor, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }); // ĐÃ TÁCH sang file riêng (resolve-pending-action.js)
+const { resolveOnePendingAction } = require("./resolve-pending-action")({ extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, cdKeyFor, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }); // ĐÃ TÁCH sang file riêng (resolve-pending-action.js)
 
 // aiHooks — object MUTABLE rỗng, gán field SAU khi CẢ 2 module dưới đây (enemy-
 // ai.js VÀ reactive-defense.js) đã require xong — phá circular dependency thật

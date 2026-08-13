@@ -585,6 +585,9 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     // Khoá nạp Procuration sau khi dùng Furioso — mở lại ở turn kế (xem
     // applyFuriosoUseCosts trong combat-utils.js).
     combatant.furiosoUsedThisTurn = false;
+    // "địch nhận thêm X% Dmg turn NÀY" — hết hiệu lực khi hết turn.
+    combatant.dmgTakenPctTurn = 0;
+    combatant.dmgTakenPctByType = { B: 0, P: 0, S: 0 };
     // Indulgence in Prescript — "sẽ biến mất khi end turn".
     if ((combatant.indulgenceInPrescript ?? 0) > 0) combatant.indulgenceInPrescript = 0;
     // Grace of God — 1 lần MỖI VÒNG TURN ORDER.

@@ -347,6 +347,11 @@ module.exports = function ({ ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_DEFAULT_MA
       // Time Moratorium, Fairy...) SẼ LÀM Ở ĐỢT SAU, không nhồi hết 1 lần để đảm bảo
       // chất lượng/test kỹ từng cái.
       fragile: 0, // +1%/stack dmg NHẬN vào, max 25, hết sau endturn
+      // ❗ Fragaria 12/08: hiệu ứng dòng dice "địch nhận thêm X% Dmg [từ Type]
+      // turn này" (9 mặt Caduceus) CŨNG LÀ DmgTaken — trước đây chỉ là CHỮ,
+      // không field nào lưu, không nơi nào đọc. 2 field dưới lưu nó tới hết turn.
+      dmgTakenPctTurn: 0,                       // áp cho MỌI loại dmg
+      dmgTakenPctByType: { B: 0, P: 0, S: 0 },  // chỉ áp cho đúng loại dmg đó
       attackPowerUp: 0, // +1 dmg/stack cho MỌI dmg gây ra, max 10, hết sau endturn
       attackPowerDown: 0, // -1 dmg/stack cho MỌI dmg gây ra, max 10, hết sau endturn
       defenseUp: 0, // +1%/stack giảm dmg của Block, max 20, hết sau endturn

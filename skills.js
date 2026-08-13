@@ -5950,6 +5950,37 @@ const DICE_SIDE_EFFECT_MAP = {
 // không quan trọng, nhưng "DiceUp" vs "Dice Up" thì có) — sort theo độ dài giảm.
 const DICE_SIDE_EFFECT_NAMES = Object.keys(DICE_SIDE_EFFECT_MAP).sort((a, b) => b.length - a.length);
 
+/** extractDmgTakenGrants — đọc các dòng dice dạng
+ *    "địch nhận thêm 5% Dmg turn này"            → mọi loại
+ *    "địch nhận thêm 10% Dmg từ Blunt turn này"  → chỉ Blunt
+ *
+ *  ❗ Fragaria chốt 12/08: đây CŨNG LÀ DmgTaken. Trước đây 4 mặt Caduceus (4/6/7/8)
+ *  chỉ IN RA CHỮ — không field nào lưu, không nơi nào đọc, tức CHƯA TỪNG chạy.
+ *  (`constants.js` có `effect: "foe:takeDmgType:10"` nhưng cũng không ai đọc.)
+ *  Trả `{ all, byType: { B, P, S } }` — cộng dồn qua mọi dice của đòn.
+ */
+function extractDmgTakenGrants(lines) {
+  const out = { all: 0, byType: { B: 0, P: 0, S: 0 } };
+  const TYPE_KEY = { blunt: "B", pierce: "P", slash: "S" };
+  for (const line of lines ?? []) {
+    if (!/^<:Dice\d+:/.test(line)) continue;
+    // "nhận thêm N% Dmg" + (tuỳ chọn) "từ <Type>"
+    const re = /nh[ậa]n\s*th[êe]m\s*(\d+(?:\.\d+)?)\s*%\s*Dmg(?:\s*t[ừu]\s*(?:<:[^:>]+:\d+>)?\s*(Blunt|Pierce|Slash))?/gi;
+    let m;
+    while ((m = re.exec(line)) !== null) {
+      // Chỉ nhận khi chủ ngữ là ĐỊCH — "bản thân +10% Dmg turn sau" (mặt 3) là
+      // DmgBonus của NGƯỜI DÙNG, không được rơi vào đây.
+      const ctx = line.slice(Math.max(0, m.index - 40), m.index).toLowerCase();
+      if (!/(địch|kẻ thù|kẻ địch|chúng|mục tiêu)[^.]*$/.test(ctx)) continue;
+      const amount = parseFloat(m[1]);
+      if (!(amount > 0)) continue;
+      const t = m[2] ? TYPE_KEY[m[2].toLowerCase()] : null;
+      if (t) out.byType[t] += amount; else out.all += amount;
+    }
+  }
+  return (out.all > 0 || out.byType.B > 0 || out.byType.P > 0 || out.byType.S > 0) ? out : null;
+}
+
 function autoExtractDiceSideEffects(lines) {
   const effects = [];
   for (const line of lines) {
@@ -6408,4 +6439,5 @@ function resolveSkillKey(raw) {
 }
 
 module.exports = {
+  extractDmgTakenGrants,
   applyIndulgenceToDmgStr, SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, startForceMaxDice, stopForceMaxDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
