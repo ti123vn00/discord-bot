@@ -774,7 +774,7 @@ function parseStatusFreeText(text) {
   return entries;
 }
 
-const { calcMathCore, calcMath, saturateBonusPct, saturateDR, validateMathInputs } = require("./damage-calc"); // ĐÃ TÁCH sang file riêng (damage-calc.js) — hàm thuần, không đụng Redis/Discord
+const { calcMathCore, calcMath, saturateBonusPct, saturateDR, saturateDmgTakenPct, validateMathInputs } = require("./damage-calc"); // ĐÃ TÁCH sang file riêng (damage-calc.js) — hàm thuần, không đụng Redis/Discord
 
 // ─── RATE LIMITING ────────────────────────────────────────────────────────────
 const cooldowns = new Map();
@@ -1806,7 +1806,9 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten,
         resStr: addFlatRes(finalResStr, perkCtx.resBonusFlat),
-        bonusPct: perkCtx.bonusPct + mangBonusPct, critMul: perkCtx.critMul,
+        bonusPct: perkCtx.bonusPct + mangBonusPct,
+        // %DmgTaken đi RIÊNG (bão hoà riêng) — xem attacker-perk-context.js.
+        dmgTakenPct: perkCtx.dmgTakenPct ?? 0, critMul: perkCtx.critMul,
         outgoingDmgMul: perkCtx.outgoingDmgMul,
         // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
         // Erosion — cộng thẳng vào Res (tuyến tính, không bão hoà).
@@ -1929,7 +1931,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // cho tới khi GM xác nhận"). refLink/refSnippet/skillRollEmbed chỉ để HIỂN THỊ.
       // emotionDelta = TỔNG của delta tự roll skill (Max/Min dice) + manualCoin (GM/
       // player tự khai từ Clash/giết địch/đồng đội chết — bot không tự detect được).
-      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, emotionPlus: (verify.emotionPlus ?? 0) + Math.max(0, manualCoin), orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveAmmoType, effectiveBulletType, effectiveBulletCount: bulletsToConsume,
     });
@@ -1975,6 +1977,8 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
 async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr, extra = {}) {
   if (!dmgStr || !dmgStr.trim()) throw new Error("Cần nhập công thức dmg (VD: `50x2B+2Sinking`).");
   const { resStr = "", drStr = "", bonusPct = 0, sanityBonusPct = 0, critMul: manualCritMul, diceMul = 1, critDiv = 0, skill: skillNameRaw, ref: refRaw, coin: manualCoinRaw, tags: manualTagsRaw, prefilledVerify, loadtype: loadTypeRaw } = extra;
+  // GM gõ tay `dmgtaken:` — cùng ô với `bonus:` nhưng vào ĐÚNG số hạng DmgTaken.
+  const dmgTakenPctManual = parseFloat(extra.dmgtaken ?? extra.dmgTaken ?? 0) || 0;
   const manualCoin = parseInt(manualCoinRaw ?? "0", 10) || 0;
   let result;
   await withLock(encounterKey(channelId), async () => {
@@ -2039,7 +2043,10 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       defenseBypass.blockEvade = true;
       player.diceUp = (player.diceUp ?? 0) + 5;
     }
-    const previews = targets.map(t => {
+    // Tách callback ra hàm CÓ TÊN để dùng lại cho Unfocused Volley: cần preview
+    // RIÊNG của TỪNG kẻ địch (kháng tính khác nhau ⇒ dmg mỗi dice khác nhau),
+    // chứ không mượn preview của mục tiêu được aim như bản trước.
+    const buildPreviewForTarget = (t) => {
       const isMiddleSkill = skillNameRaw ? MIDDLE_SYNDICATE_SKILLS.has(skillNameRaw.trim().toLowerCase()) : false;
       const perkCtx = computeAttackerPerkContext(player, t.combatant, dmgStr, { isM1: false, attackerId: playerId, targetId: t.id, isMiddleSkill, skillKey: verify.skillKey });
       // Nhân base value x3 TRỰC TIẾP trong dmgStr (SAU dmgStrRewritten, để giữ
@@ -2059,6 +2066,8 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         // Reduction" không phân biệt DR đến từ nguồn nào.
         resStr: addFlatRes(finalResStr, perkCtx.resBonusFlat), drStr: player.shinMangActive ? "" : drStr,
         bonusPct: bonusPct + perkCtx.bonusPct + mangBonusPct,
+        // %DmgTaken đi RIÊNG (bão hoà riêng) — xem attacker-perk-context.js.
+        dmgTakenPct: (perkCtx.dmgTakenPct ?? 0) + dmgTakenPctManual,
         outgoingDmgMul: perkCtx.outgoingDmgMul,
         // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
         // Erosion — cộng thẳng vào Res (tuyến tính, không bão hoà).
@@ -2102,7 +2111,8 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       const preview = calcMathCore(calcOpts);
       const finalDmgAfterReduction = preview.totalDmg * saturateDR(1 - defReductionPct / 100);
       return { target: t, calcOpts, preview, defReductionPct, finalDmgAfterReduction, instantKill: perkCtx.instantKill, haouRuptureApplied: haouRuptureCheck?.applied ?? false };
-    });
+    };
+    const previews = targets.map(buildPreviewForTarget);
 
     const pendingId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     encounter.pendingActions = encounter.pendingActions ?? [];
@@ -2125,15 +2135,59 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         .filter(([, e]) => (e?.currentHp ?? 0) > 0)
         .map(([k]) => k);
       if (pool.length > 1 && totalDice > 1) {
-        // Dice 0 CHẮC CHẮN vào mục tiêu được aim; các dice sau random trong pool.
-        const byTarget = { [aimed.targetId]: [0] };
-        for (let i = 1; i < totalDice; i++) {
-          const pick = pool[Math.floor(Math.random() * pool.length)];
-          (byTarget[pick] = byTarget[pick] ?? []).push(i);
+        // ❗❗ SỬA LẦN 2 (Fragaria: "Unfocused Volley cần phải chuyển đổi mục tiêu
+        // còn sống sau khi đã đủ dmg giết. Ví dụ 2 đòn vào A nhưng đòn 1 đã chết
+        // thì sẽ chỉ random tiếp giữa B và C. Hãy làm cho MỖI LẦN là random nảy
+        // lên kẻ địch CÒN TRÊN SÂN thay vì xác định số lượt vào A, B, C 1 lần").
+        // BẢN CŨ bốc thăm 1 lần cho cả 9 dice ⇒ dice rơi vào con đã chết là mất
+        // trắng. NAY quay TỪNG DICE theo thứ tự, mỗi lần chỉ bốc trong số CÒN
+        // SỐNG, và trừ dần HP mô phỏng để biết ai vừa gục.
+        // ⚠️ Ước lượng: dùng dmg per-dice của MỤC TIÊU ĐƯỢC AIM cho mọi con
+        // (chỉ có preview của nó ở bước này). Lệch khi kháng tính khác nhau,
+        // nhưng mục đích chính — KHÔNG phí dice lên xác — thì luôn đúng.
+        // ❗ Fragaria (12/08): "hãy làm tính preview RIÊNG cho từng địch ở bước đó."
+        // Bản trước mượn dmg per-dice của mục tiêu được aim cho MỌI con — sai khi
+        // kháng tính khác nhau (Rats 1xB vs con 0.5xB thì thời điểm gục lệch hẳn).
+        // NAY dựng preview thật cho từng địch bằng CHÍNH `buildPreviewForTarget`
+        // (cùng hàm với đường bình thường ⇒ mọi perk/Res/DR/status đều được tính
+        // y hệt, không có nhánh tính toán thứ hai để lệch nhau).
+        // KHÔNG đi qua `applySpreadFalloff`: falloff là luật của AOE (1 đòn chia
+        // cho nhiều mục tiêu), còn Unfocused Volley là TỪNG DICE trúng trọn vẹn
+        // MỘT mục tiêu — không được giảm dmg.
+        const previewByEnemy = {};
+        for (const k of pool) {
+          previewByEnemy[k] = (k === aimed.targetId)
+            ? aimed
+            : buildPreviewForTarget({ id: k, type: "enemy", combatant: encounter.enemies[k], label: encounter.enemies[k]?.name ?? k });
         }
-        finalTargets = Object.entries(byTarget).map(([tid, idxs]) => ({
-          ...aimed, targetId: tid, targetType: "enemy", volleyHitIndices: idxs,
-        }));
+        const perDiceOf = (k) => (previewByEnemy[k]?.preview?.instanceResults ?? []).map(x => Number(x?.instanceDmg) || 0);
+        const hpLeft = {};
+        for (const k of pool) {
+          const e = encounter.enemies[k];
+          hpLeft[k] = (e?.currentHp ?? 0) + (e?.shieldHp ?? 0);
+        }
+        const byTarget = {};
+        // Dice 0 CHẮC CHẮN vào mục tiêu được aim (luật gốc giữ nguyên).
+        let cursor = aimed.targetId;
+        for (let i = 0; i < totalDice; i++) {
+          if (i > 0) {
+            const alive = pool.filter(k => hpLeft[k] > 0);
+            if (alive.length === 0) break;   // sạch sân — dice còn lại bỏ đi
+            cursor = alive[Math.floor(Math.random() * alive.length)];
+          }
+          (byTarget[cursor] = byTarget[cursor] ?? []).push(i);
+          // Trừ HP mô phỏng bằng dmg dice ĐÓ gây lên CHÍNH con đó.
+          hpLeft[cursor] = Math.max(0, (hpLeft[cursor] ?? 0) - (perDiceOf(cursor)[i] ?? 0));
+        }
+        finalTargets = Object.entries(byTarget).map(([tid, idxs]) => {
+          const pv = previewByEnemy[tid] ?? aimed;
+          return {
+            targetId: tid, targetType: "enemy",
+            calcOpts: pv.calcOpts, preview: pv.preview,
+            defReductionPct: pv.defReductionPct, instantKill: pv.instantKill,
+            volleyHitIndices: idxs,
+          };
+        });
       }
     }
     encounter.pendingActions.push({
@@ -2141,7 +2195,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       attackerId: playerId, attackerType: "player",
       targets: finalTargets,
       dmgStr, defenseBypass, tags: manualTagsRaw,
-      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+      skillKey: verify.skillKey, autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, emotionPlus: (verify.emotionPlus ?? 0) + Math.max(0, manualCoin), orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
       skillRollEmbed: verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
       lightCost: verify.lightCost, sanityCost: verify.sanityCost, effectiveBulletType: verify.effectiveBulletType, effectiveBulletCount: verify.effectiveBulletCount ?? 0,
       loadType: (loadTypeRaw ?? "ammo").trim().toLowerCase(),
@@ -2276,7 +2330,8 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       const haouRuptureCheck = (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten, resStr: addFlatRes(haouRuptureCheck?.applied ? haouRuptureCheck.resStr : combatantResStr(t.combatant), perkCtx.resBonusFlat),
-        bonusPct: perkCtx.bonusPct, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
+        bonusPct: perkCtx.bonusPct,
+        dmgTakenPct: perkCtx.dmgTakenPct ?? 0, critMul: perkCtx.critMul, critDiv: perkCtx.critDivOverride ?? undefined,
         outgoingDmgMul: perkCtx.outgoingDmgMul,
         // Karmic Consequence — mỗi stack người PHÒNG THỦ nhận thêm 1% Dmg.
         // Erosion — cộng thẳng vào Res (tuyến tính, không bão hoà).
@@ -2333,7 +2388,7 @@ async function doEnemyAttack(channelId, gmUserId, enemyKey, dmgStr, targetStr, v
       attackerId: ekey, attackerType: "enemy",
       targets: applySpreadFalloff(previews, findSkill(verify.skillKey ?? "")).map(p => ({ targetId: p.target.id, targetType: "player", calcOpts: p.calcOpts, preview: p.preview, defReductionPct: p.defReductionPct, instantKill: p.instantKill })),
       dmgStr: effectiveDmgStrFinal, defenseBypass, tags: effectiveTagsRawFinal,
-      skillKey: verify.skillKey ?? verifyOpts.forcedSkillKey ?? null, // forcedSkillKey: AI tự roll page ⇒ verify không suy ra được; thiếu nó thì page của AI bị coi là M1 (né 1 lần hết cả nhóm) autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+      skillKey: verify.skillKey ?? verifyOpts.forcedSkillKey ?? null, // forcedSkillKey: AI tự roll page ⇒ verify không suy ra được; thiếu nó thì page của AI bị coi là M1 (né 1 lần hết cả nhóm) autoSideEffects: verify.autoSideEffects ?? null, cooldownTurns: verify.cooldownTurns, emotionDelta: (verify.emotionDelta ?? 0) + manualCoin, emotionPlus: (verify.emotionPlus ?? 0) + Math.max(0, manualCoin), orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
       // Lưu mô tả roll của AI vào pendingAction để reactive-defense/resolve
       // dựng được perHitBypass ĐÚNG TỪNG HIT (xem parsePerHitBypass).
       skillRollEmbed: rollDescription ? { description: rollDescription } : verify.skillRollEmbed, refSnippet: verify.refSnippet, refLink: verify.refLink,
@@ -2836,6 +2891,8 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
         description: header + "\n\n" + annotateLinesWithEmotion(lines, tracked),
       },
       totalEmotionDelta: tracked.reduce((sum, t) => sum + t.delta, 0),
+      // Phần DƯƠNG riêng — xem giải thích ở skills.js (Energetic chỉ x2 chiều nhận).
+      totalEmotionPlus: tracked.reduce((sum, t) => sum + Math.max(0, t.delta), 0),
       // firstDiceValue — dùng cho Clash ("luôn luôn lấy dice ĐẦU TIÊN để clash") —
       // tái dùng side-channel tracking CÓ SẴN (không regex parse text, không sửa
       // 303 skill roll() — tracked[0] LÀ giá trị r() đầu tiên gọi trong roll(),
@@ -2894,6 +2951,7 @@ function buildSkillRollResult({ skill, rollCount = 1, promptArgRaw = null, force
       description,
     },
     totalEmotionDelta: allTracked.reduce((sum, t) => sum + t.delta, 0),
+    totalEmotionPlus: allTracked.reduce((sum, t) => sum + Math.max(0, t.delta), 0),
     firstDiceValue: allTracked[0]?.result ?? null,
   };
 }
@@ -3110,9 +3168,9 @@ aiHooks.finalizeReactiveChoice = finalizeReactiveChoice;
 aiHooks.announceCurrentTurn = announceCurrentTurn;
 
 const { buildGmPanelContent } = require("./gmpanel-builder")({ ADMIN_IDS, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, getEncounter }); // module MỚI — TÁCH logic gmpanel để dùng chung cho lệnh text VÀ nút "🎛️ Mở GM Panel"
-require("./message-create-handler")({ isPermanentInjury, describeEncounterBgm, PAID_HEAL_PER_CYCLE, SEVERE_INJURIES, CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, findManifestedEgo, MANIFESTED_EGOS, resolveEncounterBgm, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createPartyBoard, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, startPartyBoard, stopEmotionTracking, transferHost, validateAndRerollPrescript, validateAndRerollPrescriptRound, validateMathInputs, webParrySessions, withLock }); // ĐÃ TÁCH sang file riêng (message-create-handler.js)
+require("./message-create-handler")({ saturateDmgTakenPct, isPermanentInjury, describeEncounterBgm, PAID_HEAL_PER_CYCLE, SEVERE_INJURIES, CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, findManifestedEgo, MANIFESTED_EGOS, resolveEncounterBgm, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createPartyBoard, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, startPartyBoard, stopEmotionTracking, transferHost, validateAndRerollPrescript, validateAndRerollPrescriptRound, validateMathInputs, webParrySessions, withLock }); // ĐÃ TÁCH sang file riêng (message-create-handler.js)
 
-const interactionHandlersApi = require("./interaction-handlers")({ isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, attachCounterContext, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
+const interactionHandlersApi = require("./interaction-handlers")({ applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, attachCounterContext, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }); // ĐÃ TÁCH sang file riêng (interaction-handlers.js)
 // `takePendingBgmFiles` sống trong interaction-handlers.js (nó cần AttachmentBuilder
 // + bgmAttachmentIH ở đó). enemy-ai.js cần CHÍNH hàm này để đính file BGM vào tin
 // "🤖 AI tự động phòng thủ" — nối qua `aiHooks` (mutate SAU require, không phải DI

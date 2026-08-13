@@ -110,6 +110,9 @@ async function performEndTurn(channelId, userId, isAdmin) {
     if (!isAdmin && userId !== encounter.gmId) throw new Error("Chỉ GM (hoặc admin) mới được kết thúc turn.");
     if ((encounter.pendingActions ?? []).length > 0) throw new Error(`Còn ${encounter.pendingActions.length} action chưa xử lý — dùng \`-encounter pending\` để confirm/reject hết trước khi qua turn.`);
     const anyEnemyStaggered = Object.values(encounter.enemies).some(e => e.staggered);
+    // Dòng thông báo phát sinh trong lúc kết thúc turn (VD Astral Quantization
+    // cần người buff chọn mục tiêu) — gộp vào shroudedNotes ở cuối.
+    const endLines = [];
     const shroudedNotes = [];
     if (anyEnemyStaggered) {
       for (const pid of Object.keys(encounter.players)) {
@@ -134,25 +137,49 @@ async function performEndTurn(channelId, userId, isAdmin) {
     // Chạy TRƯỚC advanceCombatantTurn (reset bộ đếm) và trước Swan Song — dmg này
     // có thể phá khiên, phải tính vào lượng khiên mất để Swan Song hồi đúng.
     if ((encounter.pendingAstralQuantization ?? []).length > 0) {
+      // ❗❗ LUẬT ĐÃ ĐỔI (Fragaria 12/08 đưa lại nguyên văn card):
+      //   "Chỉ định một đồng đội có Shield HP, và roll dice [1-30]. Cuối turn,
+      //    gây sát thương lên MỘT đối thủ bằng TỔNG [kết quả dice]% DMG mà đồng
+      //    đội được chỉ định đã gây ra trong turn này."
+      //   "…ở cuối Turn Order trước khi kết thúc sẽ cho NGƯỜI BUFF Astral
+      //    Quantization (không phải người nhận buff) chỉ định nó."
+      // ⚠️ ĐIỀU NÀY THAY THẾ luật cũ tôi đang chạy ("mỗi kẻ địch đã bị đồng đội
+      //    đánh đều chịu % dmg RIÊNG của chính nó"). Hai luật MÂU THUẪN nhau —
+      //    tôi theo bản MỚI vì Fragaria vừa chốt lại kèm nguyên văn card.
+      // Số tiền dmg phải CHỐT TẠI ĐÂY (trước advanceCombatantTurn reset
+      // `dmgDealtThisTurn`), còn việc CHỌN mục tiêu thì hỏi người buff.
+      encounter.pendingAstralChoice = encounter.pendingAstralChoice ?? [];
       for (const aq of encounter.pendingAstralQuantization) {
         const ally = encounter.players?.[aq.allyId];
-        const perTarget = ally?.dmgDealtByTargetThisTurn ?? {};
-        const hits = [];
-        for (const [foeKey, dealt] of Object.entries(perTarget)) {
-          const foe = encounter.enemies?.[foeKey];
-          if (!foe || (foe.currentHp ?? 0) <= 0 || !(dealt > 0)) continue;
-          const dmg = Math.round(dealt * (aq.pct / 100) * 1000) / 1000;
-          if (dmg <= 0) continue;
-          const absorbed = applyShieldLoss(foe, Math.min(foe.shieldHp ?? 0, dmg));
-          applyHpLoss(foe, dmg - absorbed);
-          hits.push(`**${foe.name}** \`${foeKey}\` ${dealt.toFixed(1)}→**${dmg}**`);
-        }
-        if (hits.length > 0) {
+        const totalDealt = Object.values(ally?.dmgDealtByTargetThisTurn ?? {})
+          .reduce((sum, v) => sum + (Number(v) || 0), 0);
+        const amount = Math.round(totalDealt * (aq.pct / 100) * 1000) / 1000;
+        const foesAlive = Object.entries(encounter.enemies ?? {})
+          .filter(([, e]) => (e?.currentHp ?? 0) > 0).map(([k]) => k);
+        if (!(amount > 0) || foesAlive.length === 0) {
           appendActionLog(encounter,
-            `🌌 **Astral Quantization** (<@${aq.userId}>) — **${aq.pct}%** dmg <@${aq.allyId}> đã gây trong turn: ${hits.join(" · ")}`);
+            `🌌 **Astral Quantization** (<@${aq.userId}>) — <@${aq.allyId}> không gây dmg nào trong turn này, không có gì để bắn.`);
+          continue;
         }
+        if (foesAlive.length === 1) {
+          // Chỉ 1 mục tiêu ⇒ không cần hỏi, bắn luôn (đỡ 1 nhịp chờ vô nghĩa).
+          const foe = encounter.enemies[foesAlive[0]];
+          const absorbed = applyShieldLoss(foe, Math.min(foe.shieldHp ?? 0, amount));
+          applyHpLoss(foe, amount - absorbed);
+          appendActionLog(encounter,
+            `🌌 **Astral Quantization** (<@${aq.userId}>) — **${aq.pct}%** tổng dmg của <@${aq.allyId}> (${totalDealt.toFixed(1)}) → **${foe.name}** chịu **${amount}**.`);
+          continue;
+        }
+        // Nhiều mục tiêu ⇒ để NGƯỜI BUFF chọn. Lưu lại, UI bắn dropdown ở
+        // interaction-handlers.js (`astraltarget:`).
+        encounter.pendingAstralChoice.push({
+          userId: aq.userId, allyId: aq.allyId, pct: aq.pct, amount,
+          totalDealt: Math.round(totalDealt * 1000) / 1000,
+        });
+        endLines.push(`🌌 <@${aq.userId}> — **Astral Quantization** đã sẵn sàng (**${amount}** dmg = ${aq.pct}% tổng dmg của <@${aq.allyId}>). Chọn mục tiêu bên dưới.`);
       }
       encounter.pendingAstralQuantization = [];
+      if (endLines.length > 0) shroudedNotes.push(...endLines);
     }
     // ── SWAN SONG (Lucent Historia) ──────────────────────────────────────
     // "CUỐI TURN, bản thân và đồng đội hồi phục một lượng HP bằng **20% lượng

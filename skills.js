@@ -474,14 +474,32 @@ const SKILLS = {
   "onrush": {
     name: "Onrush",
     cost: "3 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
-    roll() {
+    // ❗ KHÔI PHỤC REUSE (Fragaria 12/08): "Desc ghi là Reuse khi có ≥6 Light,
+    // thực tế lần reuse đó sẽ tốn thêm 3 Light nữa… lần reuse sẽ là TÙY CHỌN như
+    // Mook Workshop hoặc Thrust."
+    // ⚠️ Trước đó Onrush KHÔNG có tí máy móc reuse nào — một phiên cũ đã gỡ sạch
+    // theo câu "Onrush không có khả năng reuse nữa". Nay dựng lại bằng đúng
+    // `reuseSpec` (xem REUSE_SPEC_CONTRACT ở cuối file) để chi phí Light được
+    // TRỪ THẬT — đây chính là lớp bug "reuse gần như miễn phí" đã ghi ở đó.
+    reuseChoiceVariants: true,   // hiện dropdown hỏi ý người chơi (như Mook/Thrust)
+    maxUses: 2,                  // 1 lần gốc + tối đa 1 lần Reuse
+    reuseSpec: {
+      mode: "repeat",            // roll() sinh 1 dice mỗi lần gọi ⇒ gọi lặp rồi ghép
+      resource: "light",
+      // "Reuse khi có ≥6 Light": 3 Light đòn gốc + 3 Light lần reuse = 6.
+      maxReuse: (light) => ((light ?? 0) >= 6 ? 1 : 0),
+      // netCost THAY THẾ hoàn toàn `cost` (xem skill-verification.js: lightCost =
+      // reuseInfo.netCost) ⇒ phải gồm CẢ đòn gốc: 3 + 3×số lần reuse.
+      netCost: (n) => 3 + 3 * n,
+      repeatArgs: (i) => [i > 0],
+    },
+    roll(isReuse = false) {
       const d1 = r(14,26);
-      // Fragaria xác nhận trực tiếp: "Onrush không có khả năng reuse nữa" —
-      // dòng "≥6 Light thì dùng thêm 3 Light để reuse" ĐÃ BỎ HẲN khỏi text.
-      // Hai hiệu ứng còn lại (giảm 40 Stamina địch + nhận 1 Imitation) KHÔNG
-      // đi qua dmgStr được nên xử lý bằng code ở resolve-pending-action.js.
+      // Hai hiệu ứng (giảm 40 Stamina địch + nhận 1 Imitation) đi qua parser
+      // side-effect của dòng dice, nên lần Reuse cũng được hưởng — đúng nghĩa
+      // "dùng lại nguyên đòn".
       return [
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 1 <:Imitation:1513769425063514173>Imitation, giảm 40 Stamina địch`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash]${isReuse ? " *(Reuse)*" : ""} — gây 3 <:Bleed:1513762688226955285>Bleed ở turn kế, nhận 1 <:Imitation:1513769425063514173>Imitation, giảm 40 Stamina địch`,
       ];
     },
   },
@@ -6179,6 +6197,13 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDic
   if (diceModifier !== 0) clearDiceModifier();
   const tracked = stopEmotionTracking();
   const totalEmotionDelta = tracked.reduce((sum, t) => sum + t.delta, 0);
+  // ❗ Fragaria (12/08): "Energetic x2 hiệu quả NHẬN Emotion Coin — 1 số user bảo
+  // nó x2 CẢ phần trừ khi bị Min Dice, trong khi đáng lẽ chỉ x2 phần nhận khi Max".
+  // Users ĐÚNG. Trước đây chỉ có TỔNG NET đi tới `applyEmotionDelta`, mà nhân đôi
+  // tổng net thì phần âm cũng bị nhân đôi theo: 3 Max + 1 Min = net +2 → ×2 = +4,
+  // trong khi luật đúng là 3×2 − 1 = +5. Nay trả thêm phần DƯƠNG để nơi áp dụng
+  // biết tách hai chiều.
+  const totalEmotionPlus = tracked.reduce((sum, t) => sum + Math.max(0, t.delta), 0);
 
   const warnings = [];
   const diceTypeByLine = []; // { result, type, statusTags } theo ĐÚNG thứ tự tracked[]
@@ -6281,13 +6306,13 @@ function autoBuildDmgStrFromSkillRoll(skill, { forceMinDice = false, forceMaxDic
   }
 
   if (diceTypeByLine.length === 0) {
-    return { dmgStr: null, warnings, tracked, totalEmotionDelta, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
+    return { dmgStr: null, warnings, tracked, totalEmotionDelta, totalEmotionPlus, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
   }
   // Áp DICE MULTIPLIER vào giá trị dice thật (làm tròn 2 số để không ra rác thập phân).
   const dmgStr = diceTypeByLine
     .map(d => `${Math.round(d.result * diceMulNum * 100) / 100}${d.type}${d.statusTags ?? ""}`)
     .join(" + ");
-  return { dmgStr, warnings, tracked, totalEmotionDelta, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
+  return { dmgStr, warnings, tracked, totalEmotionDelta, totalEmotionPlus, lines, sideEffects: applySideEffectSuppression(skill, extractNonDmgStrEffects(lines)) };
 }
 
 

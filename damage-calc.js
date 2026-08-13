@@ -61,6 +61,27 @@ function saturateBonusPct(raw) {
  * DR >= 1x (vulnerability hoặc neutral) không bị ảnh hưởng.
  * CHỈ áp dụng cho Damage Reduction (dr) — Res (B/P/S) không còn bị bão hòa.
  */
+/**
+ * saturateDmgTakenPct — bão hoà % Dmg Taken (debuff TRÊN NGƯỜI ĐỊCH).
+ *
+ * ❗ UPDATE LUẬT (Fragaria 12/08, đã thông báo cho player):
+ *   FinalDmg = BaseDmg × (1 + %Bonus + %SanityBonus + **%DmgTaken**) × CritMul
+ *              × Resistance × DmgReduction
+ * TRƯỚC ĐÂY %DmgTaken bị gộp thẳng vào %Bonus ⇒ dùng chung đường bão hoà của
+ * Bonus (vốn đã ngập vì buff của người dùng), nên Fragile và các debuff cùng loại
+ * gần như vô dụng. Nay tách thành SỐ HẠNG RIÊNG với bảng bão hoà riêng, mềm hơn
+ * ở vùng thấp để hướng chơi debuffer có giá trị:
+ *   0–50%   → 1 : 1
+ *   50–100% → 1 : 0.25
+ *   100%+   → 1 : 0.125
+ */
+function saturateDmgTakenPct(raw) {
+  if (!(raw > 0)) return raw <= 0 ? raw : 0;   // giá trị âm (nếu có) không bão hoà
+  if (raw <= 50) return raw;
+  if (raw <= 100) return 50 + (raw - 50) * 0.25;
+  return 62.5 + (raw - 100) * 0.125;           // 50 + 12.5 + (raw-100)*0.125
+}
+
 function saturateDR(mult) {
   if (mult >= 1) return mult;
   const drRaw = (1 - mult) * 100;
@@ -105,6 +126,10 @@ function calcMathCore(opts) {
     drStr = "",
     bonusPct = 0,
     sanityBonusPct = 0,
+    // %DmgTaken — DEBUFF TRÊN NGƯỜI ĐỊCH ("địch nhận thêm X% Dmg", Fragile,
+    // "tăng dmg nhận", "DmgTaken"…). TÁCH HẲN khỏi `bonusPct` (buff trên người
+    // TẤN CÔNG) vì hai bên có đường bão hoà khác nhau — xem saturateDmgTakenPct.
+    dmgTakenPct = 0,
     critMul = 1,
     poiseInit = 0,
     critDiv = 0,
@@ -294,7 +319,10 @@ function calcMathCore(opts) {
 
     const multiplier = didCrit ? critMul : 1;
     const rawTotalPct = bonusPct + extraPct;
-    const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0);
+    // %DmgTaken đi qua ĐƯỜNG BÃO HOÀ RIÊNG rồi mới cộng vào cùng dấu ngoặc —
+    // KHÔNG gộp vào `bonusPct` nữa (xem saturateDmgTakenPct).
+    const effDmgTakenPct = saturateDmgTakenPct(dmgTakenPct);
+    const effTotalPct = saturateBonusPct(rawTotalPct) + (isDice ? effectiveSanityBonus : 0) + effDmgTakenPct;
     const bonusFactor = 1 + effTotalPct / 100;
     let instanceDmg = Math.max(0, dmg + flatDmgPerHit) * bonusFactor * multiplier * currentRes * currentDR * outgoingDmgMul * incomingDmgMul;
     if (isDice) instanceDmg *= diceMul;
@@ -528,7 +556,7 @@ function calcMathCore(opts) {
   // muốn lấy số liệu thuần để lưu lại — không lọc bớt, tránh sót biến nào cần dùng sau.
   return {
     // Input gốc (echo lại để display dùng, không cần destructure lại opts)
-    dmgStr, resStr, drStr, bonusPct, sanityBonusPct, critMul, poiseInit, critDiv,
+    dmgStr, resStr, drStr, bonusPct, dmgTakenPct, sanityBonusPct, critMul, poiseInit, critDiv,
     sanityInit, diceMul, sinkingInit, ruptureInit, theLiving, theDeparted,
     burnInit, bleedInit, bleedActions, tremorInit, chargeInit,
     // Kết quả tính toán — DÙNG ĐỂ LƯU LẠI cho encounter (số liệu mới sau hit này)
@@ -552,13 +580,16 @@ function calcMathCore(opts) {
     totalTremorDecayConsumed, totalTremorChainConsumed,
     // Chi tiết — dùng để build breakdown display trong calcMath()
     instanceResults, dmgValues, resRaw, resValues, hasDR, drMult, drRawPct, effectiveSanityBonus,
+    // %DmgTaken: cả giá trị THÔ và giá trị SAU BÃO HOÀ — để mọi nơi hiển thị
+    // (kể cả `-math`) dùng đúng con số engine thật sự áp, không tự tính lại.
+    rawDmgTakenPct: dmgTakenPct, effDmgTakenPct: saturateDmgTakenPct(dmgTakenPct),
   };
 }
 
 function calcMath(opts) {
   const calcResult = calcMathCore(opts);
   const {
-    dmgStr, resStr, drStr, bonusPct, sanityBonusPct, critMul, poiseInit, critDiv,
+    dmgStr, resStr, drStr, bonusPct, dmgTakenPct, sanityBonusPct, critMul, poiseInit, critDiv,
     sanityInit, diceMul, sinkingInit, ruptureInit, theLiving, theDeparted,
     burnInit, bleedInit, bleedActions, tremorInit, chargeInit,
     totalDmg, finalSanity: sanity, finalPoiseStacks, finalSinking: enemySinking,
@@ -568,6 +599,8 @@ function calcMath(opts) {
     burnDmgThisTurn, finalBurn, bleedDmgThisTurn, finalBleed,
     totalTremorStaminaLoss, finalTremor,
     instanceResults, dmgValues, resRaw, resValues, hasDR, drMult, drRawPct, effectiveSanityBonus,
+    // đây là DESTRUCTURING (không phải object trả về) — chỉ lấy tên, không gán lại.
+    effDmgTakenPct,
   } = calcResult;
 
   const breakdownLines = instanceResults.map((r, i) => {
@@ -690,6 +723,12 @@ function calcMath(opts) {
   const allFields = [
     { name: `Hits (${critCount}/${dmgValues.length} crit)`, value: breakdownValue, inline: false },
     { name: "% Dmg Bonus", value: bonusPctDisplay, inline: true, alwaysShow: true },
+    // %DmgTaken hiện RIÊNG một ô — người chơi phải thấy nó KHÔNG nằm chung với
+    // Dmg Bonus (khác đường bão hoà). Chỉ hiện khi > 0 để không rác ô trống.
+    { name: "% Dmg Taken", inline: true,
+      value: (dmgTakenPct ?? 0) > 50
+        ? `**${effDmgTakenPct.toFixed(2)}%** effective *(raw: ${(dmgTakenPct ?? 0).toFixed(2)}%)*`
+        : `${(dmgTakenPct ?? 0).toFixed(2)}%` },
     { name: "Player's Sanity", value: totalSanityHeal > 0
         ? `${sanityBonusPct} (+${sanityBonusPct}% Dice bonus) → ${sanityBonusPct + totalSanityHeal} (+${sanityBonusPct + totalSanityHeal}% Dice bonus)`
         : `${sanityBonusPct} (+${sanityBonusPct}% Dice bonus)`,
@@ -723,4 +762,4 @@ function calcMath(opts) {
   };
 }
 
-module.exports = { calcMathCore, calcMath, saturateBonusPct, saturateDR, validateMathInputs };
+module.exports = { calcMathCore, calcMath, saturateBonusPct, saturateDR, saturateDmgTakenPct, validateMathInputs };

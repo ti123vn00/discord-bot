@@ -73,6 +73,7 @@ function resolveShortToken(raw) {
 // chạm tới nhánh có `AttachmentBuilder`; sửa xong bug BGM thì lỗi này lộ ngay.
 // NAY: nhận `AttachmentBuilder` làm THAM SỐ (cùng cách `bgmAttachmentIH` đang
 // làm) — không mượn tên từ scope không có.
+
 /** takePendingBgmFilesSafe — bản KHÔNG BAO GIỜ NÉM. BGM là thứ trang trí; hỏng
  *  nó không được phép làm hỏng luồng resolve/hiển thị (xem chuỗi nhân quả đầy đủ
  *  ở comment trong reactive-defense.js: một ReferenceError ở đây từng làm KẸT
@@ -138,7 +139,50 @@ function bgmAttachmentIH(AttachmentBuilder, name) {
   return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+  // ⚠️ ĐẶT TRONG THÂN FACTORY (không phải top-level): hàm này dùng `client`,
+  // `ActionRowBuilder`, `StringSelectMenuBuilder`, `StringSelectMenuOptionBuilder`
+  // — đều là THAM SỐ DI. Tôi đã viết nhầm ở top-level và `t-di.js` bắt được ngay
+  // ("dùng ngoài scope: client (trong sendAstralTargetPrompts)…") — đúng bẫy
+  // AttachmentBuilder cũ, lần này test chặn trước khi tới tay người chơi.
+/** sendAstralTargetPrompts — bắn dropdown "chọn mục tiêu Astral Quantization"
+ *  cho NGƯỜI BUFF, ở mốc cuối Turn Order.
+ *  Số dmg đã được `performEndTurn` chốt TRƯỚC khi `advanceCombatantTurn` reset
+ *  `dmgDealtThisTurn` — ở đây tuyệt đối KHÔNG tính lại, nếu không sẽ ra 0. */
+async function sendAstralTargetPrompts(channelId, encounter) {
+  const queue = encounter?.pendingAstralChoice ?? [];
+  if (queue.length === 0) return;
+  const ch = await client.channels.fetch(channelId).catch(() => null);
+  if (!ch) return;
+  for (let i = 0; i < queue.length; i++) {
+    const aq = queue[i];
+    const opts = Object.entries(encounter.enemies ?? {})
+      .filter(([, e]) => (e?.currentHp ?? 0) > 0)
+      .slice(0, 25)
+      .map(([k, e]) => new StringSelectMenuOptionBuilder()
+        .setLabel(`${e.name ?? k}`.slice(0, 100))
+        .setDescription(`${Math.round(e.currentHp)}/${Math.round(e.maxHp)} HP`.slice(0, 100))
+        .setValue(k));
+    if (opts.length === 0) continue;
+    await ch.send({
+      content: `<@${aq.userId}>`,
+      embeds: [{
+        title: "🌌 Astral Quantization — chọn mục tiêu",
+        description: `**${aq.amount}** dmg (**${aq.pct}%** của **${aq.totalDealt}** tổng dmg <@${aq.allyId}> đã gây trong turn).`
+          + `\nChọn **một** đối thủ để nhận đòn này:`,
+        color: 0x8e44ad,
+      }],
+      components: [new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`astraltarget:${channelId}:${i}`)
+          .setPlaceholder("Chọn đối thủ...")
+          .setMinValues(1).setMaxValues(1)
+          .addOptions(...opts),
+      )],
+    }).catch(() => {});
+  }
+}
+
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
@@ -932,6 +976,11 @@ client.on("interactionCreate", async (interaction) => {
       // `-encounter endturn` đã có hook từ trước) — thiếu trigger AI cho round
       // MỚI nếu người đi ĐẦU turnOrder mới là enemy aiControlled.
       maybeRunAiTurn(channelId).catch(() => {});
+      // ❗ Fragaria (12/08): "ở cuối Turn Order trước khi kết thúc sẽ cho NGƯỜI
+      // BUFF Astral Quantization (không phải người nhận buff) chỉ định nó."
+      // performEndTurn đã CHỐT SẴN số dmg (trước lúc reset bộ đếm) và xếp vào
+      // `pendingAstralChoice`; ở đây chỉ dựng dropdown cho đúng người buff.
+      sendAstralTargetPrompts(channelId, encounter).catch(() => {});
       await interaction.update({
         content: null,
         embeds: [{
@@ -2696,7 +2745,7 @@ client.on("interactionCreate", async (interaction) => {
         }
         pendingCriticalRolls.set(`${channelId}:${interaction.user.id}`, {
           skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns,
-          emotionDelta: verify.emotionDelta ?? 0, lightCost: verify.lightCost,
+          emotionDelta: verify.emotionDelta ?? 0, emotionPlus: verify.emotionPlus ?? 0, lightCost: verify.lightCost,
           sanityCost: verify.sanityCost, skillRollEmbed: verify.skillRollEmbed,
           expiresAt: Date.now() + PENDING_CRITICAL_ROLL_TTL_MS,
         });
@@ -2707,7 +2756,10 @@ client.on("interactionCreate", async (interaction) => {
               .setCustomId(`encallytarget:${channelId}:${shortTokenFor(critSkillName)}`)
               .setPlaceholder("Chọn người được chỉ định...")
               .setMinValues(1).setMaxValues(1)
-              .addOptions(...allyOptions),
+              // ❗ Fragaria (12/08): "Dùng Designant. với Astral Quantization
+              // không có nút Back". Mọi dropdown chọn target khác đều có "◀ Back"
+              // làm option ĐẦU TIÊN — riêng nhánh chọn ĐỒNG ĐỘI bị bỏ sót.
+              .addOptions(new StringSelectMenuOptionBuilder().setLabel("◀ Back").setValue("back"), ...allyOptions),
           )],
         }).catch(() => {});
         return;
@@ -2728,7 +2780,17 @@ client.on("interactionCreate", async (interaction) => {
         const p = {
           id: pendingId, kind: "critical", attackerId: interaction.user.id,
           targets: [], dmgStr: `Critical: ${critSkillName}`, defenseBypass: {},
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+          // ❗❗ BUG ĐÃ SỬA (Fragaria báo LẦN 2: "Borrowed Eyes vẫn chưa hoạt động").
+          // Lần trước tôi sửa nơi ĐỌC (resolve đọc số charge từ dòng dice trong
+          // `p.skillRollEmbed`) nhưng nhánh dựng `p` NÀY — đường thật của mọi
+          // Critical/Page KHÔNG có dmg — lại KHÔNG hề gắn `skillRollEmbed` vào p.
+          // ⇒ resolve vẫn không có gì để đọc, vẫn rơi về `dmgStr` = "Critical:
+          // Borrowed Eyes" (không có chữ số) ⇒ vẫn 0 charge.
+          // ⚠️ Test cũ của tôi XANH GIẢ vì nó TỰ cấp `skillRollEmbed` cho p —
+          // tức là tôi test giả định của mình, không phải nhánh thật.
+          skillRollEmbed: verify.skillRollEmbed,
+          rollText: verify.skillRollEmbed?.description ?? "",
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, emotionPlus: verify.emotionPlus ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
@@ -2783,7 +2845,7 @@ client.on("interactionCreate", async (interaction) => {
         skillRollEmbed: verify.skillRollEmbed,
         skillKey: verify.skillKey,
         cooldownTurns: verify.cooldownTurns,
-        emotionDelta: verify.emotionDelta,
+        emotionDelta: verify.emotionDelta, emotionPlus: verify.emotionPlus ?? 0,
         lightCost: verify.lightCost,
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
@@ -3032,7 +3094,7 @@ client.on("interactionCreate", async (interaction) => {
         skillRollEmbed: verify.skillRollEmbed,
         skillKey: verify.skillKey,
         cooldownTurns: verify.cooldownTurns,
-        emotionDelta: verify.emotionDelta,
+        emotionDelta: verify.emotionDelta, emotionPlus: verify.emotionPlus ?? 0,
         lightCost: verify.lightCost,
         sanityCost: verify.sanityCost,
         autoWarnings: verify.autoWarnings,
@@ -3054,7 +3116,11 @@ client.on("interactionCreate", async (interaction) => {
         const p = {
           id: pendingId, kind: "hit", attackerId: interaction.user.id,
           targets: [], dmgStr: `Page: ${pageName}`, defenseBypass: {},
-          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
+          // Cùng lý do với nhánh Critical ở trên — Page không có dmg cũng phải
+          // mang theo embed roll để resolve đọc được con số trong dòng dice.
+          skillRollEmbed: verify.skillRollEmbed,
+          rollText: verify.skillRollEmbed?.description ?? "",
+          skillKey: verify.skillKey, cooldownTurns: verify.cooldownTurns, emotionDelta: verify.emotionDelta ?? 0, emotionPlus: verify.emotionPlus ?? 0, orlandoFuriosoBypassConsumed: verify.orlandoFuriosoBypassConsumed ?? false, quickstepBypassConsumed: verify.quickstepBypassConsumed ?? false,
           lightCost: verify.lightCost, sanityCost: verify.sanityCost,
         };
         const lines = await resolveOnePendingAction(encounter, p);
@@ -3540,6 +3606,15 @@ client.on("interactionCreate", async (interaction) => {
   const channelId = parts[1];
   const critSkillName = resolveShortToken(parts.slice(2).join(":"));
   const chosenAllyId = interaction.values[0];
+  // "◀ Back" — quay về dropdown top-level Attack/Moves/Special. CỐ Ý KHÔNG xoá
+  // `pendingCriticalRolls`: roll cũ vẫn phải bị khoá cho tới khi hết TTL, không
+  // mở lối tắt "Back = huỷ để roll lại" (xem cùng lý do ở nhánh enctarget).
+  if (chosenAllyId === "back") {
+    const encBackAlly = await getEncounter(channelId).catch(() => null);
+    const meBackAlly = encBackAlly?.players?.[interaction.user.id];
+    if (!meBackAlly) return interaction.reply({ content: "⚠️ Bạn chưa tham gia encounter này.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    return interaction.update({ components: buildEncounterActionPanel(channelId, meBackAlly, interaction.user.id) }).catch(() => {});
+  }
   await interaction.deferUpdate().catch(() => {});
   // ⚠️ KEY PHẢI KHỚP bên ĐẶT. Bên đặt (nhánh Critical) dùng
   // `${channelId}:${userId}` — tôi viết bên đọc thành
@@ -3569,7 +3644,7 @@ client.on("interactionCreate", async (interaction) => {
         // đều nằm ở đây. Không truyền là resolve đọc ra 0.
         rollText: pendingRoll.skillRollEmbed?.description ?? "",
         skillKey: pendingRoll.skillKey, cooldownTurns: pendingRoll.cooldownTurns,
-        emotionDelta: pendingRoll.emotionDelta ?? 0,
+        emotionDelta: pendingRoll.emotionDelta ?? 0, emotionPlus: pendingRoll.emotionPlus ?? 0,
         lightCost: pendingRoll.lightCost, sanityCost: pendingRoll.sanityCost,
       };
       outLines = await resolveOnePendingAction(encounter, p);
@@ -3581,13 +3656,67 @@ client.on("interactionCreate", async (interaction) => {
       await saveEncounter(channelId, encounter);
     });
     const bgmAlly = takePendingBgmFilesSafe(await getEncounter(channelId).catch(() => null) ?? {}, AttachmentBuilder);
+    // ❗ Fragaria (12/08): "xài xong phần target lên đồng minh của cả hai thì
+    // không thấy dropdown chọn hành động hiện ra".
+    // GỐC: `components: []` xoá sạch bảng điều khiển — người chơi kẹt, phải gọi
+    // lại panel bằng tay. Mọi nhánh hành động khác đều dựng lại
+    // `buildEncounterActionPanel` sau khi xử lý xong; riêng nhánh chọn đồng đội
+    // bị bỏ sót (cùng chỗ bỏ sót nút Back ở trên).
+    const encAfterAlly = await getEncounter(channelId).catch(() => null);
+    const meAfterAlly = encAfterAlly?.players?.[interaction.user.id];
     await interaction.editReply({
       content: bgmAlly.name ? `🎵 ${bgmAlly.label ?? `BGM đổi sang **${bgmAlly.name}**`}` : undefined,
       embeds: [pendingRoll.skillRollEmbed, { description: outLines.join("\n") || "*(không có gì để hiện)*", color: 0x95a5a6 }],
-      components: [], files: bgmAlly.files,
+      components: meAfterAlly ? buildEncounterActionPanel(channelId, meAfterAlly, interaction.user.id) : [],
+      files: bgmAlly.files,
     }).catch(() => {});
   } catch (err) {
     log("error", "encallytarget", interaction.user?.id ?? "unknown", err.message);
+    await interaction.followUp({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+// ─── SELECT MENU (astraltarget — NGƯỜI BUFF Astral Quantization chọn đối thủ
+// nhận đòn trì hoãn, ở mốc cuối Turn Order) ──────────────────────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("astraltarget:")) return;
+  const [, channelId, idxRaw] = interaction.customId.split(":");
+  const idx = parseInt(idxRaw, 10);
+  const foeKey = interaction.values[0];
+  await interaction.deferUpdate().catch(() => {});
+  try {
+    let outText = "";
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+      const queue = encounter.pendingAstralChoice ?? [];
+      const aq = queue[idx];
+      if (!aq) throw new Error("Đòn Astral Quantization này đã được xử lý rồi.");
+      // Chỉ ĐÚNG người buff mới được chọn (Fragaria: "người buff nó chỉ định",
+      // không phải người nhận buff).
+      if (interaction.user.id !== aq.userId) {
+        throw new Error(`Chỉ <@${aq.userId}> — người đã dùng **Astral Quantization** — mới được chọn mục tiêu.`);
+      }
+      const foe = encounter.enemies?.[foeKey];
+      if (!foe || (foe.currentHp ?? 0) <= 0) throw new Error("Mục tiêu không còn hợp lệ.");
+      const absorbed = applyShieldLoss(foe, Math.min(foe.shieldHp ?? 0, aq.amount));
+      applyHpLoss(foe, aq.amount - absorbed);
+      checkStaggerPanic(foe);
+      outText = `🌌 **Astral Quantization** (<@${aq.userId}>) — **${aq.pct}%** tổng dmg của <@${aq.allyId}> (**${aq.totalDealt}**)`
+        + ` → **${foe.name}** chịu **${aq.amount}** dmg (còn ${Math.round(foe.currentHp)}/${Math.round(foe.maxHp)} HP).`;
+      appendActionLog(encounter, outText);
+      // Gỡ khỏi hàng đợi bằng cách đánh dấu null — GIỮ NGUYÊN index của các mục
+      // còn lại, vì customId của những dropdown đã gửi đi đang trỏ theo index.
+      queue[idx] = null;
+      if (queue.every(x => x === null)) encounter.pendingAstralChoice = [];
+      await saveEncounter(channelId, encounter);
+    });
+    await interaction.editReply({
+      embeds: [{ title: "🌌 Astral Quantization", description: outText, color: 0x8e44ad }],
+      components: [],
+    }).catch(() => {});
+  } catch (err) {
     await interaction.followUp({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });
@@ -3702,7 +3831,7 @@ client.on("interactionCreate", async (interaction) => {
       const { embed, skillRollEmbed } = await doPlayerHit(channelId, interaction.user.id, interaction.user.toString(), pending.dmgStr, targetStr, {
         prefilledVerify: {
           skillRollEmbed: pending.skillRollEmbed, skillKey: pending.skillKey, cooldownTurns: pending.cooldownTurns,
-          emotionDelta: pending.emotionDelta, lightCost: pending.lightCost, sanityCost: pending.sanityCost,
+          emotionDelta: pending.emotionDelta, emotionPlus: pending.emotionPlus ?? 0, lightCost: pending.lightCost, sanityCost: pending.sanityCost,
           refSnippet: null, refLink: null, orlandoFuriosoBypassConsumed: pending.orlandoFuriosoBypassConsumed ?? false,
           effectiveBulletType: pending.effectiveBulletType, effectiveBulletCount: pending.effectiveBulletCount ?? 0,
         },

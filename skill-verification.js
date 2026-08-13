@@ -190,7 +190,7 @@ module.exports = function ({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey
   }
 
   async function resolveSkillVerification(channelId, attacker, skillNameRaw, refRaw, isCritical = false, variantKey = null) {
-    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [], autoSideEffects = null, reuseTimesResolved = 0;
+    let skillRollEmbed = null, skillKey = null, cooldownTurns = 0, emotionDelta = 0, emotionPlus = 0, busyAsTribbieNote = "", autoDmgStr = null, autoWarnings = [], autoSideEffects = null, reuseTimesResolved = 0;
     let refSnippet = null, refLink = null;
     let lightCost = 0, sanityCost = 0;
     // effectiveBulletType/effectiveBulletCount — GAP ĐÃ SỬA (lỗi scope): khai
@@ -528,6 +528,7 @@ module.exports = function ({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey
       const rollResult = {
         embed: { title: `🎲 ${skill.name}`, color: skill.embedColor ?? 0x5865f2, description: header + "\n\n" + annotateLinesWithEmotion(autoResult.lines, autoResult.tracked) },
         totalEmotionDelta: autoResult.totalEmotionDelta ?? 0,
+        totalEmotionPlus: autoResult.totalEmotionPlus ?? 0,
       };
       if (hasParalyze) attacker.paralyze -= 1;
       if (hasChains) attacker.chains = false;
@@ -547,6 +548,7 @@ module.exports = function ({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey
       }
       skillRollEmbed = rollResult.embed;
       emotionDelta = rollResult.totalEmotionDelta ?? 0;
+      emotionPlus = rollResult.totalEmotionPlus ?? Math.max(0, emotionDelta);
       // orlandoFuriosoBypass — GAP ĐÃ SỬA (xác nhận trực tiếp): nếu ĐÚNG Critical
       // của vũ khí vừa swap qua, CD = 0 (miễn hoàn toàn) — flag trả về để CALLER
       // biết cần tiêu thụ (set false) bypass sau khi commit, không lặp lại lần sau.
@@ -572,7 +574,7 @@ module.exports = function ({ applyIndulgenceToDmgStr, findSkill, resolveSkillKey
       }
     }
   
-    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, autoSideEffects, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed, effectiveBulletType, effectiveBulletCount };
+    return { skillRollEmbed, skillKey, cooldownTurns, emotionDelta, emotionPlus, refSnippet, refLink, lightCost, sanityCost, busyAsTribbieNote, autoDmgStr, autoWarnings, autoSideEffects, orlandoFuriosoBypassConsumed: isOwnCriticalBypassed, effectiveBulletType, effectiveBulletCount };
   }
 
   return {

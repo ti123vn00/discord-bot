@@ -2157,8 +2157,25 @@ async function resolveOnePendingAction(encounter, p) {
               // lập tức +4/+5 Procuration ngay trong cùng turn).
               // Cờ `furiosoUsedThisTurn` do `applyFuriosoUseCosts` bật, reset ở
               // `advanceCombatantTurn` (mốc "turn" = HẾT một vòng turn order).
-              if (attacker.combatant?.furiosoUsedThisTurn && /^caduceus crit|^furioso /.test(p.skillKey ?? "")) {
-                verifyNote += ` <:Unlock:1528452595859849406>[Đã dùng Furioso turn này — KHÔNG nhận thêm Procuration cho tới hết turn]`;
+              // ❗❗ SỬA LẦN 2 (Fragaria: "Procuration vẫn chưa được gate sau khi
+              // sử dụng Furioso… huống chi là nhận được Procuration BẰNG Furioso").
+              // LẦN TRƯỚC tôi chỉ kiểm cờ `furiosoUsedThisTurn` — nhưng cờ đó do
+              // `applyFuriosoUseCosts` bật, mà khối ấy nằm ~4.500 ký tự BÊN DƯỚI
+              // khối này trong CÙNG một lần resolve. Tại thời điểm chạy tới đây,
+              // đòn Furioso đang xử lý vẫn thấy cờ = false ⇒ nó tự nạp Procuration
+              // từ chính 9 mặt Caduceus của mình (ảnh: "+3 Procuration (Dice 5,9,8)"
+              // ngay trên dòng dùng Furioso Replica).
+              // Nay chặn BẰNG HAI VẾ:
+              //   (a) `^furioso ` — đòn Furioso KHÔNG BAO GIỜ tự nạp Procuration,
+              //       không phụ thuộc thứ tự chạy trong file;
+              //   (b) `furiosoUsedThisTurn` — các đòn Caduceus SAU đó trong cùng
+              //       turn cũng không nạp.
+              const isFuriosoItself = /^furioso /.test(p.skillKey ?? "");
+              if (attacker.combatant && /^caduceus crit|^furioso /.test(p.skillKey ?? "")
+                  && (isFuriosoItself || attacker.combatant.furiosoUsedThisTurn)) {
+                verifyNote += isFuriosoItself
+                  ? ` <:Unlock:1528452595859849406>[Furioso không tự tạo Procuration — khoá nạp tới hết turn]`
+                  : ` <:Unlock:1528452595859849406>[Đã dùng Furioso turn này — KHÔNG nhận thêm Procuration cho tới hết turn]`;
               } else if (attacker.combatant && /^caduceus crit|^furioso /.test(p.skillKey ?? "")) {
                 const FACE = { "8Blunt": 1, "8Pierce": 2, "15Slash": 3, "15Pierce": 4, "15Blunt": 5,
                   "24Slash": 6, "24Pierce": 7, "24Blunt": 8, "30Slash": 9 };
@@ -2770,7 +2787,9 @@ async function resolveOnePendingAction(encounter, p) {
               verifyNote += ` 🛡️[Tactical Suppression: +${shieldGranted} Shield HP (${totalPeopleOnField} người × 50), 2 turn]`;
             }
             if (p.emotionDelta) {
-              const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta);
+              // `p.emotionPlus` = tổng phần DƯƠNG của lần roll này (Max Dice).
+              // Truyền riêng để Energetic chỉ x2 chiều NHẬN — xem sanity-emotion.js.
+              const levelNotes = applyEmotionDelta(attacker.combatant, p.emotionDelta, p.emotionPlus);
               verifyNote += ` [Coin ${p.emotionDelta >= 0 ? "+" : ""}${p.emotionDelta}]`;
               if (levelNotes.length > 0) {
                 verifyNote += " " + levelNotes.join(" ");

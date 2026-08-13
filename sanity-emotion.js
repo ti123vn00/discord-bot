@@ -55,7 +55,7 @@ module.exports = function ({ healHpCapped, hasPerk, getMaxEmotionLevel, EMOTION_
     }
   }
   
-  function applyEmotionDelta(combatant, delta) {
+  function applyEmotionDelta(combatant, delta, plusPart = null) {
     const notes = [];
     // ❗ KHÔNG thoát sớm khi delta = 0.
     // `applyEmotionDelta(c, 0)` là cách turn-advance kích lại vòng level-up khi
@@ -66,7 +66,20 @@ module.exports = function ({ healHpCapped, hasPerk, getMaxEmotionLevel, EMOTION_
     // trong accessory.js đều chưa được implement"): "Gia tăng x2 hiệu quả nhận
     // Emotion Coin". CHỈ nhân chiều DƯƠNG (nhận coin) — chiều âm là chi phí
     // (VD Shin/Mang tốn coin), nhân đôi chi phí là phản tác dụng hoàn toàn.
-    if (delta > 0 && combatant.hasCompositionTool) delta *= 2;
+    // ❗❗ BUG ĐÃ SỬA (Fragaria 12/08: "1 số user bảo nó x2 CẢ phần trừ khi bị Min
+    // Dice trong khi đáng lẽ chỉ x2 phần nhận khi Max Dice"). USERS ĐÚNG.
+    // GỐC: nơi gọi chỉ đưa TỔNG NET. Nhân đôi tổng net thì phần âm bị nhân theo:
+    //   3 Max + 1 Min → net +2 → ×2 = **+4**, trong khi luật đúng là 3×2 − 1 = **+5**.
+    // Nói cách khác mỗi Min Dice đang bị phạt −2 thay vì −1.
+    // NAY: `plusPart` (tổng phần DƯƠNG, do skills.js/index.js đếm riêng từ tracked)
+    // được truyền tới đây ⇒ chỉ nhân đôi ĐÚNG phần đó, phần âm giữ nguyên.
+    // Không truyền (coin thưởng clash, GM cộng tay…) thì giữ hành vi cũ — những
+    // nguồn đó thuần dương nên không khác gì.
+    if (combatant.hasCompositionTool) {
+      const plus = (plusPart === null || plusPart === undefined) ? Math.max(0, delta) : Math.max(0, plusPart);
+      const minus = delta - plus;              // ≤ 0
+      if (plus > 0) delta = plus * 2 + minus;  // chỉ chiều NHẬN được x2
+    }
     // BUG ĐÃ SỬA (xác nhận trực tiếp: "emotion level thì không cho âm coin, dù có
     // trừ thì tới 0 là dừng") — trước đây cộng delta trực tiếp KHÔNG clamp, coin
     // có thể âm vô hạn (VD Shin/Mang tốn 1 Coin nhiều lần liên tiếp).

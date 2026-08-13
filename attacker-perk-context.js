@@ -13,6 +13,8 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
   function computeAttackerPerkContext(attacker, target, dmgStr, { isM1 = false, targetId = null, eyeOfHorusVolleys = null, eyeOfHorusNewCount = null, attackerId = null, willUseBullet = false, isMiddleSkill = false, skillKey = null } = {}) {
     let bonusPct = attacker.gmBonusPctOverride ?? 0;
+    // %DmgTaken — TÁCH RIÊNG khỏi bonusPct (xem khối 6 status bên dưới).
+    let dmgTakenPct = 0;
     // Hệ số nhân THẲNG vào dmg cuối (không đi qua saturateBonusPct). Mặc định 1.
     let outgoingDmgMul = 1;
     // "Dullahan" (Fused Blade passive) — xác nhận trực tiếp: "Khi có Dullahan
@@ -75,12 +77,24 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
     // (saturateDR — SAI, đó là công thức riêng cho REDUCTION của defender) sang
     // ĐÂY (bonusPct — ĐÚNG, cùng pool với dmg bonus của attacker, cùng đi qua
     // saturateBonusPct trong calcMathCore).
-    bonusPct += (target.fragile ?? 0) * 1;
-    if (isM1) bonusPct += (target.smoke ?? 0) * 2.5;
-    if (isMiddleSkill) bonusPct += (target.vengeanceMark ?? 0) * 5;
-    if ((target.tremorDecay ?? 0) > 0) bonusPct += Math.floor((target.tremor ?? 0) / 4) * 1;
-    if (target.gazeAwe > 0 && target.gazeAweSourceId === attackerId) bonusPct += target.gazeAwe * 10;
-    if ((target.hemorrhage ?? 0) > 0) bonusPct += target.hemorrhage * 10;
+    // ❗❗ UPDATE LUẬT (Fragaria 12/08, đã thông báo cho player):
+    //   FinalDmg = BaseDmg × (1 + %Bonus + %SanityBonus + **%DmgTaken**) × …
+    // 6 status dưới đây là DEBUFF TRÊN NGƯỜI ĐỊCH ("địch nhận thêm X% Dmg"),
+    // trước đây bị gộp thẳng vào `bonusPct` nên phải dùng chung đường bão hoà
+    // của Dmg Bonus — vốn đã ngập vì buff của người tấn công ⇒ Fragile và đồng
+    // loại gần như vô dụng. NAY dồn vào `dmgTakenPct` riêng, bão hoà theo bảng
+    // riêng (0–50% 1:1 · 50–100% 1:0.25 · 100%+ 1:0.125 — saturateDmgTakenPct).
+    // ⚠️ CÁCH NHẬN BIẾT một hiệu ứng thuộc nhóm nào (Fragaria chốt): nó là
+    // DEBUFF nằm TRÊN NGƯỜI ĐỊCH (ai đánh con đó cũng hưởng) ⇒ DmgTaken;
+    // còn BUFF nằm trên NGƯỜI DÙNG ⇒ DmgBonus. Mọi cách viết trong desc —
+    // "tăng dmg nhận thêm", "địch nhận thêm dmg", "DmgTaken", "dmg phải nhận
+    // thêm" — đều là MỘT thứ: DmgTaken.
+    dmgTakenPct += (target.fragile ?? 0) * 1;
+    if (isM1) dmgTakenPct += (target.smoke ?? 0) * 2.5;
+    if (isMiddleSkill) dmgTakenPct += (target.vengeanceMark ?? 0) * 5;
+    if ((target.tremorDecay ?? 0) > 0) dmgTakenPct += Math.floor((target.tremor ?? 0) / 4) * 1;
+    if (target.gazeAwe > 0 && target.gazeAweSourceId === attackerId) dmgTakenPct += target.gazeAwe * 10;
+    if ((target.hemorrhage ?? 0) > 0) dmgTakenPct += target.hemorrhage * 10;
     // dmgStrRewritten khai báo NGAY ĐẦU (thay vì giữa hàm như trước) — vì Eye Of
     // Horus (BUG ĐÃ SỬA, xem chi tiết bên dưới) giờ CẦN sửa THẬT dmgStr (không chỉ
     // %bonus), và block đó nằm TRƯỚC vị trí khai báo cũ.
@@ -363,7 +377,7 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr }) {
 
     if (attacker.providenceCritMulNextTurn) critMul = (critMul ?? 1) + 0.3;
 
-    return { resBonusFlat, bonusPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus, outgoingDmgMul };
+    return { resBonusFlat, bonusPct, dmgTakenPct, critMul, critDivOverride, dmgStrRewritten, instantKill, eyeOfHorusTremorChargeAmount, waltzInBlackMultiplier, flatDmgBonus, outgoingDmgMul };
   }
   
 
