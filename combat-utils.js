@@ -12,7 +12,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE, CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU, UNLOCK_THRESHOLDS, PRESCRIPT_DICE_PER_TURN, PRESCRIPT_RULES, KARMIC_PER_FAILURE, KARMIC_MAX, hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
+module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE, CADUCEUS_STAMINA_PER_CHARGE, WEAPON_DEFENSE_HITS_CU, UNLOCK_THRESHOLDS, PRESCRIPT_DICE_PER_TURN, PRESCRIPT_RULES, KARMIC_PER_FAILURE, KARMIC_MAX, hasPerk, getPlayerDataWithSlot, savePlayerData, calcGrade, CHARGE_MAX, ENCOUNTER_SANITY_MAX, findWeaponAnywhere }) {
 
   // Trần của Indulgence in Prescript — Fragaria chốt: max cap 1, hết sau end turn.
   // Khai MỘT chỗ để 2 nơi cộng (Singleton ở đây + Prescript ở interaction-handlers)
@@ -1231,7 +1231,82 @@ module.exports = function ({ PRESCRIPT_RULES_PROSELYTE, PRESCRIPT_DICE_PROSELYTE
     return notes;
   }
 
+
+  // ── TRẦN "N lần/turn" CỦA TỪNG MẶT CADUCEUS ─────────────────────────────────
+  // Fragaria 14/08 chốt rõ: *"hiệu ứng của DICE NÀY 1 turn chỉ áp được max 2 lần,
+  // chứ không phải toàn bộ dice hiệu ứng chỉ kích 2 lần mỗi turn — mà là RIÊNG
+  // BIỆT TỪNG DICE; chỉ MỘT SỐ dice mới max 2 lần/turn thôi."*
+  // Và: *"không riêng gì M1 mà cả Critical nữa."*
+  //
+  // ❗ TRƯỚC ĐÂY trần chỉ tồn tại ở nhánh M1 (`interaction-handlers.js`) với tập
+  // mặt HARDCODE `{3,4,6,7,8}` và số `2`. Critical đi NHÁNH SONG SONG hoàn toàn
+  // khác (skills.js roll() ghi chữ → `autoExtractDiceSideEffects` /
+  // `extractDmgTakenGrants` đọc chữ rồi áp) nên KHÔNG hề bị chặn — lớp lỗi 3.
+  //
+  // NAY: trần đọc THẲNG từ `desc` trong constants.js ("(2 lần/turn)"). Data là
+  // nguồn sự thật duy nhất — sửa desc là luật đổi theo, không phải nhớ sửa 2 nơi.
+  // Bộ đếm `caduceusFaceUses` DÙNG CHUNG giữa M1 và Critical: cùng một mặt dice
+  // trong cùng một turn thì chung hạn mức, bất kể ra từ đường nào.
+
+  /** Trần của một mặt (đọc từ desc). null = KHÔNG giới hạn. */
+  function caduceusFaceLimit(faceN) {
+    const face = (CADUCEUS_DICE ?? []).find(d => d.n === faceN);
+    const m = /\((\d+)\s*l[aầ]n\s*\/\s*turn\)/i.exec(String(face?.desc ?? ""));
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  /** Xin 1 lượt dùng cho mặt `faceN`. true = được phép áp, false = đã đủ hạn mức. */
+  function consumeCaduceusFaceUse(combatant, faceN) {
+    if (!combatant) return false;
+    const limit = caduceusFaceLimit(faceN);
+    if (limit === null) return true;                 // mặt không giới hạn
+    combatant.caduceusFaceUses = combatant.caduceusFaceUses ?? {};
+    const used = combatant.caduceusFaceUses[faceN] ?? 0;
+    if (used >= limit) return false;
+    combatant.caduceusFaceUses[faceN] = used + 1;
+    return true;
+  }
+
+  /** Map tên mặt → số mặt. Tên 9 mặt là DUY NHẤT (t-caduceus-cap kiểm chứng). */
+  function caduceusFaceByName(line) {
+    for (const d of CADUCEUS_DICE ?? []) {
+      if (String(line).includes(d.name)) return d.n;
+    }
+    return null;
+  }
+
+  /** Lọc dòng dice của Critical Caduceus: mặt đã hết hạn mức thì GỠ phần mô tả
+   *  hiệu ứng, để hai parser (`autoExtractDiceSideEffects`, `extractDmgTakenGrants`)
+   *  không còn thấy gì mà áp. Chặn ở ĐÂY vì đó là chỗ DUY NHẤT cả hai cùng đọc —
+   *  vá riêng từng parser là lặp lại đúng lớp lỗi 8.
+   *  Giữ nguyên phần dmg/type/tên để người chơi vẫn thấy mình roll ra gì. */
+  function capCaduceusCriticalLines(lines, combatant) {
+    if (!combatant) return lines;
+    return (lines ?? []).map((line) => {
+      if (!/^<:Dice\d+:/.test(String(line))) return line;
+      const faceN = caduceusFaceByName(line);
+      if (faceN === null) return line;
+      if (caduceusFaceLimit(faceN) === null) return line;   // mặt không giới hạn
+      if (consumeCaduceusFaceUse(combatant, faceN)) return line;
+      // Hết hạn mức turn này — PHẢI CẮT HẲN phần mô tả hiệu ứng, không chỉ ghi
+      // chú thêm. Hai parser đọc CHỮ trong dòng; còn chữ là còn áp.
+      // Cấu trúc dòng roll(): `<:DiceN:…>**giá trị**[tag] [<:Type:…>Type]<mô tả
+      // hiệu ứng> — *tên mặt*`. Giữ phần đầu tới `]` cuối cùng của khối type, và
+      // giữ ` — *tên*` để người chơi vẫn thấy mình roll ra mặt nào.
+      const raw = String(line);
+      const mType = /\[<:(?:Slash|Blunt|Pierce):\d+>(?:Slash|Blunt|Pierce)\]/.exec(raw);
+      const mName = /\s+—\s+\*/.exec(raw);
+      if (!mType || !mName || mName.index <= mType.index) return raw;   // dòng lạ: để nguyên, thà bỏ sót còn hơn cắt bậy
+      const head = raw.slice(0, mType.index + mType[0].length);
+      const tail = raw.slice(mName.index);
+      return `${head}${tail} *(mặt này đã đủ ${caduceusFaceLimit(faceN)} lần trong turn — hiệu ứng không áp)*`;
+    });
+  }
+
   return {
+    caduceusFaceLimit,
+    consumeCaduceusFaceUse,
+    capCaduceusCriticalLines,
     applyFuriosoUseCosts,
     rollSpeedValue,
     determineTurnOrder,

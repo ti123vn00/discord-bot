@@ -139,7 +139,7 @@ function bgmAttachmentIH(AttachmentBuilder, name) {
   return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ POISE_MAX, drainAwaitingPrompts, applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ SKILL_MAX_MULTI, consumeCaduceusFaceUse, POISE_MAX, drainAwaitingPrompts, applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
   // ⚠️ ĐẶT TRONG THÂN FACTORY (không phải top-level): hàm này dùng `client`,
   // `ActionRowBuilder`, `StringSelectMenuBuilder`, `StringSelectMenuOptionBuilder`
   // — đều là THAM SỐ DI. Tôi đã viết nhầm ở top-level và `t-di.js` bắt được ngay
@@ -2203,10 +2203,13 @@ client.on("interactionCreate", async (interaction) => {
             // Trần "2 lần/turn" ghi trong desc của mặt 3/4/6/7/8 (constants.js).
             // Đếm theo SỐ MẶT đã kích trong turn, reset ở advanceCombatantTurn.
             meCad.caduceusFaceUses = meCad.caduceusFaceUses ?? {};
-            // ⚠️ HAI SỐ NÀY LÀ TÔI TỰ SUY TỪ DESC trong constants.js ("(2 lần/turn)"),
-            // Fragaria CHƯA xác nhận. Luật khác thì sửa ĐÚNG 2 dòng ngay dưới.
-            const CAD_LIMITED_FACES = new Set([3, 4, 6, 7, 8]);
-            const CAD_FACE_USES_PER_TURN = 2;
+            // ✅ Fragaria 14/08 XÁC NHẬN: trần là RIÊNG BIỆT TỪNG DICE (mặt này
+            // 2 lần/turn, không phải "tất cả dice chung 2 lần"), và chỉ MỘT SỐ
+            // mặt mới bị giới hạn.
+            // Tập mặt + con số nay KHÔNG hardcode nữa — `consumeCaduceusFaceUse`
+            // đọc thẳng "(N lần/turn)" từ `desc` trong constants.js. Sửa desc là
+            // luật đổi theo. Cùng hàm đó cũng chặn nhánh CRITICAL (bộ đếm dùng
+            // chung), nên hai đường không thể lệch luật nữa.
             const cadNotes = [];
             for (const d of rolled) {
               const [scope, kind, amtRaw] = String(d.effect ?? "").split(":");
@@ -2219,11 +2222,7 @@ client.on("interactionCreate", async (interaction) => {
               // chạy dù thực tế mới áp được một lần.
               // Nay: chặn điều kiện KHÔNG-ÁP-ĐƯỢC trước, rồi mới tiêu quota.
               if (scope === "foe" && !cadFoe) continue;
-              if (CAD_LIMITED_FACES.has(d.n)) {
-                const used = meCad.caduceusFaceUses[d.n] ?? 0;
-                if (used >= CAD_FACE_USES_PER_TURN) continue;   // đã đủ lượt turn này
-                meCad.caduceusFaceUses[d.n] = used + 1;
-              }
+              if (!consumeCaduceusFaceUse(meCad, d.n)) continue;   // đã đủ hạn mức turn này
               if (scope === "foe") {
                 if (kind === "takeDmg") {
                   cadFoe.dmgTakenPctTurn = (cadFoe.dmgTakenPctTurn ?? 0) + amt;
@@ -4932,16 +4931,47 @@ client.on("interactionCreate", async (interaction) => {
       // "arg" dùng cho skill có promptArg (VD: Thrust cần nhập Light hiện tại qua arg).
       const argInput = interaction.options.getString("arg");
       const forceDullahan = interaction.options.getBoolean("dullahan") ?? false;
+      // Dice Up / Dice Down — hai option RIÊNG (đều ≥ 0) cho dễ hiểu, gộp lại
+      // thành một số NET vì `buildSkillRollResult` đã nhận sẵn `diceModifier`
+      // (cùng cơ chế `computeDiceModifier` mà encounter dùng). Không phải viết
+      // logic dice mới — chỉ lộ ra thứ có sẵn.
+      const diceUp = interaction.options.getInteger("diceup") ?? 0;
+      const diceDown = interaction.options.getInteger("dicedown") ?? 0;
+      const diceModifier = diceUp - diceDown;
 
-      const skill = findSkill(nameInput);
-      if (!skill) {
-        await interaction.editReply({ content: `❌ Không tìm thấy skill: \`${nameInput}\`\nDùng \`/skill list\` để xem danh sách.` });
+      // Nhiều skill trong MỘT lượt — ngăn bằng `|`. Chọn `|` chứ không phải dấu
+      // phẩy vì tên skill có thể chứa dấu phẩy ("Sever, Then Sunder").
+      const names = nameInput.split("|").map(x => x.trim()).filter(Boolean);
+      if (names.length === 0) {
+        await interaction.editReply({ content: "❌ Bạn chưa nhập tên skill nào." });
         return;
       }
-
-      const result = buildSkillRollResult({ skill, rollCount, promptArgRaw: argInput, forceDullahan });
-      if (result.error) { await interaction.editReply({ content: result.error }); return; }
-      await interaction.editReply({ embeds: [result.embed] });
+      if (names.length > SKILL_MAX_MULTI) {
+        await interaction.editReply({ content: `❌ Tối đa **${SKILL_MAX_MULTI}** skill mỗi lệnh (bạn nhập ${names.length}).` });
+        return;
+      }
+      // Tra CẢ danh sách TRƯỚC khi roll — sai một tên thì báo luôn, không roll
+      // nửa vời rồi mới báo lỗi (người chơi sẽ không biết cái nào đã tính).
+      const found = [];
+      for (const n of names) {
+        const sk = findSkill(n);
+        if (!sk) {
+          await interaction.editReply({ content: `❌ Không tìm thấy skill: \`${n}\`\nDùng \`/skill list\` để xem danh sách.` });
+          return;
+        }
+        found.push(sk);
+      }
+      // `count` và `arg` áp cho TỪNG skill (mỗi skill tự clamp theo maxUses riêng).
+      const embeds = [];
+      for (const sk of found) {
+        const r = buildSkillRollResult({ skill: sk, rollCount, promptArgRaw: argInput, forceDullahan, diceModifier });
+        if (r.error) { await interaction.editReply({ content: `❌ **${sk.name}**: ${r.error.replace(/^❌\s*/, "")}` }); return; }
+        embeds.push(r.embed);
+      }
+      const modNote = diceModifier !== 0
+        ? `${diceModifier > 0 ? "🔼" : "🔽"} **Dice ${diceModifier > 0 ? "Up" : "Down"} ${Math.abs(diceModifier)}** áp cho mọi dice ở trên.`
+        : "";
+      await interaction.editReply({ content: modNote || undefined, embeds });
       return;
     }
     return;

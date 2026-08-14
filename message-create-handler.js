@@ -52,7 +52,7 @@ function bgmAttachment(AttachmentBuilder, name) {
   return [];
 }
 
-module.exports = function ({ saturateDmgTakenPct, isPermanentInjury, describeEncounterBgm, PAID_HEAL_PER_CYCLE, SEVERE_INJURIES, CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ SKILL_DICE_MOD_MAX, SKILL_MAX_MULTI, saturateDmgTakenPct, isPermanentInjury, describeEncounterBgm, PAID_HEAL_PER_CYCLE, SEVERE_INJURIES, CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -171,7 +171,9 @@ client.on("messageCreate", async (message) => {
     const CAD_DESC_EMOJI = [
       [/\bSinking\b/g, "<:Sinking:1513762793436741652>Sinking"],
       [/\bPoise\b/g, "<:Poise:1513762945715142736>Poise"],
-      [/\bStamina\b/g, "<:Fix_Stamina:1513768090410647573>Stamina"],
+      // ⚠️ KHÔNG thêm emoji cho "Stamina" — Fragaria 14/08: `<:Fix_Stamina:…>`
+      // KHÔNG TỒN TẠI, Discord in ra nguyên chuỗi `:Fix_Stamina:` giữa câu.
+      // Muốn thêm lại thì phải có ID emoji THẬT đã upload lên server.
     ];
     const decorateDesc = (txt) => CAD_DESC_EMOJI.reduce((acc, [re, rep]) => acc.replace(re, rep), String(txt ?? ""));
     const lineOf = (d) => `**Dice ${d.n}** · *${d.name}* — **${d.dmg} Dmg** [${TYPE_ICONS[d.type]}${d.type}] · ${decorateDesc(d.desc)} *[${d.stamina} Stamina]*`;
@@ -275,10 +277,35 @@ client.on("messageCreate", async (message) => {
     // Cho phép thêm "dullahan" hoặc "no dullahan" / "nodullahan" ở cuối để buộc kết quả Dullahan on/off
     let forceDullahan = false;
     let input = rawInput;
+
+    // ── Dice Up / Dice Down (Fragaria 14/08) ─────────────────────────────────
+    // Cú pháp: `-skill durandal diceup 3` · `-skill durandal dicedown 2`
+    // Gỡ khỏi input TRƯỚC mọi bước phân tích khác, nếu không thì con số sẽ bị
+    // `-skill <tên> <số lần>` hiểu nhầm thành rollCount, hoặc bị promptArg nuốt
+    // mất (nó lấy TỪ CUỐI CÙNG của input làm arg).
+    let diceModifier = 0;
+    const diceModRe = /\s*\b(dice\s*up|diceup|dice\s*down|dicedown)\s+(\d+)\b/gi;
+    input = input.replace(diceModRe, (_m, kind, num) => {
+      const n = Math.min(parseInt(num, 10) || 0, SKILL_DICE_MOD_MAX);
+      diceModifier += /down/i.test(kind) ? -n : n;
+      return "";
+    }).trim();
     const dullahanMatch = input.match(/\s*(dullahan)\s*$/i);
     if (dullahanMatch) {
       forceDullahan = true;
       input = input.slice(0, dullahanMatch.index).trim();
+    }
+
+    // Tách nhiều skill (nếu có `|`). Làm SAU khi đã gỡ diceup/dicedown để dấu
+    // `|` không dính lẫn phần đó. null = lệnh 1 skill, đi đúng đường cũ.
+    let multiNames = null;
+    if (input.includes("|") && !/^list\b/i.test(input)) {
+      const ns = input.split("|").map(x => x.trim()).filter(Boolean);
+      if (ns.length > SKILL_MAX_MULTI) {
+        message.reply(`❌ Tối đa **${SKILL_MAX_MULTI}** skill mỗi lệnh (bạn nhập ${ns.length}).`);
+        return;
+      }
+      if (ns.length > 1) { multiNames = ns; input = ns[0]; }
     }
 
     // -skill list <keyword> [trang] — tìm skill theo keyword, có phân trang
@@ -330,9 +357,34 @@ client.on("messageCreate", async (message) => {
     const parts = input.trim().split(/\s+/);
     const promptArgRaw = parts[parts.length - 1];
 
-    const result = buildSkillRollResult({ skill, rollCount, promptArgRaw, forceDullahan });
+    const modNote = diceModifier !== 0
+      ? `${diceModifier > 0 ? "🔼" : "🔽"} **Dice ${diceModifier > 0 ? "Up" : "Down"} ${Math.abs(diceModifier)}** áp cho mọi dice ở dưới.`
+      : "";
+    // Nhiều skill trong MỘT lượt — ngăn bằng `|` (không dùng dấu phẩy vì tên
+    // skill có thể chứa dấu phẩy). `skills` chỉ có phần tử khi thật sự có `|`,
+    // nên đường 1-skill giữ nguyên hành vi cũ 100%.
+    if (multiNames) {
+      const found = [];
+      for (const n of multiNames) {
+        const sk = findSkill(n);
+        // Tra CẢ danh sách TRƯỚC khi roll — sai một tên thì báo luôn, không roll
+        // nửa vời rồi mới báo (người chơi sẽ không biết cái nào đã tính).
+        if (!sk) { message.reply(`❌ Không tìm thấy skill: \`${n}\`\nDùng \`-skill list\` để xem danh sách.`); return; }
+        found.push(sk);
+      }
+      const embeds = [];
+      for (const sk of found) {
+        const r = buildSkillRollResult({ skill: sk, rollCount, promptArgRaw, forceDullahan, diceModifier });
+        if (r.error) { message.reply(`❌ **${sk.name}**: ${String(r.error).replace(/^❌\s*/, "")}`); return; }
+        embeds.push(r.embed);
+      }
+      message.reply({ content: modNote || undefined, embeds });
+      return;
+    }
+
+    const result = buildSkillRollResult({ skill, rollCount, promptArgRaw, forceDullahan, diceModifier });
     if (result.error) { message.reply(result.error); return; }
-    message.reply({ embeds: [result.embed] });
+    message.reply({ content: modNote || undefined, embeds: [result.embed] });
     return;
   }
 

@@ -206,4 +206,9 @@ module.exports = {
   // -skill <tên> <số lần>: số lần roll tối đa mỗi lệnh (trừ khi skill tự định nghĩa
   // maxUses riêng thấp hơn, VD: Mook Workshop chỉ cho reuse tối đa 2 lần → maxUses: 3)
   SKILL_MAX_ROLLS: 5,
+  // Trần Dice Up/Dice Down cho lệnh roll tay (`-skill` / `/skill`). Đặt ở đây để
+  // deploy-commands.js (setMaxValue) và nơi xử lý dùng CHUNG một con số.
+  SKILL_DICE_MOD_MAX: 20,
+  // Số skill tối đa roll trong MỘT lệnh (Discord cho tối đa 10 embed/tin nhắn).
+  SKILL_MAX_MULTI: 5,
 };

@@ -18,6 +18,7 @@ const {
   GRADE_MAX,
   GRADE_MIN,
   SKILL_MAX_ROLLS,
+  SKILL_DICE_MOD_MAX,
 } = require("./constants");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -46,7 +47,9 @@ const commands = [
       sub.setName("roll")
         .setDescription("Roll 1 skill (có thể roll nhiều lần)")
         .addStringOption(opt =>
-          opt.setName("name").setDescription("Tên skill (VD: Durandal)").setRequired(true))
+          opt.setName("name")
+            .setDescription("Tên skill. Nhiều skill 1 lượt: ngăn bằng dấu | (VD: Durandal | Thrust)")
+            .setRequired(true))
         .addIntegerOption(opt =>
           opt.setName("count")
             .setDescription(`Số lần roll (tối đa ${SKILL_MAX_ROLLS}, mặc định 1 — 1 số skill có cap riêng thấp hơn)`)
@@ -58,7 +61,17 @@ const commands = [
         .addBooleanOption(opt =>
           opt.setName("dullahan")
             .setDescription("Roll bản Dullahan thay vì bản thường (chỉ áp dụng cho skill có 2 bản)")
-            .setRequired(false)))
+            .setRequired(false))
+        // Dice Up / Dice Down — cùng cơ chế `diceModifier` mà encounter đã dùng
+        // (computeDiceModifier), nay lộ ra cho lệnh roll tay ngoài trận.
+        .addIntegerOption(opt =>
+          opt.setName("diceup")
+            .setDescription("Số bậc Dice Up cộng vào mọi dice của lần roll này")
+            .setMinValue(0).setMaxValue(SKILL_DICE_MOD_MAX).setRequired(false))
+        .addIntegerOption(opt =>
+          opt.setName("dicedown")
+            .setDescription("Số bậc Dice Down trừ vào mọi dice của lần roll này")
+            .setMinValue(0).setMaxValue(SKILL_DICE_MOD_MAX).setRequired(false)))
     .addSubcommand(sub =>
       sub.setName("list")
         .setDescription("Xem danh sách skill, có thể tìm theo keyword")

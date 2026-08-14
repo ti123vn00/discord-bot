@@ -20,7 +20,7 @@ const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 // Suy TRỰC TIẾP từ 3 ví dụ Fragaria đưa: light 5→5 · medium 10/2 · heavy 20/4.
 const RENEGADE_DIVISOR = { light: 1, medium: 2, heavy: 4 };
 
-module.exports = function ({ isPermanentInjury, restoreInjuryMaxHp, extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ capCaduceusCriticalLines, isPermanentInjury, restoreInjuryMaxHp, extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -239,6 +239,21 @@ async function resolveOnePendingAction(encounter, p) {
             // TRƯỚC toàn bộ hit, nhưng phải so sánh SAU cả M1-count block (fire_burn
             // chạy SAU khi vòng for (const t of p.targets) đã đóng) — dùng map ngoài
             // scope thay vì biến local burnBeforeHit (đã ra khỏi scope tại đó).
+            // Trần "N lần/turn" của từng mặt Caduceus — tính MỘT LẦN cho cả đòn.
+            // Nếu tính trong vòng lặp thì đòn AOE 3 mục tiêu sẽ tiêu hạn mức 3 lần
+            // dù người chơi mới roll dice ĐÚNG MỘT LƯỢT.
+            let cadCappedLines = null;
+            // Poise của Providence dồn ở đây rồi áp SAU dòng gán đè
+            // `attacker.combatant.poise = firstPreview.finalPoiseStacks` — cộng
+            // TRƯỚC nó là bị xoá sạch (xem comment đầy đủ ở khối Providence).
+            let providencePoisePending = 0;
+            const cadLinesFor = () => {
+              if (cadCappedLines === null) {
+                cadCappedLines = capCaduceusCriticalLines(
+                  (p.skillRollEmbed?.description ?? "").split("\n"), attacker?.combatant);
+              }
+              return cadCappedLines;
+            };
             for (const t of p.targets) {
               const targetResolved = resolveCombatant(encounter, t.targetId);
               if (!targetResolved) { targetDmgLines.push(`⚠️ target ${t.targetId} không còn tồn tại`); continue; }
@@ -289,6 +304,11 @@ async function resolveOnePendingAction(encounter, p) {
               // ReferenceError — đúng lớp lỗi scope đã dính nhiều lần (HANDOFF).
               // null = chưa qua khối phòng thủ ⇒ coi như dính hết.
               let renegadeLandedHits = null;
+              // providenceLandedProcs — SỐ DICE thật sự áp được Sinking/Rupture
+              // (có tag VÀ không bị né/parry). Phải hoist ra ĐÂY vì
+              // `hitEvadedOrParried` khai trong khối lồng bên dưới và KHÔNG nhìn
+              // thấy được ở chỗ tính Providence (~dòng 1120) — đúng lớp lỗi 4.
+              let providenceLandedProcs = null;
               // Guard/Evade/Parry — TIÊU THỤ charge SỐNG (đọc trực tiếp target lúc xử
               // lý action này trong batch, KHÔNG dùng giá trị tính sẵn lúc declare).
               // QUAN TRỌNG: 1 charge chặn được SỐ HIT theo vũ khí BÊN TẤN CÔNG — CHỈ
@@ -701,6 +721,19 @@ async function resolveOnePendingAction(encounter, p) {
                 // 0%, dùng field chuyên dụng rõ ràng và chắc chắn hơn).
                 evadedCompletely = totalHits > 0 && hitEvadedOrParried.every(Boolean);
                 renegadeLandedHits = totalHits - hitEvadedOrParried.filter(Boolean).length;
+                // ❗ BUG ĐÃ SỬA (Fragaria 14/08, kèm ảnh): *"text là MỖI LẦN gây
+                // Sinking hoặc Rupture sẽ cho 3 Poise, thế nhưng nó chỉ cho ĐÚNG
+                // 1 LẦN trong khi đáng lẽ phải cho 5 lần +3 Poise."*
+                // GỐC: `sinkingInflictedThisAction` là BOOLEAN cho CẢ ĐÒN, nên 5
+                // dice cùng gây Sinking vẫn chỉ tính 1 proc.
+                // NAY đếm TỪNG DICE. Và theo đúng yêu cầu *"phải áp THÀNH CÔNG
+                // mới cho Poise, địch mà né đòn có áp thì vẫn không được"* —
+                // dice bị né/parry (`hitEvadedOrParried`) KHÔNG tính.
+                providenceLandedProcs = (t.preview?.dmgValues ?? []).reduce((n, dv, i) => {
+                  if (hitEvadedOrParried[i]) return n;                       // né/parry ⇒ không áp được gì
+                  const hasTag = ((dv?.sinkingToApply ?? 0) > 0) || ((dv?.ruptureToApply ?? 0) > 0);
+                  return hasTag ? n + 1 : n;
+                }, 0);
                 const bypassNote = [bypass.blockEvade && "Undodgeable", bypass.blockGuard && "Unblockable", bypass.blockParry && "Unparriable"].filter(Boolean);
                 defenseNote = noteParts.length > 0 ? " " + noteParts.join(" + ") : "";
                 if (bypassNote.length > 0 && hitIdx < totalHits) defenseNote += ` *(${bypassNote.join(", ")} — phần hit còn lại không thể chặn)*`;
@@ -731,13 +764,13 @@ async function resolveOnePendingAction(encounter, p) {
                     // còn nguyên vẹn — parser đọc được bình thường. Dòng header
                     // "[cost] [CD] [Dice Mul]" tự bị loại vì không bắt đầu bằng
                     // "<:DiceN:".
-                    ? autoExtractDiceSideEffects((p.skillRollEmbed?.description ?? "").split("\n"))
+                    ? autoExtractDiceSideEffects(cadLinesFor())
                     : null;
                   // ❗ Fragaria 12/08: "địch nhận thêm 10% Dmg từ Blunt turn này"
                   // CŨNG LÀ DmgTaken. Trước đây 4 mặt Caduceus (4/6/7/8) chỉ in
                   // chữ, không field nào lưu ⇒ chưa từng chạy. Nay áp lên TARGET,
                   // hết sau end turn (advanceCombatantTurn reset).
-                  const dtGrants = extractDmgTakenGrants((p.skillRollEmbed?.description ?? "").split("\n"));
+                  const dtGrants = extractDmgTakenGrants(cadLinesFor());
                   if (dtGrants && target) {
                     if (dtGrants.all > 0) target.dmgTakenPctTurn = (target.dmgTakenPctTurn ?? 0) + dtGrants.all;
                     const byT = target.dmgTakenPctByType = target.dmgTakenPctByType ?? { B: 0, P: 0, S: 0 };
@@ -1114,15 +1147,31 @@ async function resolveOnePendingAction(encounter, p) {
                   pendingRuptureBonus += 1;
                   providenceInflicted = true;
                 }
-                // "Khi gây Sinking/Rupture, nhận thêm 3 Poise" — tính CẢ nguồn từ
-                // page lẫn từ chính vế trên.
-                const gaveSinkOrRupt = providenceInflicted
-                  || sinkingInflictedThisAction
-                  || ruptureInflictedThisAction;
-                if (gaveSinkOrRupt) {
-                  attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + 3);
-                  attacker.combatant.providencePoiseProcsThisTurn = (attacker.combatant.providencePoiseProcsThisTurn ?? 0) + 1;
-                  defenseNote += ` ⚖️[Providence: +3 Poise (${attacker.combatant.providencePoiseProcsThisTurn}/3 lần turn này)`
+                // "Khi gây Sinking/Rupture, nhận thêm 3 Poise" — MỖI LẦN áp
+                // THÀNH CÔNG, không phải 1 lần cho cả đòn.
+                // Đếm theo TỪNG DICE (`providenceLandedProcs`), cộng thêm 1 nếu
+                // chính vế "≥20 Poise" ở trên tự gây Sinking+Rupture.
+                // ĐÍNH CHÍNH LUẬT (Fragaria 14/08): *"địch đầy trần Sinking 99 rồi
+                // ăn thêm Sinking VẪN tính là áp thành công, vì ăn đòn sẽ còn 98
+                // sau đó vẫn sẽ ăn thêm Sinking nên vẫn tính."*
+                // ⇒ KHÔNG dùng "Sinking cuối > Sinking đầu" làm điều kiện. Stack
+                //   bị TIÊU THỤ trong lúc đánh nên số đầu/cuối bằng nhau vẫn là
+                //   đã áp thật. Điều kiện DUY NHẤT là dice có TRÚNG hay không —
+                //   né/parry thì không, còn lại thì có.
+                const procs = Math.max(providenceInflicted ? 1 : 0, providenceLandedProcs ?? 0);
+                if (procs > 0) {
+                  // ⚠️ KHÔNG cộng Poise Ở ĐÂY. Dòng
+                  //   `attacker.combatant.poise = firstPreview.finalPoiseStacks ?? ...`
+                  // chạy SAU vòng lặp target và là phép GÁN ĐÈ, tính từ Poise
+                  // TRƯỚC đòn ⇒ xoá sạch mọi thứ cộng trước nó. Đó chính là lý do
+                  // Fragaria "-encounter status thì không thấy cộng tí Poise nào"
+                  // dù dòng thông báo vẫn in ra.
+                  // Comment ở Blade Lineage (ngay dưới dòng gán đè đó) đã cảnh báo
+                  // đúng cái bẫy này — Providence rơi vào y hệt.
+                  // ⇒ Dồn lại, cộng SAU dòng gán đè (xem `providencePoisePending`).
+                  providencePoisePending += procs * 3;
+                  attacker.combatant.providencePoiseProcsThisTurn = (attacker.combatant.providencePoiseProcsThisTurn ?? 0) + procs;
+                  defenseNote += ` \u2696\ufe0f[Providence: +${procs * 3} Poise (${procs} lần áp Sinking/Rupture · ${attacker.combatant.providencePoiseProcsThisTurn}/3 lần turn này)`
                     + (providenceInflicted ? ` · ≥20 Poise → +1 Sinking +1 Rupture` : "") + `]`;
                 }
               }
@@ -1702,6 +1751,14 @@ async function resolveOnePendingAction(encounter, p) {
                 attacker.combatant.poiseReductionPending = (attacker.combatant.poiseReductionPending ?? 0) + totalReducedThisAction;
               } else {
                 attacker.combatant.poise = firstPreview.finalPoiseStacks ?? attacker.combatant.poise;
+              }
+              // ❗ PROVIDENCE OF THE PRESCRIPT — cộng Ở ĐÂY, ngay SAU dòng gán đè
+              // phía trên. Cộng ở chỗ tính (trong vòng lặp target) là bị dòng đó
+              // xoá sạch ⇒ đúng triệu chứng Fragaria báo: thông báo "+3 Poise"
+              // vẫn in, nhưng `-encounter status` không thấy thêm Poise nào.
+              // Cùng lý do Blade Lineage ngay dưới cũng phải đặt sau dòng đó.
+              if (providencePoisePending > 0) {
+                attacker.combatant.poise = Math.min(POISE_MAX, (attacker.combatant.poise ?? 0) + providencePoisePending);
               }
               // "Blade Lineage" (outfit) — GAP FIX (đặt SAU dòng ghi đè poise ở
               // trên, vì bất kể "Smoke Overload" hay không, dòng đó LUÔN chạy
