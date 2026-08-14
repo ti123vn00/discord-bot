@@ -20,7 +20,7 @@ const SPEED_HASTE_WEAPONS = new Set(["Viriscent Pyrojade Ring", "Cinq Rapier"]);
 // Suy TRỰC TIẾP từ 3 ví dụ Fragaria đưa: light 5→5 · medium 10/2 · heavy 20/4.
 const RENEGADE_DIVISOR = { light: 1, medium: 2, heavy: 4 };
 
-module.exports = function ({ capCaduceusCriticalLines, isPermanentInjury, restoreInjuryMaxHp, extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
+module.exports = function ({ applyBorrowedEyesCharges, capCaduceusCriticalLines, isPermanentInjury, restoreInjuryMaxHp, extractDmgTakenGrants, applyFuriosoUseCosts, IMITATION_MAX, hasEgoMechanic, applyHpLoss, applyShieldLoss, healHpCapped, grantShieldHp, BLEED_MAX, BURN_MAX, CHARGE_MAX, ENCOUNTER_SANITY_MAX, HEMORRHAGE_MAX, POISE_MAX, TREMOR_MAX, WEAPON_DEFENSE_HITS, applyDeathPenalty, applyEmotionDelta, applyEvadeSuccessPerks, applyParrySuccessPerks, applySanityGain, calcMathCore, autoExtractDiceSideEffects, checkStaggerPanic, clearUserActiveEncounterChannel, combatantResStr, finalizeQuestOutcome, cdKeyFor, findSkill, findWeaponAnywhere, forceStagger, getPlayerDataWithSlot, hasPerk, incrementKillTaskProgress, resolveCombatant, rollInjury, saturateDR, savePlayerData, appendActionLog }) {
 
 async function resolveOnePendingAction(encounter, p) {
   const resultLines = [];
@@ -2574,30 +2574,12 @@ async function resolveOnePendingAction(encounter, p) {
               }
             }
             if (p.skillKey === "borrowed eyes") {
-              // ❗❗ BUG ĐÃ SỬA (Fragaria: "Borrowed Eyes chưa hoạt động, kích hoạt
-              // rồi nhưng không hề tự động né cái nào hết").
-              // GỐC: chỗ này đọc số charge từ `p.dmgStr`. Nhưng dice của Borrowed
-              // Eyes KHÔNG có tag loại dmg ([Slash]/[Blunt]/[Pierce]) — đúng theo
-              // thiết kế, vì "Dice này KHÔNG gây dmg" — nên
-              // `autoBuildDmgStrFromSkillRoll` trả `dmgStr = null`, và pendingAction
-              // rơi về chuỗi mô tả `"Critical: Borrowed Eyes"`. Chuỗi đó KHÔNG có
-              // chữ số nào ⇒ `diceVal = 0` ⇒ `if (diceVal > 0)` KHÔNG BAO GIỜ đúng
-              // ⇒ 0 charge được cấp. Page này CHƯA TỪNG chạy kể từ ngày ra mắt.
-              // (Cơ chế tiêu charge tự động thì vẫn tốt — đã chạy thật để xác nhận.)
-              // SỬA: lấy số TỪ DÒNG DICE trong embed roll — nguồn duy nhất, đúng
-              // bằng con số người chơi vừa nhìn thấy, không roll lại.
-              let diceVal = 0;
-              for (const line of String(p.skillRollEmbed?.description ?? "").split("\n")) {
-                if (!/^<:Dice\d+:/.test(line)) continue;
-                const m = line.match(/\*\*(\d+(?:[.,]\d+)?)\*\*/);
-                if (m) { diceVal = Math.round(parseFloat(m[1].replace(",", "."))); break; }
-              }
-              if (diceVal <= 0) diceVal = Math.round(parseFloat(String(p.dmgStr ?? "0").match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0"));
-              if (diceVal > 0) {
-                attacker.combatant.evadeCharges = (attacker.combatant.evadeCharges ?? 0) + diceVal;
-                attacker.combatant.borrowedEyeCharges = diceVal;
-                verifyNote += ` 👁️[Borrowed Eye: +${diceVal} charge né (tổng ${attacker.combatant.evadeCharges})]`;
-              }
+              // ❗ Logic cấp charge nay ở `applyBorrowedEyesCharges` (combat-utils)
+              // để `enemy-ai` DÙNG CHUNG — AI không tạo được pendingAction cho page
+              // này (dice không mang tag loại dmg ⇒ dmgStr null) nên phải gọi thẳng.
+              // Chép sang enemy-ai là hai nhánh song song rồi lệch (lớp lỗi 3).
+              const be = applyBorrowedEyesCharges(attacker.combatant, p.skillRollEmbed?.description, p.dmgStr);
+              if (be.note) verifyNote += be.note;
             }
             // ── RESONATE ─────────────────────────────────────────────────────
             // "nếu kẻ địch có số Tremor BẰNG số Dice này thì sẽ Stagger ngay".

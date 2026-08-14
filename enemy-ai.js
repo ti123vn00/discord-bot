@@ -32,7 +32,7 @@
 // (lúc CONSTRUCT factory) — an toàn vì mọi require() chạy xong TRƯỚC khi bot
 // bắt đầu nhận message/interaction thật.
 
-module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKeyFor,
+module.exports = function ({ applyBorrowedEyesCharges, clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKeyFor,
   withLock, encounterKey, getEncounter, saveEncounter, resolveCombatant,
   computeDefenseOptions, getParryClashPenalty, aiHooks,
   parsePerHitBypass, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, client, log,
@@ -397,9 +397,49 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
     return { name, skill, key: name.trim().toLowerCase(), lightCost: 0, fromPattern: true };
   }
 
+  /** pickUtilitySkill — page TỰ BUFF (không gây dmg) mà AI nên chủ động dùng.
+   *
+   *  ❗ BUG ĐÃ SỬA (Fragaria 14/08: *"Eye Gouger bị lỗi không xài Borrowed Eyes"*).
+   *  GỐC: `pickOffensiveSkill` sort theo `lightCost` GIẢM DẦN rồi luôn lấy phần
+   *  tử ĐẦU. Borrowed Eyes tốn **0 Light** nên VĨNH VIỄN xếp chót — Eye Gouger
+   *  có 5 page khác đều ≥1 Light, nên nó không bao giờ tới lượt. Page nằm trong
+   *  skill list nhưng chưa từng được AI chọn lần nào.
+   *  ⇒ Sort "ưu tiên Light cao" ngầm giả định "đắt hơn = mạnh hơn". Giả định đó
+   *    ĐÚNG với page tấn công, nhưng SAI hoàn toàn với page utility rẻ tiền —
+   *    chúng bị xếp chót đúng vì rẻ.
+   *
+   *  Nên tách riêng: page utility được xét TRƯỚC, theo NHU CẦU chứ không theo giá.
+   *  Chỉ dùng khi thật sự cần (hết charge né) để AI không phí cả lượt vô ích —
+   *  page này `noDirectDamage`, dùng là turn đó không ra dmg nào.
+   */
+  function pickUtilitySkill(mob) {
+    for (const name of mob.unlockedPagesSnapshot ?? []) {
+      const skill = findSkill(name);
+      if (!skill || skill.promptArg) continue;
+      const key = name.trim().toLowerCase();
+      if ((mob.skillCooldowns?.[key] ?? 0) > 0) continue;
+      const cost = parseSkillCost(skill.cost);
+      if (cost.light == null || (mob.currentLight ?? 0) < cost.light) continue;
+      // Borrowed Eyes — Fragaria 14/08 chốt: *"dùng khi MỞ encounter, sau đó cứ
+      // CD xong thì lại xài; và nó KHÔNG liên quan gì tới các act tấn công khác
+      // của Eye Gouger — nó là phụ trợ phòng thủ thôi."*
+      // ⇒ Điều kiện DUY NHẤT là CD (đã lọc ở trên). KHÔNG gác theo
+      //   `borrowedEyeCharges` — hết CD là nạp lại, kể cả còn charge thừa.
+      //   Lượt đầu CD = 0 nên tự chạy ngay khi mở encounter, không cần cờ riêng.
+      if (key === "borrowed eyes") {
+        return { name, skill, key, lightCost: cost.light ?? 0, isUtility: true };
+      }
+    }
+    return null;
+  }
+
   function pickOffensiveSkill(mob) {
     // Boss có kịch bản cố định thì KHÔNG tự chọn skill theo Light nữa.
     if (Array.isArray(mob.attackPattern) && mob.attackPattern.length > 0) return pickPatternSkill(mob);
+    // ⚠️ KHÔNG xét page utility ở đây. Fragaria: Borrowed Eyes *"không liên quan
+    // gì tới các act tấn công khác"* — trả nó về từ hàm này là nó CHIẾM mất lượt
+    // đánh (AI chỉ thực thi một `chosen` mỗi lượt). Nó chạy ở bước riêng
+    // `runUtilityPages()`, TRƯỚC phần tấn công, rồi mob vẫn đánh bình thường.
     const candidates = [];
     for (const name of mob.unlockedPagesSnapshot ?? []) {
       const skill = findSkill(name);
@@ -408,6 +448,9 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
       if ((mob.skillCooldowns?.[key] ?? 0) > 0) continue;
       const cost = parseSkillCost(skill.cost);
       if (cost.light == null || (mob.currentLight ?? 0) < cost.light) continue;
+      // Utility đã được xét ở trên rồi — không để nó lọt vào danh sách tấn công
+      // (dùng làm đòn đánh là phí cả lượt, `noDirectDamage` nên 0 dmg).
+      if (skill.noDirectDamage) continue;
       candidates.push({ name, skill, key, lightCost: cost.light });
     }
     if (candidates.length === 0) return null;
@@ -548,6 +591,64 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
    *  cho mob này. Trả về true nếu đã thực hiện (đã push 1 pendingAction THẬT —
    *  cần đợi target phản hồi xong mới nên thử tiếp, xem hook ở finalizeReactiveChoice),
    *  false nếu KHÔNG còn hành động nào hợp lệ (nên pass lượt). */
+  /** runUtilityPages — chạy page TỰ BUFF của mob (Borrowed Eyes).
+   *
+   *  ❗ BUG ĐÃ SỬA (Fragaria 14/08: *"Eye Gouger bị lỗi không xài Borrowed Eyes"*).
+   *  BA khâu hỏng nối tiếp, sửa một khâu vẫn không chạy:
+   *   1. CHỌN — `pickOffensiveSkill` sort `lightCost` GIẢM DẦN rồi lấy phần tử
+   *      ĐẦU. Borrowed Eyes tốn **0 Light** ⇒ vĩnh viễn xếp chót sau 5 page kia
+   *      (đều ≥1 Light), không bao giờ tới lượt. Cách sort đó ngầm giả định
+   *      "đắt hơn = mạnh hơn" — đúng với page tấn công, SAI với page phụ trợ rẻ.
+   *   2. CHẠY — nhánh tấn công bị chặn bởi `if (rolled.dmgStr)`. Dice page này
+   *      KHÔNG mang tag loại dmg (đúng thiết kế "Dice này KHÔNG gây dmg") nên
+   *      `autoBuildDmgStrFromSkillRoll` trả `null` ⇒ cả khối bị bỏ qua IM LẶNG.
+   *   3. CẤP BUFF — logic cấp charge chỉ nằm trong `resolve-pending-action`, tức
+   *      chỉ chạy khi có `pendingAction`, mà AI không tạo được (xem khâu 2).
+   *
+   *  KHÔNG chiếm lượt đánh: hàm này không trả về "đã hành động", caller chạy tiếp
+   *  phần tấn công ngay sau đó.
+   *  Trả `true` nếu có dùng page (để test/log biết), nhưng caller KHÔNG dừng.
+   */
+  async function runUtilityPages(channelId, mobKey) {
+    const enc = await getEncounter(channelId);
+    const mob = enc?.enemies?.[mobKey];
+    if (!mob || mob.currentHp <= 0) return false;
+    const chosen = pickUtilitySkill(mob);
+    if (!chosen) return false;
+    const rolledU = buildSkillRollResult({ skill: chosen.skill });
+    if (rolledU.error) return false;
+
+    let ok = true, note = "";
+    await withLock(encounterKey(channelId), async () => {
+      const enc2 = await getEncounter(channelId);
+      const mob2 = enc2?.enemies?.[mobKey];
+      if (!mob2 || (mob2.currentLight ?? 0) < chosen.lightCost) { ok = false; return; }
+      // CD kiểm LẠI trong lock — giữa lúc đọc ngoài lock và lúc ghi, lượt khác có
+      // thể đã dùng page này (đúng bài học lost-update của bug Stagger).
+      if ((mob2.skillCooldowns?.[chosen.key] ?? 0) > 0) { ok = false; return; }
+      mob2.currentLight -= chosen.lightCost;
+      const cd = parseSkillCooldownTurns(chosen.skill.cd);
+      if (cd > 0) { mob2.skillCooldowns = mob2.skillCooldowns ?? {}; mob2.skillCooldowns[chosen.key] = cd; }
+      // Dùng CHUNG helper với đường người chơi (resolve-pending-action) — chép
+      // logic sang đây là hai nhánh song song rồi lệch nhau (lớp lỗi 3).
+      if (chosen.key === "borrowed eyes") {
+        note = applyBorrowedEyesCharges(mob2, rolledU.embed?.description, null).note;
+      }
+      await saveEncounter(channelId, enc2);
+    });
+    if (!ok) return false;
+    // Gửi bằng cùng cách module này vẫn dùng. Lỗi gửi KHÔNG được kéo theo logic —
+    // buff đã lưu rồi (lớp lỗi 12).
+    const ch = await client.channels.fetch(channelId).catch(() => null);
+    if (ch) {
+      await ch.send({
+        content: `🤖 **${mob.name}** dùng **${chosen.name}**${note}`,
+        embeds: [rolledU.embed],
+      }).catch(() => {});
+    }
+    return true;
+  }
+
   async function attemptOneMobAction(channelId, mobKey) {
     const encounter = await getEncounter(channelId);
     if (!encounter) return false;
@@ -566,6 +667,16 @@ module.exports = function ({ clashDiceOf, attackerClashDiceOf, applyHpLoss, cdKe
       const perTurn = mob.attackPattern[0].length || 1;
       if ((mob.bossAttacksThisTurn ?? 0) >= perTurn) return false;
     }
+    // ── PAGE PHỤ TRỢ PHÒNG THỦ — CHẠY TRƯỚC, KHÔNG CHIẾM LƯỢT ĐÁNH ──────────
+    // Fragaria 14/08: *"Eye Gouger dùng Borrowed Eyes khi mở encounter, sau đó cứ
+    // CD xong thì lại xài; và nó KHÔNG liên quan gì tới các act tấn công khác của
+    // Eye Gouger — nó là phụ trợ phòng thủ thôi."*
+    // ⇒ Chạy ở ĐÂY, trước mọi khâu tấn công, và KHÔNG `return` — mob vẫn đánh
+    //   bình thường trong cùng lượt.
+    // ⇒ Cũng đặt TRƯỚC `pickAiTargets`: page tự buff không cần mục tiêu, nên
+    //   không được để "không có target khả dụng" chặn mất nó.
+    await runUtilityPages(channelId, mobKey);
+
     const sortedTargets = pickAiTargets(encounter, mob);
     if (sortedTargets.length === 0) return false;
     const availableTargets = sortedTargets.filter(t => !hasUnresolvedTargetPending(encounter, t.pid));

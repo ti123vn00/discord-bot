@@ -1303,7 +1303,39 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     });
   }
 
+
+  /** applyBorrowedEyesCharges — cấp charge né của Borrowed Eyes.
+   *
+   *  ❗ TÁCH RA DÙNG CHUNG (14/08). Trước đây logic này chỉ nằm trong
+   *  `resolve-pending-action.js`, tức chỉ chạy khi có `pendingAction` — mà AI thì
+   *  không tạo được (page không có tag loại dmg ⇒ `dmgStr = null` ⇒ cả khối tấn
+   *  công của enemy-ai bị bỏ qua). Nếu chép logic sang enemy-ai là hai nhánh song
+   *  song rồi lệch nhau — đúng lớp lỗi 3/8. Nên để MỘT hàm, hai nơi cùng gọi.
+   *
+   *  Lấy số TỪ DÒNG DICE trong embed roll — nguồn duy nhất, đúng bằng con số
+   *  người chơi vừa nhìn thấy, không roll lại.
+   *  `borrowedEyeCharges` là phép GÁN (không cộng dồn) — dùng lại khi còn charge
+   *  sẽ ghi đè mất số cũ, nên nơi gọi phải tự chặn.
+   */
+  function applyBorrowedEyesCharges(combatant, rollDescription, fallbackDmgStr = "") {
+    let diceVal = 0;
+    for (const line of String(rollDescription ?? "").split("\n")) {
+      if (!/^<:Dice\d+:/.test(line)) continue;
+      const m = line.match(/\*\*(\d+(?:[.,]\d+)?)\*\*/);
+      if (m) { diceVal = Math.round(parseFloat(m[1].replace(",", "."))); break; }
+    }
+    if (diceVal <= 0) diceVal = Math.round(parseFloat(String(fallbackDmgStr ?? "0").match(/(\d+(?:\.\d+)?)/)?.[1] ?? "0")) || 0;
+    if (diceVal <= 0) return { charges: 0, note: "" };
+    combatant.evadeCharges = (combatant.evadeCharges ?? 0) + diceVal;
+    combatant.borrowedEyeCharges = diceVal;
+    return {
+      charges: diceVal,
+      note: ` <:Eye:1513769425063514173>[Borrowed Eye: +${diceVal} charge né (tổng ${combatant.evadeCharges})]`,
+    };
+  }
+
   return {
+    applyBorrowedEyesCharges,
     caduceusFaceLimit,
     consumeCaduceusFaceUse,
     capCaduceusCriticalLines,
