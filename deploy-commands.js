@@ -18,7 +18,6 @@ const {
   GRADE_MAX,
   GRADE_MIN,
   SKILL_MAX_ROLLS,
-  SKILL_DICE_MOD_MAX,
 } = require("./constants");
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -67,11 +66,11 @@ const commands = [
         .addIntegerOption(opt =>
           opt.setName("diceup")
             .setDescription("Số bậc Dice Up cộng vào mọi dice của lần roll này")
-            .setMinValue(0).setMaxValue(SKILL_DICE_MOD_MAX).setRequired(false))
+            .setMinValue(0).setRequired(false))
         .addIntegerOption(opt =>
           opt.setName("dicedown")
             .setDescription("Số bậc Dice Down trừ vào mọi dice của lần roll này")
-            .setMinValue(0).setMaxValue(SKILL_DICE_MOD_MAX).setRequired(false)))
+            .setMinValue(0).setRequired(false)))
     .addSubcommand(sub =>
       sub.setName("list")
         .setDescription("Xem danh sách skill, có thể tìm theo keyword")

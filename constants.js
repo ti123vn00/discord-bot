@@ -206,9 +206,13 @@ module.exports = {
   // -skill <tên> <số lần>: số lần roll tối đa mỗi lệnh (trừ khi skill tự định nghĩa
   // maxUses riêng thấp hơn, VD: Mook Workshop chỉ cho reuse tối đa 2 lần → maxUses: 3)
   SKILL_MAX_ROLLS: 5,
-  // Trần Dice Up/Dice Down cho lệnh roll tay (`-skill` / `/skill`). Đặt ở đây để
-  // deploy-commands.js (setMaxValue) và nơi xử lý dùng CHUNG một con số.
-  SKILL_DICE_MOD_MAX: 20,
+  // ❌ ĐÃ BỎ `SKILL_DICE_MOD_MAX` (Fragaria 14/08: *"Dice up đâu có giới hạn đâu
+  // nhỉ, sao tôi nhập 99 lại chỉ có 20 dice up"*).
+  // Trần 20 là TÔI TỰ BỊA khi thêm option — luật game KHÔNG có trần cho Dice
+  // Up/Down, và không ai yêu cầu. Nhập 99 mà im lặng cắt còn 20 là sai kép: sai
+  // luật, VÀ không báo cho người dùng biết đã bị cắt.
+  // ⚠️ Đừng nhầm với `STATUS_CAPS_SHARED.diceup = 99` — đó là trần STACK của
+  // status `diceup` trong encounter, chuyện khác hẳn với bậc dice của lệnh roll tay.
   // Số skill tối đa roll trong MỘT lệnh (Discord cho tối đa 10 embed/tin nhắn).
   SKILL_MAX_MULTI: 5,
 };
