@@ -139,7 +139,7 @@ function bgmAttachmentIH(AttachmentBuilder, name) {
   return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ POISE_MAX, drainAwaitingPrompts, applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
   // ⚠️ ĐẶT TRONG THÂN FACTORY (không phải top-level): hàm này dùng `client`,
   // `ActionRowBuilder`, `StringSelectMenuBuilder`, `StringSelectMenuOptionBuilder`
   // — đều là THAM SỐ DI. Tôi đã viết nhầm ở top-level và `t-di.js` bắt được ngay
@@ -687,7 +687,10 @@ client.on("interactionCreate", async (interaction) => {
             encounter.actionLog = encounter.actionLog.slice(encounter.actionLog.length - 100);
           }
         }
-        encounter.pendingActions = [];
+        // ⚠️ GIỮ LẠI action vừa được SINH RA TRONG lúc resolve (Payback) — chúng
+        // chưa được GM duyệt, chưa ai phòng thủ, mà dòng `= []` cũ xoá sạch cả
+        // chúng ⇒ đòn phản biến mất im lặng ở đúng đường force-confirm.
+        encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.awaitingPrompt);
         // Chiến thắng — luật xác nhận: cần thông báo RÕ RÀNG khi TẤT CẢ enemy đã hạ,
         // không chỉ đổi màu embed (GM dễ bỏ sót). victoryAnnounced chặn báo LẶP LẠI
         // mỗi lần confirm sau đó trong cùng trạng thái "đã thắng" — tự RESET về false
@@ -702,6 +705,10 @@ client.on("interactionCreate", async (interaction) => {
           encounter.victoryAnnounced = false;
         }
         await saveEncounter(channelId, encounter);
+        // PAYBACK — đường force-confirm KHÔNG đi qua `finalizeReactiveChoice`
+        // nên phải drain tại đây. Fire-and-forget, đứng SAU saveEncounter vì
+        // drain đọc encounter TƯƠI từ Redis.
+        drainAwaitingPrompts(channelId).catch(() => {});
         // Stage 5 (quest system) — nếu quest vừa kết thúc (thắng/thua) ngay
         // trong action này, xoá encounter NGAY SAU khi save (cùng nguyên tắc
         // thứ tự với reactive-defense.js's finalizeReactiveChoice). GAP ĐÃ SỬA
@@ -2196,18 +2203,28 @@ client.on("interactionCreate", async (interaction) => {
             // Trần "2 lần/turn" ghi trong desc của mặt 3/4/6/7/8 (constants.js).
             // Đếm theo SỐ MẶT đã kích trong turn, reset ở advanceCombatantTurn.
             meCad.caduceusFaceUses = meCad.caduceusFaceUses ?? {};
+            // ⚠️ HAI SỐ NÀY LÀ TÔI TỰ SUY TỪ DESC trong constants.js ("(2 lần/turn)"),
+            // Fragaria CHƯA xác nhận. Luật khác thì sửa ĐÚNG 2 dòng ngay dưới.
+            const CAD_LIMITED_FACES = new Set([3, 4, 6, 7, 8]);
+            const CAD_FACE_USES_PER_TURN = 2;
             const cadNotes = [];
             for (const d of rolled) {
               const [scope, kind, amtRaw] = String(d.effect ?? "").split(":");
               const amt = parseFloat(amtRaw) || 0;
-              const LIMITED = new Set([3, 4, 6, 7, 8]);   // desc ghi "(2 lần/turn)"
-              if (LIMITED.has(d.n)) {
+              // ❗ BUG ĐÃ SỬA: trước đây quota bị TIÊU **TRƯỚC** khi biết hiệu ứng
+              // có áp được không. 4/5 mặt bị giới hạn (4/6/7/8) đều là `foe:`, mà
+              // ngay dưới có `if (!cadFoe) continue` — không tra ra mục tiêu là
+              // mặt đó mất 1 trong 2 lượt mà KHÔNG gây hiệu ứng nào. Người chơi
+              // roll trúng mặt 4 ba lần trong turn thì lần thứ ba im lặng không
+              // chạy dù thực tế mới áp được một lần.
+              // Nay: chặn điều kiện KHÔNG-ÁP-ĐƯỢC trước, rồi mới tiêu quota.
+              if (scope === "foe" && !cadFoe) continue;
+              if (CAD_LIMITED_FACES.has(d.n)) {
                 const used = meCad.caduceusFaceUses[d.n] ?? 0;
-                if (used >= 2) continue;                  // đã đủ 2 lần turn này
+                if (used >= CAD_FACE_USES_PER_TURN) continue;   // đã đủ lượt turn này
                 meCad.caduceusFaceUses[d.n] = used + 1;
               }
               if (scope === "foe") {
-                if (!cadFoe) continue;
                 if (kind === "takeDmg") {
                   cadFoe.dmgTakenPctTurn = (cadFoe.dmgTakenPctTurn ?? 0) + amt;
                   cadNotes.push(`địch +${amt}% Dmg Taken`);
@@ -2431,20 +2448,28 @@ client.on("interactionCreate", async (interaction) => {
   const targetSpec = interaction.values[0]; // "enemy:<key>" hoặc "player:<id>"
   try {
     const allKeys = Object.keys(STATUS_CAPS_SHARED);
-    const half = Math.ceil(allKeys.length / 2);
-    const group1 = allKeys.slice(0, half);
-    const group2 = allKeys.slice(half);
-    const menu1 = new StringSelectMenuBuilder()
-      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}:g1`)
-      .setPlaceholder(`Status (nhóm 1/2: ${group1[0]}...${group1[group1.length - 1]})`)
-      .addOptions(...group1.map(k => new StringSelectMenuOptionBuilder().setLabel(k).setValue(k)));
-    const menu2 = new StringSelectMenuBuilder()
-      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}:g2`)
-      .setPlaceholder(`Status (nhóm 2/2: ${group2[0]}...${group2[group2.length - 1]})`)
-      .addOptions(...group2.map(k => new StringSelectMenuOptionBuilder().setLabel(k).setValue(k)));
+    // ❗ ĐÃ DỌN (t-ui-audit báo: "addOptions map động mà không slice").
+    // TRƯỚC ĐÂY chia CỨNG làm 2 nhóm. Hiện có 14 status ⇒ 7/nhóm, chưa chạm
+    // trần 25 của Discord — nhưng thêm status tới 51 cái là mỗi nhóm > 25 và
+    // dropdown vỡ. Nay chia ĐỘNG 25/menu, và tràn thì BÁO chứ không cắt im lặng.
+    const PER_MENU = 25;
+    const MAX_MENUS = 5;                    // Discord chặn cứng 5 action row/message
+    const chunks = [];
+    for (let i = 0; i < allKeys.length; i += PER_MENU) chunks.push(allKeys.slice(i, i + PER_MENU));
+    const shown = chunks.slice(0, MAX_MENUS);
+    const hiddenCount = allKeys.length - shown.reduce((a, c) => a + c.length, 0);
+    const menus = shown.map((keys, gi) => new StringSelectMenuBuilder()
+      .setCustomId(`gmquickstatuspick:${channelId}:${ownerId}:${targetSpec}:g${gi + 1}`)
+      .setPlaceholder(`Status (nhóm ${gi + 1}/${shown.length}: ${keys[0]}...${keys[keys.length - 1]})`.slice(0, 150))
+      .addOptions(...keys.slice(0, 25).map(k => new StringSelectMenuOptionBuilder().setLabel(String(k).slice(0, 100)).setValue(k))));
     await interaction.update({
-      embeds: [{ title: "🎯 Set Status — Bước 2: Chọn status", description: "Danh sách chia 2 nhóm do giới hạn Discord (tối đa 25 lựa chọn/dropdown).", color: 0xf39c12 }],
-      components: [new ActionRowBuilder().addComponents(menu1), new ActionRowBuilder().addComponents(menu2)],
+      embeds: [{
+        title: "🎯 Set Status — Bước 2: Chọn status",
+        description: `Danh sách chia ${shown.length} nhóm do giới hạn Discord (tối đa 25 lựa chọn/dropdown).`
+          + (hiddenCount > 0 ? `\n⚠️ Còn **${hiddenCount}** status nữa không hiện được — dùng \`-encounter setstatus\` để set trực tiếp.` : ""),
+        color: 0xf39c12,
+      }],
+      components: menus.map(m => new ActionRowBuilder().addComponents(m)),
     }).catch(() => {});
   } catch (err) {
     interaction.reply({ content: `❌ ${err.message}`, flags: MessageFlags.Ephemeral }).catch(() => {});

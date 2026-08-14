@@ -359,7 +359,15 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr, KARMIC_MAX 
     // trước đây nhầm dùng target.gazeAwe (test thực tế cho 169=100×1.3² thay vì
     // 130=100×1.3 — chứng tỏ bonus bị cộng 2 lần cùng 1 hit) — SAI vì đó là kiểm
     // tra "target có Gaze[Awe] không", không phải "attacker có Gaze[Awe] không".
-    // Nửa "NHẬN" còn lại nằm ở computeDefenderDmgReduction (misc-helpers.js).
+    // Nửa "NHẬN" còn lại nằm ở `dmgTakenPct` NGAY TRONG FILE NÀY (dòng có
+    // `target.gazeAwe > 0 && target.gazeAweSourceId === attackerId`).
+    // ⚠️ ĐÍNH CHÍNH — comment cũ ghi nhầm là ở `computeDefenderDmgReduction`
+    // (misc-helpers.js). Grep file đó: KHÔNG có `gazeAwe` nào cả. Ai tin comment
+    // cũ rồi "bổ sung" nửa NHẬN vào misc-helpers sẽ tạo ra ĐÚNG bug Karmic
+    // Consequence: một hiệu ứng đi hai đường song song, mạnh gấp đôi ý định, mà
+    // đọc riêng lẻ đường nào cũng thấy hợp lý.
+    // Hai nửa hiện tại KHÔNG chồng nhau vì điều kiện khác nhau — nửa GÂY hỏi
+    // "ATTACKER có giữ stack không", nửa NHẬN hỏi "TARGET có giữ stack không".
     if (attacker.gazeAwe > 0 && attacker.gazeAweSourceId === targetId) bonusPct += attacker.gazeAwe * 10;
     if (attacker.contempt > 0 && attacker.contemptSourceId === targetId) bonusPct -= 50;
     // Gaze of Contempt/Contempt of the Gaze — SELF-buff của ATTACKER, không liên

@@ -62,6 +62,13 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
     log("error", "finalizeReactiveChoice-bgm", "system", err.message);
   }
   await saveEncounter(channelId, encounter);
+  // PAYBACK — đòn phản do `resolveOnePendingAction` vừa sinh ra cần được gửi
+  // prompt phòng thủ. Đặt ở ĐÂY (trong hàm) chứ không ở 6 nơi gọi — đúng bài
+  // học BGM §K: thứ gì mọi caller đều cần thì cho HÀM ĐÓ lo, thêm caller mới
+  // sau này tự có. Fire-and-forget vì `drainAwaitingPrompts` tự lấy lock riêng,
+  // mà lúc này caller có thể còn đang giữ lock (withLock KHÔNG re-entrant).
+  // PHẢI đứng SAU saveEncounter: drain đọc encounter TƯƠI từ Redis.
+  drainAwaitingPrompts(channelId).catch(() => {});
   // Stage 5 (quest system) — encounter._deleteAfterSave được resolveOnePendingAction
   // đánh dấu khi quest vừa kết thúc (thắng/thua) — XOÁ NGAY SAU KHI save (thứ tự
   // quan trọng: save trước để giữ lại state cuối cùng — HP/reward đã áp — rồi mới
@@ -658,25 +665,76 @@ async function commitAutoSkippedTargets(channelId, pendingId) {
       // reactive defense, khiến họ TỰ ĐỘNG né những đòn có thể né được cho đến
       // khi hết free charge (dĩ nhiên không né được Undodgeable — đòn
       // Undodgeable VẪN phải hiện reactive defense ra)."
+      //
+      // ❗❗ BUG NẶNG ĐÃ SỬA (Fragaria: *"Borrowed Eye khiến cho player không thể
+      // hành động phòng thủ những nhóm M1... M1 x70 đòn khiến player chết luôn
+      // vì không phòng thủ được"*).
+      // GỐC: bản cũ né `use = min(charge, tổng số hit)` hit ĐẦU rồi **đánh dấu
+      // target là ĐÃ PHẢN HỒI XONG** (`reactedTargetIds.push`). Với đòn 70 hit
+      // và 8 charge, nó né 8 hit rồi tuyên bố "không cần phòng thủ" cho **62 hit
+      // còn lại** ⇒ cả đòn tự resolve, người chơi KHÔNG hề được hỏi, ăn trọn
+      // 337 dmg và chết. Charge né ít hơn số hit đã biến passive phòng thủ
+      // thành án tử.
+      // ⇒ Đây là lớp lỗi "cơ chế phụ trợ chiếm quyền của đường chính": một tính
+      //   năng hỗ trợ được phép TRẢ LỜI HỘ, nhưng chỉ cho phần nó thật sự trả
+      //   nổi — phần còn lại phải trả về cho người chơi.
+      //
+      // NAY: né theo TỪNG NHÓM TRỌN VẸN (một nhóm = một quyết định phòng thủ,
+      // không thể né nửa nhóm), ghi vào `perHitChoices` đúng khuôn Chain-Dashes,
+      // và CHỈ auto-skip khi phủ được HẾT mọi nhóm. Không phủ hết thì prompt vẫn
+      // được gửi, và vòng hỏi tự nhảy tới nhóm đầu tiên còn `null`.
       let borrowedAuto = false;
       if ((tr.combatant.borrowedEyeCharges ?? 0) > 0 && !zeroDmg && !staggered) {
         const bypassTags = extractDefenseBypassTags
           ? extractDefenseBypassTags(p.skillRollEmbed?.description ?? "", p.tags ?? "")
           : {};
         if (!bypassTags.blockEvade) {
-          const hitsHere = Math.max(1, t.preview?.dmgValues?.length ?? 1);
-          const use = Math.min(tr.combatant.borrowedEyeCharges, hitsHere);
-          tr.combatant.borrowedEyeCharges -= use;
-          // Né ĐÚNG số hit trả được — dùng chung field với Evade thường.
-          tr.combatant.evadeHitSelections = Array.from({ length: use }, (_, i2) => i2 + 1);
-          // ❗ BUG ĐÃ SỬA: lần trước tôi chỉ set `evadeHitSelections` mà giữ
-          // `evadeCharges` nguyên (thường = 0) ⇒ resolve thấy 0 charge nên KHÔNG
-          // né gì cả — đúng triệu chứng "Borrowed Eyes vẫn không tự động né".
-          // Charge của Borrowed Eyes là MIỄN PHÍ (không tốn Stamina) nên cấp thẳng.
-          tr.combatant.evadeCharges = (tr.combatant.evadeCharges ?? 0) + use;
-          tr.combatant.borrowedEyesFreeEvade = true; // đánh dấu để KHÔNG trừ Stamina
-          t.borrowedEyesAutoNote = `👁️ **Borrowed Eyes** — tự động né **${use}** hit (còn ${tr.combatant.borrowedEyeCharges} charge)`;
-          borrowedAuto = true;
+          // ⚠️ PHẢI tính hitsPerCharge/groupCount Y HỆT vòng gửi prompt bên dưới
+          // — lệch một chữ là hai bên chia nhóm khác nhau, người chơi bị hỏi
+          // nhầm nhóm hoặc nhóm đã né lại bị hỏi lại.
+          const bAttacker = resolveCombatant(encounter, p.attackerId);
+          const bIsM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
+          const bWeight = bAttacker?.combatant?.weaponWeight ?? "medium";
+          const bHitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
+          const bHitsPerCharge = p.isEyeOfHorusFixedBurst ? 9 : (bIsM1Type ? (WEAPON_DEFENSE_HITS[bWeight] ?? 1) : 1);
+          const bGroupCount = Math.ceil(bHitCount / bHitsPerCharge);
+          t.perHitBypass = t.perHitBypass ?? parsePerHitBypass(p.skillRollEmbed?.description, p.tags, bGroupCount);
+          t.perHitChoices = t.perHitChoices ?? new Array(bGroupCount).fill(null);
+
+          let covered = 0;
+          for (let gi = 0; gi < bGroupCount; gi++) {
+            if (t.perHitChoices[gi] !== null) continue;
+            // Nhóm mang tag chặn né thì Borrowed Eyes bó tay — để người chơi tự
+            // quyết (tag phòng thủ có 2 CẤP: header và từng dòng dice).
+            if (t.perHitBypass?.[gi]?.blockEvade) continue;
+            const hitsInGroup = Math.min(bHitsPerCharge, bHitCount - gi * bHitsPerCharge);
+            // Né NỬA nhóm là vô nghĩa — một nhóm là MỘT quyết định phòng thủ.
+            // Không đủ charge cho trọn nhóm thì DỪNG, và GIỮ LẠI charge thừa cho
+            // đòn sau (charge Borrowed Eyes không expire).
+            if ((tr.combatant.borrowedEyeCharges ?? 0) < hitsInGroup) break;
+            tr.combatant.borrowedEyeCharges -= hitsInGroup;
+            const idxs = [];
+            for (let i2 = 0; i2 < hitsInGroup; i2++) idxs.push(gi * bHitsPerCharge + i2 + 1);
+            tr.combatant.evadeHitSelections = tr.combatant.evadeHitSelections ?? [];
+            tr.combatant.evadeHitSelections.push(...idxs);
+            // ❗ BUG ĐÃ SỬA (lần trước): chỉ set `evadeHitSelections` mà giữ
+            // `evadeCharges` nguyên (thường = 0) ⇒ resolve thấy 0 charge nên
+            // KHÔNG né gì — đúng triệu chứng "Borrowed Eyes vẫn không tự né".
+            // Cấp ĐÚNG 1 charge/nhóm, khớp số resolve tiêu
+            // (`ceil(hits đã chọn / hitsPerCharge)`), không cấp thừa.
+            tr.combatant.evadeCharges = (tr.combatant.evadeCharges ?? 0) + 1;
+            tr.combatant.borrowedEyesFreeEvade = true; // đánh dấu để KHÔNG trừ Stamina
+            t.perHitChoices[gi] = `💨 Evade (Borrowed Eyes, 0 Sta)`;
+            covered++;
+          }
+          if (covered > 0) {
+            const totalEvaded = covered * bHitsPerCharge;
+            t.borrowedEyesAutoNote = `👁️ **Borrowed Eyes** — tự động né **${covered}** nhóm (~${Math.min(totalEvaded, bHitCount)} hit, còn ${tr.combatant.borrowedEyeCharges} charge)`;
+            changed = true;
+          }
+          // CHỈ coi là "đã phản hồi xong" khi KHÔNG còn nhóm nào chưa quyết —
+          // còn nhóm nào thì người chơi PHẢI được hỏi.
+          borrowedAuto = !t.perHitChoices.some(c => c === null);
         }
       }
       if (zeroDmg || staggered || ironHorusPreGuard || borrowedAuto) {
@@ -695,6 +753,9 @@ async function commitAutoSkippedTargets(channelId, pendingId) {
     const lines = await resolveOnePendingAction(encounter, p);
     encounter.pendingActions = (encounter.pendingActions ?? []).filter(pa => pa.id !== pendingId);
     await saveEncounter(channelId, encounter);
+    // ⚠️ KHÔNG drain ở đây — ta đang ở TRONG `withLock` của chính hàm này, mà
+    // `withLock` KHÔNG re-entrant ⇒ tự chặn mình. Caller
+    // (`sendReactiveDefensePrompt`) drain sau khi thoát lock.
     return {
       resolved: true,
       lines,
@@ -709,6 +770,9 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
     // PHA 1 (CÓ KHOÁ) — đánh dấu + lưu người bị auto-skip, resolve nếu đủ.
     const autoSkip = await commitAutoSkippedTargets(channelId, pendingId);
     if (autoSkip.resolved) {
+      // Payback vừa sinh ra trong lúc auto-resolve — drain SAU khi đã thoát lock
+      // của commitAutoSkippedTargets (withLock KHÔNG re-entrant).
+      drainAwaitingPrompts(channelId).catch(() => {});
       const resultChannel = await client.channels.fetch(channelId).catch(() => null);
       if (resultChannel) {
         await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không cần phòng thủ)", description: (autoSkip.lines ?? []).join("\n"), color: 0x95a5a6 }] }).catch(() => {});
@@ -1186,6 +1250,7 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
     if (allTargetIds.length > 0 && allTargetIds.every(tid => p.reactedTargetIds.includes(tid))) {
       const late = await commitAutoSkippedTargets(channelId, pendingId);
       if (late.resolved) {
+        drainAwaitingPrompts(channelId).catch(() => {});
         const resultChannel = await client.channels.fetch(channelId).catch(() => null);
         if (resultChannel) {
           await resultChannel.send({ embeds: [{ title: "⚔️ Đã xử lý (không cần phòng thủ)", description: (late.lines ?? []).join("\n"), color: 0x95a5a6 }] }).catch(() => {});
@@ -1204,5 +1269,49 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
   }
 }
 
-  return { finalizeReactiveChoice, performEndTurn, announceCurrentTurn, sendThirdPartyClashPrompts, sendYourShieldPrompts, applyDullahanParryCounter, sendReactiveDefensePrompt };
+/** drainAwaitingPrompts — gửi prompt cho MỌI pendingAction được SINH RA TRONG
+ *  lúc resolve (hiện tại: Payback của Chains of Loyalty).
+ *
+ *  VÌ SAO PHẢI TÁCH RA MỘT HÀM RIÊNG, không gọi thẳng trong resolve:
+ *  `resolveOnePendingAction` KHÔNG tự `saveEncounter` — caller mới save. Mà
+ *  `sendReactiveDefensePrompt` đọc encounter TƯƠI từ Redis. Gọi ngay trong
+ *  resolve là nó đọc bản CŨ, không thấy action vừa tạo, rồi `return` im lặng —
+ *  đúng kiểu hỏng-mà-không-báo mà bug BGM đã dạy (§U).
+ *
+ *  VÌ SAO KHÔNG VÁ TỪNG NƠI GỌI: `resolveOnePendingAction` có **6 caller**.
+ *  Lớp lỗi 8 ("vá từng nơi gọi thay vì sửa ở hàm được gọi") đã làm BGM sót đúng
+ *  2 nhánh qua 3 lần sửa. Nên phần TẠO nằm gọn trong resolve, phần GỬI gom vào
+ *  ĐÚNG hàm này, và có test cấu trúc khoá việc mọi caller phải gọi nó.
+ *
+ *  Hàm KHÔNG BAO GIỜ ném: prompt là lớp trình bày, hỏng nó không được kéo theo
+ *  logic trận (lớp lỗi 12 — bài học `AttachmentBuilder` làm kẹt `pendingAction`).
+ */
+async function drainAwaitingPrompts(channelId) {
+  try {
+    // Pha 1 — CÓ KHOÁ: đọc tươi, gỡ cờ, lưu. Gỡ cờ TRƯỚC khi gửi để hai luồng
+    // song song không cùng gửi một prompt hai lần (read-modify-write phải nằm
+    // trong lock — đúng bài học lost-update của bug Stagger).
+    let ids = [];
+    // `retries: 8` — hàm này được gọi FIRE-AND-FORGET ngay sau `saveEncounter`,
+    // nên caller RẤT có thể còn đang giữ lock encounter (`withLock` KHÔNG
+    // re-entrant). Mặc định 3×200ms là quá ngắn và sẽ ném "đang xử lý lệnh
+    // khác" — đúng lỗi đã làm `-daily` không hoàn thành quest.
+    await withLock(encounterKey(channelId), async () => {
+      const enc = await getEncounter(channelId);
+      if (!enc) return;
+      const waiting = (enc.pendingActions ?? []).filter(pa => pa.awaitingPrompt);
+      if (waiting.length === 0) return;
+      for (const pa of waiting) { pa.awaitingPrompt = false; ids.push(pa.id); }
+      await saveEncounter(channelId, enc);
+    }, { retries: 8 });
+    // Pha 2 — KHÔNG KHOÁ: I/O Discord chậm, và `sendReactiveDefensePrompt` tự
+    // lấy lock của riêng nó ở pha 1 của nó (`withLock` KHÔNG re-entrant — gọi
+    // trong lock là tự chặn mình).
+    for (const id of ids) await sendReactiveDefensePrompt(channelId, id);
+  } catch (err) {
+    log("error", "drainAwaitingPrompts", "system", err.message);
+  }
+}
+
+  return { finalizeReactiveChoice, performEndTurn, announceCurrentTurn, sendThirdPartyClashPrompts, sendYourShieldPrompts, applyDullahanParryCounter, sendReactiveDefensePrompt, drainAwaitingPrompts };
 };

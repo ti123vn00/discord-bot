@@ -1205,17 +1205,88 @@ async function resolveOnePendingAction(encounter, p) {
               // theo cách bất thường nào đó) → phản 1/2 finalDmg (Blunt, true dmg,
               // không tính lại Res của attacker để tránh double-dip phức tạp) về
               // attacker, gây 5 Fragile + 1 Vengeance Mark lên attacker.
+              // ❗❗ VIẾT LẠI (Fragaria: *"đòn này có thể né/guard/parry bình thường
+              // như các hit thông thường và nó là 1 group hit duy nhất"*).
+              //
+              // TRƯỚC ĐÂY: `applyHpLoss(attacker.combatant, reflectedDmg)` — trừ
+              // THẲNG vào HP, attacker không có bất kỳ cơ hội phòng thủ nào.
+              //
+              // NAY: dựng một `pendingAction` THẬT nhắm vào attacker, đẩy vào
+              // `encounter.pendingActions` với cờ `awaitingPrompt`. Nhờ đi qua
+              // đúng máy sẵn có, nó tự có Guard/Evade/Parry/Counter/Clash, tự
+              // hiện dmg còn lại, tự đi qua shield — không phải viết lại thứ gì.
+              //
+              // ⚠️ KHÔNG tự gửi prompt tại đây: `sendReactiveDefensePrompt` đọc
+              // encounter TƯƠI từ Redis, mà `resolveOnePendingAction` KHÔNG tự
+              // save (caller mới save). Gọi ở đây là nó đọc bản CŨ, không thấy
+              // action vừa tạo ⇒ im lặng không gửi gì. Việc gửi để `drainAwaitingPrompts`
+              // lo, chạy SAU khi caller đã save (xem reactive-defense.js).
+              // ── PAYBACK: 5 Fragile + 1 Vengeance Mark CHỈ KHI TRÚNG ──────────
+              // Fragaria chốt: *"5 Fragile và 1 Vengeance Mark phải TRÚNG mới có
+              // áp, nếu né thì không áp."*
+              // ⇒ áp tại ĐÂY, trong lúc resolve chính đòn phản, sau khi đã biết
+              //   `finalDmg`. Né trọn ⇒ finalDmg = 0 ⇒ không status.
+              //   Guard vẫn tính là TRÚNG (chỉ giảm dmg, hit vẫn vào) — đúng luật
+              //   đã chốt ở Renegade: "Guard KHÔNG tính là trượt".
+              // ⚠️ KHÔNG dùng `autoSideEffects`: applier chung áp cho MỌI target
+              //   bất kể trúng hay trượt, tức là đúng cái hành vi vừa bị bác.
+              let paybackHitNote = "";
+              if (p.isPaybackReflect && finalDmg > 0) {
+                target.fragile = Math.min(99, (target.fragile ?? 0) + 5);
+                target.vengeanceMark = (target.vengeanceMark ?? 0) + 1;
+                paybackHitNote = ` 🔗[Payback trúng: +5 Fragile, +1 Vengeance Mark]`;
+              }
               let paybackNote = "";
-              if (finalDmg > 0 && !target.paybackUsedThisTurn) {
+              if (finalDmg > 0 && !target.paybackUsedThisTurn && !p.isPaybackReflect && attacker.combatant) {
                 const targetWeaponInfo = findWeaponAnywhere(target.weaponName);
                 const hasPayback = (targetWeaponInfo?.passives ?? []).some(pa => pa.mechanicId === "payback_reflect");
-                if (hasPayback) {
+                // Không tự phản chính mình (Astral/Renegade… có thể khiến
+                // attackerId === targetId ở vài đường vòng).
+                if (hasPayback && p.attackerId !== t.targetId && attacker.combatant.currentHp > 0) {
                   target.paybackUsedThisTurn = true;
                   const reflectedDmg = finalDmg * 0.5;
-                  applyHpLoss(attacker.combatant, reflectedDmg); // đếm vào hpLostThisTurn (Hana)
-                  attacker.combatant.fragile = Math.min(99, (attacker.combatant.fragile ?? 0) + 5);
-                  attacker.combatant.vengeanceMark = (attacker.combatant.vengeanceMark ?? 0) + 1;
-                  paybackNote = ` 🔗**Payback** — phản ${reflectedDmg.toFixed(3)} Dmg [Blunt] lên ${attacker.label}, gây 5 Fragile + 1 Vengeance Mark.`;
+                  // ⚠️ Res của attacker CÓ áp: passive ghi rõ *"Dmg Type là Blunt"*,
+                  // và Fragaria yêu cầu nó cư xử "như các hit thông thường".
+                  // Bản cũ là true dmg nên chữ "Blunt" chỉ để trang trí.
+                  // Muốn quay lại true dmg thì đổi resStr thành "1xB 1xP 1xS".
+                  const paybackCalcOpts = {
+                    dmgStr: `${reflectedDmg.toFixed(3)}B`,
+                    resStr: combatantResStr(attacker.combatant),
+                    poiseInit: 0, chargeInit: 0, critMul: 1,
+                    sinkingInit: attacker.combatant.sinking ?? 0,
+                    ruptureInit: attacker.combatant.rupture ?? 0,
+                    burnInit: attacker.combatant.burn ?? 0,
+                    bleedInit: attacker.combatant.bleed ?? 0,
+                    tremorInit: attacker.combatant.tremor ?? 0,
+                    sanityInit: attacker.combatant.currentSanity ?? 0,
+                    noSanity: attacker.combatant.noSanity === true,
+                  };
+                  const paybackPreview = calcMathCore(paybackCalcOpts);
+                  const paybackId = `payback-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                  encounter.pendingActions = encounter.pendingActions ?? [];
+                  encounter.pendingActions.push({
+                    id: paybackId,
+                    // `kind: "attack"` + `skillKey` ⇒ KHÔNG bị gom nhóm theo
+                    // WEAPON_DEFENSE_HITS của vũ khí. dmgStr đúng 1 dice ⇒ đúng
+                    // "1 group hit duy nhất" như Fragaria yêu cầu.
+                    kind: "attack", skillKey: "payback",
+                    attackerId: t.targetId, attackerType: targetResolved.type,
+                    targets: [{
+                      targetId: p.attackerId, targetType: attacker.type,
+                      calcOpts: paybackCalcOpts, preview: paybackPreview, defReductionPct: 0,
+                    }],
+                    dmgStr: `${reflectedDmg.toFixed(3)}B`,
+                    isM1: false, defenseBypass: {}, tags: "",
+                    // Đòn phản KHÔNG được đẻ ra đòn phản (vòng vô hạn nếu cả hai
+                    // bên cùng cầm Chains of Loyalty).
+                    isPaybackReflect: true,
+                    awaitingPrompt: true,
+                    cooldownTurns: 0, emotionDelta: 0, emotionPlus: 0, lightCost: 0, sanityCost: 0, staminaCost: 0,
+                  });
+                  // ⚠️ 5 Fragile + 1 Vengeance Mark KHÔNG áp ở đây nữa — Fragaria
+                  // chốt "phải TRÚNG mới có áp, nếu né thì không áp". Chúng được
+                  // áp lúc resolve chính đòn phản (xem `paybackHitNote` phía trên).
+                  paybackNote = ` 🔗**Payback** — phản đòn **${paybackPreview.totalDmg.toFixed(3)}** Dmg [Blunt] lên ${attacker.label} *(có thể phòng thủ — né được thì không dính Fragile/Vengeance Mark)*.`;
                 }
               }
               // Regen (50-Status Nhóm 1) — "CHỈ khi mất máu mới tự động tiêu thụ để
@@ -1607,7 +1678,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${renegadeNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${renegadeNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}${paybackHitNote}`);
               if (!evadedCompletely) anyHitLandedThisAction = true; // gom kết quả từng target ra scope ngoài (xem khai báo)
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
