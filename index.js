@@ -457,6 +457,21 @@ const KNOWN_KEYS = new Set([
   "fragile", "attackpowerup", "attackpowerdown", "defenseup", "defensedown", "clashattackboost", "unopposedattackboost", "protection", "regen", "chargeshield", // 50-Status Nhóm 1
   "paralyze", "diceup", "dicedown", "smoke", "vengeancemark", "nails", "redplumblossom", "freeble", "borrowedtime", "fairy", "airborne", "chains", "sizzlingwound", "perceptionblockingmask", "blacksilence", // 50-Status Nhóm 2
   "tremoreverlasting", "tremorfracture", "tremorreverb", "tremordecay", "tremorchain", "spectrofrazzle", "tremorscorch", "tremorhemorrhage", "burningsensation", // Tremor variants + Burning Sensation
+  // ❗ BUG ĐÃ SỬA (Fragaria 14/08, kèm ảnh): *"DmgTaken chưa hoạt động ở -math,
+  // có thể do chưa parse đúng và có thể /math cũng thế."*
+  // GỐC: `-math dmg: 100S dmgtaken: 100%` in ra `% Dmg Taken 0.00%`. Code đọc
+  // `kv["dmgtaken"]` ĐÚNG, nhưng `dmgtaken` KHÔNG có trong KNOWN_KEYS — mà
+  // `parseKeyValues` build regex TỪ danh sách này, nên nó không nhận ra
+  // `dmgtaken:` là một key. Hệ quả: (a) `kv["dmgtaken"]` luôn undefined ⇒ về 0,
+  // và (b) tệ hơn, chuỗi "dmgtaken: 100%" bị nuốt vào GIÁ TRỊ của key đứng
+  // trước nó (`dmg: "100S DmgTaken: 100%"`) — hỏng im lặng, không báo gì.
+  // ⇒ Đúng cảnh báo đã ghi ngay trong khối này: "Thêm xử lý ở
+  //   message-create-handler mà QUÊN đăng ký ở đây thì kv.<key> LUÔN undefined".
+  // `/math` KHÔNG dính (Discord tự tách option, không qua parseKeyValues).
+  "dmgtaken",
+  // Cùng lớp lỗi, phát hiện khi quét đối chiếu: `-setplayer ... pages: …` đọc
+  // `kv["pages"]` nhưng cũng chưa từng được đăng ký ⇒ chưa bao giờ set được page.
+  "pages",
   "busyastribbie", // Busy as Tribbie
   "timemoratorium", // Time Moratorium
   "gazeawe", "contempt", "gazeofcontempt", "contemptofthegaze", "source", // Gaze/Contempt
