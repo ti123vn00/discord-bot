@@ -4939,9 +4939,17 @@ client.on("interactionCreate", async (interaction) => {
       const diceDown = interaction.options.getInteger("dicedown") ?? 0;
       const diceModifier = diceUp - diceDown;
 
-      // Nhiều skill trong MỘT lượt — ngăn bằng `|`. Chọn `|` chứ không phải dấu
-      // phẩy vì tên skill có thể chứa dấu phẩy ("Sever, Then Sunder").
-      const names = nameInput.split("|").map(x => x.trim()).filter(Boolean);
+      // Nhiều skill trong MỘT lượt — nhận CẢ `,` lẫn `|`.
+      // Dấu phẩy là cách gõ tự nhiên, nhưng **14 skill CÓ dấu phẩy trong tên**
+      // ("Take this, Kid"…) nên phải phân định — LUẬT GIỐNG HỆT `-skill` bên
+      // message-create-handler.js (t-skill-options khoá việc hai đường không lệch):
+      //   1. `|` xuất hiện ⇒ luôn là nhiều skill.
+      //   2. Ngược lại, NGUYÊN CHUỖI khớp một skill ⇒ đó là tên, không tách.
+      //   3. Còn lại mới tách theo dấu phẩy.
+      const sep = nameInput.includes("|") ? "|" : (nameInput.includes(",") ? "," : "|");
+      const names = (sep === "," && findSkill(nameInput))
+        ? [nameInput.trim()]
+        : nameInput.split(sep).map(x => x.trim()).filter(Boolean);
       if (names.length === 0) {
         await interaction.editReply({ content: "❌ Bạn chưa nhập tên skill nào." });
         return;

@@ -296,16 +296,31 @@ client.on("messageCreate", async (message) => {
       input = input.slice(0, dullahanMatch.index).trim();
     }
 
-    // Tách nhiều skill (nếu có `|`). Làm SAU khi đã gỡ diceup/dicedown để dấu
-    // `|` không dính lẫn phần đó. null = lệnh 1 skill, đi đúng đường cũ.
+    // Tách nhiều skill. Làm SAU khi đã gỡ diceup/dicedown để dấu phân cách không
+    // dính lẫn phần đó. null = lệnh 1 skill, đi đúng đường cũ.
+    //
+    // Nhận CẢ `,` lẫn `|` — Fragaria gõ tự nhiên bằng dấu phẩy
+    // (`-skill durandal, mook workshop, zelkova workshop`), nên bắt người dùng
+    // nhớ ký tự `|` là thiết kế sai. Nhưng **14 skill CÓ dấu phẩy trong tên**
+    // ("Take this, Kid", "Slam Down with Weight, Topple the Body"…) nên phải
+    // phân định:
+    //   1. `|` xuất hiện ⇒ luôn là nhiều skill (ký tự này không có trong tên nào).
+    //   2. Ngược lại, nếu NGUYÊN CHUỖI khớp đúng một skill ⇒ ĐÓ là tên skill,
+    //      không tách. Luật này bắt trọn 14 tên có dấu phẩy.
+    //      (Kiểm "mọi mảnh đều resolve" là KHÔNG đủ: "Take this, Kid" tách ra
+    //       thì cả "Take this" lẫn "Kid" đều resolve được — sẽ tách nhầm.)
+    //   3. Còn lại mới tách theo dấu phẩy.
     let multiNames = null;
-    if (input.includes("|") && !/^list\b/i.test(input)) {
-      const ns = input.split("|").map(x => x.trim()).filter(Boolean);
-      if (ns.length > SKILL_MAX_MULTI) {
-        message.reply(`❌ Tối đa **${SKILL_MAX_MULTI}** skill mỗi lệnh (bạn nhập ${ns.length}).`);
-        return;
+    if (!/^list\b/i.test(input)) {
+      const sep = input.includes("|") ? "|" : (input.includes(",") ? "," : null);
+      if (sep && !(sep === "," && findSkill(input))) {
+        const ns = input.split(sep).map(x => x.trim()).filter(Boolean);
+        if (ns.length > SKILL_MAX_MULTI) {
+          message.reply(`❌ Tối đa **${SKILL_MAX_MULTI}** skill mỗi lệnh (bạn nhập ${ns.length}).`);
+          return;
+        }
+        if (ns.length > 1) { multiNames = ns; input = ns[0]; }
       }
-      if (ns.length > 1) { multiNames = ns; input = ns[0]; }
     }
 
     // -skill list <keyword> [trang] — tìm skill theo keyword, có phân trang

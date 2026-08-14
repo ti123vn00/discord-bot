@@ -48,7 +48,7 @@ const commands = [
         .setDescription("Roll 1 skill (có thể roll nhiều lần)")
         .addStringOption(opt =>
           opt.setName("name")
-            .setDescription("Tên skill. Nhiều skill 1 lượt: ngăn bằng dấu | (VD: Durandal | Thrust)")
+            .setDescription("Tên skill. Nhiều skill 1 lượt: ngăn bằng dấu phẩy (VD: Durandal, Thrust)")
             .setRequired(true))
         .addIntegerOption(opt =>
           opt.setName("count")
