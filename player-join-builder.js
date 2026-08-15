@@ -276,6 +276,13 @@ module.exports = function ({ findSkill, parseSkillCost, isEgoSkill, syncCompassi
     }
     joined.hasZweiAssociation = equippedOutfitNameNormalized === "zwei association";
     joined.hasHanaAssociation = equippedOutfitNameNormalized === "hana association";
+    // ── R Corp / Dawn Office outfit (Fragaria 14/08) ─────────────────────────
+    joined.hasRhinoRCorp    = equippedOutfitNameNormalized === "rhino r corp outfit";
+    joined.hasRabbitRCorp   = equippedOutfitNameNormalized === "rabbit r corp outfit";
+    joined.hasReindeerRCorp = equippedOutfitNameNormalized === "reindeer r corp outfit";
+    joined.hasDawnYuna      = equippedOutfitNameNormalized === "dawn office - yuna";
+    joined.hasDawnPhillip   = equippedOutfitNameNormalized === "dawn office - phillip";
+    joined.hasDawnSalvador  = equippedOutfitNameNormalized === "dawn office - salvador";
     joined.hasIndexProselyte = equippedOutfitNameNormalized === "index proselyte";
     // Task yêu cầu trực tiếp: "manifested ego không có check true false khiến
     // ai cũng có được dù đáng lẽ chỉ những ai có check true mới có" — GAP THẬT:

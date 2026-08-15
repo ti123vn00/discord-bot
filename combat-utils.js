@@ -350,10 +350,23 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
    *  `blackSilenceCritBonus` chỉ áp cho Critical nên nhận qua tham số, không
    *  nhét vào đây.
    */
-  function computeDiceModifier(combatant, { blackSilenceCritBonus = 0 } = {}) {
+  function computeDiceModifier(combatant, { blackSilenceCritBonus = 0, foeSpeed = null } = {}) {
     if (!combatant) return 0;
     const tremorChainPenalty = (combatant.tremorChain ?? 0) > 0 ? Math.floor((combatant.tremor ?? 0) / 10) : 0;
-    return (combatant.diceUp ?? 0) - (combatant.diceDown ?? 0) - (combatant.freeble ?? 0)
+    // ── Keypage cấp Dice Up TÍNH ĐỘNG (Fragaria 14/08) ──────────────────────
+    // Đặt Ở ĐÂY chứ không ghi vào `combatant.diceUp`: hai keypage này phụ thuộc
+    // trạng thái tại THỜI ĐIỂM roll (Speed đối thủ / Emotion Level hiện tại), ghi
+    // vào field là nó đọng lại sai sau khi trạng thái đổi.
+    let keypageDiceUp = 0;
+    // Rabbit's Prowess: mỗi 2 Speed HƠN đối thủ ⇒ +2 Dice Up, TỐI ĐA 5.
+    // ⚠️ Trần 5 là trần **Dice Up**, không phải trần số cặp-2-Speed.
+    if (combatant.hasRabbitRCorp && Number.isFinite(foeSpeed)) {
+      const diff = (combatant.currentSpeed ?? 0) - foeSpeed;
+      if (diff >= 2) keypageDiceUp += Math.min(5, Math.floor(diff / 2) * 2);
+    }
+    // Passion (Dawn Office - Phillip): +2 Dice Up với MỖI Emotion Level.
+    if (combatant.hasDawnPhillip) keypageDiceUp += (combatant.emotionLevel ?? 0) * 2;
+    return (combatant.diceUp ?? 0) + keypageDiceUp - (combatant.diceDown ?? 0) - (combatant.freeble ?? 0)
       - tremorChainPenalty + blackSilenceCritBonus;
   }
 
@@ -471,6 +484,31 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     }
     const lost = before - combatant.currentHp;
     if (lost <= 0) return 0;
+    // ── R CORP OUTFIT (Fragaria 14/08) ─────────────────────────────────────
+    // *"Với mỗi 10% HP mất TRONG TURN ORDER đó sẽ nhận X ở turn sau [Max 2 lần]"*
+    // Khác Hana ở hai chỗ: Hana đếm mỗi **10 HP tuyệt đối**, R Corp đếm mỗi
+    // **10% Max HP**; và R Corp có TRẦN 2 lần/turn.
+    // Dùng chung `hpLostThisTurn` (nguồn sự thật duy nhất) — đếm ngưỡng TRƯỚC/SAU
+    // y hệt Hana để không cộng lặp khi một turn có nhiều đòn.
+    const rcorpKind = combatant.hasRhinoRCorp ? "protection"
+      : combatant.hasRabbitRCorp ? "haste"
+      : combatant.hasReindeerRCorp ? "diceUp" : null;
+    if (rcorpKind) {
+      const step = Math.max(1, (combatant.maxHp ?? 100) * 0.1);
+      const before10 = Math.floor((combatant.hpLostThisTurn ?? 0) / step);
+      combatant.hpLostThisTurn = (combatant.hpLostThisTurn ?? 0) + lost;
+      const after10 = Math.floor(combatant.hpLostThisTurn / step);
+      const usedBefore = combatant.rcorpProcsThisTurn ?? 0;
+      // Trần 2 LẦN mỗi turn — đếm số lần proc, không phải số stack.
+      const gained = Math.max(0, Math.min(2 - usedBefore, after10 - before10));
+      if (gained > 0) {
+        combatant.rcorpProcsThisTurn = usedBefore + gained;
+        // "ở TURN SAU" ⇒ dồn vào hàng chờ, turn-advance cấp đầu turn kế.
+        combatant.rcorpPendingNextTurn = combatant.rcorpPendingNextTurn ?? { protection: 0, haste: 0, diceUp: 0 };
+        const per = rcorpKind === "haste" ? 3 : 2;   // Rabbit 3 Haste, Rhino/Reindeer 2
+        combatant.rcorpPendingNextTurn[rcorpKind] += gained * per;
+      }
+    }
     if (combatant.hasHanaAssociation && countHana) {
       const thresholdBefore = Math.floor((combatant.hpLostThisTurn ?? 0) / 10);
       combatant.hpLostThisTurn = (combatant.hpLostThisTurn ?? 0) + lost;
@@ -478,6 +516,8 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
       if (thresholdAfter > thresholdBefore) {
         combatant.diceUp = (combatant.diceUp ?? 0) + (thresholdAfter - thresholdBefore);
       }
+    } else if (rcorpKind) {
+      // hpLostThisTurn đã cộng ở khối R Corp phía trên — KHÔNG cộng lần hai.
     } else {
       combatant.hpLostThisTurn = (combatant.hpLostThisTurn ?? 0) + lost;
     }

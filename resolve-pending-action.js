@@ -1279,6 +1279,28 @@ async function resolveOnePendingAction(encounter, p) {
               //   đã chốt ở Renegade: "Guard KHÔNG tính là trượt".
               // ⚠️ KHÔNG dùng `autoSideEffects`: applier chung áp cho MỌI target
               //   bất kể trúng hay trượt, tức là đúng cái hành vi vừa bị bác.
+              // ── BOOK OF THE BIRDS / DAWN OFFICE — hiệu ứng theo HIT ───────
+              // Đặt ở đây vì `finalDmg` và số hit đã chốt, và cùng chỗ với các
+              // hiệu ứng-theo-đòn khác (Payback) nên không lệch thứ tự.
+              let birdsNote = "";
+              if (finalDmg > 0) {
+                // Justitia "Judgement": mỗi đòn (Critical, M1) giảm Stamina địch
+                // bằng **1/3** lượng Dmg gây ra.
+                if (attacker.combatant?.weaponName === "Justitia") {
+                  const drain = Math.round((finalDmg / 3) * 1000) / 1000;
+                  const beforeS = target.currentStamina ?? 0;
+                  target.currentStamina = Math.max(0, beforeS - drain);
+                  birdsNote += ` ⚖️[Judgement: -${(beforeS - target.currentStamina).toFixed(2)} Stamina]`;
+                }
+                // Dawn Office - Salvador "Light of Daybreak": đánh địch ĐANG CÓ
+                // Burn ⇒ giảm 5 Stamina địch MỖI HIT.
+                if (attacker.combatant?.hasDawnSalvador && (target.burn ?? 0) > 0) {
+                  const hits = Math.max(1, t.preview?.dmgValues?.length ?? 1);
+                  const beforeS = target.currentStamina ?? 0;
+                  target.currentStamina = Math.max(0, beforeS - 5 * hits);
+                  birdsNote += ` 🌅[Light of Daybreak: -${(beforeS - target.currentStamina).toFixed(0)} Stamina (${hits} hit)]`;
+                }
+              }
               let paybackHitNote = "";
               if (p.isPaybackReflect && finalDmg > 0) {
                 target.fragile = Math.min(99, (target.fragile ?? 0) + 5);
@@ -1727,7 +1749,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${renegadeNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}${paybackHitNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${renegadeNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}${paybackHitNote}${birdsNote}`);
               if (!evadedCompletely) anyHitLandedThisAction = true; // gom kết quả từng target ra scope ngoài (xem khai báo)
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),

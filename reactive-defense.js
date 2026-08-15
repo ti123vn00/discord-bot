@@ -223,6 +223,10 @@ async function performEndTurn(channelId, userId, isAdmin) {
       const alive = Object.values(encounter.players ?? {});
       const auraOn = alive.some(c => c.hasDayOneAura && (c.currentHp ?? 0) > 0);
       for (const c of alive) c.dayOneAuraActive = auraOn;
+      // Lone Fixer (Dawn Office - Yuna) cần biết còn bao nhiêu người sống. Bơm vào
+      // đây — cùng chỗ, cùng nhịp với aura Day One, để hai thứ không lệch vòng.
+      const aliveCount = alive.filter(c => (c.currentHp ?? 0) > 0).length;
+      for (const c of alive) c._alivePlayerCount = aliveCount;
     }
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);

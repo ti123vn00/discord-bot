@@ -47,6 +47,13 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     // (bonusPct, đi qua saturateBonusPct đúng công thức của nó — KHÔNG PHẢI
     // saturateDR ở đây, vốn chỉ dành riêng cho REDUCTION thật của defender).
     reductionPct += (defender.protection ?? 0) * 5;
+    // ── R CORP / DAWN OFFICE keypage — vế DEFENDER (Fragaria 14/08) ─────────
+    // Maximum Crash (Rhino): >20 Charge ⇒ giảm 50% dmg NHẬN. Vế "+50% dmg gây ra"
+    // nằm ở computeAttackerPerkContext — cố ý tách hai chiều, gộp một chỗ là đúng
+    // bug Karmic (một hiệu ứng đi hai đường, mạnh gấp đôi ý định).
+    if (defender.hasRhinoRCorp && (defender.charge ?? 0) > 20) reductionPct += 50;
+    // Lone Fixer (Yuna): người sống sót cuối cùng ⇒ +15% Dmg Reduction.
+    if (defender.hasDawnYuna && defender.loneFixerActive) reductionPct += 15;
     reductionPct += (defender.chargeShieldStack ?? 0) * 10;
     // Contempt (xác nhận trực tiếp, ĐÍNH CHÍNH comment cũ SAI — code += 50 vẫn
     // ĐÚNG từ trước): "Contempt là debuff khiến cho kẻ dính phải sẽ bị giảm 50%

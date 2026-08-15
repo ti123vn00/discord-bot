@@ -199,6 +199,21 @@ module.exports = function ({ hasPerk, applyStatusMultiplierToDmgStr, KARMIC_MAX 
     // (Fragaria đính chính: "cái cơ bản của Manifested E.G.O là điểm chung của
     // toàn bộ Manifested E.G.O"). Passive riêng của từng E.G.O CỘNG DỒN lên nền
     // này, KHÔNG ghi đè.
+    // ── R CORP / DAWN OFFICE keypage (Fragaria 14/08) ──────────────────────
+    // Maximum Crash (Rhino): >20 Charge ⇒ +50% Dmg gây ra. Vế "giảm 50% dmg nhận"
+    // là REDUCTION của defender ⇒ nằm ở computeDefenderDmgReduction, KHÔNG ở đây
+    // (trộn hai chiều vào một chỗ là đúng bug Karmic đã dính).
+    if (attacker.hasRhinoRCorp && (attacker.charge ?? 0) > 20) bonusPct += 50;
+    // Lone Fixer (Yuna): khi là NGƯỜI SỐNG SÓT CUỐI CÙNG ⇒ +50% Dmg.
+    // Vế "+15% Dmg Reduction" cũng thuộc defender ⇒ để bên kia.
+    if (attacker.hasDawnYuna && attacker.loneFixerActive) bonusPct += 50;
+    // Salvador: dưới 50% HP và skill NÀY gây Burn ⇒ +15% Dmg.
+    if (attacker.hasDawnSalvador && (attacker.currentHp ?? 0) < (attacker.maxHp ?? 1) * 0.5
+        // ⚠️ KHÔNG dùng `\bBurn\b`: trong dmgStr thật (`100B+3Burn`) ranh giới từ
+        // nằm giữa `3` và `B` nên `\b` KHÔNG khớp — test bắt được (0 → 0).
+        && /Burn/i.test(String(dmgStr ?? ""))) {
+      bonusPct += 15;
+    }
     if (attacker.manifestedEGO) bonusPct += 30;
     // "The Strongest" (Red Mist) — +100% CỘNG THÊM ⇒ tổng 130% khi Manifest.
     if (attacker.theStrongestActive) bonusPct += 100;

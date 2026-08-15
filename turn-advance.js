@@ -44,7 +44,14 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     if ((combatant.burn ?? 0) > 0) {
       // Sizzling Wound (50-Status Nhóm 2, xác nhận trực tiếp): "+50% Dmg từ Burn
       // và Bleed" — nhân trực tiếp vào dmg Burn thật gây ra.
-      const burnDmg = combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1) * (combatant.burningSensation ? 3 : 1);
+      // ── DAWN OFFICE: giảm một nửa Dmg từ Burn (Fragaria 14/08) ────────────
+      // Yuna: khi dưới **75%** HP. Salvador: khi dưới **50%** HP.
+      // KHÔNG stack (mặc một outfit tại một thời điểm), nhưng viết dạng cờ chung
+      // để sau này thêm nguồn khác không phải sửa công thức.
+      const hpPct = (combatant.currentHp ?? 0) / Math.max(1, combatant.maxHp ?? 1);
+      const dawnBurnHalf = (combatant.hasDawnYuna && hpPct < 0.75)
+        || (combatant.hasDawnSalvador && hpPct < 0.5);
+      const burnDmg = (dawnBurnHalf ? 0.5 : 1) * combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1) * (combatant.burningSensation ? 3 : 1);
       // ⚠️ KHÔNG nhân 1.5 lần nữa ở đây — `burnDmg` NGAY TRÊN đã có
       // `(combatant.sizzlingWound ? 1.5 : 1)`. Sizzling Wound vốn ĐÃ tồn tại
       // trong repo (cờ `sizzlingWound`, nối sẵn ở turn-advance + 2 chỗ Bleed +
@@ -705,6 +712,42 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
       }
     }
     // "Hana Association" — reset HP mất trong turn cùng lúc với diceUp.
+    // ── R CORP: cấp buff đã hẹn "ở TURN SAU" + reset bộ đếm proc ─────────────
+    // Cấp Ở ĐÂY (cuối turn, ngay trước khi sang turn mới) nên buff có hiệu lực
+    // đúng turn kế tiếp. Đọc-rồi-xoá để không cấp lặp.
+    {
+      const q = combatant.rcorpPendingNextTurn;
+      if (q) {
+        if (q.protection > 0) {
+          combatant.protection = Math.min(20, (combatant.protection ?? 0) + q.protection);
+          combatant.protectionTurnsLeft = 2;
+        }
+        if (q.haste > 0) combatant.haste = Math.min(20, (combatant.haste ?? 0) + q.haste);
+        if (q.diceUp > 0) combatant.diceUp = (combatant.diceUp ?? 0) + q.diceUp;
+        combatant.rcorpPendingNextTurn = null;
+      }
+      combatant.rcorpProcsThisTurn = 0;
+    }
+    // ── Reindeer "Survivor" (Fragaria 14/08) ────────────────────────────────
+    // *"Mỗi lần bị Stagger, turn sau nhận 2 Dice Up và 2 Protection; TĂNG DẦN theo
+    //  số lần bị Stagger (lần 2: 4 và 4, lần 3: 6 và 6…) [tối đa 5 lần]."*
+    // ⇒ lần thứ N cho N×2 mỗi loại, đếm tối đa 5 LẦN (lần 6 trở đi vẫn cho như
+    //   lần 5, không tăng nữa).
+    if (combatant.hasReindeerRCorp && combatant.staggered && !combatant.survivorCountedThisStagger) {
+      combatant.survivorCountedThisStagger = true;
+      combatant.survivorStaggerCount = Math.min(5, (combatant.survivorStaggerCount ?? 0) + 1);
+      const amt = combatant.survivorStaggerCount * 2;
+      combatant.diceUp = (combatant.diceUp ?? 0) + amt;
+      combatant.protection = Math.min(20, (combatant.protection ?? 0) + amt);
+      combatant.protectionTurnsLeft = 2;
+    }
+    if (!combatant.staggered) combatant.survivorCountedThisStagger = false;
+    // ── Lone Fixer (Yuna): "khi chỉ còn bản thân / người sống sót cuối cùng" ──
+    // Tính LẠI mỗi turn thay vì set một lần — đồng đội hồi sinh thì cờ phải tắt.
+    // `_alivePlayerCount` do performEndTurn bơm vào (xem reactive-defense.js).
+    if (combatant.hasDawnYuna) {
+      combatant.loneFixerActive = (combatant._alivePlayerCount ?? 0) === 1 && (combatant.currentHp ?? 0) > 0;
+    }
     combatant.hpLostThisTurn = 0;
     combatant.diceDown = 0;
     // Smoke: "sau mỗi 1 turn sẽ mất 1 stack" — decay -1 (KHÔNG reset thẳng về 0
