@@ -21,7 +21,7 @@
 const MANG_MAX_LEVEL = 5;
 const SHIN_MAX_LEVEL = 50;
 
-module.exports = function ({ isPermanentInjury, hasEgoMechanic, applyMimicSynchronization, applyMimicryForm, MIMICRY_SYNC_FORMS, healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
+module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMechanic, applyMimicSynchronization, applyMimicryForm, MIMICRY_SYNC_FORMS, healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, hasShinAccess, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES }) {
 
   async function performGuardEvade(channelId, userId, isAdmin, type, enemyKeyRaw = "", attackerKeyRaw = "", hitsRaw = "") {
     let result;
@@ -274,8 +274,8 @@ module.exports = function ({ isPermanentInjury, hasEgoMechanic, applyMimicSynchr
         : "";
       const cappedNote = mangLevel >= MANG_MAX_LEVEL ? ` *(đã ở cap)*` : "";
       result =
-        `<:Shin:1528452250861699215> **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
-        `Mang Lvl ${mangLevel}/${MANG_MAX_LEVEL}${cappedNote}: +${mangLevel * 10}% Dmg, +${mangLevel} Dice Up, +${mangLevel} Clash Power Up, gây True Dmg (M1+skill turn này).`;
+        `<:Fix_Shin:1507591140180754588> **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
+        `Mang Lvl ${mangLevel}/${MANG_MAX_LEVEL}${cappedNote}: +${mangLevel * MANG_DMG_PCT_PER_LEVEL}% Dmg, +${mangLevel} Dice Up, +${mangLevel} Clash Power Up, gây True Dmg (M1+skill turn này).`;
       appendActionLog(encounter, result);
       await saveEncounter(channelId, encounter);
     });
@@ -407,7 +407,7 @@ module.exports = function ({ isPermanentInjury, hasEgoMechanic, applyMimicSynchr
     data.MangLevel = data.MangLevel ?? 1;
     if (!data.ShinUnlock) {
       data.ShinUnlock = true;
-      return `<:Shin:1528452250861699215> **Fixer's Note** — đã MỞ KHOÁ Shin! Khởi điểm Shin Lvl ${data.ShinLevel}, Mang Lvl ${data.MangLevel}.`;
+      return `<:Fix_Shin:1507591140180754588> **Fixer's Note** — đã MỞ KHOÁ Shin! Khởi điểm Shin Lvl ${data.ShinLevel}, Mang Lvl ${data.MangLevel}.`;
     }
     const beforeShin = data.ShinLevel, beforeMang = data.MangLevel;
     data.ShinLevel = Math.min(SHIN_MAX_LEVEL, beforeShin + 10);
@@ -417,7 +417,7 @@ module.exports = function ({ isPermanentInjury, hasEgoMechanic, applyMimicSynchr
     else parts.push(`Shin Lvl đã ở cap ${SHIN_MAX_LEVEL}`);
     if (data.MangLevel > beforeMang) parts.push(`Mang Lvl ${beforeMang} → **${data.MangLevel}**`);
     else parts.push(`Mang Lvl đã ở cap ${MANG_MAX_LEVEL}`);
-    return `<:Shin:1528452250861699215> **Fixer's Note** — ${parts.join(", ")}.`;
+    return `<:Fix_Shin:1507591140180754588> **Fixer's Note** — ${parts.join(", ")}.`;
   }
 
   async function performUseItem(channelId, userId, itemNameRaw) {

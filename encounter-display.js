@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVEL_TABLE }) {
+module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVEL_TABLE }) {
 
   /** resolveCombatant — tra 1 "id" (key enemy HOẶC userId player) thành combatant
    *  thật + label hiển thị + loại ("enemy"|"player"). Dùng chung cho mọi nơi cần tra
@@ -181,8 +181,8 @@ module.exports = function ({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVE
     lines.push(emotionLine);
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) lines.push(`> ⚡ **Overcharged** — +${combatant.overchargedDiceUpBonus} Dice Up, +${combatant.overchargedDmgBonusPct}% Dmg — còn ${combatant.overchargedTurnsLeft} turn`);
     if ((combatant.breakTheDamsCdLeft ?? 0) > 0) lines.push(`> ⏳ Break the Dams CD — còn ${combatant.breakTheDamsCdLeft} turn`);
-    // Luồng ENCOUNTER → dùng <:Shin:1528452250861699215>, KHÔNG dùng Fix_Shin.
-    if (combatant.shinMangActive) lines.push(`> <:Shin:1528452250861699215><:Fix_Mang:1507591172770631822> **Shin/Mang active** — Shin Lvl ${combatant.shinLevel ?? 10}, Mang Lvl ${combatant.mangLevel ?? 1}/5: -0,2x Res bản thân, +${(combatant.mangLevel ?? 1) * 10}% Dmg, +${combatant.mangLevel ?? 1} Dice Up, +${combatant.mangLevel ?? 1} Clash Power Up, True Dmg (M1+skill, bỏ qua DR)`);
+    // Luồng ENCOUNTER → dùng <:Fix_Shin:1507591140180754588>, KHÔNG dùng Fix_Shin.
+    if (combatant.shinMangActive) lines.push(`> <:Fix_Shin:1507591140180754588><:Fix_Mang:1507591172770631822> **Shin/Mang active** — Shin Lvl ${combatant.shinLevel ?? 10}, Mang Lvl ${combatant.mangLevel ?? 1}/5: -0,2x Res bản thân, +${(combatant.mangLevel ?? 1) * MANG_DMG_PCT_PER_LEVEL}% Dmg, +${combatant.mangLevel ?? 1} Dice Up, +${combatant.mangLevel ?? 1} Clash Power Up, True Dmg (M1+skill, bỏ qua DR)`);
     if ((combatant.consumablesLoadout ?? []).length > 0) lines.push(`> 🎒 Item mang vào: ${combatant.consumablesLoadout.join(", ")} (${combatant.consumablesLoadout.length}/4)${combatant.usedItemThisTurn ? " — đã dùng 1 turn này" : ""}`);
     if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill` + (combatant.theStrongestActive ? ` · 🔥**The Strongest** +10 Dice Up, +100% Dmg, Max Dice, 50% DR` : ""));
     else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) lines.push(`> ⏳ Manifest E.G.O CD — còn ${combatant.manifestedEGOCooldownLeft} turn`);

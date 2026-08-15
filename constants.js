@@ -215,4 +215,9 @@ module.exports = {
   // status `diceup` trong encounter, chuyện khác hẳn với bậc dice của lệnh roll tay.
   // Số skill tối đa roll trong MỘT lệnh (Discord cho tối đa 10 embed/tin nhắn).
   SKILL_MAX_MULTI: 5,
+  // % Dmg Bonus mỗi cấp Mang. Fragaria 14/08: **1 lvl Mang = +30% Dmg Bonus**
+  // (trước là 10). Đặt thành hằng vì con số này từng hardcode ở 3 nơi (index.js
+  // ×2 tính toán + encounter-actions.js dòng hiển thị) — sửa thiếu một chỗ là số
+  // hiện ra lệch số thực tế mà không ai biết.
+  MANG_DMG_PCT_PER_LEVEL: 30,
 };

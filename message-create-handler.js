@@ -2973,6 +2973,26 @@ if (message.content.startsWith("-gacha")) {
         await withLock(encounterKey(encChannelId), async () => {
           const encounter = await getEncounter(encChannelId);
           if (!encounter) throw new Error("Channel này chưa có encounter nào. Dùng `-encounter start` để tạo.");
+          // ❗ CHẶN JOIN VÀO CONTRACT (Fragaria 14/08: *"Chặn encounter join ở
+          // contract. Tôi thấy 1 số người lợi dụng việc encounter join có thể join
+          // được vào contract mà hội đồng cũng như cheating 1 chút contract."*)
+          //
+          // Contract có `questMeta` — thành viên do Party Board duyệt (`memberIds`)
+          // và phần thưởng/điều kiện tính theo đúng danh sách đó. `-encounter join`
+          // đi CỬA SAU: nhét thêm người vào `encounter.players` mà KHÔNG qua Party
+          // Board ⇒ hội đồng đông hơn thiết kế, và người ngoài danh sách vẫn ảnh
+          // hưởng được kết cục trận.
+          //
+          // Chỉ chặn NGƯỜI NGOÀI danh sách. Người đã được duyệt vẫn `join` lại được
+          // để cập nhật trang bị TRƯỚC khi rollspeed — chặn cả họ là làm hỏng luồng
+          // chuẩn bị bình thường (và nhánh re-join sau rollspeed vẫn chặn như cũ ở
+          // ngay dưới).
+          if (encounter.questMeta) {
+            const approved = encounter.questMeta.memberIds ?? [];
+            if (!approved.includes(message.author.id)) {
+              throw new Error("Đây là **Contract** — không thể `-encounter join` vào. Hãy tham gia qua **Party Board** của contract để được duyệt.");
+            }
+          }
           const wasJoinedBefore = !!encounter.players[message.author.id];
           // GAP MỚI (xác nhận trực tiếp): "chặn -encounter join đối với những
           // người đã join rồi sau khi encounter đã bắt đầu thôi, những người

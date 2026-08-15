@@ -387,9 +387,10 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
     // option (bấm nữa chỉ phí 25 Sanity). `performShinMang` cũng chặn cùng điều
     // kiện — ẩn UI mà không chặn logic thì lệnh text vẫn lọt.
     if (hasShinAccess(combatant) && !combatant.shinRienActive) {
-      // Dropdown ENCOUNTER → emoji <:Shin:1528452250861699215>, KHÔNG phải
+      // Luật "hai bộ emoji Shin theo ngữ cảnh" ĐÃ BỎ (Fragaria 14/08) — toàn repo
+      // dùng Fix_Shin/Fix_Mang. ID cũ 1528452250861699215 KHÔNG dùng nữa. Trước là:
       // Fix_Shin (Fix_Shin chỉ dùng ở -balance và phần mô tả).
-      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1528452250861699215", name: "Shin" }));
+      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1507591140180754588", name: "Fix_Shin" }));
     }
     if ((combatant.emotionLevel ?? 0) >= 1) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("😈 Manifest E.G.O (-30 Sanity)").setValue("manifestego"));

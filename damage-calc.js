@@ -225,7 +225,7 @@ function calcMathCore(opts) {
   // "2+3Poise" thành hit giả "2 dmg +3% bonus Pierce"). Giờ khớp được CẢ 2, lấy bất
   // kỳ bên nào có giá trị.
   const damageRegex =
-    /([\d.]+)(?:x([\d.]+))?(?:\+([\d.]+(?:DT|DB)?)%?)?\s*(Dice)?([BPSbps])(?:x([\d.]+))?((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*TremorBurst|[+-]\d*Tremor|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
+    /([\d.]+)(?:x([\d.]+))?(?:\+((?:DT|DB)?[\d.]+(?:DT|DB)?)%?)?\s*(Dice)?([BPSbps])(?:x([\d.]+))?((?:\+\d*Sinking|\+\d*Rupture|[+-]\d*Poise|[+-]\d*Charge|[+-]\d*Burn|[+-]\d*Bleed|\+\d*TremorBurst|[+-]\d*Tremor|\+\d*Living|\+\d*Departed|\+Crit\d+)*)/gi;
   // sumSignedTag — tách riêng GAIN (tổng "+N<tag>") và CONSUME (tổng "-N<tag>", dạng
   // số dương) trong effectsStr của 1 hit — KHÔNG gộp net ngay ở đây, vì cần biết riêng
   // 2 phần để phát hiện "tiêu thụ không đủ" (VD: +2Poise-6Poise mà lúc áp dụng chỉ có
@@ -256,9 +256,15 @@ function calcMathCore(opts) {
     // nên mọi skill/GM đang gõ kiểu cũ KHÔNG đổi hành vi.
     // Cài bằng cách cho group 3 nuốt luôn hậu tố ("10DT") rồi tách trong JS —
     // KHÔNG thêm nhóm bắt mới, vì group 4..7 phía sau sẽ bị xô lệch chỉ số.
+    // ❗ NHẬN CẢ HAI THỨ TỰ (Fragaria 14/08: *"25+DT10%S không parse được ở -math"*).
+    // Cú pháp gốc là hậu tố (`+10DT%`), nhưng gõ tiền tố (`+DT10%`) là phản xạ rất
+    // tự nhiên — và bản cũ KHÔNG chỉ bỏ qua phần DT, nó làm CẢ DICE không khớp
+    // regex rồi **biến mất im lặng**: `-math Dmg: 25DiceB + 25+DT10%S` ra đúng 1 hit
+    // 25 dmg, người dùng không hề biết mình mất một dice.
+    // ⇒ Nay `DT`/`DB` đứng trước hay sau số đều hiểu như nhau.
     const extraRaw = match[3] ?? "";
-    const extraIsTaken = /DT$/i.test(extraRaw);
-    const extraPct = extraRaw ? (parseFloat(extraRaw) || 0) : 0;
+    const extraIsTaken = /DT/i.test(extraRaw);
+    const extraPct = extraRaw ? (parseFloat(extraRaw.replace(/^(?:DT|DB)/i, "")) || 0) : 0;
     const isDice = !!match[4];
     const dmgType = match[5] ? match[5].toUpperCase() : "B";
     const effectsStr = match[7] || "";

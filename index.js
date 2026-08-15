@@ -75,6 +75,7 @@ const {
   GRADE_MIN,
   SKILL_MAX_ROLLS,
   SKILL_MAX_MULTI,
+  MANG_DMG_PCT_PER_LEVEL,
   CONSUMABLE_ITEMS, isConsumableItem,
 } = require("./constants");
 const POISE_CRIT_BONUS_PER_STACK = 0.05;
@@ -1587,7 +1588,7 @@ async function resolveGmLinkedChannel(rawChannelId) {
   return mapped || rawChannelId;
 }
 
-const { resolveCombatant, resolveTargets, formatCombatantBlock, formatCombatantCompact } = require("./encounter-display")({ normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVEL_TABLE }); // ĐÃ TÁCH sang file riêng (encounter-display.js)
+const { resolveCombatant, resolveTargets, formatCombatantBlock, formatCombatantCompact } = require("./encounter-display")({ MANG_DMG_PCT_PER_LEVEL, normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVEL_TABLE }); // ĐÃ TÁCH sang file riêng (encounter-display.js)
 
 /** Action panel — 2 nút cho player bấm thay vì gõ lệnh text (Attack/Hit cần nhập
  *  công thức dmg + target nên mở Modal). Đã bỏ Guard/Evade/Parry (xem comment đầu
@@ -1812,7 +1813,7 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       const defReductionPct = computeDefenderDmgReduction(t.combatant, { isM1: true, attackerId: playerId });
       // Mang (Shin/Mang, đang active): True Dmg — Res target dưới 1x bị ép về 1x;
       // +10%/vòng Dmg M1+skill turn này.
-      const mangBonusPct = player.shinMangActive ? (player.mangLevel ?? 1) * 10 : 0;
+      const mangBonusPct = player.shinMangActive ? (player.mangLevel ?? 1) * MANG_DMG_PCT_PER_LEVEL : 0;
       // Eye Of Horus — "sát thương chuẩn" (xác nhận trực tiếp: "tức là sẽ luôn
       // được tính là 1x res khi tấn công kẻ địch, nếu res của chúng dưới 1x") —
       // CÙNG cơ chế "True Dmg" đã có sẵn cho Shin/Mang (trueDmgResStr — ép Res
@@ -2082,7 +2083,7 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
         ? perkCtx.dmgStrRewritten.replace(/([\d.]+)(?=(?:x[\d.]+)?(?:\+[\d.]+%?)?\s*(?:Dice)?[BPSbps])/gi, (m) => (parseFloat(m) * 3).toString())
         : perkCtx.dmgStrRewritten;
       const defReductionPctRaw = computeDefenderDmgReduction(t.combatant, { isM1: false, isMiddleSkill, attackerId: playerId });
-      const mangBonusPct = player.shinMangActive ? (player.mangLevel ?? 1) * 10 : 0;
+      const mangBonusPct = player.shinMangActive ? (player.mangLevel ?? 1) * MANG_DMG_PCT_PER_LEVEL : 0;
       // True Dmg bỏ qua Damage Reduction — xem comment đầy đủ ở nhánh M1.
       const defReductionPct = player.shinMangActive ? 0 : defReductionPctRaw;
       const haouRuptureCheck = !resStr && (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
@@ -2557,7 +2558,7 @@ const { buildEncounterActionPanel, buildMovesPanel, buildSpecialPanel, buildItem
   // lúc đó dòng 2420 đã chạy xong).
   parseSkillCost: (...a) => parseSkillCost(...a),
 }); // ĐÃ TÁCH sang file riêng (encounter-panels.js) — đặt SAU import skills.js để tránh TDZ (findSkill là const)
-const { performGuardEvade, performParry, performShinMang, performManifestEgo, performMimicryForm, performOvercharge, performFollowUp, performUseItem, applyFixersNote } = require("./encounter-actions")({ isPermanentInjury, hasEgoMechanic, applyMimicSynchronization, applyMimicryForm, MIMICRY_SYNC_FORMS, healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES, hasShinAccess }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
+const { performGuardEvade, performParry, performShinMang, performManifestEgo, performMimicryForm, performOvercharge, performFollowUp, performUseItem, applyFixersNote } = require("./encounter-actions")({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMechanic, applyMimicSynchronization, applyMimicryForm, MIMICRY_SYNC_FORMS, healHpCapped, withLock, encounterKey, getEncounter, saveEncounter, normalizeEnemyKey, hasPerk, getParryClashPenalty, checkStaggerPanic, appendActionLog, ENCOUNTER_SANITY_MAX, r, doPlayerHit, resolveCombatant, WEAPON_DEFENSE_HITS, findItem, getPlayerDataWithSlot, savePlayerData, restoreInjuryMaxHp, applyDeathPenalty, applyEmotionDelta, MINOR_INJURIES, hasShinAccess }); // ĐÃ TÁCH sang file riêng (encounter-actions.js) — doPlayerHit hoisted an toàn dù định nghĩa NẰM SAU (function declaration)
 const { findWeapon } = require("./weapon");
 
 /**

@@ -610,6 +610,16 @@ module.exports = function ({ applyBorrowedEyesCharges, clashDiceOf, attackerClas
    *  Trả `true` nếu có dùng page (để test/log biết), nhưng caller KHÔNG dừng.
    */
   async function runUtilityPages(channelId, mobKey) {
+   // ❗❗ TOÀN BỘ THÂN HÀM BỌC try/catch (Fragaria 14/08: *"Thỉnh thoảng Borrowed
+   // Eye làm cho encounter bị treo, AI không hành động gì nữa"*).
+   // GỐC: hàm này chạy ĐẦU `attemptOneMobAction`. `withLock` NÉM khi không lấy
+   // được lock sau số lần thử ("Đang xử lý lệnh khác…"), rất dễ xảy ra vì lượt AI
+   // hay trùng lúc người chơi đang resolve đòn. Lỗi ném ra thì `maybeRunAiTurn`
+   // bắt được, log rồi `return` — **không hành động VÀ cũng không `passMobTurn`**
+   // ⇒ encounter đứng im vĩnh viễn, đúng kiểu "thỉnh thoảng" mới dính.
+   // ⇒ Lớp lỗi 12: cơ chế PHỤ TRỢ hỏng KHÔNG được kéo theo đường chính. Page này
+   //   là buff phòng thủ; không dùng được thì mob cứ đánh bình thường.
+   try {
     const enc = await getEncounter(channelId);
     const mob = enc?.enemies?.[mobKey];
     if (!mob || mob.currentHp <= 0) return false;
@@ -619,6 +629,8 @@ module.exports = function ({ applyBorrowedEyesCharges, clashDiceOf, attackerClas
     if (rolledU.error) return false;
 
     let ok = true, note = "";
+    // `retries: 8` — lượt AI rất hay trùng lúc người chơi đang giữ lock encounter.
+    // Mặc định 3×200ms quá ngắn và sẽ ném, mà ném ở đây từng làm treo cả encounter.
     await withLock(encounterKey(channelId), async () => {
       const enc2 = await getEncounter(channelId);
       const mob2 = enc2?.enemies?.[mobKey];
@@ -635,7 +647,7 @@ module.exports = function ({ applyBorrowedEyesCharges, clashDiceOf, attackerClas
         note = applyBorrowedEyesCharges(mob2, rolledU.embed?.description, null).note;
       }
       await saveEncounter(channelId, enc2);
-    });
+    }, { retries: 8 });
     if (!ok) return false;
     // Gửi bằng cùng cách module này vẫn dùng. Lỗi gửi KHÔNG được kéo theo logic —
     // buff đã lưu rồi (lớp lỗi 12).
@@ -647,6 +659,11 @@ module.exports = function ({ applyBorrowedEyesCharges, clashDiceOf, attackerClas
       }).catch(() => {});
     }
     return true;
+   } catch (err) {
+    // KHÔNG ném tiếp — mob phải đánh được dù page phụ trợ hỏng.
+    log("error", "runUtilityPages", "system", err.message);
+    return false;
+   }
   }
 
   async function attemptOneMobAction(channelId, mobKey) {
