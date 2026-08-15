@@ -338,7 +338,7 @@ module.exports = function ({ applyBorrowedEyesCharges, clashDiceOf, attackerClas
         // xoá cờ). Lấy TRƯỚC khi ra khỏi lock để cờ không bị lượt sau ghi đè.
         // `finalizeReactiveChoice` đã lấy sẵn cờ BGM và save — chỉ việc nhận lại.
         postLockInfo = { resultText: finalized.resultText, channelId, isEnemyTarget: true, bgm: finalized.bgm };
-      });
+      }, { retries: 10 });
       if (postLockInfo) {
         const ch = await client.channels.fetch(postLockInfo.channelId).catch(() => null);
         if (ch) {

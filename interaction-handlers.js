@@ -3031,19 +3031,43 @@ client.on("interactionCreate", async (interaction) => {
           dmgStr: built.dmgStr, resStr: combatantResStr(markedResolved.combatant),
           poiseInit: me.poise, chargeInit: me.charge,
         });
-        applyHpLoss(markedResolved.combatant, preview.totalDmg);
-        // Status từ dmgStr (3 Bleed) — đòn này KHÔNG đi qua reactive defense
-        // (địch đang bị đánh dấu, không được phòng thủ), nên áp thẳng.
-        markedResolved.combatant.bleed = preview.bleedStacksAfter ?? markedResolved.combatant.bleed;
-        checkStaggerPanic(markedResolved.combatant);
+        // ❗ BUG ĐÃ SỬA (Fragaria 14/08: *"về You're Too Slow thì lần gây dmg được
+        // xuất hiện ở moves của nó có thể được guard, né, parry như thường"*).
+        // TRƯỚC ĐÂY: `applyHpLoss(...)` trừ THẲNG HP — mục tiêu không có bất kỳ cơ
+        // hội phòng thủ nào. Comment cũ ngay dưới còn tự khẳng định "không có phòng
+        // thủ" và lấy đó làm lý do áp thẳng cả Bleed.
+        // NAY: dựng `pendingAction` THẬT rồi để `drainAwaitingPrompts` gửi prompt —
+        // ĐÚNG cơ chế đã dựng cho Payback, không viết lại luồng phòng thủ mới.
+        // Bleed nằm trong `dmgStr` nên đi theo đường resolve bình thường: né trọn
+        // thì không dính, y như mọi đòn khác.
+        const ytsCalcOpts = {
+          dmgStr: built.dmgStr, resStr: combatantResStr(markedResolved.combatant),
+          poiseInit: me.poise, chargeInit: me.charge,
+        };
+        const ytsId = `yts-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        enc.pendingActions = enc.pendingActions ?? [];
+        enc.pendingActions.push({
+          id: ytsId, kind: "hit", skillKey: "you're too slow",
+          attackerId: interaction.user.id, attackerType: "player",
+          targets: [{
+            targetId: me.youreTooSlowMark.markedTargetId, targetType: markedResolved.type,
+            calcOpts: ytsCalcOpts, preview, defReductionPct: 0,
+          }],
+          dmgStr: built.dmgStr, isM1: false, defenseBypass: {}, tags: "",
+          awaitingPrompt: true,
+          cooldownTurns: 0, emotionDelta: 0, emotionPlus: 0, lightCost: 0, sanityCost: 0, staminaCost: 0,
+        });
         // CD bắt đầu TỪ ĐÂY (không phải lúc counter).
         me.skillCooldowns = me.skillCooldowns ?? {};
         me.skillCooldowns["you're too slow"] = parseSkillCooldownTurns(ytsSkill.cd) + 1;
         me.youreTooSlowMark = null;
-        ytsText = `⚡ **You're Too Slow** — đâm ${markedResolved.label} **-${preview.totalDmg.toFixed(3)} HP** (còn ${markedResolved.combatant.currentHp.toFixed(1)}). Skill vào cooldown ${parseSkillCooldownTurns(ytsSkill.cd)} turn.`;
+        ytsText = `⚡ **You're Too Slow** — đâm ${markedResolved.label} **${preview.totalDmg.toFixed(3)}** Dmg *(mục tiêu có thể Guard/Evade/Parry)*. Skill vào cooldown ${parseSkillCooldownTurns(ytsSkill.cd)} turn.`;
         appendActionLog(enc, ytsText);
         await saveEncounter(channelId, enc);
       });
+      // Gửi prompt phòng thủ SAU khi đã save (drain đọc encounter TƯƠI từ Redis).
+      // Fire-and-forget vì drain tự lấy lock riêng, mà `withLock` KHÔNG re-entrant.
+      drainAwaitingPrompts(channelId).catch(() => {});
       const encAfterYts = await getEncounter(channelId);
       if (encAfterYts) announceCurrentTurn(channelId, encAfterYts, true).catch(() => {});
       return interaction.update({ content: "", embeds: [{ title: "⚡ You're Too Slow", description: ytsText, color: 0x1abc9c }], components: [] }).catch(() => {});

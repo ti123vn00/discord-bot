@@ -1828,11 +1828,18 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       // MỘT hiệu ứng, tắt vế này mà quên vế kia là True Dmg nửa vời.
       const mangTrueDmg = player.shinMangActive && !t.combatant.shinMangActive;
       const useTrueDmg = mangTrueDmg || isEyeOfHorus;
+      // ❗ MANG GỠ BỚT RES-DEBUFF CỦA SHIN ĐỊCH (Fragaria 14/08, rework).
+      // *"Trường hợp này CHỈ xảy ra khi cả hai đều có Shin/Mang tương tác với
+      //  nhau; còn bình thường thì Mang vẫn luôn giữ True Dmg."*
+      // ⇒ Chỉ truyền khi CẢ HAI đang bật Shin. Địch không bật Shin thì Mang giữ
+      //   nguyên True Dmg (đã xử ở `mangTrueDmg`) và không có gì để gỡ.
+      const resOpts = (player.shinMangActive && t.combatant.shinMangActive)
+        ? { counterMangLevel: player.mangLevel ?? 1 } : {};
       // Haou Rupture (xác nhận trực tiếp) — ưu tiên CAO NHẤT (floor 1.5x mạnh hơn
       // True Dmg 1x thường) — chỉ dùng khi THỰC SỰ có tác dụng (ít nhất 1 loại Res
       // đang <1.5x), lưu `applied` để commit handler biết có tiêu 1 stack không.
       const haouRuptureCheck = (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
-      const finalResStr = haouRuptureCheck?.applied ? haouRuptureCheck.resStr : (useTrueDmg ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant));
+      const finalResStr = haouRuptureCheck?.applied ? haouRuptureCheck.resStr : (useTrueDmg ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant, resOpts));
       const calcOpts = {
         dmgStr: perkCtx.dmgStrRewritten,
         resStr: addFlatRes(finalResStr, perkCtx.resBonusFlat),
@@ -2095,10 +2102,13 @@ async function doPlayerHit(channelId, playerId, playerMention, dmgStr, targetStr
       // ⚠️ CHỈ True Dmg bị triệt tiêu. `mangBonusPct` (+30%/lvl) VẪN giữ — Fragaria
       // chỉ nói "True Dmg của Mang không hoạt động", không nói mất luôn Dmg Bonus.
       const mangTrueDmg = player.shinMangActive && !t.combatant.shinMangActive;
+      // Mang gỡ bớt Res-debuff của Shin địch — xem comment đầy đủ ở nhánh M1.
+      const resOptsSkill = (player.shinMangActive && t.combatant.shinMangActive)
+        ? { counterMangLevel: player.mangLevel ?? 1 } : {};
       // True Dmg bỏ qua Damage Reduction — xem comment đầy đủ ở nhánh M1.
       const defReductionPct = mangTrueDmg ? 0 : defReductionPctRaw;
       const haouRuptureCheck = !resStr && (t.combatant.haouRupture ?? 0) > 0 ? haouRuptureResStr(t.combatant) : null;
-      const finalResStr = resStr || (haouRuptureCheck?.applied ? haouRuptureCheck.resStr : (mangTrueDmg ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant)));
+      const finalResStr = resStr || (haouRuptureCheck?.applied ? haouRuptureCheck.resStr : (mangTrueDmg ? trueDmgResStr(t.combatant) : combatantResStr(t.combatant, resOptsSkill)));
       const calcOpts = {
         dmgStr: effectiveDmgStr,
         // drStr (DR gõ tay bởi GM) cũng bị True Dmg vô hiệu hoá — "bỏ qua Dmg

@@ -708,11 +708,17 @@ async function commitAutoSkippedTargets(channelId, pendingId) {
             // quyết (tag phòng thủ có 2 CẤP: header và từng dòng dice).
             if (t.perHitBypass?.[gi]?.blockEvade) continue;
             const hitsInGroup = Math.min(bHitsPerCharge, bHitCount - gi * bHitsPerCharge);
-            // Né NỬA nhóm là vô nghĩa — một nhóm là MỘT quyết định phòng thủ.
-            // Không đủ charge cho trọn nhóm thì DỪNG, và GIỮ LẠI charge thừa cho
-            // đòn sau (charge Borrowed Eyes không expire).
-            if ((tr.combatant.borrowedEyeCharges ?? 0) < hitsInGroup) break;
-            tr.combatant.borrowedEyeCharges -= hitsInGroup;
+            // ❗ BUG ĐÃ SỬA (Fragaria 14/08, kèm ảnh: *"Borrowed Eye chỉ né được 3
+            // group hit"* — 9 charge mà chỉ phủ 2 nhóm).
+            // GỐC: tôi tiêu charge theo SỐ HIT (`-= hitsInGroup`). Nhưng đơn vị
+            // charge né của repo là **NHÓM**, không phải hit — Evade thường tiêu
+            // `ceil(số hit đã chọn / hitsPerCharge)`, tức ĐÚNG 1 charge mỗi nhóm
+            // (resolve-pending-action ~dòng 492). Vũ khí light 4 hit/nhóm nên
+            // 9 charge ra 2 nhóm thay vì 9.
+            // ⇒ Lớp lỗi: dùng SAI ĐƠN VỊ so với hệ có sẵn. Passive ghi "9 charge
+            //   né" thì phải né được 9 lần phòng thủ, y như 9 charge Evade thường.
+            if ((tr.combatant.borrowedEyeCharges ?? 0) < 1) break;
+            tr.combatant.borrowedEyeCharges -= 1;
             const idxs = [];
             for (let i2 = 0; i2 < hitsInGroup; i2++) idxs.push(gi * bHitsPerCharge + i2 + 1);
             tr.combatant.evadeHitSelections = tr.combatant.evadeHitSelections ?? [];
@@ -806,6 +812,9 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
     // AOE nhiều target — MỖI target 1 prompt riêng (mỗi người tự quyết định
     // phòng thủ của mình, độc lập với người khác).
     p.reactedTargetIds = p.reactedTargetIds ?? [];
+    // Hàng đợi target do AI điều khiển — chạy TUẦN TỰ sau vòng lặp (xem lý do
+    // ở nhánh `target.aiControlled` bên dưới).
+    const aiDefenseQueue = [];
     for (const t of p.targets) {
       const targetResolved = resolveCombatant(encounter, t.targetId);
       if (!targetResolved) continue;
@@ -845,7 +854,18 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       // bộ nhóm hit còn lại cho target này trong 1 lần, độc lập với vòng lặp
       // đang chạy ở đây (không cần đợi round-trip Discord như người thật).
       if (target.aiControlled) {
-        aiHooks.resolveAiDefenseForTarget(channelId, pendingId, t.targetId).catch(() => {});
+        // ❗❗ BUG ĐÃ SỬA (Fragaria 14/08, kèm ảnh: *"đòn AOE như degraded shockwave
+        // khiến AI kẹt encounter ở contract rescue nơi có quá nhiều rats"*).
+        // GỐC: gọi FIRE-AND-FORGET ngay trong vòng lặp ⇒ với đòn AOE 9 con Rats là
+        // **9 lời gọi CHẠY SONG SONG**, mà hàm đó lấy `withLock(encounterKey)` trên
+        // CÙNG một encounter. `withLock` mặc định chỉ thử 3×200ms rồi NÉM; phần lớn
+        // lời gọi ném, bị `.catch(() => {})` nuốt sạch ⇒ những target đó KHÔNG BAO
+        // GIỜ resolve ⇒ pendingAction kẹt vĩnh viễn, phải Force-confirm khẩn cấp.
+        // Càng nhiều target càng chắc chắn hỏng — đúng "quá nhiều rats".
+        // ⇒ Gom lại, chạy TUẦN TỰ sau vòng lặp: chúng sửa cùng một encounter nên
+        //   vốn KHÔNG song song được. Vẫn fire-and-forget CẢ CHUỖI để không chặn
+        //   việc gửi prompt cho người chơi thật.
+        aiDefenseQueue.push(t.targetId);
         continue;
       }
       const hitCount = Math.max(1, t.preview?.dmgValues?.length ?? 1);
@@ -1239,6 +1259,17 @@ async function sendReactiveDefensePrompt(channelId, pendingId) {
       await sendYourShieldPrompts(encounter, channelId, channel, p, t, attacker);
       continue;
 
+    }
+
+    // Chạy TUẦN TỰ các target do AI điều khiển — xem lý do đầy đủ ở nhánh
+    // `target.aiControlled` phía trên (AOE nhiều mob làm kẹt encounter).
+    // Fire-and-forget CẢ CHUỖI, không phải từng cái.
+    if (aiDefenseQueue.length > 0) {
+      (async () => {
+        for (const tid of aiDefenseQueue) {
+          await aiHooks.resolveAiDefenseForTarget(channelId, pendingId, tid).catch(() => {});
+        }
+      })().catch(() => {});
     }
     // Lưới an toàn: nếu tới đây mà MỌI target đã được đánh dấu (VD nhánh AI
     // resolveAiDefenseForTarget vừa đánh dấu xong trong lúc ta đang gửi prompt),

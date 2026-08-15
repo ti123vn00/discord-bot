@@ -742,7 +742,7 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     return Math.round(Math.min(RES_MAX, Math.max(RES_MIN, n)) * 10) / 10;
   }
 
-  function combatantResStr(combatant) {
+  function combatantResStr(combatant, opts = {}) {
     // Fragaria: "theo logic thì Panic sẽ hoạt động NHƯ STAGGER nhưng KHÔNG giảm
     // Res và chỉ kéo dài 1 turn (thay vì 2 + 1 từ Choáng)."
     // ⇒ Panic KHÔNG chạm vào Res ở đây; nó chỉ chặn hành động (xem nơi kiểm
@@ -757,7 +757,17 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     if (combatant.shinMangActive) {
       const shinLevel = combatant.shinLevel ?? 10;
       const extraReduction = hasPerk(combatant, "Defensive Light") ? Math.floor(shinLevel / 10) * 0.1 : 0;
-      const totalReduction = 0.2 + extraReduction;
+      // ❗ MANG TRIỆT TIÊU BỚT RES-DEBUFF CỦA SHIN (Fragaria 14/08, rework).
+      // *"Nếu bản thân có Lvl 1 Mang và kẻ địch có Shin lvl 50 + Shin skill tree
+      //  (giảm 0,7x all res) thì Mang làm giảm bớt nó đi còn 0,6x. Nếu bản thân có
+      //  Lvl 3 Mang thì còn 0,4x."*
+      // ⇒ Mang Lvl N triệt tiêu ĐÚNG N × 0,1. (Ví dụ Lvl 5 → 0,2x ở lượt trước
+      //   cũng khớp: 0,7 − 0,5 = 0,2.)
+      // Đây là "triệt tiêu LẪN NHAU": Mang của người đánh làm địch bớt yếu đi, tức
+      // người đánh tự giảm sát thương của mình — nên KHÔNG bao giờ đẩy mức trừ
+      // xuống ÂM (Math.max 0), Mang cao không biến thành buff Res cho địch.
+      const mangCancel = Math.max(0, (opts.counterMangLevel ?? 0)) * 0.1;
+      const totalReduction = Math.max(0, 0.2 + extraReduction - mangCancel);
       // round1 — làm tròn 1 chữ số thập phân. BẮT BUỘC: phép trừ số thực JS cho ra
       // rác kiểu `1 - 0.7 = 0.30000000000000004`, lọt thẳng vào resStr rồi hiển thị
       // cho người chơi (và phải parse lại ở trueDmgResStr/damage-calc).
