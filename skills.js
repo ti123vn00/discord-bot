@@ -116,6 +116,43 @@ function stopForceMaxDice() {
 // có thể đẩy kết quả VƯỢT max bình thường (đúng bản chất buff "tăng dice").
 let diceModifierActive = 0;
 
+// ── SANITY ẢNH HƯỞNG DICE ROLL (Fragaria 14/08) ──────────────────────────────
+// *"Mỗi 1 Sanity dương so với mức 0 thì có thêm 1% sẽ roll ra dice max dễ hơn, và
+//  ngược lại nếu âm so với mức 0 thì sẽ dễ ra min dice hơn."*
+// *"Ví dụ range 1-10: có 45 Sanity thì 45% dễ roll ra 10 hơn; -45 Sanity thì 45%
+//  dễ roll ra min dice là 1 hơn."*
+// *"Hãy làm nó cho cả lệnh -rolldice và -skill đều xài được."*
+//
+// CÁCH LÀM: |Sanity|% cơ hội roll THẲNG ra max (Sanity dương) hoặc min (Sanity âm);
+// phần còn lại roll đều như cũ. Nghĩa là 45 Sanity = 45% chắc chắn ra max, 55% roll
+// bình thường (vẫn có thể ra max) — nên xác suất ra max THỰC TẾ cao hơn 45%, đúng
+// chữ "dễ ra max HƠN" chứ không phải "đúng 45% ra max".
+//
+// ⚠️ Đặt trong `r()` — điểm chặn DUY NHẤT của mọi lần roll dice trong repo. Vá ở
+//    từng lệnh là `-rolldice` và `-skill` lệch nhau ngay (lớp lỗi 8).
+// ⚠️ KHÔNG đụng Emotion Coin: nó đọc `rawResult` (trước Dice Up/Down) và vẫn tính
+//    đúng vì bias chỉ đổi GIÁ TRỊ roll, không đổi min/max.
+let sanityBiasActive = 0;
+
+/** setSanityBias — Sanity hiện tại của người roll (âm/dương so với mốc 0). */
+function setSanityBias(sanity) {
+  sanityBiasActive = Number.isFinite(sanity) ? sanity : 0;
+}
+
+function clearSanityBias() {
+  sanityBiasActive = 0;
+}
+
+/** Trả về giá trị dice đã áp bias, hoặc null nếu bias không kích. */
+function applySanityBias(min, max) {
+  if (!sanityBiasActive || min === max) return null;
+  // Trần 100% — |Sanity| > 100 thì luôn kích (hiện ENCOUNTER_SANITY_MAX = 45 nên
+  // chưa chạm, nhưng không để số > 100 làm hỏng phép so sánh).
+  const chance = Math.min(100, Math.abs(sanityBiasActive));
+  if (Math.random() * 100 >= chance) return null;
+  return sanityBiasActive > 0 ? max : min;
+}
+
 function setDiceModifier(delta) {
   diceModifierActive = delta;
 }
@@ -168,7 +205,12 @@ function r(min, max) {
   } else if (forceMaxDiceActive) {
     result = Math.max(1, max + diceModifierActive);
   } else {
-    result = Math.max(1, Math.floor(Math.random() * (max - min + 1)) + min + diceModifierActive);
+    // Sanity bias — xem comment ở `setSanityBias`. Áp TRƯỚC khi cộng Dice Up/Down
+    // để bias tác động lên DICE GỐC (đúng "dễ ra max/min của dice đó hơn"), rồi
+    // Dice Up/Down vẫn cộng thêm lên trên như mọi lần roll khác.
+    const biased = applySanityBias(min, max);
+    const raw = biased !== null ? biased : Math.floor(Math.random() * (max - min + 1)) + min;
+    result = Math.max(1, raw + diceModifierActive);
   }
   if (emotionTracker) {
     // Emotion Coin tính theo kết quả GỐC (trước Dice Up/Down) để giữ đúng ý nghĩa
@@ -6567,4 +6609,5 @@ function resolveSkillKey(raw) {
 
 module.exports = {
   extractDmgTakenGrants,
+  setSanityBias, clearSanityBias,
   applyIndulgenceToDmgStr, SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, startForceMaxDice, stopForceMaxDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };

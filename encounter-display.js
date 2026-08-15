@@ -17,7 +17,7 @@
 //
 // COPY NGUYÊN VĂN từ index.js (không sửa 1 dòng logic nào).
 
-module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVEL_TABLE }) {
+module.exports = function ({ combatantResStr, MANG_DMG_PCT_PER_LEVEL, normalizeEnemyKey, getMaxEmotionLevel, EMOTION_LEVEL_TABLE }) {
 
   /** resolveCombatant — tra 1 "id" (key enemy HOẶC userId player) thành combatant
    *  thật + label hiển thị + loại ("enemy"|"player"). Dùng chung cho mọi nơi cần tra
@@ -131,17 +131,26 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, normalizeEnemyKey, getMaxEm
     const staminaFilled = Math.round(staminaPct * 10);
     const staminaBar = "🟨".repeat(staminaFilled) + "⬛".repeat(10 - staminaFilled);
     const r = combatant.resistance;
+    // ❗ BUG ĐÃ SỬA (user báo: *"0,2x Res của Memories: Compassion chưa hoạt động,
+    // có thể A Day One of My New Life cũng chưa hoạt động luôn"*).
+    // GỐC: dòng này **CHÉP LẠI** cách tính Res thay vì gọi `combatantResStr`. Bản
+    // chép chỉ biết Stagger và Shin — KHÔNG biết `compassionResPenalty` (-0,2x) và
+    // `dayOneAuraActive` (-0,1x). Res THẬT dùng trong tính dmg vẫn đúng (damage-calc
+    // gọi `combatantResStr`), nhưng `-encounter status` hiện số CŨ ⇒ người chơi
+    // tưởng hai accessory không chạy.
+    // ⇒ Lớp lỗi 8: chép logic thay vì gọi hàm chung. Nay dùng ĐÚNG một nguồn.
     const resLine = combatant.staggered
       ? `2x/2x/2x (STAGGER, gốc ${r.B}xB ${r.P}xP ${r.S}xS)`
-      : combatant.shinMangActive
-        ? (() => {
-          // round1 — phép trừ số thực JS cho ra rác kiểu 1.1 - 0.2 =
-          // 0.9000000000000001, lọt thẳng ra màn hình người chơi (Fragaria gửi
-          // ảnh). combatantResStr đã làm tròn từ lâu; CHỖ NÀY thì quên.
-          const round1 = (v) => Math.round(Math.max(0, v) * 10) / 10;
-          return `${round1(r.B - 0.2)}xB ${round1(r.P - 0.2)}xP ${round1(r.S - 0.2)}xS (gốc ${r.B}xB ${r.P}xP ${r.S}xS, đang Shin -0,2x)`;
-        })()
-        : `${r.B}xB ${r.P}xP ${r.S}xS`;
+      : (() => {
+        const eff = combatantResStr(combatant);
+        const raw = `${r.B}xB ${r.P}xP ${r.S}xS`;
+        if (eff === raw) return raw;
+        const why = [];
+        if (combatant.shinMangActive) why.push("đang Shin");
+        if (combatant.compassionResPenalty) why.push("Memories: Compassion");
+        if (combatant.dayOneAuraActive) why.push("Day One of My New Life");
+        return `${eff} (gốc ${raw}${why.length ? `, ${why.join(" + ")}` : ""})`;
+      })();
     const lines = [
       `**${label}**${combatant.currentHp <= 0 ? " — ĐÃ HẠ! 💀" : ""}`,
       `${hpBar} **${Math.max(0, Math.round(combatant.currentHp * 100) / 100)}/${combatant.maxHp}** HP`,

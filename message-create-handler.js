@@ -52,7 +52,7 @@ function bgmAttachment(AttachmentBuilder, name) {
   return [];
 }
 
-module.exports = function ({ SKILL_MAX_MULTI, saturateDmgTakenPct, isPermanentInjury, describeEncounterBgm, PAID_HEAL_PER_CYCLE, SEVERE_INJURIES, CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
+module.exports = function ({ setSanityBias, clearSanityBias, SKILL_MAX_MULTI, saturateDmgTakenPct, isPermanentInjury, describeEncounterBgm, PAID_HEAL_PER_CYCLE, SEVERE_INJURIES, CADUCEUS_DICE, CADUCEUS_CRIT_TIERS, CADUCEUS_STAMINA_PER_CHARGE, SIZZLING_WOUND, validateAccessoryEquip, resolveEncounterBgm, findManifestedEgo, MANIFESTED_EGOS, findOwnedPageKey, findSingularity, shopWeeklyStockMap, mostRecentHpResetBoundaryUtc, ADMIN_IDS, AMMO_MAX, ITEM_STACK_MAX, applyFixersNote, buildShopEmbed, buildShopComponents, ActionRowBuilder, AttachmentBuilder, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CRAFT_RECIPES, CONTRACTS, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_NAME_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, EXP_MAX, GACHA_BANNERS, GACHA_COST_PER_PULL, GACHA_PITY_MAX, GACHA_RATES, GRADE_MAX, GRADE_MIN, MAX_PARTY_SIZE, partySizeLimitFor, MAX_PROFILES, MINOR_INJURIES, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, POISE_MAX, PRESCRIPT_TABLE, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, UNIVERSALLY_KNOWN_WEAPONS, VALID_BOOKS, VALID_ITEMS, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDeathPenalty, applyEmotionDelta, applySanityGain, applyStatusEntries, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildJoinedCombatant, buildGiveConfirmRow, cancelPartyBoard, createPartyBoard, joinPartyBoard, kickFromPartyBoard, leavePartyBoard, startPartyBoard, transferHost, buildGivePreviewLines, buildPendingListText, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcExpForGrade, calcGrade, calcInjuryMaxHpPenalty, calcMath, calcSkillTreePointsEarned, checkStaggerPanic, claimDailyLogin, clampExpWithLunacy, client, createCombatant, createRtparryToken, deleteEncounter, determineTurnOrder, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeReadBookChoose, executeRemove, extractDefenseBypassTags, fetchInventoryReply, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSfx, findSkill, findWeaponAnywhere, formatEmotionSummary, formatNumber, getActionLogIcon, getActiveProfileSlot, getEffectiveCurrentHp, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, getUserActiveEncounterChannelChecked, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isEgoSkill, isOnCooldown, isValidBookChoice, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseBatchEntries, parseKeyValues, parseOpenCount, performEndTurn, performGachaPull, performUseItem, pickRandomBgm, r, redis, registerPendingGive, resolveCombatant, resolveEquipTarget, resolveGmLinkedChannel, resolveProfileLabel, restoreInjuryMaxHp, runParryRolls, saturateBonusPct, saturateDR, saveEncounter, savePlayerData, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, clearUserActiveEncounterChannel, startEmotionTracking, stopEmotionTracking, validateAndRerollPrescript, validateMathInputs, webParrySessions, withLock }) {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -85,7 +85,18 @@ client.on("messageCreate", async (message) => {
     function parseDiceEntry(raw) {
       const trimmed = raw.trim();
       // Match: <min>-<max> x<times> hoặc <min>-<max>
-      const match = trimmed.match(/^(\d+)-(\d+)(?:\s+x(\d+))?$/i);
+      // ── SANITY (Fragaria 14/08) ────────────────────────────────────────
+      // `-rolldice 6-12 sanity 15` · `-rolldice 6-12 sanity -10, 2-15 sanity 15`
+      // ⚠️ KHÔNG cap ±45 như encounter — Fragaria: *"đừng có đặt cap 45 hay -45
+      // như encounter; ±45 là cap của PLAYER thôi, một số boss và một số đồ có
+      // thể giúp player phá mức cap này."* Lệnh này là công cụ tính tay nên phải
+      // nhận mọi giá trị. (Bias tự trần ở 100% trong `applySanityBias`, đó là
+      // trần TOÁN HỌC — 100% là chắc chắn — không phải trần luật chơi.)
+      let sanity = null;
+      const sanMatch = trimmed.match(/\s+sanity\s+(-?\d+)\s*$/i);
+      const core = sanMatch ? trimmed.slice(0, sanMatch.index).trim() : trimmed;
+      if (sanMatch) sanity = parseInt(sanMatch[1], 10);
+      const match = core.match(/^(\d+)-(\d+)(?:\s+x(\d+))?$/i);
       if (!match) return { error: `Định dạng không hợp lệ: \`${trimmed}\`` };
       const min = parseInt(match[1], 10);
       const max = parseInt(match[2], 10);
@@ -93,7 +104,7 @@ client.on("messageCreate", async (message) => {
       if (min >= max || min < 0) return { error: `Min phải nhỏ hơn Max và không âm: \`${trimmed}\`` };
       if (times <= 0) return { error: `Số lần roll phải lớn hơn 0: \`${trimmed}\`` };
       if (times > ROLL_MAX_TIMES) return { error: `Số lần roll tối đa là ${ROLL_MAX_TIMES}: \`${trimmed}\`` };
-      return { min, max, times };
+      return { min, max, times, sanity };
     }
 
     const rawEntries = input.split(",").map(s => s.trim()).filter(Boolean);
@@ -112,12 +123,32 @@ client.on("messageCreate", async (message) => {
       diceList.push(parsed);
     }
 
+    // ── KẾ THỪA SANITY GIỮA CÁC ENTRY (Fragaria 14/08) ─────────────────────
+    // TH1: `-rolldice 6-12, 2-15 sanity 15`        → CẢ HAI đều sanity 15
+    // TH2: `-rolldice 6-12 sanity -10, 2-15 sanity 15` → roll đầu -10, roll sau 15
+    // ⇒ Entry KHÔNG ghi sanity thì lấy giá trị của entry CÓ ghi. Ở TH1 chỉ có một
+    //   giá trị nên nó áp cho tất cả; ở TH2 mỗi entry tự có nên không ai kế thừa.
+    //   Nhiều giá trị khác nhau mà có entry để trống ⇒ trống lấy giá trị GẦN NHẤT
+    //   phía trước, không có thì lấy giá trị đầu tiên xuất hiện phía sau.
+    {
+      const firstGiven = diceList.find(d => d.sanity !== null)?.sanity ?? 0;
+      let carry = firstGiven;
+      for (const d of diceList) {
+        if (d.sanity === null) d.sanity = carry;
+        else carry = d.sanity;
+      }
+    }
+
     // Build output
     const outputLines = [];
     const allTracked = [];
-    for (const { min, max, times } of diceList) {
+    for (const { min, max, times, sanity } of diceList) {
       startEmotionTracking();
+      // Bias phải BẬT rồi TẮT quanh đúng cụm roll này — để rò sang entry sau là
+      // entry không ghi sanity vẫn bị lệch (side-channel toàn cục).
+      if (sanity) setSanityBias(sanity);
       const results = Array.from({ length: times }, () => r(min, max));
+      if (sanity) clearSanityBias();
       const tracked = stopEmotionTracking();
       allTracked.push(...tracked);
       if (times === 1) {
@@ -284,7 +315,22 @@ client.on("messageCreate", async (message) => {
     // `-skill <tên> <số lần>` hiểu nhầm thành rollCount, hoặc bị promptArg nuốt
     // mất (nó lấy TỪ CUỐI CÙNG của input làm arg).
     let diceModifier = 0;
+    // ── SANITY (Fragaria 14/08): `-skill durandal sanity 15` ────────────────
+    // Gỡ CÙNG CHỖ với diceup/dicedown và vì CÙNG LÝ DO: nếu để lại thì con số bị
+    // `-skill <tên> <số lần>` hiểu thành rollCount, hoặc bị promptArg nuốt (nó
+    // lấy TỪ CUỐI làm arg).
+    // ⚠️ KHÔNG cap ±45 — Fragaria: *"±45 là cap của PLAYER thôi, một số boss và
+    //    một số đồ có thể giúp player phá mức cap này."*
+    // Mỗi skill trong lệnh nhiều-skill có thể ghi sanity riêng; xử ở vòng multi.
+    let sanityGlobal = null;
+    const sanityRe = /\s*\bsanity\s+(-?\d+)\b/gi;
     const diceModRe = /\s*\b(dice\s*up|diceup|dice\s*down|dicedown)\s+(\d+)\b/gi;
+    // Gỡ sanity TRƯỚC diceup/dicedown — "sanity -10" có dấu trừ, để lẫn vào phần
+    // sau dễ bị hiểu nhầm khi tách số.
+    input = input.replace(sanityRe, (_m, num) => {
+      sanityGlobal = parseInt(num, 10) || 0;
+      return "";
+    }).trim();
     input = input.replace(diceModRe, (_m, kind, num) => {
       // KHÔNG clamp — Dice Up/Down không có trần (Fragaria 14/08).
       const n = parseInt(num, 10) || 0;
@@ -373,16 +419,20 @@ client.on("messageCreate", async (message) => {
     const parts = input.trim().split(/\s+/);
     const promptArgRaw = parts[parts.length - 1];
 
-    const modNote = diceModifier !== 0
-      ? `${diceModifier > 0 ? "🔼" : "🔽"} **Dice ${diceModifier > 0 ? "Up" : "Down"} ${Math.abs(diceModifier)}** áp cho mọi dice ở dưới.`
-      : "";
+    const modNote = [
+      diceModifier !== 0
+        ? `${diceModifier > 0 ? "🔼" : "🔽"} **Dice ${diceModifier > 0 ? "Up" : "Down"} ${Math.abs(diceModifier)}** áp cho mọi dice ở dưới.`
+        : "",
+      sanityGlobal ? `🧠 **Sanity ${sanityGlobal > 0 ? "+" : ""}${sanityGlobal}** — ${Math.min(100, Math.abs(sanityGlobal))}% dễ ra dice ${sanityGlobal > 0 ? "MAX" : "MIN"} hơn.` : "",
+    ].filter(Boolean).join("\n");
     // Nhiều skill trong MỘT lượt — ngăn bằng `|` (không dùng dấu phẩy vì tên
     // skill có thể chứa dấu phẩy). `skills` chỉ có phần tử khi thật sự có `|`,
     // nên đường 1-skill giữ nguyên hành vi cũ 100%.
     if (multiNames) {
       const found = [];
-      for (const n of multiNames) {
-        const sk = findSkill(n);
+      for (let n of multiNames) {
+        const sm0 = n.match(/\s*\bsanity\s+(-?\d+)\b/i);
+        const sk = findSkill(sm0 ? n.replace(sm0[0], "").trim() : n);
         // Tra CẢ danh sách TRƯỚC khi roll — sai một tên thì báo luôn, không roll
         // nửa vời rồi mới báo (người chơi sẽ không biết cái nào đã tính).
         if (!sk) { message.reply(`❌ Không tìm thấy skill: \`${n}\`\nDùng \`-skill list\` để xem danh sách.`); return; }
@@ -393,17 +443,26 @@ client.on("messageCreate", async (message) => {
         // Dùng ĐÚNG luật của nhánh 1-skill: chỉ tách số khi phần tên còn lại
         // vẫn tra ra skill đó VÀ skill không có promptArg (skill promptArg dùng
         // số cuối làm ARG, không phải số lần).
+        // Sanity riêng cho từng skill: `-skill durandal sanity -10, thrust sanity 15`.
+        // Không ghi thì kế thừa giá trị chung (đã gỡ ở trên) — cùng luật với
+        // `-rolldice`, để hai lệnh không lệch nhau.
+        let sanityHere = sanityGlobal;
+        const sm = n.match(/\s*\bsanity\s+(-?\d+)\b/i);
+        if (sm) { sanityHere = parseInt(sm[1], 10) || 0; n = n.replace(sm[0], "").trim(); }
         let cnt = rollCount;
         const cm = n.match(/^(.+?)\s+(\d+)$/);
         if (cm) {
           const cand = findSkill(cm[1].trim());
           if (cand && !cand.promptArg && cand === sk) cnt = parseInt(cm[2], 10);
         }
-        found.push({ sk, cnt, argRaw: n.trim().split(/\s+/).pop() });
+        found.push({ sk, cnt, sanity: sanityHere, argRaw: n.trim().split(/\s+/).pop() });
       }
       const embeds = [];
-      for (const { sk, cnt, argRaw } of found) {
+      for (const { sk, cnt, sanity, argRaw } of found) {
+        // Bật/tắt quanh ĐÚNG skill này — rò sang skill sau là sai kết quả.
+        if (sanity) setSanityBias(sanity);
         const r = buildSkillRollResult({ skill: sk, rollCount: cnt, promptArgRaw: argRaw, forceDullahan, diceModifier });
+        if (sanity) clearSanityBias();
         if (r.error) { message.reply(`❌ **${sk.name}**: ${String(r.error).replace(/^❌\s*/, "")}`); return; }
         embeds.push(r.embed);
       }
@@ -411,7 +470,9 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    if (sanityGlobal) setSanityBias(sanityGlobal);
     const result = buildSkillRollResult({ skill, rollCount, promptArgRaw, forceDullahan, diceModifier });
+    if (sanityGlobal) clearSanityBias();
     if (result.error) { message.reply(result.error); return; }
     message.reply({ content: modNote || undefined, embeds: [result.embed] });
     return;
