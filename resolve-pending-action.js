@@ -129,7 +129,7 @@ async function resolveOnePendingAction(encounter, p) {
                   const sanityBeforeRegain = attacker.combatant.currentSanity;
                   applySanityGain(attacker.combatant, sanityGainCount * 10);
                   const actualSanityDelta = attacker.combatant.currentSanity - sanityBeforeRegain;
-                  staminaNote += ` 🧠${actualSanityDelta >= 0 ? "+" : ""}${actualSanityDelta} Sanity (Regain Mind)`;
+                  staminaNote += ` <:Sanity:1538272293132963930>${actualSanityDelta >= 0 ? "+" : ""}${actualSanityDelta} Sanity (Regain Mind)`;
                 }
               }
               // "Cinq Association": "Nhận được 2 Haste vào mỗi 20 Stamina tiêu

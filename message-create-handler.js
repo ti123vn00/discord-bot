@@ -423,7 +423,7 @@ client.on("messageCreate", async (message) => {
       diceModifier !== 0
         ? `${diceModifier > 0 ? "🔼" : "🔽"} **Dice ${diceModifier > 0 ? "Up" : "Down"} ${Math.abs(diceModifier)}** áp cho mọi dice ở dưới.`
         : "",
-      sanityGlobal ? `🧠 **Sanity ${sanityGlobal > 0 ? "+" : ""}${sanityGlobal}** — ${Math.min(100, Math.abs(sanityGlobal))}% dễ ra dice ${sanityGlobal > 0 ? "MAX" : "MIN"} hơn.` : "",
+      sanityGlobal ? `<:Sanity:1538272293132963930> **Sanity ${sanityGlobal > 0 ? "+" : ""}${sanityGlobal}** — ${Math.min(100, Math.abs(sanityGlobal))}% dễ ra dice ${sanityGlobal > 0 ? "MAX" : "MIN"} hơn.` : "",
     ].filter(Boolean).join("\n");
     // Nhiều skill trong MỘT lượt — ngăn bằng `|` (không dùng dấu phẩy vì tên
     // skill có thể chứa dấu phẩy). `skills` chỉ có phần tử khi thật sự có `|`,

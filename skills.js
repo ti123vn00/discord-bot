@@ -1591,7 +1591,7 @@ const SKILLS = {
   "beak": {
     name: "Beak",
     tags: "Ego Pages <:TETH:1449759432119419070>",
-    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "5 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "5 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7,14), d2 = r(7,10);
       return [
@@ -1604,7 +1604,7 @@ const SKILLS = {
   "punishing beak": {
     name: "Punishing Beak",
     tags: "Corrosion Pages <:TETH:1449759432119419070>",
-    cost: "6 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "6 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(15,20);
       return [
@@ -1617,7 +1617,7 @@ const SKILLS = {
   "lamp": {
     name: "Lamp",
     tags: "Ego Pages <:HE:1449759447152070796>",
-    cost: "3 <:Light:1513786082502770719>Light & 5 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light & 5 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,18);
       return [
@@ -1628,7 +1628,7 @@ const SKILLS = {
   "eyes lamp": {
     name: "Eyes Lamp",
     tags: "Corrosion Pages <:HE:1449759447152070796>",
-    cost: "8 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "8 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,15);
       return [
@@ -1642,7 +1642,7 @@ const SKILLS = {
   "justitia": {
     name: "Justitia",
     tags: "Ego Pages <:WAW:1449759461001527518>",
-    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(15,25);
       return [
@@ -1654,7 +1654,7 @@ const SKILLS = {
   "the justice scale": {
     name: "The Justice Scale",
     tags: "Corrosion Pages <:WAW:1449759461001527518>",
-    cost: "6 <:Light:1513786082502770719>Light & 25 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "6 <:Light:1513786082502770719>Light & 25 <:Sanity:1538272293132963930>Sanity", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,50);
       return [
@@ -1668,7 +1668,7 @@ const SKILLS = {
   "twillight": {
     name: "Twillight",
     tags: "Ego Pages <:ALEPH:1449759474268242021>",
-    cost: "5 <:Light:1513786082502770719>Light & 25 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 25 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       return [
         `<:Dice1:1508173590078558369> Giảm 0.2 Res cho toàn bộ trong 3 turn. Khi chết sẽ kích hoạt Apocalypse với sát thương Blunt`,
@@ -1678,7 +1678,7 @@ const SKILLS = {
   },
 "apocalypse": {
     name: "Apocalypse",
-    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "—", diceMul: "1.5x",
+    cost: "5 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "—", diceMul: "1.5x",
 promptArg: {
   label: "Dưới 50% HP?",
   parse: (s) => {
@@ -1719,7 +1719,7 @@ roll(v = "no") {
   "look of the day": {
     name: "Look of the Day",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
     roll() {
       return [
         `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
@@ -1732,7 +1732,7 @@ roll(v = "no") {
   "echoes from the beyond": {
     name: "Echoes from the Beyond",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "2 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10, 20);
       return [
@@ -1744,7 +1744,7 @@ roll(v = "no") {
   "the finale": {
     name: "The Finale",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ALEPH:1449759474268242021>",
-    cost: "3 <:Light:1513786082502770719>Light & 50 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light & 50 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       return [
         `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
@@ -1759,7 +1759,7 @@ roll(v = "no") {
   "violence": {
     name: "Violence",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
     roll() {
       return [
         `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
@@ -1772,7 +1772,7 @@ roll(v = "no") {
   "display of affection": {
     name: "Display of Affection",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn [từ lúc hết buff]", diceMul: "1x",
     roll() {
       return [
         `*Type: ??? — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
@@ -1785,7 +1785,7 @@ roll(v = "no") {
   "torn off wisdom": {
     name: "Torn Off Wisdom",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(1, 4);
       return [
@@ -1797,7 +1797,7 @@ roll(v = "no") {
   "harvest": {
     name: "Harvest",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(15, 25);
       return [
@@ -1808,7 +1808,7 @@ roll(v = "no") {
   "logging": {
     name: "Logging",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(7, 11), d2 = r(6, 10), d3 = r(6, 9), d4 = 6;
       return [
@@ -1822,7 +1822,7 @@ roll(v = "no") {
   "the homing instinct": {
     name: "The Homing Instinct",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(8, 18);
       return [
@@ -1833,7 +1833,7 @@ roll(v = "no") {
   "faded memories": {
     name: "Faded Memories",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 30 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5, 10), d2 = r(5, 9);
       return [
@@ -1845,7 +1845,7 @@ roll(v = "no") {
   "false throne": {
     name: "False Throne",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ALEPH:1449759474268242021>",
-    cost: "7 <:Light:1513786082502770719>Light & 40 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "7 <:Light:1513786082502770719>Light & 40 <:Sanity:1538272293132963930>Sanity", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6, 10), d2 = r(5, 9);
       return [
@@ -2100,7 +2100,7 @@ roll(v = "no") {
   "fourth match flame": {
     name: "Fourth Match Flame",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,40);
       return [
@@ -2111,7 +2111,7 @@ roll(v = "no") {
   "today's expression": {
     name: "Today's Expression",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(18,30), d2 = r(6,9), d3 = r(5,10);
       return [
@@ -2124,7 +2124,7 @@ roll(v = "no") {
   "regret": {
     name: "Regret",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "5 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,8), d2 = r(6,8), d3 = r(9,19);
       return [
@@ -2137,7 +2137,7 @@ roll(v = "no") {
   "fragments from somewhere": {
     name: "Fragments from Somewhere",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "3 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,7), d2 = r(4,7), d3 = r(4,7);
       return [
@@ -2151,7 +2151,7 @@ roll(v = "no") {
   "wrist cutter": {
     name: "Wrist Cutter",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "5 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "6 Turn", diceMul: "1x",
     roll() {
       const d1 = r(19,27);
       return [
@@ -2162,7 +2162,7 @@ roll(v = "no") {
   "aspiration": {
     name: "Aspiration",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "5 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(24,39);
       return [
@@ -2173,7 +2173,7 @@ roll(v = "no") {
   "red eyes": {
     name: "Red Eyes",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
-    cost: "4 <:Light:1513786082502770719>Light & 15 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 15 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,25), d2 = r(5,8);
       return [
@@ -2185,7 +2185,7 @@ roll(v = "no") {
   "marionette": {
     name: "Marionette",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ZAYIN:1449759413966606398>",
-    cost: "1 <:Light:1513786082502770719>Light & 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "1 <:Light:1513786082502770719>Light & 10 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(19,27);
       return [
@@ -2199,7 +2199,7 @@ roll(v = "no") {
   "wingbeat": {
     name: "Wingbeat",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1513786082502770719>Light & 10 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light & 10 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     needsReuse: true,
     roll() {
       const DICE_EMOJIS = [
@@ -2229,7 +2229,7 @@ roll(v = "no") {
   "the forgotten": {
     name: "The Forgotten",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(12,25);
       return [
@@ -2240,7 +2240,7 @@ roll(v = "no") {
   "grinder mk. 5-2": {
     name: "Grinder Mk. 5-2",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(2,7), d2 = r(3,8), d3 = r(4,9);
       return [
@@ -2254,7 +2254,7 @@ roll(v = "no") {
   "harmony": {
     name: "Harmony",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     needsReuse: true,
     roll() {
       const DICE_EMOJIS = [
@@ -2290,7 +2290,7 @@ roll(v = "no") {
   "solemn lament": {
     name: "Solemn Lament",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "6 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "6 Turn", diceMul: "1x",
     needsReuse: true,
 
     promptArg: {
@@ -2355,7 +2355,7 @@ roll(v = "no") {
   "magic bullet": {
     name: "Magic Bullet",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "1 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "???", diceMul: "1x",
+    cost: "1 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "???", diceMul: "1x",
     roll() {
       const d1 = r(4,8);
       return [
@@ -2406,7 +2406,7 @@ roll(v = "no") {
   "our galaxy": {
     name: "Our Galaxy",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(3,8), d2 = r(3,8), d3 = r(3,6);
       return [
@@ -2420,7 +2420,7 @@ roll(v = "no") {
   "pleasure": {
     name: "Pleasure",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "5 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const turnBonus = r(1,5);
       const d1 = r(5,15);
@@ -2436,7 +2436,7 @@ roll(v = "no") {
   "laetitia": {
     name: "Laetitia",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(6,18);
       return [
@@ -2447,7 +2447,7 @@ roll(v = "no") {
   "sanguine desire": {
     name: "Sanguine Desire",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:HE:1449759447152070796>",
-    cost: "4 <:Light:1513786082502770719>Light & 20 Sanity 🧠", cd: "4 Turn", diceMul: "1x",
+    cost: "4 <:Light:1513786082502770719>Light & 20 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,10), d2 = r(3,9), d3 = r(4,6);
       const hasBleed = Math.random() < 0.5;
@@ -2552,7 +2552,7 @@ roll(v = "no") {
   "hornet": {
     name: "Hornet",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "2 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "2 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light & 30 <:Sanity:1538272293132963930>Sanity", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,32);
       return [
@@ -2563,7 +2563,7 @@ roll(v = "no") {
   "green stem": {
     name: "Green Stem",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x (dmg = dice x2)",
+    cost: "5 <:Light:1513786082502770719>Light & 30 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x (dmg = dice x2)",
     roll() {
       const d1 = r(3,9), d2 = r(3,9), d3 = r(3,10);
       return [
@@ -2577,7 +2577,7 @@ roll(v = "no") {
   "faint aroma": {
     name: "Faint Aroma",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
+    cost: "5 <:Light:1513786082502770719>Light & 30 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
     roll() {
       const d1 = r(3,7), d2 = r(3,7), d3 = r(3,7);
       const stagger = Math.random() < 0.4;
@@ -2592,7 +2592,7 @@ roll(v = "no") {
   "black swan": {
     name: "Black Swan",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:WAW:1449759461001527518>",
-    cost: "5 <:Light:1513786082502770719>Light & 30 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "5 <:Light:1513786082502770719>Light & 30 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(4,8), d2 = r(9,18);
       return [
@@ -2607,7 +2607,7 @@ roll(v = "no") {
   "da capo": {
     name: "Da Capo",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:ALEPH:1449759474268242021>",
-    cost: "5 <:Light:1513786082502770719>Light & 40 Sanity 🧠", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
+    cost: "5 <:Light:1513786082502770719>Light & 40 <:Sanity:1538272293132963930>Sanity", cd: "4 Turn", diceMul: "1x (dmg = dice x2)",
     roll() {
       const d1 = r(4,8), d2 = r(4,9), d3 = r(5,9);
       return [
@@ -4909,6 +4909,125 @@ roll(v = "no") {
       ];
     },
   },
+  // ────────────────────────────────────────────────────────────────────────
+  // HANA ASSOCIATION BOOK (Fragaria 14/08)
+  // ⚠️ Emoji trong text gốc Fragaria gửi là ID của SERVER KHÁC
+  // (<:Slash:1255876730204454963>…). Đã đổi hết sang ID chuẩn của codebase.
+  // ────────────────────────────────────────────────────────────────────────
+  "forward march": {
+    name: "Forward March", bookOf: "Hana Association Book",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(2,5);
+      return [
+        `*[On Use]* Hồi 1 <:Light:1513786082502770719>Light`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Lao lên chém vào mặt kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — Lao đến chém kẻ thù một nhát`,
+      ];
+    },
+  },
+  "godspeed": {
+    name: "GodSpeed", bookOf: "Hana Association Book",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,8), d2 = r(3,7);
+      return [
+        `*[On Use]* Nhận 1 <:Fix_Haste:1513768004222062632>Haste turn sau; nếu Speed bản thân **trên 7** khi dùng page này thì nhận thêm 1 <:DiceUp:1513767795681398894>Dice Up`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đấm kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đấm kẻ thù`,
+      ];
+    },
+  },
+  "confrontation": {
+    name: "Confrontation", bookOf: "Hana Association Book",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,6), d2 = r(5,8), d3 = r(3,7);
+      return [
+        `*[On Use]* Cho **tất cả đồng minh** 1 <:Protection:1528452299834261545>Protection trong turn sau`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — Tấn công kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — Tấn công kẻ thù, bản thân hồi 5 Stamina`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — Tấn công kẻ thù`,
+      ];
+    },
+  },
+  // ────────────────────────────────────────────────────────────────────────
+  // R CORP BOOK (Fragaria 14/08)
+  // ────────────────────────────────────────────────────────────────────────
+  "graze the grass": {
+    name: "Graze the Grass", bookOf: "R Corp Book", tags: "Charge",
+    cost: "0 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,7), d2 = r(3,4);
+      return [
+        `*[On Use]* Hồi 1 <:Light:1513786082502770719>Light và nhận 3 <:Charge:1513762867558613033>Charge`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đấm vào mặt kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đấm vào mặt kẻ thù`,
+      ];
+    },
+  },
+  "quick suppression": {
+    name: "Quick Suppression", bookOf: "R Corp Book", tags: "Charge",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,8), d2 = r(4,8), d3 = r(3,8);
+      return [
+        `*[On Use]* Nhận 5 <:Charge:1513762867558613033>Charge`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — Đấm vào mặt kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — Đấm vào mặt kẻ thù, gây 2 <:Bleed:1513762688226955285>Bleed`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — Đấm vào mặt kẻ thù, gây 1 <:Bleed:1513762688226955285>Bleed`,
+      ];
+    },
+  },
+  "concentration": {
+    name: "Concentration", bookOf: "R Corp Book", tags: "Charge",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,10), d2 = r(4,8), d3 = r(4,6);
+      return [
+        `*[On Use]* Nhận 8 <:Charge:1513762867558613033>Charge`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Blunt:1513768529718022254>Blunt] — Đấm vào mặt kẻ thù`,
+      ];
+    },
+  },
+  "bulky impact": {
+    name: "Bulky Impact", bookOf: "R Corp Book", tags: "Charge",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(6,12);
+      return [
+        `*[On Use]* Nhận 5 <:Charge:1513762867558613033>Charge`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — Táng vào mặt kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — Táng vào mặt kẻ thù`,
+      ];
+    },
+  },
+  "rhino ram": {
+    name: "Rhino Ram", bookOf: "R Corp Book", tags: "Charge",
+    cost: "4 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,25);
+      return [
+        `*[On Use]* Nhận 3 <:Protection:1528452299834261545>Protection ở turn sau`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Nhận 8 <:Charge:1513762867558613033>Charge`,
+      ];
+    },
+  },
+  // Page ĐẶC BIỆT: không tốn slot, tự có khi mặc "Reindeer R Corp Outfit".
+  "mind whip": {
+    name: "Mind Whip", bookOf: "R Corp Book", tags: "Charge",
+    cost: "3 <:Light:1513786082502770719>Light", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,23);
+      return [
+        `*[Page đặc biệt — không tốn slot, tự có khi dùng **Reindeer R Corp Outfit**]*`,
+        `*[On Use]* Bản thân bị trừ 4 Stamina`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — Dùng 3 <:Charge:1513762867558613033>Charge để gây 10 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
 };
 
 // ─── SKILL_ALIASES ────────────────────────────────────────────────────────────
@@ -5233,7 +5352,7 @@ Object.assign(SKILLS, {
   // ── EGO Pages (ZAYIN) ──
   "crow's eye view": {
     name: "Crow's Eye View", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(18,24);
       return [
@@ -5245,7 +5364,7 @@ Object.assign(SKILLS, {
   },
   "la sangre de sancho": {
     name: "La Sangre De Sancho", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(14,26);
       return [
@@ -5257,7 +5376,7 @@ Object.assign(SKILLS, {
   },
   "representation emitter": {
     name: "Representation Emitter", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(19,23);
       return [
@@ -5269,7 +5388,7 @@ Object.assign(SKILLS, {
   },
   "land of illusion": {
     name: "Land of Illusion", tags: "E.G.O Page <:limbus:1010616548114833468> <:ZAYIN:1449759413966606398>",
-    cost: "3 <:Light:1513786082502770719>Light, 10 Sanity 🧠", cd: "3 Turn", diceMul: "1x",
+    cost: "3 <:Light:1513786082502770719>Light, 10 <:Sanity:1538272293132963930>Sanity", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(15,25);
       return [

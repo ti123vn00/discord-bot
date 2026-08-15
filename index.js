@@ -268,6 +268,9 @@ const SEALED_BOOK_POOL = [
   "Book of M.A.D.",
   "Reverbation Ensemble Book",
   "The Middle Big Brother Book",
+  // Fragaria 14/08: Dawn Book và R Corp Book LÀ từ pool Sealed Book Cache.
+  "Dawn Book",
+  "R Corp Book",
 ];
 
 const CHIPBOARD_CACHE_POOL = [
@@ -277,7 +280,11 @@ const CHIPBOARD_CACHE_POOL = [
 ];
 
 // ─── VALID BOOKS & ITEMS ──────────────────────────────────────────────────────
-const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice", "Book of Sorcerer"];
+// Fragaria 14/08: "The Thumb Capo Book là CHỈ GM CẤP mới có" ⇒ phải nằm trong
+// VALID_BOOKS (để `-give` / inventory nhận ra) nhưng KHÔNG được vào bất kỳ pool
+// roll nào (Random Book / Sealed Book Cache) — đó đúng là ý nghĩa của
+// VALID_BOOKS_EXTRA: hợp lệ nhưng không tự rơi ra.
+const VALID_BOOKS_EXTRA = ["Random Book", "Sealed Book Cache", "Book of Choice", "Book of Sorcerer", "The Thumb Capo Book"];
 const VALID_BOOKS = [...new Set([...VALID_BOOKS_EXTRA, ...RANDOM_BOOK_POOL, ...SEALED_BOOK_POOL])];
 
 // Derive từ CHIPBOARD_CACHE_POOL để tránh khai báo trùng MK1–MK3
