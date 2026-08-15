@@ -2512,6 +2512,35 @@ async function resolveOnePendingAction(encounter, p) {
                   attacker.combatant.haste = Math.min(20, beforeHa + sfx.selfHaste);
                   selfParts.push(`+${attacker.combatant.haste - beforeHa} Haste (tổng ${attacker.combatant.haste})`);
                 }
+                // ── Fragaria 14/08: Charge / Protection từ [On Use] ───────────
+                // Luật đã chốt: Protection −5% dmg nhận/stack (max 20), hết sau 2
+                // turn; Charge dùng trần CHARGE_MAX sẵn có. Cả hai đã có logic
+                // trong repo — đây chỉ là đường nối từ text page vào.
+                if (sfx.selfCharge > 0) {
+                  const beforeC = attacker.combatant.charge ?? 0;
+                  attacker.combatant.charge = Math.min(CHARGE_MAX, beforeC + sfx.selfCharge);
+                  selfParts.push(`+${attacker.combatant.charge - beforeC} Charge (tổng ${attacker.combatant.charge})`);
+                }
+                if (sfx.selfProtection > 0) {
+                  const beforeP = attacker.combatant.protection ?? 0;
+                  attacker.combatant.protection = Math.min(20, beforeP + sfx.selfProtection);
+                  // 2 turn — cùng con số turn-advance.js đang dùng cho Protection.
+                  attacker.combatant.protectionTurnsLeft = 2;
+                  selfParts.push(`+${attacker.combatant.protection - beforeP} Protection (tổng ${attacker.combatant.protection})`);
+                }
+                if (sfx.allyProtection > 0) {
+                  // "Cho TẤT CẢ đồng minh" — gồm cả chính người dùng (họ cũng là
+                  // đồng minh của party). Chỉ người còn sống.
+                  const got = [];
+                  for (const [pid, pl] of Object.entries(encounter.players ?? {})) {
+                    if ((pl.currentHp ?? 0) <= 0) continue;
+                    const b = pl.protection ?? 0;
+                    pl.protection = Math.min(20, b + sfx.allyProtection);
+                    pl.protectionTurnsLeft = 2;
+                    if (pl.protection > b) got.push(`<@${pid}> +${pl.protection - b}`);
+                  }
+                  if (got.length > 0) selfParts.push(`Protection cho đồng minh: ${got.join(", ")}`);
+                }
                 if (sfx.healHp > 0) {
                   // healHpCapped — KHÔNG dùng Math.min(maxHp, …) nữa: với người
                   // đội "Memories: Compassion" thì `maxHp` đã cộng 100 máu ẢO mà

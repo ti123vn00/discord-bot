@@ -4912,7 +4912,7 @@ roll(v = "no") {
   // ────────────────────────────────────────────────────────────────────────
   // HANA ASSOCIATION BOOK (Fragaria 14/08)
   // ⚠️ Emoji trong text gốc Fragaria gửi là ID của SERVER KHÁC
-  // (<:Slash:1255876730204454963>…). Đã đổi hết sang ID chuẩn của codebase.
+  // (Slash `1255876…`, Light `1322102…`). Đã đổi hết sang ID chuẩn của codebase.
   // ────────────────────────────────────────────────────────────────────────
   "forward march": {
     name: "Forward March", bookOf: "Hana Association Book",
@@ -4932,7 +4932,11 @@ roll(v = "no") {
     roll() {
       const d1 = r(3,8), d2 = r(3,7);
       return [
-        `*[On Use]* Nhận 1 <:Fix_Haste:1513768004222062632>Haste turn sau; nếu Speed bản thân **trên 7** khi dùng page này thì nhận thêm 1 <:DiceUp:1513767795681398894>Dice Up`,
+        // ⚠️ TÁCH LÀM 2 DÒNG: `extractNonDmgStrEffects` BỎ QUA nguyên dòng nào có
+        // chữ "nếu" (dòng điều kiện). Gộp chung thì vế Haste vô điều kiện cũng bị
+        // nuốt luôn và page mất hẳn hiệu ứng chính.
+        `*[On Use]* Nhận 1 <:Fix_Haste:1513768004222062632>Haste turn sau`,
+        `*[On Use]* Nếu Speed bản thân **trên 7** khi dùng page này thì nhận thêm 1 <:DiceUp:1513767795681398894>Dice Up`,
         `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — Đấm kẻ thù`,
         `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — Đấm kẻ thù`,
       ];
@@ -5761,7 +5765,7 @@ Object.assign(SKILLS, {
   "re-load": {
     name: "Re-Load",
     weaponOf: "Soldato Rifle", tags: "Weapon",
-    cost: "2 <:Light:1322102399342481439>Light", cd: "1 Turn", diceMul: "1x",
+    cost: "2 <:Light:1513786082502770719>Light", cd: "1 Turn", diceMul: "1x",
     roll() {
       return [
         `*Chỉ sử dụng được khi sử dụng vũ khí lẫn outfit của **The Thumb Syndicate***`,
@@ -5792,7 +5796,7 @@ Object.assign(SKILLS, {
   },
   "ignite weaponry": {
     name: "Ignite Weaponry", tags: "Burn",
-    cost: "1 <:Light:1322102399342481439>Light", cd: "4 Turn", diceMul: "1x",
+    cost: "1 <:Light:1513786082502770719>Light", cd: "4 Turn", diceMul: "1x",
     roll() {
       return [
         `*Nếu sử dụng outfit của **Liu Association** và gia nhập office của **Liu Association** sẽ tự động sử dụng được page này*`,
@@ -6290,7 +6294,7 @@ function autoExtractDiceSideEffects(lines) {
  *  @returns {{fragile:number, paralyze:number, drainStamina:number, selfImitation:number, selfLight:number, healHp:number}}
  */
 function extractNonDmgStrEffects(lines) {
-  const out = { fragile: 0, paralyze: 0, airborne: 0, hemorrhage: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0, selfDiceUp: 0, selfDiceUpTurns: 0, blind: 0, selfShieldPerTarget: 0 };
+  const out = { fragile: 0, paralyze: 0, airborne: 0, hemorrhage: 0, drainStamina: 0, selfImitation: 0, selfLight: 0, selfHaste: 0, healHp: 0, selfDiceUp: 0, selfDiceUpTurns: 0, blind: 0, selfShieldPerTarget: 0, selfCharge: 0, selfProtection: 0, allyProtection: 0 };
   const stripEmoji = (t) => t.replace(/<a?:[^:>]+:\d+>/g, "");
   for (const raw of lines ?? []) {
     const line = stripEmoji(String(raw));
@@ -6326,6 +6330,22 @@ function extractNonDmgStrEffects(lines) {
     //     không đứng liền sau "nhận" nên không khớp.
     // Bỏ sót thì GM gõ tay được; áp NHẦM thì phá cân bằng âm thầm — chọn bỏ sót.
     out.selfHaste     += sum(/nh[ậa]n\s*(\d+)\s*Haste/i);
+    // ── Fragaria 14/08: Hana Association Book + R Corp Book ────────────────
+    // Luật đã xác nhận:
+    //  • Protection: −5% dmg nhận/stack (max 20), hết sau 2 turn.
+    //  • Haste: +1 Speed/stack (max 20), mất sạch sau end turn của turn được cộng.
+    //  • Bind: −1 Speed/stack (max 20), cùng cách hết như Haste.
+    // Cả ba ĐÃ CÓ logic sẵn trong repo (turn-advance + misc-helpers + combat-utils)
+    // — chỉ thiếu đường ĐỌC TỪ TEXT page, nên bổ sung tại parser CHUNG này thay vì
+    // vá riêng từng page (lớp lỗi 8).
+    out.selfCharge    += sum(/nh[aậ]n\s*(\d+)\s*<?[^>\s]*>?\s*Charge/i);
+    // "Cho TẤT CẢ ĐỒNG MINH N Protection" — phải bắt TRƯỚC mẫu self, nếu không
+    // "cho tất cả đồng minh 1 Protection" sẽ bị mẫu self nuốt mất.
+    {
+      const mAlly = /cho\s*\*{0,2}t[aấ]t\s*c[aả]\s*[dđ][oồ]ng\s*minh\*{0,2}\s*(\d+)\s*<?[^>\s]*>?\s*Protection/i.exec(line);
+      if (mAlly) out.allyProtection += parseInt(mAlly[1], 10) || 0;
+      else out.selfProtection += sum(/nh[aậ]n\s*(\d+)\s*<?[^>\s]*>?\s*Protection/i);
+    }
     // Blind (Wedjat) — "gây 5 Blind": mỗi stack làm 1 đòn ĐÁNH THƯỜNG kế trượt.
     out.blind         += sum(/(?:g[âa]y|g[ắa]n|áp)\s*(\d+)\s*(?:<[^>]*>)?\s*Blind/i);
     // Shield NHẬN THEO TỪNG MỤC TIÊU dính đòn (Wedjat: "Nhận 100 HP Shield với
