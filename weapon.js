@@ -347,6 +347,34 @@ const WEAPONS = {
     passives: [{ name: "Art", desc: "Với mỗi 5 Bleed lên kẻ thù khi sử dụng Critical sẽ tăng 20% Reuse [tối đa Reuse 2 lần] [Mặc định có 40% Reuse]." }],
     criticalSkillKey: "sanguine pointilism",
   },
+  // ── BOOK OF THE BIRDS (Fragaria 14/08) ───────────────────────────────────
+  // "Guardians of the Forest" là TEXT THUẦN — Fragaria xác nhận CHƯA implement
+  // cơ chế triệu hồi. Đừng tưởng là dead flag rồi đi "sửa".
+  "beak": {
+    name: "Beak", weight: "light", type: "Pierce", baseDamage: 11, bookOf: "Book of The Birds",
+    passives: [
+      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó. *(hiện là mô tả — chưa implement)*" },
+      { name: "Small Flutters", desc: "Có thể đánh thường ĐỒNG MINH; đồng minh nhận lượng Dmg bằng **1/2** lượng Dmg gây ra và được hồi 4 Sanity." },
+      { name: "Gun", desc: "Tiêu hao 1 viên đạn mỗi lần M1; KHÔNG thể M1 nếu hết đạn." },
+    ],
+    criticalSkillKey: "shot",
+  },
+  "justitia": {
+    name: "Justitia", weight: "medium", type: "Slash", baseDamage: 16, bookOf: "Book of The Birds",
+    passives: [
+      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó. *(hiện là mô tả — chưa implement)*" },
+      { name: "Judgement", desc: "Mỗi đòn đánh từ vũ khí này (Critical, M1) làm giảm Stamina địch bằng **1/3** lượng Dmg gây ra." },
+    ],
+    criticalSkillKey: "tilted scale",
+  },
+  "lamp": {
+    name: "Lamp", weight: "heavy", type: "Blunt", baseDamage: 24, bookOf: "Book of The Birds",
+    passives: [
+      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó. *(hiện là mô tả — chưa implement)*" },
+      { name: "A Light in the Darkness", desc: "Kẻ địch còn **dưới 3% HP** mà tấn công người sử dụng sẽ lập tức bị điều khiển và tự sát — TÍNH là bị người dùng giết." },
+    ],
+    criticalSkillKey: "allure",
+  },
 };
 
 /** findWeapon — tra theo key chuẩn hoá hoặc tên hiển thị (case-insensitive), giống

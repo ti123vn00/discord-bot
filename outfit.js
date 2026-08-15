@@ -250,6 +250,68 @@ const OUTFITS = {
       "Mỗi turn sẽ gieo dice từ 1 đến 7 để lấy sắc lệnh, và phải thực hiện nó trong vòng turn đó. Nếu thành công sẽ nhận được 1 Grace of Prescript. Nếu thất bại sắc lệnh sẽ nhận 5 Karmic Consequence; khiến bạn nhận thêm 1% Dmg cho mỗi stack. Max 100 Stack. (1: Tấn công | 2: Né | 3: Block | 4: Parry | 5: 1 phòng thủ + 1 tấn công | 6: Không làm gì | 7: Clash) —",
     ],
   },
+  // ── R CORP BOOK (Fragaria 14/08) ─────────────────────────────────────────
+  // "Với mỗi 10% HP mất TRONG TURN ORDER đó" (Fragaria xác nhận) — tính theo HP
+  // mất trong lượt, không phải tổng đã mất.
+  "rhino r corp outfit": {
+    name: "Rhino R Corp Outfit", bookOf: "R Corp Book",
+    resistance: { B: 1.5, P: 1.5, S: 0.6 },
+    speedRange: { min: 1, max: 4 },
+    keypage: [
+      `**Rhino Procedure**: với mỗi 10% HP mất trong turn, nhận 2 <:Protection:1528452299834261545>Protection ở turn sau *[tối đa 2 lần]*`,
+      `**Maximum Crash**: nếu bản thân có trên 20 <:Charge:1513762867558613033>Charge, gây thêm 50% Dmg và giảm 50% Dmg nhận vào`,
+    ],
+  },
+  "rabbit r corp outfit": {
+    name: "Rabbit R Corp Outfit", bookOf: "R Corp Book",
+    resistance: { B: 0.6, P: 1.5, S: 1.5 },
+    speedRange: { min: 5, max: 6 },
+    keypage: [
+      `**Rabbit Augmentation**: với mỗi 10% HP mất trong turn, nhận 3 <:Fix_Haste:1513768004222062632>Haste ở turn sau *[tối đa 2 lần]*`,
+      `**Rabbit's Prowess**: với mỗi 2 Speed hơn đối thủ, nhận 2 <:DiceUp:1513767795681398894>Dice Up *[tối đa 5]*`,
+    ],
+  },
+  "reindeer r corp outfit": {
+    name: "Reindeer R Corp Outfit", bookOf: "R Corp Book",
+    resistance: { B: 1.5, P: 0.6, S: 1.5 },
+    speedRange: { min: 4, max: 5 },
+    // Page đặc biệt tự có khi mặc outfit này (không tốn slot) — xem "mind whip".
+    grantsPage: "mind whip",
+    keypage: [
+      `**Reindeer Treatment**: với mỗi 10% HP mất trong turn, nhận 2 <:DiceUp:1513767795681398894>Dice Up ở turn sau *[tối đa 2 lần]*`,
+      `**Survivor**: mỗi lần bị Stagger, turn sau nhận 2 <:DiceUp:1513767795681398894>Dice Up và 2 <:Protection:1528452299834261545>Protection; TĂNG DẦN theo số lần bị Stagger (lần 2: 4 và 4, lần 3: 6 và 6…) *[tối đa 5 lần]*`,
+      `*Tự động có page **Mind Whip** — không tốn slot.*`,
+    ],
+  },
+
+  // ── DAWN BOOK (Fragaria 14/08) ───────────────────────────────────────────
+  "dawn office - yuna": {
+    name: "Dawn Office - Yuna", bookOf: "Dawn Book",
+    resistance: { B: 1.3, P: 1.5, S: 1.2 },
+    speedRange: { min: 2, max: 5 },
+    keypage: [
+      `**Lone Fixer**: khi chỉ còn bản thân (người sống sót cuối cùng), tăng 50% Dmg Bonus và tăng 15% Dmg Reduction`,
+      `**Dawn Office - Yuna**: khi dưới 75% HP, giảm một nửa Dmg từ <:Fix_Burn:1513762753691652177>Burn`,
+    ],
+  },
+  "dawn office - phillip": {
+    name: "Dawn Office - Phillip", bookOf: "Dawn Book",
+    resistance: { B: 1.2, P: 1.3, S: 1.5 },
+    speedRange: { min: 3, max: 6 },
+    keypage: [
+      `**Passion**: bản thân nhận 2 <:DiceUp:1513767795681398894>Dice Up với mỗi Emotion Level *[kéo dài đến hết Emotion Level đó]*`,
+      `**Shell**: khi bị Stagger bởi kẻ địch, hồi lại 40 Stamina ở turn sau và nhận 2 Emotion Coin *[1 lần mỗi encounter]*`,
+    ],
+  },
+  "dawn office - salvador": {
+    name: "Dawn Office - Salvador", bookOf: "Dawn Book",
+    resistance: { B: 1.1, P: 1.2, S: 1.3 },
+    speedRange: { min: 2, max: 6 },
+    keypage: [
+      `**Light of Daybreak**: khi đánh kẻ địch đang có <:Fix_Burn:1513762753691652177>Burn, giảm 5 Stamina của địch mỗi hit`,
+      `**Dawn Office - Salvador**: khi bản thân dưới 50% HP, giảm một nửa Dmg từ <:Fix_Burn:1513762753691652177>Burn và tăng 15% Dmg khi skill gây <:Fix_Burn:1513762753691652177>Burn`,
+    ],
+  },
 };
 
 /** findOutfit — tra theo key chuẩn hoá hoặc tên hiển thị (case-insensitive). */

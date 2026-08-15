@@ -139,6 +139,18 @@ function setSanityBias(sanity) {
   sanityBiasActive = Number.isFinite(sanity) ? sanity : 0;
 }
 
+/** rRaw — roll KHÔNG chịu BẤT KỲ tác động nào lên dice.
+ *
+ *  Fragaria 14/08 (Scales of Judgement): *"không bị ảnh hưởng bởi bất kỳ tác động
+ *  đến Dice nào, VD: Dice Up, Max Dice, ..."* — và xác nhận **miễn nhiễm cả Sanity
+ *  bias**. Nên KHÔNG dùng `r()`: nó cộng `diceModifierActive` và áp `applySanityBias`.
+ *  Cũng KHÔNG đẩy vào `emotionTracker` — dice này không phải dice chiến đấu bình
+ *  thường, tính Emotion Coin theo nó là sai.
+ */
+function rRaw(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function clearSanityBias() {
   sanityBiasActive = 0;
 }
@@ -1702,6 +1714,120 @@ roll(v = "no") {
 },
 
   // ── Book of The Keter ──
+  // ── Book of Gebura (nằm trong sub-menu của Book of Library) ──────────────
+  // ── Book of The Birds ────────────────────────────────────────────────────
+  "scales of judgement": {
+    name: "Scales of Judgement", bookOf: "Book of The Birds",
+    cost: `3 <:Light:1513786082502770719>Light`, cd: "5 Turn", diceMul: "1x",
+    roll() {
+      // ⚠️ `rRaw` chứ KHÔNG phải `r`: Fragaria xác nhận dice này miễn nhiễm MỌI
+      // tác động lên dice (Dice Up, Max Dice…) VÀ cả Sanity bias.
+      const d1 = rRaw(0, 100);
+      const under = d1 < 50;
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] [Undodgeable] [AOE] *(dice này KHÔNG chịu bất kỳ tác động nào — Dice Up, Max Dice, Sanity…)*`,
+        under
+          ? `→ Roll **dưới 50** ⇒ **HỒI MÁU cho kẻ thù** bằng đúng lượng dice roll ra: **${d1}** HP`
+          : `→ Roll **từ 50 trở lên** ⇒ gây cho kẻ thù **50 True Dmg**`,
+      ];
+    },
+  },
+  // Critical của Beak — hệ đạn dùng CHUNG với ammo sẵn có của repo.
+  "shot": {
+    name: "Shot", weaponOf: "Beak", tags: "Weapon",
+    cost: `[Tiêu hao 3 viên đạn — nếu chưa nạp thì tự động nạp 10 viên]`, cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(3,4), d2 = r(5,6), d3 = r(3,6);
+      return [
+        `<:Dice1:1508173590078558369> **${d1 + 5}** [<:Pierce:1513768511179329556>Pierce] — bắn kẻ thù, Dmg = số Dice (${d1}) **+5**`,
+        `<:Dice2:1508173623691710625> **${d2 + 5}** [<:Pierce:1513768511179329556>Pierce] — bắn kẻ thù, Dmg = số Dice (${d2}) **+5**`,
+        `<:Dice3:1508173643518050395> **${d3 + 5}** [<:Pierce:1513768511179329556>Pierce] — bắn kẻ thù, Dmg = số Dice (${d3}) **+5**`,
+      ];
+    },
+  },
+  "tilted scale": {
+    name: "Tilted Scale", weaponOf: "Justitia", tags: "Weapon",
+    cost: "", cd: "5 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(21,41);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] [Unblockable] [Undodgeable] — Treo cổ kẻ thù, **huỷ toàn bộ dice** đối thủ dùng trong turn này`,
+        `*Nếu đối thủ đang bị Stagger: gây thêm **50% Dmg**.*`,
+      ];
+    },
+  },
+  "allure": {
+    name: "Allure", weaponOf: "Lamp", tags: "Weapon",
+    cost: "", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(29,37);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Tấn công 3 mục tiêu] [Unblockable] [Undodgeable] — tạo vùng sáng gây 6 <:Fix_Burn:1513762753691652177>Burn`,
+        `*Thu hút tất cả kẻ thù dính phải trong turn sau.*`,
+      ];
+    },
+  },
+
+  "shell": {
+    name: "Shell", bookOf: "Book of Gebura",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:Fix_ALEPH:1449759474268242021>",
+    // ⚠️ CD LÀ CHUỖI FONT LỖI **CỐ Ý** (Fragaria xác nhận 14/08): page dùng ĐÚNG
+    // MỘT LẦN, hiệu lực kéo dài hết encounter, và sau đó KHÔNG dùng lại được.
+    // Chuỗi này không parse ra số turn nào nên `parseSkillCooldownTurns` trả 0 —
+    // phần "không dùng lại được" do luật 1-lần/encounter đảm nhiệm, không phải CD.
+    cost: `85 <:Sanity:1538272293132963930>Sanity`, cd: "I-lôVÉ-ỹÒu", diceMul: "1x",
+    oncePerEncounter: true,
+    roll() {
+      return [
+        `*Type: None — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `Khi sử dụng, bản thân **KHÔNG THỂ bị trừ Stamina** bởi bất kỳ tác động nào từ bên ngoài *[kéo dài đến hết encounter]*`,
+        `*[VD: <:Tremor:1513762737388257380>Tremor, skill trừ trực tiếp Stamina]*`,
+        `*[Dùng 1 lần mỗi encounter — sau đó page không dùng lại được]*`,
+      ];
+    },
+  },
+  "prey": {
+    name: "Prey", bookOf: "Book of Gebura",
+    tags: "Abnormalities <:The_Library:1474374220023857192> <:Fix_WAW:1449759461001527518>",
+    cost: `3 <:Light:1513786082502770719>Light & 40 <:Sanity:1538272293132963930>Sanity`, cd: "??? Turn", diceMul: "1x",
+    oncePerEncounter: true,
+    roll() {
+      return [
+        `*Type: None — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `Chọn một kẻ thù để **đánh dấu**. Khi tấn công kẻ thù đó, sát thương gây ra bằng **sát thương gốc + 6**`,
+        `Nếu là M1: mỗi 1 Stamina mà M1 tiêu thụ sẽ **+0,3 Dmg**`,
+        `*[Dấu ấn kéo dài cho đến khi kẻ địch chết]* *[1 lần mỗi encounter]*`,
+      ];
+    },
+  },
+
+  // ── Dawn Book ────────────────────────────────────────────────────────────
+  "crack of dawn": {
+    name: "Crack of Dawn", bookOf: "Dawn Book", tags: "Burn, Tremor, Protection",
+    cost: `4 <:Light:1513786082502770719>Light`, cd: "4 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(8,16), d2 = r(1,5);
+      return [
+        `*[Before Use]* Khi xài, cho **hai đồng minh** của bản thân 2 <:Protection:1528452299834261545>Protection vào turn sau`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 5 <:Fix_Burn:1513762753691652177>Burn và 2 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — sau khi Clash THUA, cho bản thân Shield = Dice × 5`,
+      ];
+    },
+  },
+  "flash of sunup": {
+    name: "Flash of Sunup", bookOf: "Dawn Book", tags: "Burn, Light",
+    cost: `1 <:Light:1513786082502770719>Light`, cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,9), d2 = r(7,9);
+      return [
+        `*[On Use]* Hồi cho bản thân 2 <:Light:1513786082502770719>Light`,
+        `*[Clash Win]* Hồi cho bản thân 2 <:Light:1513786082502770719>Light`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Fix_Burn:1513762753691652177>Burn và 1 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Fix_Burn:1513762753691652177>Burn và 2 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+
   "fervent beats": {
     name: "Fervent Beats",
     tags: "Abnormalities <:The_Library:1474374220023857192> <:TETH:1449759432119419070>",
@@ -6748,5 +6874,5 @@ function resolveSkillKey(raw) {
 
 module.exports = {
   extractDmgTakenGrants,
-  setSanityBias, clearSanityBias,
+  setSanityBias, clearSanityBias, rRaw,
   applyIndulgenceToDmgStr, SKILLS, SKILL_ALIASES, findSkill, resolveSkillKey, cdKeyFor, findOwnedPageKey, extractNonDmgStrEffects, resolveReuseTimes, buildReuseVariants, findByKeyword, autoExtractDiceSideEffects, r, computeEmotionDelta, startEmotionTracking, stopEmotionTracking, startForceMinDice, stopForceMinDice, startForceMaxDice, stopForceMaxDice, setDiceModifier, clearDiceModifier, autoBuildDmgStrFromSkillRoll, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10 };
