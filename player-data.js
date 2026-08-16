@@ -29,6 +29,10 @@ function migratePlayerData(data) {
     data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
     data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
     data.equippedWeapon = data.equippedWeapon ?? null;
+  // ── OFFHAND (Nebula-Stitched Grips "Left Hand", Fragaria 14/08) ────────────
+  // *"Nó giúp trang bị THÊM vũ khí, chứ gốc là game chỉ được trang bị 1."*
+  // Slot phụ RIÊNG — chỉ hợp lệ khi vũ khí đó có passive `offhandOnly`.
+  data.equippedOffhandWeapon = data.equippedOffhandWeapon ?? null;
     data.equippedOutfit = data.equippedOutfit ?? null;
     data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
     // BUG ĐÃ SỬA (phát hiện qua GM trực tiếp xem JSON thật trong Upstash và không
@@ -84,6 +88,10 @@ function migratePlayerData(data) {
   data.equippedPages = data.equippedPages ?? [null, null, null, null, null];
   data.equippedEgoPages = data.equippedEgoPages ?? [null, null, null, null, null];
   data.equippedWeapon = data.equippedWeapon ?? null;
+  // ── OFFHAND (Nebula-Stitched Grips "Left Hand", Fragaria 14/08) ────────────
+  // *"Nó giúp trang bị THÊM vũ khí, chứ gốc là game chỉ được trang bị 1."*
+  // Slot phụ RIÊNG — chỉ hợp lệ khi vũ khí đó có passive `offhandOnly`.
+  data.equippedOffhandWeapon = data.equippedOffhandWeapon ?? null;
   data.equippedOutfit = data.equippedOutfit ?? null;
   data.equippedAccessories = data.equippedAccessories ?? [null, null, null];
   data.ShinUnlock = data.ShinUnlock ?? false;

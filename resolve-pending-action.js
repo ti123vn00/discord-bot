@@ -101,6 +101,18 @@ async function resolveOnePendingAction(encounter, p) {
               attacker.combatant.currentLight = Math.min(attacker.combatant.maxLight, (attacker.combatant.currentLight ?? 0) + 1);
               eyeOfHorusRepeatLightNote = ` 🔄[Repeat Ammo +1 Light]`;
             }
+            // ── DAYDREAM (Wonder Gun "Good bye~", Fragaria 14/08) ──────────
+            // *"Với mỗi HÀNH ĐỘNG của họ sẽ -2 Stamina trong 3 Turn"* — Fragaria
+            // xác nhận "hành động" gồm **M1, skill/page VÀ cả phòng thủ**.
+            // Đặt ở đây cho nhánh CHỦ ĐỘNG (M1/skill); nhánh PHÒNG THỦ nằm ở
+            // `finalizeReactiveChoice` (reactive-defense.js) — hai đường khác
+            // nhau, phải cắm cả hai, không đường nào bao đường nào.
+            if ((attacker.combatant?.daydreamTurnsLeft ?? 0) > 0) {
+              const drain = attacker.combatant.daydreamDrain ?? 2;
+              const b = attacker.combatant.currentStamina ?? 0;
+              attacker.combatant.currentStamina = Math.max(0, b - drain);
+              resultLines.push(`💤 **Daydream** — ${attacker.label} hành động: -${(b - attacker.combatant.currentStamina).toFixed(0)} Stamina (còn ${attacker.combatant.daydreamTurnsLeft} turn)`);
+            }
             if (p.staminaCost && attacker.type === "player") {
               attacker.combatant.currentStamina = Math.max(0, attacker.combatant.currentStamina - p.staminaCost);
               attacker.combatant.staminaUsedThisTurn += p.staminaCost;
@@ -1284,6 +1296,43 @@ async function resolveOnePendingAction(encounter, p) {
               // ── BOOK OF THE BIRDS / DAWN OFFICE — hiệu ứng theo HIT ───────
               // Đặt ở đây vì `finalDmg` và số hit đã chốt, và cùng chỗ với các
               // hiệu ứng-theo-đòn khác (Payback) nên không lệch thứ tự.
+              // ── BOOK OF M.A.D — passive theo HIT (Fragaria 14/08) ─────────
+              let madNote = "";
+              {
+                const wep = attacker.combatant?.weaponName;
+                const hits = Math.max(1, t.preview?.dmgValues?.length ?? 1);
+                const targetIsAlly = attacker.type === "player" && targetResolved.type === "player"
+                  && p.attackerId !== t.targetId;
+                // Wonder Gun "Sweet Dream": mỗi hit −1 Stamina địch; nếu là ĐỒNG
+                // MINH thì +1 HP và KHÔNG gây sát thương.
+                // (Target đồng minh vốn đã cho phép — `resolveTargets` dùng
+                //  "enemy_or_player" ở cả M1 lẫn skill.)
+                if (wep === "Wonder Gun of M.A.D") {
+                  if (targetIsAlly) {
+                    finalDmg = 0;
+                    healHpCapped(target, hits);
+                    madNote += ` 💤[Sweet Dream: đồng minh +${hits} HP, KHÔNG nhận sát thương]`;
+                  } else if (finalDmg > 0) {
+                    const b = target.currentStamina ?? 0;
+                    target.currentStamina = Math.max(0, b - hits);
+                    madNote += ` 💤[Sweet Dream: -${(b - target.currentStamina).toFixed(0)} Stamina (${hits} hit)]`;
+                  }
+                }
+                // Mythical SWorld "Hard Work": mỗi đòn tấn công gây 4 Bleed.
+                if (wep === "Mythical SWorld of M.A.D" && finalDmg > 0 && !targetIsAlly) {
+                  target.bleed = Math.min(BLEED_MAX, (target.bleed ?? 0) + 4);
+                  madNote += ` 🩸[Hard Work: +4 Bleed (tổng ${target.bleed})]`;
+                }
+                // Anchorly Tale "Let me show you!": mỗi đòn hồi 3% máu trong kho
+                // Bless of Deep Sea (kho GIẢM đi phần đã hồi).
+                if (wep === "Anchorly Tale of M.A.D" && finalDmg > 0
+                    && (attacker.combatant?.blessOfDeepSea ?? 0) > 0) {
+                  const heal = attacker.combatant.blessOfDeepSea * 0.03;
+                  healHpCapped(attacker.combatant, heal);
+                  attacker.combatant.blessOfDeepSea -= heal;
+                  madNote += ` 🌊[Let me show you!: hồi ${heal.toFixed(2)} HP từ Bless of Deep Sea]`;
+                }
+              }
               let birdsNote = "";
               if (finalDmg > 0) {
                 // Justitia "Judgement": mỗi đòn (Critical, M1) giảm Stamina địch
@@ -1773,7 +1822,7 @@ async function resolveOnePendingAction(encounter, p) {
                   await savePlayerData(t.targetId, injSyncData, injSyncSlot);
                 } catch { /* không chặn action chính nếu sync injury lỗi */ }
               }
-              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${renegadeNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}${paybackHitNote}${birdsNote}`);
+              targetDmgLines.push(`${targetResolved.label} -${finalDmg.toFixed(3)} HP${killNote}${deathNote}${defenseNote}${perkNote}${injuryNote}${eyeOfHorusNote}${fragileNote}${karmicNote}${smokeNote}${chargeShieldNote}${protectionNote}${shieldHpNote}${renegadeNote}${dieciSinkingNote}${liuAssociationNote}${regenHealNote}${timeMoratoriumNote}${paybackNote}${paybackHitNote}${birdsNote}${madNote}`);
               if (!evadedCompletely) anyHitLandedThisAction = true; // gom kết quả từng target ra scope ngoài (xem khai báo)
             }
             // 2 status "trên bản thân" — áp vào ATTACKER. Với AOE (nhiều target),
@@ -2652,6 +2701,18 @@ async function resolveOnePendingAction(encounter, p) {
             // *"[Tiêu hao 3 viên đạn] [Nếu bản thân chưa nạp đạn sẽ tự động nạp 10 viên]"*
             // Thứ tự: NẠP TRƯỚC (nếu đang 0), rồi mới trừ 3 — đúng chữ "nếu chưa
             // nạp thì tự nạp", để người chơi hết đạn vẫn bắn được phát này.
+            if (p.skillKey === "good bye~") {
+              // Gắn Daydream lên MỌI target của đòn này.
+              for (const tt of p.targets ?? []) {
+                const tr2 = resolveCombatant(encounter, tt.targetId);
+                if (!tr2?.combatant) continue;
+                // Trên 10 Tremor ⇒ -5 Stamina và kéo dài 5 turn (thay vì 2/3).
+                const strong = (tr2.combatant.tremor ?? 0) > 10;
+                tr2.combatant.daydreamDrain = strong ? 5 : 2;
+                tr2.combatant.daydreamTurnsLeft = strong ? 5 : 3;
+                verifyNote += ` 💤[Daydream: ${tr2.label} -${tr2.combatant.daydreamDrain} Stamina/hành động, ${tr2.combatant.daydreamTurnsLeft} turn${strong ? " *(>10 Tremor)*" : ""}]`;
+              }
+            }
             if (p.skillKey === "shot") {
               const me = attacker.combatant;
               if (me) {

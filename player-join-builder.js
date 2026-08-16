@@ -34,6 +34,15 @@ module.exports = function ({ findSkill, parseSkillCost, isEgoSkill, syncCompassi
     // không còn rơi vào nhánh "gõ tay tùy ý" nữa.
     const equippedWeaponObj = profileDataForDefaults.equippedWeapon ? findWeaponAnywhere(profileDataForDefaults.equippedWeapon) : findWeaponAnywhere("Brawler");
     const equippedOutfitObj = profileDataForDefaults.equippedOutfit ? findOutfit(profileDataForDefaults.equippedOutfit) : null;
+    // ── LEFT HAND (Nebula-Stitched Grips) ───────────────────────────────────
+    // Vũ khí phụ chỉ hợp lệ khi có cờ `offhandOnly`, và CHỈ khi cùng Type với vũ
+    // khí chính (luật passive). Cộng `offhandBonusDamage` vào vũ khí CÒN LẠI.
+    // *"Không thể đánh thường bằng vũ khí này khi đang equip vũ khí khác"* —
+    // vũ khí phụ KHÔNG bao giờ thành vũ khí M1, nên không đụng `weaponName`.
+    const offhandObj = profileDataForDefaults.equippedOffhandWeapon
+      ? findWeaponAnywhere(profileDataForDefaults.equippedOffhandWeapon) : null;
+    const offhandValid = !!(offhandObj?.offhandOnly && equippedWeaponObj
+      && offhandObj.type === equippedWeaponObj.type);
     const weapon = normalizeWeaponWeight(kv["weapon"] ?? equippedWeaponObj?.weight ?? "medium");
     const resRaw = kv["res"] ?? "";
     const res = equippedOutfitObj ? { ...equippedOutfitObj.resistance } : { B: 2, P: 2, S: 2 };
@@ -74,7 +83,10 @@ module.exports = function ({ findSkill, parseSkillCost, isEgoSkill, syncCompassi
       maxStamina: Number.isFinite(stamina) && stamina > 0 ? stamina : ENCOUNTER_DEFAULT_MAX_STAMINA,
       maxLight: Number.isFinite(light) && light > 0 ? light : gradeBasedMaxLight,
       weaponWeight: weapon,
-      weaponBaseDamage: equippedWeaponObj?.baseDamage ?? null,
+      weaponBaseDamage: equippedWeaponObj?.baseDamage != null
+        ? equippedWeaponObj.baseDamage + (offhandValid ? (offhandObj.offhandBonusDamage ?? 0) : 0)
+        : null,
+      offhandWeaponName: offhandValid ? offhandObj.name : null,
       weaponType: equippedWeaponObj?.type ?? null,
       weaponName: equippedWeaponObj?.name ?? null,
       weaponCriticalKey: equippedWeaponObj ? (equippedWeaponObj.criticalSkillKey ?? equippedWeaponObj.name) : null,

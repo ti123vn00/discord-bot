@@ -61,6 +61,21 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
   } catch (err) {
     log("error", "finalizeReactiveChoice-bgm", "system", err.message);
   }
+  // ── DAYDREAM: PHÒNG THỦ cũng tính là "hành động" (Fragaria 14/08) ─────────
+  // Nhánh CHỦ ĐỘNG (M1/skill) nằm ở resolve-pending-action. Đây là nhánh phòng
+  // thủ — hai đường khác nhau, phải cắm CẢ HAI.
+  // Người PHÒNG THỦ chính là `targetResolved.combatant` (đã resolve ở đầu hàm) —
+  // KHÔNG có biến `userId` trong scope này (t-index/t-bgm bắt được).
+  let daydreamDefNote = "";
+  {
+    const dd = targetResolved?.combatant ?? null;
+    if (dd && (dd.daydreamTurnsLeft ?? 0) > 0) {
+      const drain = dd.daydreamDrain ?? 2;
+      const b = dd.currentStamina ?? 0;
+      dd.currentStamina = Math.max(0, b - drain);
+      daydreamDefNote = `\n💤 **Daydream** — phòng thủ cũng tính là hành động: -${(b - dd.currentStamina).toFixed(0)} Stamina`;
+    }
+  }
   await saveEncounter(channelId, encounter);
   // PAYBACK — đòn phản do `resolveOnePendingAction` vừa sinh ra cần được gửi
   // prompt phòng thủ. Đặt ở ĐÂY (trong hàm) chứ không ở 6 nơi gọi — đúng bài
@@ -75,7 +90,7 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
   // xoá, tránh save-sau-xoá vô tình tạo lại encounter đã kết thúc).
   if (encounter._deleteAfterSave) {
     await deleteEncounter(channelId).catch((err) => log("error", "reactivedef-deleteEncounter", "system", err.message));
-    return { resultText, stillWaitingFor, bgm };
+    return { resultText: resultText + daydreamDefNote, stillWaitingFor, bgm };
   }
   // Stage 4 hook — nếu đòn VỪA resolve xong (allReacted) do 1 enemy aiControlled
   // TỰ tấn công (attackerType "enemy"), báo cho AI biết để tự cân nhắc hành động
@@ -86,7 +101,7 @@ async function finalizeReactiveChoice(channelId, encounter, p, targetId, choiceN
   if (allReacted && p.attackerType === "enemy" && encounter.enemies[p.attackerId]?.aiControlled) {
     aiHooks.maybeRunAiTurn(channelId).catch(() => {});
   }
-  return { resultText, stillWaitingFor, bgm };
+  return { resultText: resultText + daydreamDefNote, stillWaitingFor, bgm };
 }
 
 /** sendReactiveDefensePrompt — Yu-Gi-Oh Chain-style: khi A tấn công B, gửi NGAY

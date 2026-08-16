@@ -370,6 +370,10 @@ const WEAPONS = {
   "nebula-stitched grips": {
     name: "Nebula-Stitched Grips", weight: "light", type: "Blunt",
     baseDamage: 3, bookOf: "Book of M.A.D.",
+    // `offhandOnly` — đánh dấu vũ khí này equip được vào SLOT PHỤ (xem
+    // player-data.js `equippedOffhandWeapon`). Repo gốc chỉ có 1 slot vũ khí.
+    offhandOnly: true,
+    offhandBonusDamage: 3,
     passives: [{
       name: "Left Hand",
       desc: "Equip được CÙNG vũ khí cùng Type mà không tốn slot; tăng **+3 sát thương** cho vũ khí còn lại. Đổi lại: KHÔNG đánh thường được bằng vũ khí này khi đang equip vũ khí khác.",
