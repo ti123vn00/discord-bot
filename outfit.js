@@ -250,6 +250,45 @@ const OUTFITS = {
       "Mỗi turn sẽ gieo dice từ 1 đến 7 để lấy sắc lệnh, và phải thực hiện nó trong vòng turn đó. Nếu thành công sẽ nhận được 1 Grace of Prescript. Nếu thất bại sắc lệnh sẽ nhận 5 Karmic Consequence; khiến bạn nhận thêm 1% Dmg cho mỗi stack. Max 100 Stack. (1: Tấn công | 2: Né | 3: Block | 4: Parry | 5: 1 phòng thủ + 1 tấn công | 6: Không làm gì | 7: Clash) —",
     ],
   },
+  // ── BOOK OF M.A.D (Fragaria 14/08) ───────────────────────────────────────
+  "magician red of m.a.d": {
+    name: "Magician Red of M.A.D", bookOf: "Book of M.A.D.",
+    resistance: { B: 1.4, P: 1, S: 1.2 },
+    speedRange: { min: 3, max: 6 },
+    keypage: [
+      `Sát thương <:Fix_Burn:1513762753691652177>Burn lên **bản thân** giảm một nửa.`,
+      `Khi dùng **Magician SWorld of M.A.D**: hồi lại lượng máu bằng số <:Fix_Burn:1513762753691652177>Burn đang có trên bản thân.`,
+    ],
+  },
+  "grandma's sweater of m.a.d": {
+    name: "Grandma's Sweater of M.A.D", bookOf: "Book of M.A.D.",
+    resistance: { B: 1.2, P: 1.3, S: 1.3 },
+    speedRange: { min: 4, max: 8 },
+    keypage: [
+      `Sau khi <:TremorBurst:1513802464632246352>Tremor Burst một kẻ địch: hồi 10 Stamina cho bản thân.`,
+      `Khi dùng **Wonder Gun of M.A.D**: mỗi 1 Stamina bào được từ đối thủ ⇒ hồi cho bản thân **1,5 HP**.`,
+    ],
+  },
+  "my sailor in m.a.d": {
+    name: "My Sailor in M.A.D", bookOf: "Book of M.A.D.",
+    resistance: { B: 1.3, P: 1.3, S: 1.3 },
+    speedRange: { min: 3, max: 5 },
+    keypage: [
+      `Mỗi khi nhận sát thương từ 1 nguồn: nhận 3 <:DefenseUp:1513767487894716497>Def Up.`,
+      `Nhận **Bless of Deep Sea** khi bị tấn công.`,
+      `Khi dùng **Anchorly Tale of M.A.D**: với mỗi đòn đánh từ BẤT KỲ nguồn nào, hồi thêm **2% máu** dựa trên lượng sát thương mà **Bless of Deep Sea** tích trữ.`,
+    ],
+  },
+  "knight's armor of m.a.d": {
+    name: "Knight's Armor of M.A.D", bookOf: "Book of M.A.D.",
+    resistance: { B: 1.2, P: 1.6, S: 1.2 },
+    speedRange: { min: 4, max: 6 },
+    keypage: [
+      `Giảm **15% sát thương nhận vào** ứng với mỗi kẻ địch dính <:Bleed:1513762688226955285>Bleed vào ĐẦU mỗi turn.`,
+      `**Khi và CHỈ KHI** dùng **Mythical SWorld of M.A.D**: giảm **0.2x** mọi Res của bản thân.`,
+    ],
+  },
+
   // ── R CORP BOOK (Fragaria 14/08) ─────────────────────────────────────────
   // "Với mỗi 10% HP mất TRONG TURN ORDER đó" (Fragaria xác nhận) — tính theo HP
   // mất trong lượt, không phải tổng đã mất.

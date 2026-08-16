@@ -748,6 +748,11 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     if (combatant.hasDawnYuna) {
       combatant.loneFixerActive = (combatant._alivePlayerCount ?? 0) === 1 && (combatant.currentHp ?? 0) > 0;
     }
+    // Bless of Deep Sea — giảm 3% qua mỗi turn (Fragaria 14/08).
+    if ((combatant.blessOfDeepSea ?? 0) > 0) {
+      combatant.blessOfDeepSea = Math.round(combatant.blessOfDeepSea * 0.97 * 1000) / 1000;
+      if (combatant.blessOfDeepSea < 0.01) combatant.blessOfDeepSea = 0;
+    }
     combatant.hpLostThisTurn = 0;
     combatant.diceDown = 0;
     // Smoke: "sau mỗi 1 turn sẽ mất 1 stack" — decay -1 (KHÔNG reset thẳng về 0

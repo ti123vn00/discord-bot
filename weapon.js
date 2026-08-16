@@ -347,6 +347,59 @@ const WEAPONS = {
     passives: [{ name: "Art", desc: "Với mỗi 5 Bleed lên kẻ thù khi sử dụng Critical sẽ tăng 20% Reuse [tối đa Reuse 2 lần] [Mặc định có 40% Reuse]." }],
     criticalSkillKey: "sanguine pointilism",
   },
+  // ── BOOK OF M.A.D (Fragaria 14/08) ───────────────────────────────────────
+  // ⚠️ Emoji trong text gốc là ID server khác — đã đổi sang ID chuẩn codebase.
+  "magician sword of m.a.d": {
+    name: "Magician SWorld of M.A.D", weight: "medium", type: "Slash",
+    baseDamage: 12, bookOf: "Book of M.A.D.",
+    passives: [{
+      name: "Flame Controler",
+      desc: "Khi tấn công **4 lần** lên đối phương, CẢ đối phương và bản thân nhận 2 <:Fix_Burn:1513762753691652177>Burn. Khi đối phương nhận 10 <:Fix_Burn:1513762753691652177>Burn qua cách này, đòn tiếp theo kích hoạt **Burning Sensation** — kẻ địch dính đòn bị trừ 5 Stamina.",
+    }],
+    criticalSkillKey: "inferno abyss",
+  },
+  "mythical sword of m.a.d": {
+    name: "Mythical SWorld of M.A.D", weight: "heavy", type: "Blunt",
+    baseDamage: 28, bookOf: "Book of M.A.D.",
+    passives: [{
+      name: "Hard Work",
+      desc: "Mỗi đòn tấn công gây 4 <:Bleed:1513762688226955285>Bleed. Khi đánh 3 đòn thì gây thêm 1 hit **10 Dmg + 1 <:Bleed:1513762688226955285>Bleed**. Khi Block/Parry thành công, kẻ địch nhận thêm 2 <:Bleed:1513762688226955285>Bleed.",
+    }],
+    criticalSkillKey: "not learning?",
+  },
+  "nebula-stitched grips": {
+    name: "Nebula-Stitched Grips", weight: "light", type: "Blunt",
+    baseDamage: 3, bookOf: "Book of M.A.D.",
+    passives: [{
+      name: "Left Hand",
+      desc: "Equip được CÙNG vũ khí cùng Type mà không tốn slot; tăng **+3 sát thương** cho vũ khí còn lại. Đổi lại: KHÔNG đánh thường được bằng vũ khí này khi đang equip vũ khí khác.",
+    }],
+    criticalSkillKey: "measured execution",
+  },
+  "wonder gun of m.a.d": {
+    name: "Wonder Gun of M.A.D", weight: "light", type: "Pierce",
+    baseDamage: 1, bookOf: "Book of M.A.D.",
+    // ⚠️ Đạn RIÊNG, hoạt động như Eye Of Horus (kho `wonderGunAmmo`, KHÔNG dùng
+    // `bulletStack`/`ammo`). M1 tốn **1 Stamina/hit** ⇒ 20 hit = 1 group hit M1
+    // thường (Fragaria xác nhận).
+    ownAmmo: { field: "wonderGunAmmo", max: 30 },
+    m1StaminaPerHit: 1,
+    m1HitsPerGroup: 20,
+    passives: [{
+      name: "Sweet Dream",
+      desc: "Mỗi hit gây ra khi đang equip vũ khí này khiến đối phương trúng đòn **-1 Stamina**; nếu là ĐỒNG MINH thì **+1 HP** và KHÔNG gây sát thương.",
+    }],
+    criticalSkillKey: "good bye~",
+  },
+  "anchorly tale of m.a.d": {
+    name: "Anchorly Tale of M.A.D", weight: "heavy", type: "Blunt",
+    baseDamage: 30, bookOf: "Book of M.A.D.",
+    passives: [{
+      name: "Let me show you!",
+      desc: "Với mỗi đòn đánh, hồi lại **3% máu** trong **Bless of Deep Sea** đang có. Sau **5 đòn**, đòn đánh thường tiếp theo trở thành [Undodgeable].",
+    }],
+    criticalSkillKey: "riding the wave",
+  },
   // ── THE THUMB CAPO BOOK (Fragaria 14/08) ─────────────────────────────────
   // ❗ HAI Critical `triple slash - blast` và `savage tigerslayer's perfected
   // flurry of blades` ĐÃ TỒN TẠI trong skills.js và trỏ `weaponOf` vào vũ khí này

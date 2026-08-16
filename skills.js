@@ -1862,6 +1862,98 @@ roll(v = "no") {
   },
 
   // ── Dawn Book ────────────────────────────────────────────────────────────
+  // ── BOOK OF M.A.D — Critical (Fragaria 14/08) ────────────────────────────
+  "inferno abyss": {
+    name: "Inferno Abyss", weaponOf: "Magician SWorld of M.A.D", tags: "Weapon",
+    cost: "", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,7), d2 = r(5,7), d3 = r(7,10);
+      return [
+        `*Tung 3 đòn liên tiếp.*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce] — gây 1 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce] [AOE] [Undodgeable] — gây 3 <:Fix_Burn:1513762753691652177>Burn`,
+        `*Đánh trúng CẢ 3 đòn ⇒ gây thêm 5 <:Fix_Burn:1513762753691652177>Burn cho đối phương.*`,
+      ];
+    },
+  },
+  "not learning?": {
+    name: "Not Learning?", weaponOf: "Mythical SWorld of M.A.D", tags: "Weapon",
+    cost: "", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(9,20);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] [Undodgeable] — ngay lập tức bổ xuống`,
+        `*Nếu đối phương ĐANG có <:Bleed:1513762688226955285>Bleed: ngay lập tức nhận **<:Hemorrhage:1513762688226955285>Hemorrhage** và áp thêm 5 <:Bleed:1513762688226955285>Bleed nữa.*`,
+      ];
+    },
+  },
+  "measured execution": {
+    name: "Measured Execution", weaponOf: "Nebula-Stitched Grips", tags: "Weapon",
+    cost: "", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,6), d2 = r(5,6), d3 = r(8,12);
+      return [
+        `*Tung 3 đòn liên tiếp.*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt]`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Pierce:1513768511179329556>Pierce]`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Pierce:1513768511179329556>Pierce]`,
+        `*Đánh trúng CẢ 3 đòn ⇒ gây 5 <:Bleed:1513762688226955285>Bleed cho đối phương.*`,
+      ];
+    },
+  },
+  "good bye~": {
+    name: "Good bye~", weaponOf: "Wonder Gun of M.A.D", tags: "Weapon",
+    cost: "", cd: "3 Turn *(tính SAU khi hết thời gian hiệu lực)*", diceMul: "1x",
+    roll() {
+      return [
+        `*Type: None — KHÔNG có Dice, đây là hiệu ứng thuần tuý.* [Undodgeable] [Unguardable]`,
+        `Gắn 1 **Daydream** lên đối phương: mỗi hành động của họ **-2 Stamina**, kéo dài **3 Turn**`,
+        `*Nếu đối phương có TRÊN 10 <:Tremor:1513762737388257380>Tremor: nâng thành **-5 Stamina** và kéo dài **5 Turn**.*`,
+      ];
+    },
+  },
+  "riding the wave": {
+    name: "Riding the Wave", weaponOf: "Anchorly Tale of M.A.D", tags: "Weapon",
+    cost: "", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(7,13), d2 = r(12,19);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — nhảy lên né 2 đòn *(trừ [Undodgeable])*, nhận 1 <:DefenseUp:1513767487894716497>Def Up`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] — nhận 2 <:DefenseUp:1513767487894716497>Def Up`,
+        `*Hồi lại **5% máu** tích trong **Bless of Deep Sea** mỗi đòn TRÚNG.*`,
+        `*Nếu CHƯA có **Bless of Deep Sea** ⇒ nhận **Bless of Deep Sea**.*`,
+      ];
+    },
+  },
+  // ── BOOK OF M.A.D — Page ─────────────────────────────────────────────────
+  "got your back": {
+    name: "Got Your Back", bookOf: "Book of M.A.D.", tags: "Bleed",
+    cost: `4 <:Light:1513786082502770719>Light`, cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10);
+      return [
+        `*Tung 1 nhát chém thẳng xuống.*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] — *[On Hit]* gây 3 <:Bleed:1513762688226955285>Bleed + 1 <:Hemorrhage:1513762688226955285>Hemorrhage`,
+        `*Có thể LẶP LẠI đòn này với 1 <:Light:1513786082502770719>Light mỗi lần; sát thương LUÔN là **6** ở những lần lặp.*`,
+        `*[On Hit] mỗi lần lặp gây 2 <:Bleed:1513762688226955285>Bleed.*`,
+      ];
+    },
+  },
+  "the sea i belong to": {
+    name: "The Sea I Belong To", bookOf: "Book of M.A.D.",
+    cost: `2 <:Light:1513786082502770719>Light`, cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,9), d2 = r(6,10);
+      return [
+        `*Húc vào tường rồi kéo kẻ địch lại.*`,
+        `*Nếu CHƯA có **Bless of Deep Sea** ⇒ nhận **Bless of Deep Sea** ở turn sau.*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] — *[On Hit]* hồi 2% HP trong **Bless of Deep Sea**`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] *(Undodgeable NẾU trúng hit trước)* — *[On Hit]* hồi 3% HP trong **Bless of Deep Sea**`,
+      ];
+    },
+  },
+
   "butterfly slash": {
     name: "Butterfly Slash", bookOf: "Dawn Book", tags: "Burn, Tremor, Slash",
     cost: `2 <:Light:1513786082502770719>Light`, cd: "2 Turn", diceMul: "1x",

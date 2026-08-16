@@ -484,6 +484,15 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     }
     const lost = before - combatant.currentHp;
     if (lost <= 0) return 0;
+    // ── BLESS OF DEEP SEA (Fragaria 14/08 — status MỚI) ────────────────────
+    // *"Mỗi khi nhận sát thương sẽ TÍCH TRỮ lại 50% lượng sát thương nhận vào,
+    //  giảm 3% qua 1 Turn."*
+    // ⇒ Đây là một KHO tích (số HP dồn lại), không phải stack đếm như Burn/Bleed.
+    //   `blessOfDeepSea` = lượng đang tích; giảm 3% (tương đối) mỗi turn ở
+    //   turn-advance. Chỉ tích khi combatant ĐANG có buff (cờ `hasBlessOfDeepSea`).
+    if (combatant.hasBlessOfDeepSea) {
+      combatant.blessOfDeepSea = (combatant.blessOfDeepSea ?? 0) + lost * 0.5;
+    }
     // ── R CORP OUTFIT (Fragaria 14/08) ─────────────────────────────────────
     // *"Với mỗi 10% HP mất TRONG TURN ORDER đó sẽ nhận X ở turn sau [Max 2 lần]"*
     // Khác Hana ở hai chỗ: Hana đếm mỗi **10 HP tuyệt đối**, R Corp đếm mỗi
