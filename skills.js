@@ -1716,6 +1716,66 @@ roll(v = "no") {
   // ── Book of The Keter ──
   // ── Book of Gebura (nằm trong sub-menu của Book of Library) ──────────────
   // ── Book of The Birds ────────────────────────────────────────────────────
+  // ── CLASS CARD: ARCHER (Fragaria 14/08) ──────────────────────────────────
+  // ⚠️ Fragaria chốt: **CHƯA làm vũ khí** "Class Card: Archer". Bốn Critical dưới
+  // đây là để GM/người chơi chạy kiểu NARRATIVE trước — mô tả đúng luật, chưa nối
+  // vào máy hiệu ứng (Projection / Holy Shield / chuỗi liên tiếp…).
+  // Đừng tưởng chúng là dead code rồi đi xoá.
+  "quick swap": {
+    name: "Quick Swap", weaponOf: "Class Card: Archer", tags: "Weapon",
+    cost: "", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `*Type: None — KHÔNG có Dice, đây là hiệu ứng thuần tuý.*`,
+        `Chuyển **Class Card: Archer** sang 1 vũ khí khác trong Passive **Projection**`,
+        `*(Kanshou & Bakuya — Medium/<:Slash:1513768633434640517>Slash/12 · Archer's Bow — Light/<:Pierce:1513768511179329556>Pierce/5 · Rho Aias — Heavy/<:Blunt:1513768529718022254>Blunt/0)*`,
+        `Một turn dùng tối đa **2 lần** trước khi vào CD.`,
+      ];
+    },
+  },
+  "kanshou & bakuya overedge": {
+    name: "Kanshou & Bakuya Overedge", weaponOf: "Class Card: Archer", tags: "Weapon",
+    cost: "", cd: "4 Turn", diceMul: "1x",
+    roll() {
+      return [
+        `*Chỉ kích hoạt được khi đang dùng **Kanshou & Bakuya** làm vũ khí chính.*`,
+        `Người dùng nhận 2 <:Fix_Haste:1513768004222062632>Haste`,
+        `Rồi nhận 3 <:DiceUp:1513767795681398894>Dice Up và 3 Attack Power Up **đến hết turn sau**`,
+        `*Effect hết NGAY LẬP TỨC nếu dùng **Quick Swap** đổi sang vũ khí khác.*`,
+      ];
+    },
+  },
+  "fake spiral spear - caladbolg ii": {
+    name: "Fake Spiral Spear - Caladbolg II", weaponOf: "Class Card: Archer", tags: "Weapon",
+    cost: `2 <:Light:1513786082502770719>Light`, cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(5,10), d2 = r(15,25);
+      return [
+        `*Chỉ kích hoạt được khi đang dùng **Archer's Bow** làm vũ khí chính.*`,
+        `<:Dice1:1508173590078558369> **${d1}** [<:Pierce:1513768511179329556>Pierce] — bắn một mũi tên xoáy vào 1 đối thủ`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [AOE] [Unblockable] [Undodgeable] — rồi gây ra một vụ nổ`,
+        `Rồi nhận 5 <:DiceUp:1513767795681398894>Dice Up`,
+        `*Có thể kích hoạt lại, tối đa **5 lần**, nhưng phải LIÊN TIẾP nhau.*`,
+        `*Sau khi kết thúc chuỗi, MỌI <:DiceUp:1513767795681398894>Dice Up nhận từ Critical này sẽ biến mất.*`,
+      ];
+    },
+  },
+  "the seven rings that cover the burning heavens": {
+    name: "The Seven Rings that Cover the Burning Heavens",
+    weaponOf: "Class Card: Archer", tags: "Weapon",
+    cost: "", cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(20,50);
+      return [
+        `*Chỉ kích hoạt được khi đang dùng **Rho Aias** làm vũ khí chính.*`,
+        `<:Dice1:1508173590078558369> **${d1}%** — Party nhận **Holy Shield** bằng **${d1}%** tổng Max HP của cả party`,
+        `*Holy Shield là Shield HP dùng CHUNG toàn đội (mọi Dmg nhận vào tính Res 1.0x).*`,
+        `*Mỗi 100 Holy Shield mất trong 1 turn gây 20 True Dmg lên chính người dùng.*`,
+        `*Không vượt quá 100% Max HP toàn đội. Mất sạch khi Rho Aias không còn là vũ khí đang dùng.*`,
+      ];
+    },
+  },
+
   "scales of judgement": {
     name: "Scales of Judgement", bookOf: "Book of The Birds",
     cost: `3 <:Light:1513786082502770719>Light`, cd: "5 Turn", diceMul: "1x",
@@ -6024,6 +6084,20 @@ Object.assign(SKILLS, {
 
 // ── Aliases mới (thêm vào đây khi có alias mới) ──
 Object.assign(SKILL_ALIASES, {
+  // ── Class Card: Archer — alias ngắn (Fragaria 14/08) ──────────────────────
+  // Tên đầy đủ dài 46 ký tự; `customId` dạng `...:<key>` chạm ~92/100 ký tự — SÁT
+  // trần cứng 100 của Discord. Alias ngắn để GM gõ nhanh VÀ để chỗ nào dựng
+  // customId từ key cũng có đường an toàn.
+  "seven rings": "the seven rings that cover the burning heavens",
+  "the seven rings": "the seven rings that cover the burning heavens",
+  "caladbolg": "fake spiral spear - caladbolg ii",
+  "caladbolg ii": "fake spiral spear - caladbolg ii",
+  "kanshou": "kanshou & bakuya overedge",
+  "bakuya": "kanshou & bakuya overedge",
+  // ⚠️ KHÔNG thêm alias "kanshou and bakuya overedge": repo không có đường chuẩn
+  // hoá "and" → "&" nên alias đó không bao giờ ăn (đã thử, resolveSkillKey → null).
+  // Alias chết còn tệ hơn không có: người sau tưởng nó chạy. Dùng "kanshou"/"bakuya"/"overedge".
+  "overedge": "kanshou & bakuya overedge",
   // Illusory Land of Great Void
   "whirlwind": "whirlwind",
   // Vengeance Retaliation

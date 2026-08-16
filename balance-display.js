@@ -14,7 +14,7 @@
 
 const { StringSelectMenuOptionBuilder, StringSelectMenuBuilder, ActionRowBuilder } = require("discord.js");
 
-module.exports = function ({ findSingularity, EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, isConsumableItem, UNIVERSALLY_KNOWN_WEAPONS }) {
+module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, findSingularity, EGO_TIER_SLOT_ORDER, getPlayerData, getActiveProfileSlot, getProfileNames, calcGrade, GRADE_MAX, GRADE_MIN, calcInjuryMaxHpPenalty, calcSkillTreePointsEarned, calcBranchPointsAllocated, PERK_BRANCH, PERK_POINT_COSTS, BRANCH_KEYS, formatNumber, EXP_MAX, INVENTORY_HINT_TEXT, findWeaponAnywhere, findOutfit, findAccessory, findSkill, isEgoSkill, getEgoTier, isConsumableItem, UNIVERSALLY_KNOWN_WEAPONS }) {
 
   async function buildBalanceEmbed(targetUser, isSelf = false) {
     const data = await getPlayerData(targetUser.id);
@@ -115,7 +115,7 @@ module.exports = function ({ findSingularity, EGO_TIER_SLOT_ORDER, getPlayerData
             `<:Fix_Shin:1507591140180754588> **Shin Lvl ${data.ShinLevel ?? 10}** / 50` +
             ` — giảm 0,2x mọi Res khi kích hoạt` +
             `\n<:Fix_Mang:1507591172770631822> **Mang Lvl ${data.MangLevel ?? 1}** / 5` +
-            ` — +${(data.MangLevel ?? 1) * 10}% Dmg, +${data.MangLevel ?? 1} Dice Up, +${data.MangLevel ?? 1} Clash Power Up` +
+            ` — +${(data.MangLevel ?? 1) * MANG_DMG_PCT_PER_LEVEL}% Dmg, +${data.MangLevel ?? 1} Dice Up, +${data.MangLevel ?? 1} Clash Power Up` +
             (isSelf ? "\n> Dùng **Fixer's Note** (`-usenote`) để +10 Shin Lvl và +1 Mang Lvl" : ""),
           inline: false,
         }] : []),
