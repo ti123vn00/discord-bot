@@ -4483,6 +4483,60 @@ client.on("interactionCreate", async (interaction) => {
 // lượt thì X lấp đúng ô vừa trống. Làm ngược lại sẽ báo "đủ slot" một cách vô lý.
 // AN TOÀN VỚI INDEX: `equippedAccessories` là mảng CỐ ĐỊNH 3 ô, gỡ = gán null
 // (KHÔNG splice như consumable) nên index không xê dịch giữa các thao tác cùng lô.
+// ── OFFHAND (Nebula-Stitched Grips "Left Hand", Fragaria 14/08) ─────────────
+// Dropdown chỉ hiện khi đang equip Nebula (xem balance-display.js).
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("baloffhand:")) return;
+  const [, offOwnerId] = interaction.customId.split(":");
+  if (interaction.user.id !== offOwnerId) {
+    return interaction.reply({ content: "❌ Chỉ chủ nhân profile này mới chọn được.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  if (isOnCooldown(interaction.user.id, "baloffhand", 2000)) {
+    return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const pick = (interaction.values?.[0] ?? "").replace(/^off:/, "");
+    await withLock(interaction.user.id, async () => {
+      const { data, slot } = await getPlayerDataWithSlot(interaction.user.id);
+      if ((data.equippedWeapon ?? "").toLowerCase() !== "nebula-stitched grips") {
+        await interaction.editReply({ content: "❌ Chỉ dùng được khi đang equip **Nebula-Stitched Grips**." });
+        return;
+      }
+      if (pick === "__none__") {
+        data.equippedOffhandWeapon = null;
+        await savePlayerData(interaction.user.id, data, slot);
+        await interaction.editReply({ content: "✅ Đã tháo vũ khí phụ." });
+        return;
+      }
+      const w = findWeaponAnywhere(pick);
+      if (!w) { await interaction.editReply({ content: `❌ Không tìm thấy vũ khí: \`${pick}\`` }); return; }
+      if (w.name === "Nebula-Stitched Grips") {
+        await interaction.editReply({ content: "❌ Không thể đeo Nebula-Stitched Grips làm vũ khí phụ của chính nó." });
+        return;
+      }
+      // Luật passive: vũ khí phụ phải CÙNG TYPE với Nebula (Blunt). Báo rõ lý do
+      // thay vì im lặng nhận rồi không có tác dụng.
+      const nebula = findWeaponAnywhere("Nebula-Stitched Grips");
+      if (nebula && w.type !== nebula.type) {
+        await interaction.editReply({
+          content: `❌ **Left Hand** chỉ equip được vũ khí **CÙNG Type** với Nebula-Stitched Grips (**${nebula.type}**). **${w.name}** là ${w.type}.`,
+        });
+        return;
+      }
+      data.equippedOffhandWeapon = w.name;
+      await savePlayerData(interaction.user.id, data, slot);
+      await interaction.editReply({
+        content: `✅ Đã equip vũ khí phụ: **${w.name}** (${w.weight} · ${w.type} · ${w.baseDamage} Base Dmg)\n🤚 **Left Hand**: +3 Dmg cho vũ khí chính; KHÔNG đánh thường được bằng vũ khí phụ.`,
+      });
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${err?.message ?? err}` }).catch(() => {});
+  }
+});
+
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith("balequipgear:")) return;

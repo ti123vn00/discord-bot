@@ -490,6 +490,12 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     // ⇒ Đây là một KHO tích (số HP dồn lại), không phải stack đếm như Burn/Bleed.
     //   `blessOfDeepSea` = lượng đang tích; giảm 3% (tương đối) mỗi turn ở
     //   turn-advance. Chỉ tích khi combatant ĐANG có buff (cờ `hasBlessOfDeepSea`).
+    // My Sailor in M.A.D: *"Nhận Bless of Deep Sea khi bị tấn công"* ⇒ tự bật cờ
+    // ngay lần đầu ăn đòn, và *"mỗi khi nhận sát thương từ 1 nguồn, nhận 3 Def Up"*.
+    if (combatant.hasMySailor) {
+      combatant.hasBlessOfDeepSea = true;
+      combatant.defenseUp = Math.min(20, (combatant.defenseUp ?? 0) + 3);
+    }
     if (combatant.hasBlessOfDeepSea) {
       combatant.blessOfDeepSea = (combatant.blessOfDeepSea ?? 0) + lost * 0.5;
     }
@@ -841,6 +847,9 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     //     cộng đúng 1 lần dù cả party đội nón.
     let extraResPenalty = 0;
     if (combatant.compassionResPenalty) extraResPenalty += 0.2;
+    // Knight's Armor of M.A.D: **KHI VÀ CHỈ KHI** dùng Mythical SWorld ⇒ -0.2x
+    // mọi Res của bản thân (đánh đổi của keypage giảm dmg nhận).
+    if (combatant.hasKnightsArmor && combatant.weaponName === "Mythical SWorld of M.A.D") extraResPenalty += 0.2;
     if (combatant.dayOneAuraActive) extraResPenalty += 0.1;
     if (extraResPenalty > 0) {
       const round1b = (v) => clampRes(v, combatant);

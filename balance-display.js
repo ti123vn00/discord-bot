@@ -288,6 +288,36 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, findSingularity, EGO_TIER_S
             .addOptions(gearOptions.slice(0, 25))
         ));
       }
+      // ── OFFHAND SLOT — Nebula-Stitched Grips "Left Hand" (Fragaria 14/08) ──
+      // *"Làm nút trong submenu balance, CHỈ HIỆN khi player đang equip
+      //  Nebula-Stitched Grips, và nó hiện ra nút để equip vũ khí phụ."*
+      // ⚠️ Ẩn hoàn toàn khi không equip Nebula — Discord chặn CỨNG 5 ActionRow
+      // mỗi message; thêm row vô điều kiện là đẩy row khác ra ngoài.
+      if ((data.equippedWeapon ?? "").toLowerCase() === "nebula-stitched grips") {
+        const offOptions = [];
+        if (data.equippedOffhandWeapon) {
+          offOptions.push(new StringSelectMenuOptionBuilder()
+            .setLabel("❌ Tháo vũ khí phụ").setValue("off:__none__")
+            .setDescription(`Đang đeo: ${data.equippedOffhandWeapon}`.slice(0, 100)));
+        }
+        for (const name of ownedWeaponsSet) {
+          const w = findWeaponAnywhere(name);
+          if (!w || w.name === "Nebula-Stitched Grips") continue;
+          offOptions.push(new StringSelectMenuOptionBuilder()
+            .setLabel(`${w.name}`.slice(0, 100))
+            .setDescription(`${w.weight} · ${w.type} · ${w.baseDamage} Base Dmg`.slice(0, 100))
+            .setValue(`off:${w.name}`.slice(0, 100)));
+        }
+        if (offOptions.length > 0) {
+          components.push(new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`baloffhand:${targetUser.id}`)
+              .setPlaceholder(`🤚 Left Hand — chọn vũ khí PHỤ${data.equippedOffhandWeapon ? ` (đang: ${data.equippedOffhandWeapon})` : ""}...`.slice(0, 150))
+              .setMinValues(1).setMaxValues(1)
+              .addOptions(offOptions.slice(0, 25))
+          ));
+        }
+      }
       // ── CONSUMABLE LOADOUT ────────────────────────────────────────────
       // Fragaria: "-balance chưa có chỗ để equip consumable item đem vào
       // encounter". LUẬT: tối đa 4/trận, mỗi turn dùng 1 lần (cả 2 vế đã có sẵn

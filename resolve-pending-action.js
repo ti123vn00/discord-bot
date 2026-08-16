@@ -600,6 +600,16 @@ async function resolveOnePendingAction(encounter, p) {
                   const coverStart = hitIdx;
                   for (let k = 0; k < hitsPerCharge && hitIdx < totalHits; k++, hitIdx++) {
                     if (won) { perHitMult[hitIdx] = 0; hitEvadedOrParried[hitIdx] = true; }
+                    // Mythical SWorld "Hard Work": Block/Parry THÀNH CÔNG ⇒ kẻ địch +2 Bleed.
+                    // `target` ở đây là người PHÒNG THỦ; kẻ tấn công là `attacker.combatant`.
+                    if (won && target.weaponName === "Mythical SWorld of M.A.D" && attacker.combatant) {
+                      attacker.combatant.bleed = Math.min(BLEED_MAX, (attacker.combatant.bleed ?? 0) + 2);
+                    }
+                    // Mythical SWorld "Hard Work": Block/Parry THÀNH CÔNG ⇒ kẻ địch +2 Bleed.
+                    // `target` ở đây là người PHÒNG THỦ; kẻ địch là `attacker.combatant`.
+                    if (won && target.weaponName === "Mythical SWorld of M.A.D" && attacker.combatant) {
+                      attacker.combatant.bleed = Math.min(BLEED_MAX, (attacker.combatant.bleed ?? 0) + 2);
+                    }
                   }
                   if (won) {
                     noteParts.push(`🗡️**Parry THÀNH CÔNG** (${defRoll} vs ${atkRoll} — né hit ${coverStart + 1}-${hitIdx})${applyParrySuccessPerks(target, attacker.combatant)}`);
@@ -1315,13 +1325,65 @@ async function resolveOnePendingAction(encounter, p) {
                   } else if (finalDmg > 0) {
                     const b = target.currentStamina ?? 0;
                     target.currentStamina = Math.max(0, b - hits);
-                    madNote += ` 💤[Sweet Dream: -${(b - target.currentStamina).toFixed(0)} Stamina (${hits} hit)]`;
+                    const drained = b - target.currentStamina;
+                    madNote += ` 💤[Sweet Dream: -${drained.toFixed(0)} Stamina (${hits} hit)]`;
+                    // Grandma's Sweater: mỗi 1 Stamina bào được ⇒ hồi 1,5 HP.
+                    if (attacker.combatant?.hasGrandmaSweater && drained > 0) {
+                      healHpCapped(attacker.combatant, drained * 1.5);
+                      madNote += ` 🧶[Grandma's Sweater: hồi ${(drained * 1.5).toFixed(1)} HP]`;
+                    }
                   }
                 }
-                // Mythical SWorld "Hard Work": mỗi đòn tấn công gây 4 Bleed.
+                // Magician SWorld "Flame Controler": mỗi 4 đòn ⇒ CẢ hai bên +2
+                // Burn. Khi địch nhận đủ 10 Burn QUA CÁCH NÀY, đòn tiếp theo kích
+                // **Burning Sensation** và trừ 5 Stamina địch.
+                if (wep === "Magician SWorld of M.A.D" && finalDmg > 0 && !targetIsAlly) {
+                  const me2 = attacker.combatant;
+                  // Bộ đếm nằm trên ATTACKER (theo vũ khí), đếm số ĐÒN chứ không
+                  // phải số hit — "tấn công 4 lần" = 4 action.
+                  me2.flameControlerHits = (me2.flameControlerHits ?? 0) + 1;
+                  if (me2.flameControlerHits % 4 === 0) {
+                    target.burn = Math.min(BURN_MAX, (target.burn ?? 0) + 2);
+                    me2.burn = Math.min(BURN_MAX, (me2.burn ?? 0) + 2);
+                    me2.flameControlerBurnGiven = (me2.flameControlerBurnGiven ?? 0) + 2;
+                    madNote += ` 🔥[Flame Controler: cả hai +2 Burn (đã trao ${me2.flameControlerBurnGiven})]`;
+                  }
+                  // Đủ 10 Burn trao qua cách này ⇒ đòn TIẾP THEO kích Burning Sensation.
+                  if (me2.flameControlerArmed) {
+                    me2.flameControlerArmed = false;
+                    target.burningSensation = true;
+                    const b = target.currentStamina ?? 0;
+                    target.currentStamina = Math.max(0, b - 5);
+                    madNote += ` 🔥[**Burning Sensation** kích hoạt — ${(b - target.currentStamina).toFixed(0)} Stamina]`;
+                  } else if ((me2.flameControlerBurnGiven ?? 0) >= 10) {
+                    me2.flameControlerBurnGiven = 0;
+                    me2.flameControlerArmed = true;
+                    madNote += ` 🔥[Flame Controler: đủ 10 Burn — đòn TIẾP THEO kích Burning Sensation]`;
+                  }
+                }
+                // Mythical SWorld "Hard Work": mỗi đòn tấn công gây 4 Bleed;
+                // cứ 3 đòn thì thêm 1 hit **10 Dmg + 1 Bleed**.
                 if (wep === "Mythical SWorld of M.A.D" && finalDmg > 0 && !targetIsAlly) {
                   target.bleed = Math.min(BLEED_MAX, (target.bleed ?? 0) + 4);
                   madNote += ` 🩸[Hard Work: +4 Bleed (tổng ${target.bleed})]`;
+                  const me2 = attacker.combatant;
+                  me2.hardWorkHits = (me2.hardWorkHits ?? 0) + 1;
+                  if (me2.hardWorkHits % 3 === 0) {
+                    applyHpLoss(target, 10);
+                    target.bleed = Math.min(BLEED_MAX, (target.bleed ?? 0) + 1);
+                    finalDmg += 10;
+                    madNote += ` 🩸[Hard Work: đòn thứ 3 — thêm 1 hit **10 Dmg** + 1 Bleed]`;
+                  }
+                }
+                // Anchorly Tale "Let me show you!": sau 5 đòn, đòn ĐÁNH THƯỜNG
+                // tiếp theo thành [Undodgeable].
+                if (wep === "Anchorly Tale of M.A.D" && finalDmg > 0) {
+                  const me2 = attacker.combatant;
+                  me2.anchorlyHits = (me2.anchorlyHits ?? 0) + 1;
+                  if (me2.anchorlyHits % 5 === 0) {
+                    me2.anchorlyUndodgeableNext = true;
+                    madNote += ` ⚓[Let me show you!: đủ 5 đòn — đòn thường TIẾP THEO là [Undodgeable]]`;
+                  }
                 }
                 // Anchorly Tale "Let me show you!": mỗi đòn hồi 3% máu trong kho
                 // Bless of Deep Sea (kho GIẢM đi phần đã hồi).

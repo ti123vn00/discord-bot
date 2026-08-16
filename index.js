@@ -1754,6 +1754,14 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
       }
       player.bulletStack -= 1;
     }
+    // ── ANCHORLY TALE "Let me show you!" (Fragaria 14/08) ───────────────────
+    // *"Sau 5 đòn đánh thì đòn ĐÁNH THƯỜNG tiếp theo sẽ trở thành [Undodgeable]."*
+    // Cờ được bật trong resolve (đếm đòn); tiêu ở đây, ngay trước khi dựng đòn M1.
+    let anchorlyUndodgeableNow = false;
+    if (!skillNameRaw && player.anchorlyUndodgeableNext) {
+      player.anchorlyUndodgeableNext = false;
+      anchorlyUndodgeableNow = true;
+    }
     let effectiveBulletType = null;
     const useBulletNormalized = (useBulletRaw ?? "").trim().toLowerCase();
     const willUseBullet = useBulletNormalized === "yes" || useBulletNormalized === "true" || useBulletNormalized === "1";
@@ -1778,7 +1786,12 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     const effectiveTagsRaw = player.perceptionBlockingMask && (manualTagsRaw ?? "").toLowerCase().includes("lastaction")
       ? `${manualTagsRaw},undodgeable,unparriable,unblockable,unclashable`
       : manualTagsRaw;
-    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsRaw);
+    // Anchorly Tale "Let me show you!": đòn thường thứ 6 (sau 5 đòn) là
+    // [Undodgeable] — nối vào ĐÚNG đường tag sẵn có thay vì dựng cờ bypass riêng.
+    const effectiveTagsWithAnchorly = anchorlyUndodgeableNow
+      ? `${effectiveTagsRaw ?? ""},undodgeable`
+      : effectiveTagsRaw;
+    const defenseBypass = mergeDefenseBypassTags(extractDefenseBypassTags(verify.skillRollEmbed?.description), effectiveTagsWithAnchorly);
 
     const targets = resolveTargets(encounter, targetStr, "enemy_or_player");
     // GAP ĐÃ SỬA (xác nhận trực tiếp): chặn tấn công tiếp vào 1 target ĐANG có

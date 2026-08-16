@@ -50,7 +50,9 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
       // để sau này thêm nguồn khác không phải sửa công thức.
       const hpPct = (combatant.currentHp ?? 0) / Math.max(1, combatant.maxHp ?? 1);
       const dawnBurnHalf = (combatant.hasDawnYuna && hpPct < 0.75)
-        || (combatant.hasDawnSalvador && hpPct < 0.5);
+        || (combatant.hasDawnSalvador && hpPct < 0.5)
+        // Magician Red of M.A.D: Burn lên BẢN THÂN giảm một nửa (không điều kiện HP).
+        || !!combatant.hasMagicianRed;
       const burnDmg = (dawnBurnHalf ? 0.5 : 1) * combatant.burn * 2 * (combatant.sizzlingWound ? 1.5 : 1) * (combatant.burningSensation ? 3 : 1);
       // ⚠️ KHÔNG nhân 1.5 lần nữa ở đây — `burnDmg` NGAY TRÊN đã có
       // `(combatant.sizzlingWound ? 1.5 : 1)`. Sizzling Wound vốn ĐÃ tồn tại
@@ -760,6 +762,12 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
         combatant.daydreamTurnsLeft = 0;
         combatant.daydreamDrain = 0;
       }
+    }
+    // Magician Red of M.A.D: *"Khi sử dụng Magician SWorld, hồi lại lượng máu
+    // bằng số Burn trên bản thân."* Chốt ở đầu vòng turn, SAU khi Burn đã tick.
+    if (combatant.hasMagicianRed && combatant.weaponName === "Magician SWorld of M.A.D"
+        && (combatant.burn ?? 0) > 0) {
+      healHpCapped(combatant, combatant.burn);
     }
     combatant.hpLostThisTurn = 0;
     combatant.diceDown = 0;

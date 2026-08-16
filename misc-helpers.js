@@ -54,6 +54,10 @@ module.exports = function ({ hasPerk, ADMIN_IDS }) {
     if (defender.hasRhinoRCorp && (defender.charge ?? 0) > 20) reductionPct += 50;
     // Lone Fixer (Yuna): người sống sót cuối cùng ⇒ +15% Dmg Reduction.
     if (defender.hasDawnYuna && defender.loneFixerActive) reductionPct += 15;
+    // Knight's Armor of M.A.D: giảm 15% Dmg nhận ứng với MỖI kẻ địch dính Bleed
+    // vào ĐẦU turn. `bleedingFoesAtTurnStart` do turn-advance chốt (đếm một lần
+    // ở đầu turn), KHÔNG đếm lại mỗi đòn — nếu không thì số đổi giữa turn.
+    if (defender.hasKnightsArmor) reductionPct += 15 * (defender.bleedingFoesAtTurnStart ?? 0);
     reductionPct += (defender.chargeShieldStack ?? 0) * 10;
     // Contempt (xác nhận trực tiếp, ĐÍNH CHÍNH comment cũ SAI — code += 50 vẫn
     // ĐÚNG từ trước): "Contempt là debuff khiến cho kẻ dính phải sẽ bị giảm 50%
