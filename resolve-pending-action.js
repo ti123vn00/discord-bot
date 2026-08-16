@@ -242,6 +242,8 @@ async function resolveOnePendingAction(encounter, p) {
             // Trần "N lần/turn" của từng mặt Caduceus — tính MỘT LẦN cho cả đòn.
             // Nếu tính trong vòng lặp thì đòn AOE 3 mục tiêu sẽ tiêu hạn mức 3 lần
             // dù người chơi mới roll dice ĐÚNG MỘT LƯỢT.
+            // Nạn nhân của Lamp — gom lại, ghi kill SAU vòng lặp target.
+            const lampSuicideKills = [];
             let cadCappedLines = null;
             // Poise của Providence dồn ở đây rồi áp SAU dòng gán đè
             // `attacker.combatant.poise = firstPreview.finalPoiseStacks` — cộng
@@ -1300,6 +1302,28 @@ async function resolveOnePendingAction(encounter, p) {
                   target.currentStamina = Math.max(0, beforeS - 5 * hits);
                   birdsNote += ` 🌅[Light of Daybreak: -${(beforeS - target.currentStamina).toFixed(0)} Stamina (${hits} hit)]`;
                 }
+              }
+              // ── LAMP "A Light in the Darkness" (Fragaria 14/08) ───────────
+              // *"Khi kẻ địch còn dưới 3% máu tấn công người sử dụng sẽ lập tức bị
+              //  điều khiển và tự sát"* — Fragaria xác nhận: **chết luôn, TÍNH là
+              //  bị người dùng giết** (EXP/quest kill đều tính).
+              // Đặt ở nhánh này vì đây là lúc `attacker` ĐANG ĐÁNH `target`; người
+              // cầm Lamp chính là TARGET. Kiểm HP của attacker (kẻ tấn công).
+              if (target.weaponName === "Lamp" && attacker.combatant
+                  && (attacker.combatant.currentHp ?? 0) > 0
+                  && (attacker.combatant.currentHp ?? 0) < (attacker.combatant.maxHp ?? 1) * 0.03) {
+                applyHpLoss(attacker.combatant, attacker.combatant.currentHp);
+                // Ghi công cho người cầm Lamp — Fragaria chốt "tính là bị người
+                // dùng giết", nên phải đi qua đúng đường ghi kill như đòn thường.
+                if (attacker.type === "enemy") {
+                  // Ghi công cho người cầm Lamp qua ĐÚNG hook `-daily` mà đòn
+                  // thường dùng — Fragaria chốt "tính là bị người dùng giết".
+                  dailyKillHookPromises.push(
+                    incrementKillTaskProgress(t.targetId).catch(() => {})
+                  );
+                }
+                lampSuicideKills.push({ victimId: p.attackerId, killerId: t.targetId });
+                defenseNote += ` 🏮[**A Light in the Darkness** — ${attacker.label} dưới 3% HP, bị điều khiển và TỰ SÁT]`;
               }
               let paybackHitNote = "";
               if (p.isPaybackReflect && finalDmg > 0) {
@@ -2622,6 +2646,26 @@ async function resolveOnePendingAction(encounter, p) {
               if ((attacker.combatant.kCorpAmpuleUsesThisEncounter ?? 0) > 0) {
                 attacker.combatant.kCorpAmpuleUsesThisEncounter = 0;
                 verifyNote += ` 💉[Serum K: reset số lần dùng **K-Corp Ampule** — dùng lại không chết]`;
+              }
+            }
+            // ── BEAK "Shot" (Fragaria 14/08) ──────────────────────────────
+            // *"[Tiêu hao 3 viên đạn] [Nếu bản thân chưa nạp đạn sẽ tự động nạp 10 viên]"*
+            // Thứ tự: NẠP TRƯỚC (nếu đang 0), rồi mới trừ 3 — đúng chữ "nếu chưa
+            // nạp thì tự nạp", để người chơi hết đạn vẫn bắn được phát này.
+            if (p.skillKey === "shot") {
+              const me = attacker.combatant;
+              if (me) {
+                // Dùng `bulletStack` (đạn NẠP TRONG SÚNG), CHUNG với Soldato Rifle —
+                // Fragaria đính chính 14/08. Loại đạn là ammo thường.
+                let note = "";
+                if ((me.bulletStack ?? 0) <= 0) {
+                  me.bulletStack = 10;
+                  me.bulletStackType = me.bulletStackType ?? "ammo";
+                  note = " *(tự động nạp 10 viên)*";
+                }
+                const before = me.bulletStack;
+                me.bulletStack = Math.max(0, before - 3);
+                verifyNote += ` <:Ammo:1528452673664319629>[Shot: -${before - me.bulletStack} đạn (còn ${me.bulletStack})${note}]`;
               }
             }
             if (p.skillKey === "borrowed eyes") {

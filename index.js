@@ -1738,6 +1738,22 @@ async function doPlayerAttack(channelId, playerId, playerMention, dmgStr, target
     // (không cần chọn), lưu lại để áp hiệu ứng phụ (Frost=+1 Paralyze,
     // Incendiary=+2 Burn) THẬT ở resolveOnePendingAction (target chưa resolve
     // ở đây, giống pattern effectiveAmmoType).
+    // ── BEAK "Gun" (Fragaria đính chính 14/08) ──────────────────────────────
+    // *"Beak sử dụng `bulletStack` Y NHƯ Soldato Rifle, chỉ khác là Beak BẮT BUỘC
+    //  phải nạp đạn thì mới M1 được — không phải đạn riêng hay đặc biệt gì cả,
+    //  vẫn là ammo bình thường thôi."*
+    // ⇒ SỬA LẠI (bản đầu tôi dùng kho `ammo` — SAI): dùng CHUNG `bulletStack`
+    //   (đạn đã nạp TRONG súng) với Soldato Rifle. Khác biệt DUY NHẤT: Soldato
+    //   chỉ tiêu khi gõ `usebullet: yes`, còn Beak tiêu TỰ ĐỘNG mỗi M1 và KHÔNG
+    //   nạp thì KHÔNG M1 được.
+    // Chặn TRƯỚC mọi tính toán khác để không trừ Stamina/CD rồi mới báo hết đạn.
+    // M1 = KHÔNG có tham số `skill:` (đường `-encounter attack` thuần).
+    if (!skillNameRaw && player.weaponName === "Beak") {
+      if ((player.bulletStack ?? 0) < 1) {
+        throw new Error("**Beak** chưa nạp đạn — không thể đánh thường. Nạp đạn (Reload) hoặc dùng Critical **Shot** (tự nạp 10 viên nếu chưa nạp).");
+      }
+      player.bulletStack -= 1;
+    }
     let effectiveBulletType = null;
     const useBulletNormalized = (useBulletRaw ?? "").trim().toLowerCase();
     const willUseBullet = useBulletNormalized === "yes" || useBulletNormalized === "true" || useBulletNormalized === "1";

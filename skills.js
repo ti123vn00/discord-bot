@@ -1862,6 +1862,31 @@ roll(v = "no") {
   },
 
   // ── Dawn Book ────────────────────────────────────────────────────────────
+  "butterfly slash": {
+    name: "Butterfly Slash", bookOf: "Dawn Book", tags: "Burn, Tremor, Slash",
+    cost: `2 <:Light:1513786082502770719>Light`, cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,7), d2 = r(4,9), d3 = r(5,9);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Fix_Burn:1513762753691652177>Burn và 2 <:Tremor:1513762737388257380>Tremor`,
+      ];
+    },
+  },
+  "sunset blade": {
+    name: "Sunset Blade", bookOf: "Dawn Book", tags: "Burn, Tremor",
+    cost: `3 <:Light:1513786082502770719>Light`, cd: "3 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(4,9), d2 = r(9,12), d3 = r(12,15);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Fix_Burn:1513762753691652177>Burn`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Slash:1513768633434640517>Slash] — gây 2 <:Tremor:1513762737388257380>Tremor`,
+        `<:Dice3:1508173643518050395> **${d3}** [<:Slash:1513768633434640517>Slash] — gây 1 <:Tremor:1513762737388257380>Tremor và 1 <:Fix_Burn:1513762753691652177>Burn`,
+      ];
+    },
+  },
+
   "crack of dawn": {
     name: "Crack of Dawn", bookOf: "Dawn Book", tags: "Burn, Tremor, Protection",
     cost: `4 <:Light:1513786082502770719>Light`, cd: "4 Turn", diceMul: "1x",

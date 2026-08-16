@@ -347,6 +347,20 @@ const WEAPONS = {
     passives: [{ name: "Art", desc: "Với mỗi 5 Bleed lên kẻ thù khi sử dụng Critical sẽ tăng 20% Reuse [tối đa Reuse 2 lần] [Mặc định có 40% Reuse]." }],
     criticalSkillKey: "sanguine pointilism",
   },
+  // ── THE THUMB CAPO BOOK (Fragaria 14/08) ─────────────────────────────────
+  // ❗ HAI Critical `triple slash - blast` và `savage tigerslayer's perfected
+  // flurry of blades` ĐÃ TỒN TẠI trong skills.js và trỏ `weaponOf` vào vũ khí này
+  // — nhưng vũ khí thì CHƯA có. Tức là hai Critical đó trước giờ MỒ CÔI: không
+  // đường nào mở ra được vì `criticalSkillKey` phải xuất phát từ weapon.
+  "tiantui star's blade": {
+    name: "Tiantui Star's Blade [天退星刀]", weight: "medium", type: "Slash",
+    baseDamage: 14, bookOf: "The Thumb Capo Book",
+    passives: [{
+      name: "Reloading Tiantui Star's Blade",
+      desc: "Khi đang dùng **<:Fix_Shin:1507591140180754588>Shin** và dùng **Tanglecleaver Reload**, bạn nhận và CHUYỂN HOÁ toàn bộ **Tigermark Round** hiện tại sang **Savage Tigermark Round**.",
+    }],
+    criticalSkillKey: "triple slash - blast",
+  },
   // ── BOOK OF THE BIRDS (Fragaria 14/08) ───────────────────────────────────
   // "Guardians of the Forest" là TEXT THUẦN — Fragaria xác nhận CHƯA implement
   // cơ chế triệu hồi. Đừng tưởng là dead flag rồi đi "sửa".
