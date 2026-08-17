@@ -216,7 +216,7 @@ const WEAPONS = {
       { name: "Will of Hermes", mechanicId: "caduceus_will_of_hermes",
         desc: "Không có đòn đánh thường cố định — mỗi lần đánh thường roll 1–9, mỗi mặt là một vũ khí khác nhau. Mỗi mặt dùng LẦN ĐẦU cho 1 stack **Procuration [Hermes]**." },
       { name: "Imitation Of A Life", mechanicId: "caduceus_imitation_of_a_life",
-        desc: "Cần **9 Procuration [Hermes]** để dùng **Furioso**. Bậc Furioso theo số **Unlock** đang có." },
+        desc: "Cần **9 Procuration [Hermes]** để dùng **Furioso**. Bậc Furioso theo số **Unlock** đang có. Ở **Unlock - I/II/III** hồi **5/10/15 Sanity** mỗi khi Turn End. *(Bổ sung 14/08.)*" },
     ],
     // Critical đi qua lệnh `-caduceus <type> <bậc 1-3>` chứ không phải 1 skill key
     // duy nhất — mỗi bậc roll số dice khác nhau (2/3/4).

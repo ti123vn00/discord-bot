@@ -588,11 +588,18 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     if (combatant.hasPrescriptDevice) {
       let sanityGain = 0;
       if (combatant.prescriptSucceededLastTurn) sanityGain += 10;
-      if (combatant.prescriptUnlockJustReached) { sanityGain += 10; combatant.prescriptUnlockJustReached = 0; }
+      // ⚠️ REWORK (Fragaria 14/08): lần ĐẦU nhận mỗi tầng Unlock hồi **20** (trước 10).
+      if (combatant.prescriptUnlockJustReached) { sanityGain += 20; combatant.prescriptUnlockJustReached = 0; }
       if (sanityGain > 0 && applySanityGain) applySanityGain(combatant, sanityGain);
     }
     // Khoá nạp Procuration sau khi dùng Furioso — mở lại ở turn kế (xem
     // applyFuriosoUseCosts trong combat-utils.js).
+    // ── ORACLE DEVICE [CADUCEUS] "Imitation Of A Life" (Fragaria 14/08) ──────
+    // *"Ở Unlock - I/II/III bạn nhận hồi 5/10/15 Sanity mỗi khi Turn End."*
+    if (combatant.weaponName === "Oracle Device [Caduceus]" && applySanityGain) {
+      const gain = ({ 1: 5, 2: 10, 3: 15 })[combatant.prescriptUnlockLevel ?? 0] ?? 0;
+      if (gain > 0) applySanityGain(combatant, gain);
+    }
     combatant.furiosoUsedThisTurn = false;
     // Mặt 3 Caduceus "bản thân +10% Dmg turn SAU": ô CHỜ đổ sang ô hiệu lực ở
     // ĐÚNG mốc sang turn, và ô hiệu lực cũ hết hạn cùng lúc. Làm 1 dòng theo thứ

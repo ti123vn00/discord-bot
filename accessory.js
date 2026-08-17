@@ -49,7 +49,8 @@ const ACCESSORIES = {
     name: "Perfect Cube",
     passives: [
       { name: "Perfect Start", desc: "Bạn start encounter với 50% Max Light hiện tại" },
-      { name: "Perfect Mind", desc: "Bạn start encounter với +30 Sanity" },
+      { name: "Perfect Mind", mechanicId: "perfect_mind_double_coin_sanity",
+        desc: "Nhận **x2 hiệu quả Sanity** từ Emotion Coin. *(Rework 14/08 — trước là start encounter với +30 Sanity.)*" },
       { name: "Perfect Body", desc: "Mỗi turn end được hồi 10 HP" },
     ],
   },
@@ -69,7 +70,7 @@ const ACCESSORIES = {
     requiresInjury: "Sizzling Wound",
     passives: [
       { name: "Wound-Casing Mask", mechanicId: "index_wound_casing_mask",
-        desc: "Vô hiệu hoá **Sizzling Wound** của bạn. Mặt nạ **VỠ** khi bạn bị Stagger hoặc dùng biến thể **Furioso** lần đầu — vết thương cũ quay lại, **Sizzling Wound** hoạt động tới hết Encounter\n> - Miễn nhiễm **Stagger**\n> - **50% Dmg Reduction**\n> - Sanity bị cap ở **-40** (không thể giảm thêm)\n> - Dmg từ Burn/Bleed **không thể giết** bạn\n> - Start Encounter: Sanity set về **45**. Khi **Sizzling Wound** hoạt động: Dmg Reduction **50% → 75%** và nhận **3 Dice Up**\n> - Mỗi Turn Start, nếu có **Unlock - I/II/III**: nhận **5/10/20 Poise**; mỗi 1 Poise thừa sau 20 cho **+2% Dmg Bonus**" },
+        desc: "Vô hiệu hoá **Sizzling Wound** của bạn. Mặt nạ **VỠ** khi bạn bị Stagger hoặc dùng biến thể **Furioso** lần đầu — vết thương cũ quay lại, **Sizzling Wound** hoạt động tới hết Encounter\n> - Miễn nhiễm **Stagger**\n> - **50% Dmg Reduction**\n> - Sanity bị cap ở **-40** (không thể giảm thêm)\n> - Dmg từ Burn/Bleed **không thể giết** bạn\n> - Start Encounter: Sanity set về **45**. Khi **Sizzling Wound** hoạt động: Dmg Reduction **50% → 75%** và nhận **3 Dice Up**\n> - Mỗi Turn Start, nếu có **Unlock - I/II/III**: nhận **5/10/20 Poise**; mỗi 1 Poise thừa sau 20 cho **+2% Dmg Bonus**" + " Nhận **x2 hiệu quả Sanity** từ Emotion Coin. *(Rework 14/08 — trước là start encounter với 45 Sanity.)*" },
     ],
   },
   "the oracles proxy prescript device": {
@@ -80,7 +81,7 @@ const ACCESSORIES = {
     requiresOutfit: "The Index Oracle's Proxy",
     passives: [
       { name: "Undertake Prescript", mechanicId: "index_undertake_prescript",
-        desc: "Nếu turn TRƯỚC bạn hoàn thành ít nhất 1 sắc lệnh, turn này hồi **10 Sanity**. Lần ĐẦU nhận **Unlock - I/II/III** trong trận thì hồi thêm **10 Sanity** nữa" },
+        desc: "Nếu turn TRƯỚC bạn hoàn thành ít nhất 1 sắc lệnh, turn này hồi **10 Sanity**. Lần ĐẦU nhận **Unlock - I/II/III** trong trận thì hồi thêm **20 Sanity** mỗi tầng. *(Rework 14/08 — trước là 10.)*" },
       { name: "Grace of God", mechanicId: "index_grace_of_god",
         desc: "Từ **Unlock - II** trở đi, **dice đầu tiên của Caduceus mỗi turn do bạn tự chọn**" },
       { name: "Prescript Delivered on a Device", mechanicId: "index_prescript_device",

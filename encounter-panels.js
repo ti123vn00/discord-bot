@@ -390,7 +390,17 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
       // Luật "hai bộ emoji Shin theo ngữ cảnh" ĐÃ BỎ (Fragaria 14/08) — toàn repo
       // dùng Fix_Shin/Fix_Mang. ID cũ 1528452250861699215 KHÔNG dùng nữa. Trước là:
       // Fix_Shin (Fix_Shin chỉ dùng ở -balance và phần mô tả).
-      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin/Mang (-25 Sanity)").setValue("shinmang").setEmoji({ id: "1507591140180754588", name: "Fix_Shin" }));
+      options.push(new StringSelectMenuOptionBuilder().setLabel("Shin (-10 Sanity) — giảm Res đến hết turn").setValue("shinmang").setEmoji({ id: "1507591140180754588", name: "Fix_Shin" }));
+      // ── MANG kích hoạt RIÊNG (Fragaria 14/08) ─────────────────────────────
+      // 5 Sanity MỖI VÒNG; chỉ áp cho 1 skill/page rồi biến mất. Hiện sẵn số vòng
+      // tối đa để người chơi biết giá; muốn ít vòng hơn thì dùng lệnh text.
+      {
+        const rings = Math.min(5, Math.max(1, combatant.mangLevel ?? 1));
+        options.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`Mang ${rings} vòng (-${rings * 5} Sanity) — chỉ 1 skill/page`)
+          .setValue("mang")
+          .setEmoji({ id: "1507591172770631822", name: "Fix_Mang" }));
+      }
     }
     if ((combatant.emotionLevel ?? 0) >= 1) {
       options.push(new StringSelectMenuOptionBuilder().setLabel("😈 Manifest E.G.O (-30 Sanity)").setValue("manifestego"));

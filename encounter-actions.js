@@ -231,7 +231,13 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMe
       // điểm). Sai hẳn hướng.
       // Decimate Mind (Shin, [20 Points]) nới cap xuống **-30** (xác nhận trực
       // tiếp — con số cũ trong code là -35, SAI).
-      const SHIN_SANITY_COST = 25;
+      // ── REWORK (Fragaria 14/08): Shin và Mang KÍCH HOẠT RIÊNG LẺ ───────────
+      // *"Shin tốn 10 Sanity, kéo dài tới hết turn (phần giảm Res)."*
+      // *"Mang tốn 5 Sanity CHO MỖI VÒNG, chỉ cho 1 skill/page duy nhất; dùng
+      //  xong thì Mang biến mất. M1 KHÔNG consume Mang, và chỉ skill/page mới
+      //  được True Dmg / ignore Res của Shin từ Mang."*
+      // Hàm này nay CHỈ bật Shin (10 Sanity). Mang có hàm riêng `performMang`.
+      const SHIN_SANITY_COST = 10;
       const sanityFloorForShin = hasPerk(player, "Decimate Mind") ? -30 : -10;
       const sanityAfter = player.currentSanity - SHIN_SANITY_COST;
       if (sanityAfter < sanityFloorForShin) {
@@ -250,19 +256,7 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMe
       // dùng) → dùng 5 turn là tự lên max 5 vòng miễn phí, hoàn toàn sai. Mang
       // Lvl là CHỈ SỐ CỦA PROFILE, chỉ tăng bằng vật phẩm (Fixer's Note); kích
       // hoạt Shin/Mang chỉ BẬT buff theo level ĐANG CÓ, không lên level.
-      const mangLevel = Math.min(MANG_MAX_LEVEL, Math.max(1, player.mangLevel ?? 1));
-      player.mangLevel = mangLevel;
       player.shinLevel = Math.min(SHIN_MAX_LEVEL, Math.max(1, player.shinLevel ?? 10));
-      // GAP ĐÃ SỬA: "Với mỗi 1 vòng Mang thì sẽ gia tăng 10% Dmg Bonus, +1 Dice
-      // Up, +1 Clash Power Up" — TRƯỚC ĐÂY chỉ có phần +10% Dmg, hoàn toàn thiếu
-      // Dice Up và Clash Power Up.
-      // Đặt BẰNG số vòng (không cộng dồn mỗi lần kích hoạt) — đây là giá trị
-      // PHÁI SINH từ số vòng Mang, không phải buff cộng thêm; cộng dồn sẽ khiến
-      // dùng lại nhiều turn thành +N vô hạn dù số vòng đã chạm cap.
-      // Cả 2 đều reset về 0 khi Shin/Mang tắt (turn-advance.js).
-      player.diceUp = (player.diceUp ?? 0) - (player.mangDiceUpApplied ?? 0) + mangLevel;
-      player.mangDiceUpApplied = mangLevel;
-      player.clashPowerUp = mangLevel;
       checkStaggerPanic(player);
       // Defensive Light (Shin, [10 Points]): +0,1x giảm Res CỘNG THÊM (trên nền -0,2x
       // gốc) cho MỖI 10 Shin Level hiện có. shinLevel mặc định = 10 (luật: "Khởi điểm
@@ -274,14 +268,67 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMe
         : "";
       const cappedNote = mangLevel >= MANG_MAX_LEVEL ? ` *(đã ở cap)*` : "";
       result =
-        `<:Fix_Shin:1507591140180754588> **Shin/Mang kích hoạt!** -25 Sanity (còn ${player.currentSanity}) → Shin: -0,2x mọi Res bản thân.${defensiveLightNote} ` +
-        `Mang Lvl ${mangLevel}/${MANG_MAX_LEVEL}${cappedNote}: +${mangLevel * MANG_DMG_PCT_PER_LEVEL}% Dmg, +${mangLevel} Dice Up, +${mangLevel} Clash Power Up, gây True Dmg (M1+skill turn này).`;
+        `<:Fix_Shin:1507591140180754588> **Shin kích hoạt!** -${SHIN_SANITY_COST} Sanity (còn ${player.currentSanity}) — ` +
+        `Shin: -0,2x mọi Res bản thân, kéo dài đến HẾT TURN.${defensiveLightNote}\n` +
+        `*Mang kích hoạt RIÊNG (5 Sanity/vòng) — dùng \`-encounter mang\`.*`;
       appendActionLog(encounter, result);
       await saveEncounter(channelId, encounter);
     });
     return result;
   }
   
+  /** performMang — kích hoạt Mang RIÊNG (Fragaria 14/08).
+   *
+   *  *"Mang tốn 5 Sanity CHO MỖI VÒNG (VD: có 5 vòng thì có thể chọn kích hoạt
+   *   mỗi 3 vòng và tốn 15 Sanity) và CHỈ CHO 1 SKILL/PAGE duy nhất; sau khi dùng
+   *   xong thì Mang biến mất. M1 KHÔNG consume Mang, và chỉ skill/page mới được
+   *   True Dmg / ignore Res của Shin từ Mang."*
+   *
+   *  ⇒ `mangCharged` = số vòng đang nạp (buff áp theo số này, KHÔNG phải mangLevel).
+   *    Tiêu ở `resolve-pending-action` khi resolve một SKILL/PAGE, không phải M1.
+   */
+  async function performMang(channelId, userId, ringsRaw) {
+    let result;
+    await withLock(encounterKey(channelId), async () => {
+      const encounter = await getEncounter(channelId);
+      if (!encounter) throw new Error("Channel này chưa có encounter nào.");
+      const player = encounter.players?.[userId];
+      if (!player) throw new Error("Bạn chưa join encounter này.");
+      if (player.staggered) throw new Error("Đang bị Stagger — không thể kích hoạt Mang.");
+      const maxRings = Math.min(MANG_MAX_LEVEL, Math.max(1, player.mangLevel ?? 1));
+      const rings = Math.min(maxRings, Math.max(1, parseInt(ringsRaw ?? maxRings, 10) || maxRings));
+      if ((player.mangCharged ?? 0) > 0) {
+        throw new Error(`Bạn đang nạp sẵn **${player.mangCharged} vòng Mang** chưa dùng — hãy dùng 1 skill/page trước.`);
+      }
+      const MANG_SANITY_PER_RING = 5;
+      const cost = rings * MANG_SANITY_PER_RING;
+      // Cùng sàn Sanity với Shin (Decimate Mind nới xuống -30).
+      const floor = hasPerk(player, "Decimate Mind") ? -30 : -10;
+      const after = player.currentSanity - cost;
+      if (after < floor) {
+        throw new Error(
+          `Không đủ Sanity cho **${rings} vòng Mang** (tốn ${cost}). ` +
+          `Hiện ${player.currentSanity}; trừ ${cost} sẽ còn ${after}, vượt mức cap ${floor}.`
+        );
+      }
+      player.currentSanity = after;
+      player.mangCharged = rings;
+      // Buff PHÁI SINH áp theo SỐ VÒNG NẠP (không phải mangLevel) — đặt BẰNG,
+      // không cộng dồn, y như cách Shin/Mang cũ làm.
+      player.diceUp = (player.diceUp ?? 0) - (player.mangDiceUpApplied ?? 0) + rings;
+      player.mangDiceUpApplied = rings;
+      player.clashPowerUp = rings;
+      checkStaggerPanic(player);
+      result =
+        `<:Fix_Mang:1507591172770631822> **Mang kích hoạt!** ${rings}/${maxRings} vòng — -${cost} Sanity (còn ${player.currentSanity})\n` +
+        `+${rings * MANG_DMG_PCT_PER_LEVEL}% Dmg, +${rings} Dice Up, +${rings} Clash Power Up\n` +
+        `*Chỉ áp cho **1 skill/page** kế tiếp rồi biến mất. **M1 KHÔNG tiêu Mang** và KHÔNG được True Dmg.*`;
+      appendActionLog(encounter, result);
+      await saveEncounter(channelId, encounter);
+    });
+    return result;
+  }
+
   /** performManifestEgo — logic CHUNG cho -encounter manifestego VÀ dropdown hành động. */
   async function performManifestEgo(channelId, userId) {
     let result;

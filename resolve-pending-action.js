@@ -2775,6 +2775,19 @@ async function resolveOnePendingAction(encounter, p) {
                 verifyNote += ` 💤[Daydream: ${tr2.label} -${tr2.combatant.daydreamDrain} Stamina/hành động, ${tr2.combatant.daydreamTurnsLeft} turn${strong ? " *(>10 Tremor)*" : ""}]`;
               }
             }
+            // ── MANG: tiêu sau khi dùng 1 SKILL/PAGE (Fragaria 14/08) ─────
+            // *"Chỉ cho 1 skill/page duy nhất; sau khi dùng xong thì Mang biến
+            //  mất. M1 KHÔNG consume Mang."*
+            // `p.skillKey` chỉ có ở skill/page ⇒ M1 không lọt vào đây.
+            if (p.skillKey && (attacker.combatant?.mangCharged ?? 0) > 0) {
+              const used = attacker.combatant.mangCharged;
+              attacker.combatant.mangCharged = 0;
+              // Buff phái sinh tắt theo — cùng cách turn-advance tắt Shin/Mang.
+              attacker.combatant.diceUp = Math.max(0, (attacker.combatant.diceUp ?? 0) - (attacker.combatant.mangDiceUpApplied ?? 0));
+              attacker.combatant.mangDiceUpApplied = 0;
+              attacker.combatant.clashPowerUp = 0;
+              verifyNote += ` <:Fix_Mang:1507591172770631822>[Mang ${used} vòng đã dùng cho skill này — Mang biến mất]`;
+            }
             if (p.skillKey === "shot") {
               const me = attacker.combatant;
               if (me) {

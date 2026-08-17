@@ -83,7 +83,25 @@ module.exports = function ({ healHpCapped, hasPerk, getMaxEmotionLevel, EMOTION_
     // BUG ĐÃ SỬA (xác nhận trực tiếp: "emotion level thì không cho âm coin, dù có
     // trừ thì tới 0 là dừng") — trước đây cộng delta trực tiếp KHÔNG clamp, coin
     // có thể âm vô hạn (VD Shin/Mang tốn 1 Coin nhiều lần liên tiếp).
-    combatant.emotionCoin = Math.max(0, (combatant.emotionCoin ?? 0) + delta);
+    // ── SANITY TỪ EMOTION COIN (Fragaria 14/08 — luật MỚI) ──────────────────
+    // *"Mỗi khi NHẬN được Emotion Coin bạn được +2 Sanity; mỗi khi MẤT đi Emotion
+    //  Coin bạn bị -2 Sanity; khi ĐẠT Emotion Level bạn được +10 Sanity."*
+    // ⇒ Tính theo SỐ COIN THỰC SỰ đổi (sau clamp ở 0), không phải `delta` thô —
+    //   coin đang 0 mà trừ tiếp thì KHÔNG mất gì nên KHÔNG trừ Sanity.
+    // ⇒ Đặt ở đây vì đây là điểm chặn DUY NHẤT mọi thay đổi Emotion Coin.
+    const coinBefore = combatant.emotionCoin ?? 0;
+    combatant.emotionCoin = Math.max(0, coinBefore + delta);
+    const coinDiff = combatant.emotionCoin - coinBefore;
+    if (coinDiff !== 0) {
+      const sanFromCoin = coinDiff * 2;
+      // x2 hiệu quả NHẬN Sanity từ Coin — Perfect Cube "Perfect Mind" và
+      // Wound-Casing Mask (rework 14/08). CHỈ nhân chiều DƯƠNG; nhân cả chiều âm
+      // là phản tác dụng hoàn toàn (cùng lỗi Composition Tool đã dính).
+      const dbl = (combatant.hasPerfectCube || combatant.hasWoundCasingMask) && sanFromCoin > 0;
+      const applied = dbl ? sanFromCoin * 2 : sanFromCoin;
+      applySanityGain(combatant, applied);
+      notes.push(`<:Sanity:1538272293132963930> ${applied > 0 ? "+" : ""}${applied} Sanity (${coinDiff > 0 ? "nhận" : "mất"} ${Math.abs(coinDiff)} Coin${dbl ? ", **x2**" : ""})`);
+    }
     const maxLevel = getMaxEmotionLevel(combatant);
     while (
       combatant.emotionLevel < maxLevel &&
@@ -97,6 +115,9 @@ module.exports = function ({ healHpCapped, hasPerk, getMaxEmotionLevel, EMOTION_
       const tier = EMOTION_LEVEL_TABLE[nextLevel];
       combatant.emotionCoin -= tier.coinNeeded;
       combatant.emotionLevel = nextLevel;
+      // Đạt Emotion Level ⇒ +10 Sanity (Fragaria 14/08).
+      applySanityGain(combatant, 10);
+      notes.push(`<:Sanity:1538272293132963930> +10 Sanity (đạt Emotion Level ${nextLevel})`);
       combatant.emotionLevelCooldownLeft = 0; // đang active — không còn CD nào treo nữa
       combatant.emotionLevelTurnsLeft = hasPerk(combatant, "Light Body") ? Infinity : EMOTION_LEVEL_DURATION_TURNS;
       // BUG ĐÃ SỬA (Fragaria: "Emotion level heal được máu ảo của Memories:

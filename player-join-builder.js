@@ -250,8 +250,9 @@ module.exports = function ({ findSkill, parseSkillCost, isEgoSkill, syncCompassi
       // Mặt nạ CÒN NGUYÊN ⇒ "vô hiệu hoá Sizzling Wound của bạn".
       joined.woundCasingMaskIntact = true;
       joined.sizzlingWound = false; // mặt nạ che ⇒ vô hiệu hoá vết thương
-      // "Khi Start Encounter; Sanity được set về mức 45."
-      joined.currentSanity = 45;
+      // ⚠️ REWORK (Fragaria 14/08): BỎ "Start Encounter Sanity = 45".
+      // Nay Wound-Casing Mask cho **x2 hiệu quả Sanity từ Emotion Coin**
+      // (xem sanity-emotion.js, dùng cờ `hasWoundCasingMask`).
     } else if (joined.hasSizzlingWound) {
       // Có vết thương mà không đeo mặt nạ ⇒ chịu trọn Sizzling Wound.
       joined.sizzlingWound = true;
@@ -334,8 +335,9 @@ module.exports = function ({ findSkill, parseSkillCost, isEgoSkill, syncCompassi
     if (accessoriesLower.includes("perfect cube")) {
       const lightGain = Math.floor((joined.maxLight ?? 0) / 2);
       joined.currentLight = Math.min(joined.maxLight, (joined.currentLight ?? 0) + lightGain);
-      joined.currentSanity = Math.min(ENCOUNTER_SANITY_MAX, (joined.currentSanity ?? 0) + 30);
-      startNotes.push(`+${lightGain} Light & +30 Sanity (Perfect Cube: Perfect Start + Perfect Mind)`);
+      // ⚠️ REWORK (Fragaria 14/08): "Perfect Mind" KHÔNG còn +30 Sanity lúc start.
+      // Nay là **x2 hiệu quả Sanity từ Emotion Coin** (xem sanity-emotion.js).
+      startNotes.push(`+${lightGain} Light (Perfect Cube: Perfect Start) · Perfect Mind: **x2 Sanity từ Emotion Coin**`);
     }
     if (accessoriesLower.includes("composition tool")) {
       startNotes.push("Kháng Stagger 2 lần (Composition Tool: Reactive)");
