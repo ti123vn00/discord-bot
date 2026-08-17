@@ -216,7 +216,7 @@ const WEAPONS = {
       { name: "Will of Hermes", mechanicId: "caduceus_will_of_hermes",
         desc: "Không có đòn đánh thường cố định — mỗi lần đánh thường roll 1–9, mỗi mặt là một vũ khí khác nhau. Mỗi mặt dùng LẦN ĐẦU cho 1 stack **Procuration [Hermes]**." },
       { name: "Imitation Of A Life", mechanicId: "caduceus_imitation_of_a_life",
-        desc: "Cần **9 Procuration [Hermes]** để dùng **Furioso**. Bậc Furioso theo số **Unlock** đang có. Ở **Unlock - I/II/III** hồi **5/10/15 Sanity** mỗi khi Turn End. *(Bổ sung 14/08.)*" },
+        desc: "Cần **9 Procuration [Hermes]** để dùng **Furioso**. Bậc Furioso theo số **Unlock** đang có. Ở **Unlock - I/II/III** hồi **5/10/15 Sanity** mỗi khi Turn End." },
     ],
     // Critical đi qua lệnh `-caduceus <type> <bậc 1-3>` chứ không phải 1 skill key
     // duy nhất — mỗi bậc roll số dice khác nhau (2/3/4).
@@ -419,12 +419,13 @@ const WEAPONS = {
     criticalSkillKey: "triple slash - blast",
   },
   // ── BOOK OF THE BIRDS (Fragaria 14/08) ───────────────────────────────────
-  // "Guardians of the Forest" là TEXT THUẦN — Fragaria xác nhận CHƯA implement
-  // cơ chế triệu hồi. Đừng tưởng là dead flag rồi đi "sửa".
+  // ⚠️ GHI CHÚ NỘI BỘ (KHÔNG để lọt vào `desc` — người chơi đọc desc):
+  // "Guardians of the Forest" là TEXT THUẦN, Fragaria xác nhận CHƯA implement cơ
+  // chế triệu hồi. Đừng tưởng là dead flag rồi đi "sửa".
   "beak": {
     name: "Beak", weight: "light", type: "Pierce", baseDamage: 11, bookOf: "Book of The Birds",
     passives: [
-      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó. *(hiện là mô tả — chưa implement)*" },
+      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó." },
       { name: "Small Flutters", desc: "Có thể đánh thường ĐỒNG MINH; đồng minh nhận lượng Dmg bằng **1/2** lượng Dmg gây ra và được hồi 4 Sanity." },
       { name: "Gun", desc: "Tiêu hao 1 viên đạn mỗi lần M1; KHÔNG thể M1 nếu hết đạn." },
     ],
@@ -433,7 +434,7 @@ const WEAPONS = {
   "justitia": {
     name: "Justitia", weight: "medium", type: "Slash", baseDamage: 16, bookOf: "Book of The Birds",
     passives: [
-      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó. *(hiện là mô tả — chưa implement)*" },
+      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó." },
       { name: "Judgement", desc: "Mỗi đòn đánh từ vũ khí này (Critical, M1) làm giảm Stamina địch bằng **1/3** lượng Dmg gây ra." },
     ],
     criticalSkillKey: "tilted scale",
@@ -441,7 +442,7 @@ const WEAPONS = {
   "lamp": {
     name: "Lamp", weight: "heavy", type: "Blunt", baseDamage: 24, bookOf: "Book of The Birds",
     passives: [
-      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó. *(hiện là mô tả — chưa implement)*" },
+      { name: "Guardians of the Forest", desc: "Khi tập hợp đủ bộ 3 Chim Khải Huyền có thể triệu hồi nó." },
       { name: "A Light in the Darkness", desc: "Kẻ địch còn **dưới 3% HP** mà tấn công người sử dụng sẽ lập tức bị điều khiển và tự sát — TÍNH là bị người dùng giết." },
     ],
     criticalSkillKey: "allure",

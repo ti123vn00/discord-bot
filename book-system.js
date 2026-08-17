@@ -41,13 +41,16 @@ module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDat
       weapons: ["Mimicry Blade"], outfits: [],
     },
     "Hana Association Book": {
-      pages: ["Augury Crusher", "Augury Infusion", "Celestial Sight", "Augury Kick"],
+      pages: ["Augury Crusher", "Augury Infusion", "Celestial Sight", "Augury Kick", "Forward March", "GodSpeed", "Confrontation"],
       weapons: ["Augury Spear"], outfits: ["Hana Association"],
     },
     "Kurokumo Syndicate Book": {
       pages: ["Cloud Cutter", "Sky Clearing Cut", "Shadowcloud Shattercleaver", "Dark Cloud Cleaver", "Sober Up", "Silent Mist", "Shadowcloud Kick"],
       weapons: ["Kurokumo Katana"], outfits: ["Kurokumo Wakashu"],
     },
+    // ⚠️ "Shi Association Bow" CHƯA TỒN TẠI trong weapon.js/skills.js (user báo
+    // thiếu). KHÔNG liệt kê tên ma ở đây — liệt kê thì `-inventory` mở ra một mục
+    // rỗng, tệ hơn là không có. Cần Fragaria cấp thông số rồi mới thêm.
     "Shi Association Book": {
       pages: ["Catch Breath", "Extreme Edge", "Flying Sword"],
       weapons: ["Shi Association Katana"], outfits: ["Shi Association"],
@@ -114,13 +117,45 @@ module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDat
       pages: ["Greatsword Rend", "Beheading", "Smackdown", "Memorial Procession"],
       weapons: ["Fused Blade of Ruined Mirror Worlds"], outfits: [],
     },
+    // ⚠️ "Index Greatsword" CHƯA TỒN TẠI (xem ghi chú ở Shi Association Book).
     "Index Syndicate Book": {
       pages: ["Execute Prescript", "Somber Procuration", "Will of The City"],
       weapons: ["Index Cleaver", "Index Longsword"], outfits: ["Index Proselyte"],
     },
     "Book of M.A.D.": {
-      pages: ["Soulburn", "Inferno Burst", "Celestial Fire", "Take this, Kid", "Learn again, Kid"],
-      weapons: [], outfits: [],
+      pages: ["Soulburn", "Inferno Burst", "Celestial Fire", "Take this, Kid", "Learn again, Kid", "Got Your Back", "The Sea I Belong To"],
+      weapons: ["Magician SWorld of M.A.D", "Mythical SWorld of M.A.D", "Nebula-Stitched Grips", "Wonder Gun of M.A.D", "Anchorly Tale of M.A.D"], outfits: ["Magician Red of M.A.D", "Grandma's Sweater of M.A.D", "My Sailor in M.A.D", "Knight's Armor of M.A.D"],
+    },
+    // ── SÁCH MỚI (Fragaria 14/08) ─────────────────────────────────────────
+    // ❗ Thêm đồ vào skills/weapon/outfit là CHƯA ĐỦ — `-inventory` đọc BẢNG NÀY
+    // để biết mở sách ra có gì. Thiếu ở đây thì người chơi không mở/đọc được, dù
+    // dữ liệu món đồ đã tồn tại. (Đúng lỗi đã để sót nhiều phiên liền.)
+    "Dawn Book": {
+      pages: ["Crack of Dawn", "Flash of Sunup", "Sunset Blade", "Butterfly Slash"],
+      weapons: [],
+      outfits: ["Dawn Office - Yuna", "Dawn Office - Phillip", "Dawn Office - Salvador"],
+    },
+    "R Corp Book": {
+      pages: ["Graze the Grass", "Quick Suppression", "Concentration", "Mind Whip",
+        "Rhino Ram", "Bulky Impact"],
+      weapons: [],
+      outfits: ["Rhino R Corp Outfit", "Rabbit R Corp Outfit", "Reindeer R Corp Outfit"],
+    },
+    "The Thumb Capo Book": {
+      pages: ["Savage Double Slash", "Savage Triple Slash", "Blasting Shatterslash",
+        "Tanglecleaver Flurry", "Tanglecleaver Reload"],
+      weapons: ["Tiantui Star's Blade [天退星刀]"],
+      outfits: ["Thumb Capo IIII"],
+    },
+    "Book of The Birds": {
+      pages: ["Scales of Judgement"],
+      weapons: ["Beak", "Justitia", "Lamp"],
+      outfits: [],
+    },
+    // Book of Gebura nằm trong SUB-MENU của Book of Library (Fragaria xác nhận).
+    "Book of Gebura": {
+      pages: ["Shell", "Prey"],
+      weapons: [], outfits: [], parentBook: "Library Book",
     },
     "Red Gaze Book": {
       pages: ["Silence", "Scorching Incision", "Following the Flow"],
