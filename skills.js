@@ -2633,18 +2633,26 @@ roll(v = "no") {
       lines.push(`*(${deadCount} mạng đã ngã → ${MAX_REUSE} lần Reuse)*`);
 
       // Hiện 3 hit đầu, gộp phần còn lại
-      const SHOW = 3;
-      const showCount = Math.min(SHOW, hits.length);
-      for (let i = 0; i < showCount; i++) {
+      // ❗❗ BUG ĐÃ SỬA (user Libur: *"Solemn Lament — dù có hơn 9 mạng nhưng nó
+      // chỉ Reuse có 2 thôi"*).
+      // GỐC: trước đây chỉ in 3 dòng dice rồi GỘP phần còn lại thành một dòng văn
+      // xuôi cho gọn. Nhưng `autoBuildDmgStrFromSkillRoll` CHỈ đọc **dòng dice** —
+      // dòng gộp không khớp mẫu nên toàn bộ hit còn lại BIẾN MẤT khỏi `dmgStr`.
+      // Đo: deadCount 9 → roll đúng 73 hit nhưng dmgStr chỉ có **1 hit**. Người
+      // chơi thấy tổng kết "73 hit" mà sát thương thật chỉ 1 hit.
+      // ⇒ Mỗi hit PHẢI có dòng dice riêng — nguồn sự thật DUY NHẤT của dmg.
+      //   Discord chặn 4096 ký tự/embed nên vẫn phải cắt khi quá dài, nhưng cắt là
+      //   MẤT dmg ⇒ chốt trần theo SỐ HIT và NÓI RÕ khi bị cắt, không nuốt im lặng.
+      const MAX_DICE_LINES = 60;
+      const shownCount = Math.min(hits.length, MAX_DICE_LINES);
+      for (let i = 0; i < shownCount; i++) {
         const { val, staminaDmg } = hits[i];
-        const label = i === 0 ? "" : ` ↩️ Reuse ${i}`;
+        const label = i === 0 ? "" : ` — Reuse ${i}`;
         const tail = i === hits.length - 1 ? " *(hết Reuse)*" : "";
         lines.push(`${getDEmoji(i)}${label} **${val}** [<:Blunt:1513768529718022254>Blunt] — giảm Stamina địch = ${staminaDmg}${tail}`);
       }
-      if (hits.length > SHOW) {
-        const restStamina = hits.slice(SHOW).reduce((s, h) => s + h.staminaDmg, 0);
-        const restDmg = hits.slice(SHOW).reduce((s, h) => s + h.val, 0);
-        lines.push(`*↩️ Reuse ${SHOW}–${MAX_REUSE}: [${hits.slice(SHOW).map(h => h.val).join(", ")}] — tổng ${restDmg} DMG, giảm ${restStamina} Stamina (hết Reuse)*`);
+      if (hits.length > MAX_DICE_LINES) {
+        lines.push(`⚠️ *Còn **${hits.length - MAX_DICE_LINES}** hit KHÔNG hiện được (giới hạn ký tự Discord) — chia nhỏ deadCount để không mất sát thương.*`);
       }
 
       // Summary

@@ -242,6 +242,10 @@ async function performEndTurn(channelId, userId, isAdmin) {
       // đây — cùng chỗ, cùng nhịp với aura Day One, để hai thứ không lệch vòng.
       const aliveCount = alive.filter(c => (c.currentHp ?? 0) > 0).length;
       for (const c of alive) c._alivePlayerCount = aliveCount;
+      // Memories: Compassion — aura party-wide, BẬT khi có người còn sống đeo nó.
+      // Penalty thật sự chỉ áp cho ai ĐANG CÓ Shield HP (xem combatantResStr).
+      const compassionOn = alive.some(c => c.hasMemoriesCompassion && (c.currentHp ?? 0) > 0);
+      for (const c of alive) c.compassionAuraActive = compassionOn;
     }
     for (const ekey of Object.keys(encounter.enemies)) advanceCombatantTurn(encounter.enemies[ekey]);
     for (const pid of Object.keys(encounter.players)) advanceCombatantTurn(encounter.players[pid]);

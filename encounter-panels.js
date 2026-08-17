@@ -386,11 +386,18 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
     // Fragaria: Shin - Rien đã tự cấp Shin VĨNH VIỄN tới hết Encounter ⇒ ẩn hẳn
     // option (bấm nữa chỉ phí 25 Sanity). `performShinMang` cũng chặn cùng điều
     // kiện — ẩn UI mà không chặn logic thì lệnh text vẫn lọt.
+    // ⚠️ REWORK 14/08: Shin - Rien CHỈ gate lựa chọn **Shin**. Lựa chọn **Mang**
+    // nằm NGOÀI khối này nên vẫn hiện khi Shin - Rien đang active.
     if (hasShinAccess(combatant) && !combatant.shinRienActive) {
       // Luật "hai bộ emoji Shin theo ngữ cảnh" ĐÃ BỎ (Fragaria 14/08) — toàn repo
       // dùng Fix_Shin/Fix_Mang. ID cũ 1528452250861699215 KHÔNG dùng nữa. Trước là:
       // Fix_Shin (Fix_Shin chỉ dùng ở -balance và phần mô tả).
       options.push(new StringSelectMenuOptionBuilder().setLabel("Shin (-10 Sanity) — giảm Res đến hết turn").setValue("shinmang").setEmoji({ id: "1507591140180754588", name: "Fix_Shin" }));
+    }
+    // ⚠️ MANG NẰM NGOÀI khối `!shinRienActive` (rework 14/08): Shin - Rien CHỈ
+    // gate Shin. Trước đây Mang nằm TRONG khối đó nên biến mất luôn khi Shin -
+    // Rien active — người chơi mất hẳn đường dùng Mang.
+    if (hasShinAccess(combatant)) {
       // ── MANG kích hoạt RIÊNG (Fragaria 14/08) ─────────────────────────────
       // 5 Sanity MỖI VÒNG; chỉ áp cho 1 skill/page rồi biến mất. Hiện sẵn số vòng
       // tối đa để người chơi biết giá; muốn ít vòng hơn thì dùng lệnh text.

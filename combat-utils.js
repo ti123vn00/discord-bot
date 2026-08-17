@@ -576,7 +576,12 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     // Memories: Compassion — "đồng đội nhận được Shield sẽ giảm 0,2x mọi
     // resistance cho bản thân". Cờ đọc ở combatantResStr.
     if (opts.isAlly && granter?.hasMemoriesCompassion && granter?.weaponName === "Lucent Historia") {
-      receiver.compassionResPenalty = true;
+      // ⚠️ BỎ cờ dính `compassionResPenalty` (Fragaria đính chính 14/08).
+      // Luật ĐÚNG: *"giảm 0,2x all Res cho những người ĐANG CÓ Shield HP, tức là
+      // bao gồm CẢ BẢN THÂN chứ không phải mỗi đồng đội."*
+      // ⇒ Điều kiện là "đang có Shield HP", tính ĐỘNG lúc đọc Res — không phải cờ
+      //   bật một lần lúc nhận shield (cờ cũ còn KHÔNG BAO GIỜ TẮT khi shield hết,
+      //   và bỏ sót chính người đeo).
     }
     return final;
   }
@@ -832,7 +837,7 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
       // phần Res penalty của 2 accessory ở dưới BỊ BỎ QUA — hễ bật Shin là 2 món
       // đó mất tác dụng. Cộng luôn tại đây thay vì để rơi xuống dưới.
       let shinExtra = 0;
-      if (combatant.compassionResPenalty) shinExtra += 0.2;
+      if (combatant.compassionAuraActive && (combatant.shieldHp ?? 0) > 0) shinExtra += 0.2;
       if (combatant.dayOneAuraActive) shinExtra += 0.1;
       const tot = totalReduction + shinExtra;
       return `${round1(r.B - tot)}xB ${round1(r.P - tot)}xP ${round1(r.S - tot)}xS`;
@@ -846,7 +851,10 @@ module.exports = function ({ CADUCEUS_DICE, PRESCRIPT_RULES_PROSELYTE, PRESCRIPT
     //     trên sân", **KHÔNG STACK** nếu nhiều người cùng có → cờ là boolean,
     //     cộng đúng 1 lần dù cả party đội nón.
     let extraResPenalty = 0;
-    if (combatant.compassionResPenalty) extraResPenalty += 0.2;
+    // Memories: Compassion — CHỈ cần "đang có Shield HP" (gồm cả người đeo).
+    // `compassionAuraActive` do performEndTurn bơm vào (party-wide, tính lại mỗi
+    // turn) — cùng nhịp với aura Day One để hai thứ không lệch vòng.
+    if (combatant.compassionAuraActive && (combatant.shieldHp ?? 0) > 0) extraResPenalty += 0.2;
     // Knight's Armor of M.A.D: **KHI VÀ CHỈ KHI** dùng Mythical SWorld ⇒ -0.2x
     // mọi Res của bản thân (đánh đổi của keypage giảm dmg nhận).
     if (combatant.hasKnightsArmor && combatant.weaponName === "Mythical SWorld of M.A.D") extraResPenalty += 0.2;

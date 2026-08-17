@@ -291,6 +291,22 @@ module.exports = function ({ applyBorrowedEyesCharges, clashDiceOf, attackerClas
         const target = targetResolved.combatant;
         const t = p.targets.find(tg => tg.targetId === targetId);
         if (!t) return;
+        // ❗ BUG ĐÃ SỬA (Fragaria 14/08, kèm ảnh: *"Nothing There biết guard và né
+        // khi thấp máu trong khi đã gate rõ ràng là Nothing There sẽ KHÔNG biết
+        // phòng thủ"*).
+        // GỐC: `cannotDefend: true` ĐÃ CÓ trong quest-data.js từ trước, nhưng
+        // **KHÔNG AI ĐỌC** — grep toàn repo chỉ ra đúng 1 chỗ (chính dòng khai).
+        // Cờ chết: dữ liệu ghi đúng, hành vi vẫn sai, và nhìn data thì tưởng đã gate.
+        // ⇒ Mob có cờ này thì BỎ QUA TOÀN BỘ phòng thủ: đánh dấu đã phản hồi để
+        //   đòn resolve ngay, không Guard/Evade/Parry/Clash gì cả.
+        if (target.cannotDefend) {
+          p.reactedTargetIds = p.reactedTargetIds ?? [];
+          if (!p.reactedTargetIds.includes(targetId)) p.reactedTargetIds.push(targetId);
+          t.perHitChoices = t.perHitChoices ?? [];
+          await saveEncounter(channelId, encounter);
+          postLockInfo = { channelId, pendingId, resultText: `🤖 **${targetResolved.combatant.name ?? "Địch"}** KHÔNG THỂ phòng thủ — đòn đi thẳng.` };
+          return;
+        }
         const isM1Type = p.kind === "attack" || (p.kind === "enemyattack" && !p.skillKey);
         const attackerWeapon = attackerResolved.combatant.weaponWeight ?? "medium";
         const bypass = p.defenseBypass ?? {};

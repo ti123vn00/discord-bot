@@ -215,8 +215,11 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMe
       // được nữa chỉ khiến họ phí Sanity vô ích."
       // Chặn ở ĐÂY (nguồn chung của cả lệnh text lẫn dropdown) chứ không chỉ ẩn
       // option — ẩn UI mà không chặn logic thì đường còn lại vẫn tiêu 25 Sanity.
+      // ⚠️ REWORK 14/08: Shin và Mang tách riêng ⇒ **Shin - Rien CHỈ gate Shin**.
+      // *"Shin Rien chỉ kích được mỗi Shin kéo dài tới hết encounter, và vì thế
+      //  nên CHỈ GATE MỖI SHIN"* — Mang vẫn kích hoạt bình thường (`performMang`).
       if (player.shinRienActive) {
-        throw new Error("Bạn **đã ở trạng thái Shin** rồi — **Shin - Rien** đã tự kích hoạt và kéo dài **tới hết Encounter**. Bấm thêm chỉ mất 25 Sanity vô ích.");
+        throw new Error("Bạn **đã ở trạng thái Shin** rồi — **Shin - Rien** đã tự kích hoạt và kéo dài **tới hết Encounter**. Bấm thêm chỉ mất Sanity vô ích.\n*(Mang vẫn kích hoạt bình thường — chọn **Mang** trong menu hành động.)*");
       }
       if (player.shinMangUsedThisTurn) throw new Error("Đã dùng Shin/Mang trong turn này rồi — chỉ 1 lần/turn.");
       // BUG ĐÃ SỬA (Fragaria làm rõ trực tiếp): "Bạn không thể hi sinh để xài Shin
@@ -266,7 +269,17 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMe
       const defensiveLightNote = hasPerk(player, "Defensive Light")
         ? ` Defensive Light: thêm -${(Math.floor(shinLevel / 10) * 0.1).toFixed(1)}x Res (Shin Lvl ${shinLevel}).`
         : "";
-      const cappedNote = mangLevel >= MANG_MAX_LEVEL ? ` *(đã ở cap)*` : "";
+      // ❗ BUG ĐÃ SỬA (Fragaria 14/08, kèm ảnh: *"Shin bị lỗi đơ sau khi kích hoạt
+      // Red Mist EGO, Mang thì vẫn hoạt động bình thường"*).
+      // GỐC: dòng `const cappedNote = mangLevel >= MANG_MAX_LEVEL ...` là MẢNH SÓT
+      // của khối Mang mà tôi đã gỡ khi tách Shin/Mang (rework 14/08). `mangLevel`
+      // không còn tồn tại trong hàm này ⇒ **ReferenceError** ⇒ performShinMang ném
+      // ngay, dropdown nuốt lỗi và người chơi thấy như "đơ". Mang đi hàm KHÁC
+      // (`performMang`) nên không dính — khớp đúng "Mang vẫn bình thường".
+      // ⇒ KHÔNG liên quan Red Mist EGO: Shin hỏng từ trước, chỉ là người chơi
+      //   thường bấm Shin ngay sau EGO nên tưởng EGO gây ra.
+      // Bài học: gỡ một khối phải grep lại MỌI biến của khối đó, không chỉ xoá
+      // đoạn giữa. `node --check` KHÔNG bắt được ReferenceError lúc chạy.
       result =
         `<:Fix_Shin:1507591140180754588> **Shin kích hoạt!** -${SHIN_SANITY_COST} Sanity (còn ${player.currentSanity}) — ` +
         `Shin: -0,2x mọi Res bản thân, kéo dài đến HẾT TURN.${defensiveLightNote}\n` +
