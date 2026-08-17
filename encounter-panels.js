@@ -395,9 +395,12 @@ module.exports = function ({ findWeaponAnywhere, findSkill, resolveSkillKey, cdK
       // 5 Sanity MỖI VÒNG; chỉ áp cho 1 skill/page rồi biến mất. Hiện sẵn số vòng
       // tối đa để người chơi biết giá; muốn ít vòng hơn thì dùng lệnh text.
       {
-        const rings = Math.min(5, Math.max(1, combatant.mangLevel ?? 1));
+        // Nhãn hiện TRẦN theo Mang Lvl; số vòng THẬT do người chơi chọn ở menu phụ
+        // (`mangrings:`) — Fragaria 14/08: "lvl 4 thì tối đa 4 vòng, lvl 1 tối đa 1".
+        const maxRings = Math.min(5, Math.max(1, combatant.mangLevel ?? 1));
         options.push(new StringSelectMenuOptionBuilder()
-          .setLabel(`Mang ${rings} vòng (-${rings * 5} Sanity) — chỉ 1 skill/page`)
+          .setLabel(`Mang — chọn 1~${maxRings} vòng (5 Sanity/vòng)`)
+          .setDescription(`Mang Lvl ${combatant.mangLevel ?? 1} · chỉ áp cho 1 skill/page rồi biến mất`.slice(0, 100))
           .setValue("mang")
           .setEmoji({ id: "1507591172770631822", name: "Fix_Mang" }));
       }

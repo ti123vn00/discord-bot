@@ -643,6 +643,7 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMe
     performGuardEvade,
     performParry,
     performShinMang,
+    performMang,
     performManifestEgo,
     performMimicryForm,
     performOvercharge,

@@ -139,7 +139,7 @@ function bgmAttachmentIH(AttachmentBuilder, name) {
   return [new AttachmentBuilder(found)];
 }
 
-module.exports = function ({ performMang, SKILL_MAX_MULTI, consumeCaduceusFaceUse, POISE_MAX, drainAwaitingPrompts, applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
+module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, performMang, SKILL_MAX_MULTI, consumeCaduceusFaceUse, POISE_MAX, drainAwaitingPrompts, applyShieldLoss, isPermanentInjury, applyFuriosoUseCosts, clashDiceOf, attackerClashDiceOf, findSingularity, describeEncounterBgm, resolveEncounterBgm, CADUCEUS_DICE, CADUCEUS_STAMINA_PER_CHARGE, validateAccessoryEquip, GRADE_MIN, calcGrade, calcInjuryMaxHpPenalty, mostRecentHpResetBoundaryUtc, egoBgmFor, performMimicryForm, applyHpLoss, shopWeeklyStockMap, isConsumableItem, ADMIN_IDS, buildReuseVariants, resolveSkillKey, cdKeyFor, findOwnedPageKey, pityKeyFor, pityPoolFor, buildShopEmbed, buildShopComponents, buildQuantityComponents, shopPurchase, shopResetSkillTree, ActionRowBuilder, AttachmentBuilder, BOOK_GRANTS, BRANCH_KEYS, ButtonBuilder, ButtonStyle, CONTRACTS, CRAFT_RECIPES, EGO_TIER_SLOT_ORDER, ENCOUNTER_DEFAULT_MAX_STAMINA, ENCOUNTER_KEY_MAX_LENGTH, ENCOUNTER_STAMINA_REGEN_PER_TURN, GACHA_BANNERS, GACHA_PITY_MAX, MAX_PROFILES, MessageFlags, ModalBuilder, OPEN_COUNT_MAX, PARRY_MAX_ROLLS, PERK_BRANCH, PERK_POINT_COSTS, PROFILE_EMOJIS, PROFILE_LABELS, PROFILE_NAME_MAX_LENGTH, STATUS_CAPS_SHARED, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TREMOR_VARIANT_MAX, TextInputBuilder, TextInputStyle, UNIVERSALLY_KNOWN_WEAPONS, WEAPON_DEFENSE_HITS, WEAPON_STAMINA_COST, advanceToNextTurnHolder, announceCurrentTurn, appendActionLog, applyClashLossSanity, applyDullahanParryCounter, applyEmotionDelta, applySanityGain, applyStatusEntries, attachCounterContext, autoBuildDmgStrFromSkillRoll, buildBalanceEmbed, buildBookChoiceComponents, buildBossActionPanel, buildDothihelpEmbed, buildEncounterActionPanel, buildEncounterBoardEmbed, buildGmPanelContent, buildEnemyTargetOptions, buildAllyTargetOptions, buildMovesPanel, buildSpecialPanel, buildItemsPanel, buildGachaPanelButtons, buildGachaPanelEmbed, buildGiveConfirmRow, buildGivePreviewLines, buildProfileInfoEmbed, buildRollDescription, buildRtparryLinkButton, buildSkillListResult, buildSkillRollResult, buildTurnOrderText, calcBranchPointsAllocated, calcMath, calcMathCore, calcSkillTreePointsEarned, cancelPartyBoard, checkStaggerPanic, claimDailyLogin, client, combatantResStr, computeDefenseOptions, createCombatant, createRtparryToken, deleteEncounter, doEnemyAttack, doPlayerAttack, doPlayerHit, encounterKey, executeCraft, executeGive, executeReadBookChoose, executeRemove, fetchInventoryReply, finalizeReactiveChoice, findAccessory, findBook, findExclusiveConflict, findItem, findItemAdmin, findOutfit, findSkill, findWeaponAnywhere, formatNumber, getActiveProfileSlot, getBookGroupChoices, getEgoTier, getEncounter, getParryClashPenalty, getPlayerData, getPlayerDataWithSlot, getProfileNames, getUserActiveEncounterChannel, handleOpenChipboardCache, handleOpenRandomBook, handleOpenSealedBook, hasEncounterStarted, hasPerk, insertIntoTurnOrderMidRound, isBannerActive, isCurrentTurnHolder, isOnCooldown, joinPartyBoard, leavePartyBoard, log, maybeRunAiTurn, normalizeEnemyKey, normalizeWeaponWeight, parseAoeInfo, parseBatchEntries, parsePerHitBypass, parseSkillCooldownTurns, parseSkillCost, parseStatusFreeText, pendingGives, performEndTurn, performFollowUp, performGachaPull, performGuardEvade, performManifestEgo, performOvercharge, performParry, performPityExchange, performShinMang, performUseItem, registerPendingGive, replyOnCooldown, resolveCombatant, resolveOnePendingAction, resolveProfileLabel, resolveSkillVerification, runParryRolls, saveEncounter, savePlayerData, sendReactiveDefensePrompt, setActiveProfileSlot, setProfileName, setUserActiveEncounterChannel, startPartyBoard, validateMathInputs, webParrySessions, withDoubleLock, withLock }) {
   // ⚠️ ĐẶT TRONG THÂN FACTORY (không phải top-level): hàm này dùng `client`,
   // `ActionRowBuilder`, `StringSelectMenuBuilder`, `StringSelectMenuOptionBuilder`
   // — đều là THAM SỐ DI. Tôi đã viết nhầm ở top-level và `t-di.js` bắt được ngay
@@ -3420,7 +3420,36 @@ client.on("interactionCreate", async (interaction) => {
     let resultMsg;
     try {
     if (value === "shinmang") resultMsg = await performShinMang(channelId, interaction.user.id);
-    else if (value === "mang") resultMsg = await performMang(channelId, interaction.user.id);
+    else if (value === "mang") {
+      // ── MENU CHỌN SỐ VÒNG MANG (Fragaria 14/08) ─────────────────────────
+      // *"Nên check LVL MANG HIỆN TẠI của người dùng — lvl 4 thì tối đa 4 vòng,
+      //  lvl 1 thì tối đa 1 vòng."*
+      // Không gọi thẳng `performMang` nữa: mở dropdown phụ để người chơi chọn.
+      // Số vòng lấy từ `player.mangLevel` TRONG ENCOUNTER (không phải profile) —
+      // đó mới là giá trị đang thực sự áp cho trận này.
+      const encForMang = await getEncounter(channelId);
+      const meMang = encForMang?.players?.[interaction.user.id];
+      if (!meMang) throw new Error("Bạn chưa join encounter này.");
+      const maxRings = Math.min(5, Math.max(1, meMang.mangLevel ?? 1));
+      const ringOptions = [];
+      for (let n2 = 1; n2 <= maxRings; n2++) {
+        ringOptions.push(new StringSelectMenuOptionBuilder()
+          .setLabel(`${n2} vòng — ${n2 * 5} Sanity`)
+          .setDescription(`+${n2 * MANG_DMG_PCT_PER_LEVEL}% Dmg · +${n2} Dice Up · +${n2} Clash Power Up`.slice(0, 100))
+          .setValue(`${n2}`));
+      }
+      const ringRow = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`mangrings:${channelId}:${interaction.user.id}`)
+          .setPlaceholder(`Chọn số vòng Mang (tối đa ${maxRings} — Mang Lvl ${meMang.mangLevel ?? 1})`.slice(0, 150))
+          .setMinValues(1).setMaxValues(1)
+          .addOptions(ringOptions));
+      await interaction.editReply({
+        content: `<:Fix_Mang:1507591172770631822> **Mang** — bạn đang có **Mang Lvl ${meMang.mangLevel ?? 1}** ⇒ tối đa **${maxRings} vòng**.\nSanity hiện tại: **${meMang.currentSanity ?? 0}**. Chọn số vòng muốn kích hoạt:`,
+        components: [ringRow],
+      }).catch(() => {});
+      return;
+    }
     else if (value === "manifestego") resultMsg = await performManifestEgo(channelId, interaction.user.id);
     else if (value === "overcharge") resultMsg = await performOvercharge(channelId, interaction.user.id);
     // "The Mimic" — đổi dạng Kiếm ⇄ Lưỡi hái của Mimicry: Synchronization.
@@ -4486,6 +4515,42 @@ client.on("interactionCreate", async (interaction) => {
 // (KHÔNG splice như consumable) nên index không xê dịch giữa các thao tác cùng lô.
 // ── OFFHAND (Nebula-Stitched Grips "Left Hand", Fragaria 14/08) ─────────────
 // Dropdown chỉ hiện khi đang equip Nebula (xem balance-display.js).
+// ── MANG: chọn số vòng (Fragaria 14/08) ─────────────────────────────────────
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  if (!interaction.customId.startsWith("mangrings:")) return;
+  const [, mrChannelId, mrOwnerId] = interaction.customId.split(":");
+  if (interaction.user.id !== mrOwnerId) {
+    return interaction.reply({ content: "❌ Đây không phải lựa chọn của bạn.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  if (isOnCooldown(interaction.user.id, "mangrings", 2000)) {
+    return interaction.reply({ content: "⏳ Bạn bấm quá nhanh, chờ 2 giây nhé.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  let deferredMr = false;
+  try { await interaction.deferReply(); deferredMr = true; } catch { /* token chết vẫn gửi qua channel được */ }
+  try {
+    // ⚠️ KIỂM LẠI TRẦN Ở SERVER. Dropdown chỉ là gợi ý — người dùng có thể gửi
+    // giá trị cũ (menu mở từ turn trước, khi Mang Lvl còn cao hơn) hoặc giả mạo.
+    // `performMang` tự clamp theo `mangLevel`, nhưng chặn sớm ở đây để BÁO RÕ
+    // thay vì âm thầm nạp ít vòng hơn người chơi chọn.
+    const picked = parseInt(interaction.values?.[0] ?? "1", 10) || 1;
+    const encMr = await getEncounter(mrChannelId);
+    const meMr = encMr?.players?.[interaction.user.id];
+    if (!meMr) throw new Error("Bạn chưa join encounter này.");
+    const maxMr = Math.min(5, Math.max(1, meMr.mangLevel ?? 1));
+    if (picked > maxMr) {
+      throw new Error(`Bạn chỉ có **Mang Lvl ${meMr.mangLevel ?? 1}** ⇒ tối đa **${maxMr} vòng** (bạn chọn ${picked}).`);
+    }
+    const msg = await performMang(mrChannelId, interaction.user.id, picked);
+    if (deferredMr) await interaction.editReply({ content: msg, components: [] }).catch(() => {});
+  } catch (err) {
+    const text = `❌ ${err?.message ?? err}`;
+    if (deferredMr) await interaction.editReply({ content: text, components: [] }).catch(() => {});
+    else await interaction.reply({ content: text, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+});
+
+
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith("baloffhand:")) return;
