@@ -1776,6 +1776,30 @@ roll(v = "no") {
     },
   },
 
+  // ── Critical: Fixer's Blade / Index Greatsword (Fragaria 14/08) ──────────
+  "overpower": {
+    name: "Overpower", weaponOf: "Fixer's Blade", tags: "Weapon",
+    cost: "", cd: "1 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(12,15);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Slash:1513768633434640517>Slash] — đâm vào vùng bụng kẻ địch 1 lần rồi nhanh chóng vung 1 đòn bổ xuống`,
+        `*Áp 4 <:Bleed:1513762688226955285>Bleed ở turn sau.*`,
+      ];
+    },
+  },
+  "baleful brand": {
+    name: "Baleful Brand", weaponOf: "Index Greatsword", tags: "Weapon",
+    cost: "", cd: "2 Turn", diceMul: "1x",
+    roll() {
+      const d1 = r(18,28), d2 = r(6,10);
+      return [
+        `<:Dice1:1508173590078558369> **${d1}** [<:Blunt:1513768529718022254>Blunt] [Guard Break] — cầm kiếm gõ vào đầu kẻ thù`,
+        `<:Dice2:1508173623691710625> **${d2}** [<:Blunt:1513768529718022254>Blunt] [Undodgeable] [Unblockable] [Unparriable] [Unclashable] — kẻ thù phát nổ và nhận 5 <:Paralyze:1513763316479295548>Paralyze`,
+      ];
+    },
+  },
+
   "scales of judgement": {
     name: "Scales of Judgement", bookOf: "Book of The Birds",
     cost: `3 <:Light:1513786082502770719>Light`, cd: "5 Turn", diceMul: "1x",

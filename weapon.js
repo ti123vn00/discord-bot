@@ -418,6 +418,25 @@ const WEAPONS = {
     }],
     criticalSkillKey: "triple slash - blast",
   },
+  // ── Fragaria 14/08 (user báo thiếu) ──────────────────────────────────────
+  "fixer's blade": {
+    name: "Fixer's Blade", weight: "medium", type: "Slash", baseDamage: 9,
+    bookOf: "Book of Fixer",
+    passives: [{
+      name: "Fast Step",
+      desc: "Mỗi đòn đánh thường **thứ 4** sẽ hồi cho bạn 1 <:Light:1513786082502770719>Light.",
+    }],
+    criticalSkillKey: "overpower",
+  },
+  "index greatsword": {
+    name: "Index Greatsword", weight: "heavy", type: "Slash", baseDamage: 22,
+    bookOf: "Index Syndicate Book",
+    passives: [{
+      name: "Will of Prescript",
+      desc: "Vào ĐẦU mỗi turn, gắn ngẫu nhiên 1 kẻ địch trên sân hiệu ứng **The Prescript Target's - The Index**. Ứng với mỗi 1 **Grace of the Prescript** của bản thân, bạn tăng thêm **5% Dmg** lên kẻ địch mang hiệu ứng đó.",
+    }],
+    criticalSkillKey: "baleful brand",
+  },
   // ── BOOK OF THE BIRDS (Fragaria 14/08) ───────────────────────────────────
   // ⚠️ GHI CHÚ NỘI BỘ (KHÔNG để lọt vào `desc` — người chơi đọc desc):
   // "Guardians of the Forest" là TEXT THUẦN, Fragaria xác nhận CHƯA implement cơ

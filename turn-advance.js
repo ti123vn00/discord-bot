@@ -309,6 +309,16 @@ module.exports = function ({ applyEmotionDelta, KARMIC_MAX, FURIOSO_KARMIC_COST,
     // Mang khi kích hoạt LẠI trong CÙNG turn (tránh cộng chồng).
     combatant.mangDiceUpApplied = 0;
     combatant.clashPowerUp = 0;
+    // ❗ BUG ĐÃ SỬA (Fragaria 14/08, kèm ảnh: *"Shin - Rien khiến cho Mang kéo dài
+    // VĨNH VIỄN"*).
+    // GỐC: `mangCharged` KHÔNG BAO GIỜ được reset theo turn — nó chỉ bị tiêu khi
+    // dùng 1 skill/page. Người chơi nạp Mang rồi KHÔNG dùng skill thì số vòng nằm
+    // đó mãi, và `mangBonusPct` (nhánh skill) vẫn cộng ở mọi turn sau.
+    // Càng lộ ra với Shin - Rien vì `shinMangActive` không tắt nên dòng hiển thị
+    // vẫn khoe buff Mang.
+    // ⇒ Buff phái sinh (`diceUp`/`clashPowerUp`) vốn ĐÃ tắt mỗi turn ngay 2 dòng
+    //   trên; để `mangCharged` sống tiếp là ba số liệu LỆCH NHAU. Reset cùng nhịp.
+    combatant.mangCharged = 0;
     // mangLevel là chỉ số profile — KHÔNG reset theo turn.
     // ❗ BUG ĐÃ SỬA (Fragaria: "kích hoạt Shin của Shin - Rien chỉ kéo dài 1 turn
     // trong khi đáng lẽ phải VĨNH VIỄN cho tới hết Encounter").

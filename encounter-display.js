@@ -191,7 +191,24 @@ module.exports = function ({ combatantResStr, MANG_DMG_PCT_PER_LEVEL, normalizeE
     if ((combatant.overchargedTurnsLeft ?? 0) > 0) lines.push(`> ⚡ **Overcharged** — +${combatant.overchargedDiceUpBonus} Dice Up, +${combatant.overchargedDmgBonusPct}% Dmg — còn ${combatant.overchargedTurnsLeft} turn`);
     if ((combatant.breakTheDamsCdLeft ?? 0) > 0) lines.push(`> ⏳ Break the Dams CD — còn ${combatant.breakTheDamsCdLeft} turn`);
     // Luồng ENCOUNTER → dùng <:Fix_Shin:1507591140180754588>, KHÔNG dùng Fix_Shin.
-    if (combatant.shinMangActive) lines.push(`> <:Fix_Shin:1507591140180754588><:Fix_Mang:1507591172770631822> **Shin/Mang active** — Shin Lvl ${combatant.shinLevel ?? 10}, Mang Lvl ${combatant.mangLevel ?? 1}/5: -0,2x Res bản thân, +${(combatant.mangLevel ?? 1) * MANG_DMG_PCT_PER_LEVEL}% Dmg, +${combatant.mangLevel ?? 1} Dice Up, +${combatant.mangLevel ?? 1} Clash Power Up, True Dmg (M1+skill, bỏ qua DR)`);
+    // ❗ TÁCH LÀM 2 DÒNG (Fragaria 14/08): Shin và Mang là hai thứ RIÊNG BIỆT.
+    // Dòng gộp cũ khoá theo `shinMangActive` và đọc `mangLevel` ⇒ với Shin - Rien
+    // (Shin bật vĩnh viễn) nó khoe buff Mang MÃI MÃI dù người chơi chưa nạp vòng
+    // nào — đúng cái Fragaria thấy trong ảnh.
+    // ⇒ Shin đọc `shinMangActive`; Mang đọc `mangCharged` (SỐ VÒNG ĐANG NẠP),
+    //   KHÔNG phải `mangLevel` (chỉ số profile, luôn > 0).
+    if (combatant.shinMangActive) {
+      const shinLv = combatant.shinLevel ?? 10;
+      const extra = Math.floor(shinLv / 10) * 0.1;
+      lines.push(`> <:Fix_Shin:1507591140180754588> **Shin active** — Shin Lvl ${shinLv}: -${(0.2 + extra).toFixed(1)}x mọi Res bản thân`
+        + (combatant.shinRienActive ? ` *(Shin - Rien: tới hết Encounter)*` : ` *(hết turn này)*`));
+    }
+    if ((combatant.mangCharged ?? 0) > 0) {
+      const rings = combatant.mangCharged;
+      lines.push(`> <:Fix_Mang:1507591172770631822> **Mang đang nạp** — ${rings}/${combatant.mangLevel ?? 1} vòng: `
+        + `+${rings * MANG_DMG_PCT_PER_LEVEL}% Dmg, +${rings} Dice Up, +${rings} Clash Power Up `
+        + `*(chỉ cho 1 skill/page kế tiếp — M1 KHÔNG dùng được)*`);
+    }
     if ((combatant.consumablesLoadout ?? []).length > 0) lines.push(`> 🎒 Item mang vào: ${combatant.consumablesLoadout.join(", ")} (${combatant.consumablesLoadout.length}/4)${combatant.usedItemThisTurn ? " — đã dùng 1 turn này" : ""}`);
     if (combatant.manifestedEGO) lines.push(`> 😈 **Manifest E.G.O** — còn ${combatant.manifestedEGOTurnsLeft} turn — +3 Dice Up, +30% Dmg M1+skill` + (combatant.theStrongestActive ? ` · 🔥**The Strongest** +10 Dice Up, +100% Dmg, Max Dice, 50% DR` : ""));
     else if ((combatant.manifestedEGOCooldownLeft ?? 0) > 0) lines.push(`> ⏳ Manifest E.G.O CD — còn ${combatant.manifestedEGOCooldownLeft} turn`);

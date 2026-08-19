@@ -117,10 +117,9 @@ module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDat
       pages: ["Greatsword Rend", "Beheading", "Smackdown", "Memorial Procession"],
       weapons: ["Fused Blade of Ruined Mirror Worlds"], outfits: [],
     },
-    // ⚠️ "Index Greatsword" CHƯA TỒN TẠI (xem ghi chú ở Shi Association Book).
     "Index Syndicate Book": {
       pages: ["Execute Prescript", "Somber Procuration", "Will of The City"],
-      weapons: ["Index Cleaver", "Index Longsword"], outfits: ["Index Proselyte"],
+      weapons: ["Index Cleaver", "Index Longsword", "Index Greatsword"], outfits: ["Index Proselyte"],
     },
     "Book of M.A.D.": {
       pages: ["Soulburn", "Inferno Burst", "Celestial Fire", "Take this, Kid", "Learn again, Kid", "Got Your Back", "The Sea I Belong To"],
@@ -130,6 +129,13 @@ module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDat
     // ❗ Thêm đồ vào skills/weapon/outfit là CHƯA ĐỦ — `-inventory` đọc BẢNG NÀY
     // để biết mở sách ra có gì. Thiếu ở đây thì người chơi không mở/đọc được, dù
     // dữ liệu món đồ đã tồn tại. (Đúng lỗi đã để sót nhiều phiên liền.)
+    // Fragaria 14/08: *"Fixer's Blade của Book of Fixer"*. Sách này CHƯA tồn tại
+    // trong repo (khác `Fixer's Note` — đó là VẬT PHẨM, không phải sách) nên tạo mới.
+    "Book of Fixer": {
+      pages: [],
+      weapons: ["Fixer's Blade"],
+      outfits: [],
+    },
     "Dawn Book": {
       pages: ["Crack of Dawn", "Flash of Sunup", "Sunset Blade", "Butterfly Slash"],
       weapons: [],

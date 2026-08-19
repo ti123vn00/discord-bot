@@ -268,6 +268,7 @@ const SEALED_BOOK_POOL = [
   "Book of M.A.D.",
   "Reverbation Ensemble Book",
   "The Middle Big Brother Book",
+  "Book of Fixer",
   // Fragaria 14/08: Dawn Book và R Corp Book LÀ từ pool Sealed Book Cache.
   "Dawn Book",
   "R Corp Book",
