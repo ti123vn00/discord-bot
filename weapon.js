@@ -421,7 +421,11 @@ const WEAPONS = {
   // ── Fragaria 14/08 (user báo thiếu) ──────────────────────────────────────
   "fixer's blade": {
     name: "Fixer's Blade", weight: "medium", type: "Slash", baseDamage: 9,
-    bookOf: "Book of Fixer",
+    // ⚠️ Fragaria đính chính: Fixer's Blade thuộc **Book Thường** (không phải một
+    // sách "Book of Fixer" riêng). `book-system.js` đã ghi sẵn từ trước:
+    // *"Book Thường = Book of Fixer theo cách gọi ngoài đời — TÊN CHÍNH THỨC trong
+    // code/inventory LUÔN là Book Thường."* Đọc comment đó trước khi tạo sách mới.
+    bookOf: "Book Thường",
     passives: [{
       name: "Fast Step",
       desc: "Mỗi đòn đánh thường **thứ 4** sẽ hồi cho bạn 1 <:Light:1513786082502770719>Light.",

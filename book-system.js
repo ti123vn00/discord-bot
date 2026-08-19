@@ -30,7 +30,7 @@ module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDat
         "Drop Kick", "Backstreets Scramble", "Stylish Sweeps", "Shocking Blow",
         "Onslaught Command", "Preemptive Strike", "Set Fire",
       ],
-      weapons: [], outfits: ["Casual Outfit", "Rats Outfit", "Businessman", "Ambitious Fixer"],
+      weapons: ["Fixer's Blade"], outfits: ["Casual Outfit", "Rats Outfit", "Businessman", "Ambitious Fixer"],
     },
     "Zwei Association Book": {
       pages: ["Blade Whirl", "Client Protection", "Standoff", "Law and Order"],
@@ -129,13 +129,6 @@ module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDat
     // ❗ Thêm đồ vào skills/weapon/outfit là CHƯA ĐỦ — `-inventory` đọc BẢNG NÀY
     // để biết mở sách ra có gì. Thiếu ở đây thì người chơi không mở/đọc được, dù
     // dữ liệu món đồ đã tồn tại. (Đúng lỗi đã để sót nhiều phiên liền.)
-    // Fragaria 14/08: *"Fixer's Blade của Book of Fixer"*. Sách này CHƯA tồn tại
-    // trong repo (khác `Fixer's Note` — đó là VẬT PHẨM, không phải sách) nên tạo mới.
-    "Book of Fixer": {
-      pages: [],
-      weapons: ["Fixer's Blade"],
-      outfits: [],
-    },
     "Dawn Book": {
       pages: ["Crack of Dawn", "Flash of Sunup", "Sunset Blade", "Butterfly Slash"],
       weapons: [],
