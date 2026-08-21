@@ -4719,19 +4719,19 @@ roll(v = "no") {
   },
   "stomping": {
     name: "Stomping", weaponOf: "Lævateinn", tags: "Weapon",
-    cost: "—", cd: "2 Turn", diceMul: "1x",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(9,13), d2 = r(10,15);
       return [
         `*+5% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
-        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Dặm đất, gây 5 <:Fragile:1513763336167100536>Fragile`,
-        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] [Unblockable] — Đá vào kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 1 Stack **Rising Fever**`,
+        `${D1} **${d1}** [<:Blunt:1513768529718022254>Blunt] — Dặm đất, gây 5 <:Fragile:1513763336167100536>Fragile`,
+        `${D2} **${d2}** [<:Blunt:1513768529718022254>Blunt] — Đá vào kẻ địch, gây 5 <:Fragile:1513763336167100536>Fragile và 1 <:VengeanceMark:1513768136023740436>Vengeance Mark. Cho bản thân 1 Stack **Rising Fever**`,
       ];
     },
   },
   "ill gut you like a fish": {
     name: "I'll Gut You Like a Fish", weaponOf: "Lævateinn [Seal 1+]", tags: "Weapon",
-    cost: "—", cd: "2 Turn", diceMul: "1x",
+    cost: "—", cd: "1 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,7), d2 = r(12,13), d3 = r(11,12);
       return [
@@ -4744,7 +4744,7 @@ roll(v = "no") {
   },
   "dont let somethin like this break you": {
     name: "Don't Let Somethin' Like This Break You!", weaponOf: "Lævateinn [Seal 1+]", tags: "Weapon",
-    cost: "—", cd: "3 Turn", diceMul: "1x",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(8,12), d2 = r(12,13), d3 = r(11,15);
       return [
@@ -4757,7 +4757,7 @@ roll(v = "no") {
   },
   "gut stab laevateinn": {
     name: "Gut Stab [Lævateinn]", weaponOf: "Lævateinn [Seal 2+]", tags: "Weapon",
-    cost: "—", cd: "3 Turn", diceMul: "1x",
+    cost: "—", cd: "2 Turn", diceMul: "1x",
     roll() {
       const d1 = r(5,7), d2 = r(12,13), d3 = r(7,7), d4 = r(8,8), d5 = r(10,13);
       return [
@@ -4772,7 +4772,7 @@ roll(v = "no") {
   },
   "stamp of vengeance maximum": {
     name: "Stamp of Vengeance [Maximum]", weaponOf: "Lævateinn", tags: "Weapon",
-    cost: "—", cd: "4 Turn", diceMul: "1x",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(8,12), d2 = r(7,8), d3 = r(13,15), d4 = r(16,24);
       return [
@@ -4786,17 +4786,17 @@ roll(v = "no") {
   },
   "complete and total extermination laevateinn": {
     name: "Complete and Total Extermination [Lævateinn]", weaponOf: "Lævateinn [Seal 3]", tags: "Weapon",
-    cost: "—", cd: "4 Turn", diceMul: "1x",
+    cost: "—", cd: "3 Turn", diceMul: "1x",
     roll() {
       const d1 = r(10,12), d2 = r(12,13), d3 = r(13,15), d4 = r(18,24), d5 = r(30,35);
       return [
         `*+10% Dmg cho skill này với mỗi <:VengeanceMark:1513768136023740436>Vengeance Mark có trên kẻ địch*`,
-        `*Skill này luôn dùng Dice cuối để clash; nếu clash thua, kẻ địch nhận 30% Dmg gốc*`,
-        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Bổ kiếm vào kẻ địch`,
-        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Quẹt ngang ngay lập tức`,
-        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Vung lên, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
-        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] — Vung xuống một cú mạnh`,
-        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Unevadeable] [Guard Break] — Ném thanh kiếm găm vào lồng ngực rồi nhảy vào đá xuyên qua kẻ địch, kết liễu chúng`,
+        `*Skill này luôn dùng tổng 5 Dice để clash; nếu clash thua, kẻ địch nhận 5z0% Dmg gốc*`,
+        `${D1} **${d1}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] [Unbreakable Dice] — Bổ kiếm vào kẻ địch`,
+        `${D2} **${d2}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] [Unbreakable Dice] — Quẹt ngang ngay lập tức`,
+        `${D3} **${d3}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] [Unbreakable Dice] — Vung lên, gây 1 <:VengeanceMark:1513768136023740436>Vengeance Mark`,
+        `${D4} **${d4}** [<:Slash:1513768633434640517>Slash] [Unevadeable] [Guard Break] [Unbreakable Dice] — Vung xuống một cú mạnh`,
+        `${D5} **${d5}** [<:Pierce:1513768511179329556>Pierce] [Unevadeable] [Guard Break] [Unbreakable Dice] — Ném thanh kiếm găm vào lồng ngực rồi nhảy vào đá xuyên qua kẻ địch, kết liễu chúng`,
       ];
     },
   },
