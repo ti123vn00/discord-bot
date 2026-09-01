@@ -96,7 +96,7 @@ module.exports = function ({ findBook, findSkill, findOwnedPageKey, getPlayerDat
       pages: ["Charge Shield", "Leap", "Overcharged Ripple"],
       weapons: ["WARP Corp. Dagger", "WARP Corp. Gauntlets"], outfits: ["WARP Corp. Cleaner"],
     },
-    "Reverbation Ensemble Book": {
+    "Reverberation Ensemble Book": {
       pages: ["Lupine Onslaught", "Kick And Stomps", "Rapacious Assault", "Pitch-Black Pulverizer"],
       weapons: ["L'Heure du Loup", "Yesterday's Promise", "Reverberation Scythe", "The Crying Children"],
       outfits: ["Reverberation Ensemble"],
