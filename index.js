@@ -266,7 +266,7 @@ const SEALED_BOOK_POOL = [
   "Book of The Birds",
   "Arbiter Book",
   "Book of M.A.D.",
-  "Reverbation Ensemble Book",
+  "Reverberation Ensemble Book",
   "The Middle Big Brother Book",
   // Fragaria 14/08: Dawn Book và R Corp Book LÀ từ pool Sealed Book Cache.
   "Dawn Book",
