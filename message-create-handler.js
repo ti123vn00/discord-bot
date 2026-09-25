@@ -2339,6 +2339,7 @@ client.on("messageCreate", async (message) => {
     GLORYTOPROJECTMOON: { lunacy: 1300 },
     APOLOGIZE: { books: { "Random Book": 10, "Sealed Book Cache": 5 } },
     DATTEBAYO: { lunacy: 1300, perUser: true },
+    TRUNGTHUVUIVE: { lunacy: 13000, ahn: 25092026, perUser: true },
   };
   // ─── GACHA ──────────────────────────────────────────────────────────────────
 if (message.content.startsWith("-gacha")) {
