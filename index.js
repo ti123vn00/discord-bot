@@ -318,7 +318,10 @@ const VALID_ITEMS = [
   // banner 1 món). Phải có ở đây thì mới sở hữu/-give/-inventory được.
   "Only Silence Remains", "Day One of My New Life", "The Birth of the Self",
   "Madam Herta's Magic Wand", "Into the Unreachable Veil", "Ruan Lute",
-  "Past Self in Mirror", "Star of Eden", "In the Name of the World",
+  "Past Self in Mirror", "Star of Eden", "In the Name of the World", "Tomorrow, Together", 
+  "Mushy Shroomy's Adventures", "Final Victor", "Subcribe for More!", "Today is Another Peaceful Day",
+  "Dreamville Adventure", "Resolution Shines As Pearl of Sweat", "Journey, Forever Peaceful", "Mahjong",
+  "Yanzhuo", "Sleep Like The Dead", "Microphone Stand", "Flowing Nightglow", "Elation Brimming With Blessings"
 ];
 
 // ITEM_STACK_MAX — Fragaria yêu cầu: "nên làm thêm cap toàn bộ item, books ở x99".
@@ -331,7 +334,7 @@ const ITEM_STACK_MAX = 99;
 // — tái cấu trúc từ 3 hằng số phẳng (GACHA_POOL_HIGH/MID/RARE) thành object
 // GACHA_BANNERS (mỗi banner tự có pool + tên riêng) để hỗ trợ nhiều banner cùng
 // lúc. Tỷ lệ 80/19/1% và Pity áp dụng CHUNG cho cả 2 banner (xác nhận trực tiếp).
-const GACHA_RATES = { high: 80, mid: 19, rare: 1 }; // % — xác nhận trực tiếp, tổng = 100
+const GACHA_RATES = { high: 95, mid: 4, rare: 1 }; // % — xác nhận trực tiếp, tổng = 100
 const GACHA_COST_PER_PULL = 130; // Lunacy/lần — xác nhận trực tiếp (1300 Lunacy code đầu = đúng 10 lần)
 const GACHA_PITY_MAX = 100; // xác nhận trực tiếp: "1 Pity = 1 roll khi đạt 100 có thể đổi bất kỳ 1 món từ Tier 3"
 // Naruto's Banner hết hạn 31/7/2026 23:59 giờ VN (UTC+7) = 2026-07-31T16:59:00Z
@@ -340,11 +343,11 @@ const GACHA_PITY_MAX = 100; // xác nhận trực tiếp: "1 Pity = 1 roll khi �
 const NARUTO_BANNER_EXPIRES_AT = 1785517140000;
 
 // Tier 2 dùng CHUNG cho cả 6 banner Herta (Fragaria liệt kê y hệt nhau ở cả 6).
-const HERTA_POOL_MID = ["Only Silence Remains", "Day One of My New Life", "The Birth of the Self"];
+const HSR_POOL_MID = ["Tomorrow, Together", "Mushy Shroomy's Adventures", "Final Victor", "Subcribe for More!", "Today is Another Peaceful Day", "Dreamville Adventure", "Resolution Shines As Pearl of Sweat", "Journey, Forever Peaceful", "Mahjong"];
 // Hạn banner Herta (Fragaria chốt trực tiếp): **23:59:59 ngày 31/08/2026 giờ VN**.
 // VN = UTC+7 nên quy về UTC là 16:59:59 cùng ngày. Tháng trong Date.UTC đếm từ 0
 // ⇒ tháng 8 là 7.
-const HERTA_BANNER_EXPIRES_AT = Date.UTC(2026, 7, 31, 16, 59, 59);
+const HSR_BANNER_EXPIRES_AT = Date.UTC(2026, 10, 31, 16, 59, 59);
 
 const GACHA_BANNERS = {
   standard: {
@@ -378,27 +381,26 @@ const GACHA_BANNERS = {
   // Tier 2 GIỐNG NHAU ở cả 6 (3 item chung), Tier 3 mỗi banner ĐÚNG 1 món.
   // Tier 1 giữ nguyên RANDOM_BOOK_POOL như mọi banner khác (không được nhắc đổi).
   ...Object.fromEntries([
-    ["hertagenius1", "Genius Society 1", "Madam Herta's Magic Wand"],
-    ["hertamemories1", "Genius's Memories 1", "Into the Unreachable Veil"],
-    ["hertagenius2", "Genius Society 2", "Ruan Lute"],
-    ["hertamemories2", "Genius's Memories 2", "Past Self in Mirror"],
-    ["hertaexpress", "Astral Express", "Star of Eden"],
-    ["hertanameless", "The Stop of Nameless", "In the Name of the World"],
+    ["hsr1", "Roar of the Cloud Knights", "Yanzhuo"],
+    ["hsr2", "Chasing the North Star", "Sleep Like The Dead"],
+    ["hsr3", "Songbird's Sovereignty", "Microphone Stand"],
+    ["hsr4", "Symphony of the Halovian", "Flowing Nightglow"],
+    ["hsr5", "Elegance of Erudition", "Elation Brimming With Blessings"],
   ].map(([key, sub, rare]) => [key, {
-    name: `Herta Space Station - ${sub}`,
+    name: `Honkai Star Rail - ${sub}`,
     poolHigh: RANDOM_BOOK_POOL,
-    poolMid: HERTA_POOL_MID,
+    poolMid: HSR_POOL_MID,
     poolRare: [rare],
-    pityGroup: "herta",
-    expiresAt: HERTA_BANNER_EXPIRES_AT,
+    pityGroup: "hsr",
+    expiresAt: HSR_BANNER_EXPIRES_AT,
   }])),
 };
 
 /** HERTA_TIER3_ALL — gom Tier 3 của cả 6 banner Herta. Dùng cho đổi Pity: pity
  *  dùng chung thì phần thưởng đổi cũng phải chọn được từ CẢ NHÓM, nếu không thì
  *  "share pity" chỉ đúng một nửa (tích chung nhưng tiêu bị bó vào 1 banner). */
-const HERTA_TIER3_ALL = Object.values(GACHA_BANNERS)
-  .filter(b => b.pityGroup === "herta")
+const HSR_TIER3_ALL = Object.values(GACHA_BANNERS)
+  .filter(b => b.pityGroup === "hsr")
   .flatMap(b => b.poolRare);
 
 /** isBannerActive — banner không giới hạn (expiresAt=null) luôn active; banner
