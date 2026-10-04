@@ -357,7 +357,7 @@ module.exports = function ({ MANG_DMG_PCT_PER_LEVEL, isPermanentInjury, hasEgoMe
       }
       player.currentSanity = Math.max(-ENCOUNTER_SANITY_MAX, player.currentSanity - 30);
       player.manifestedEGO = true;
-      player.manifestedEGOTurnsLeft = player.emotionLevel * 3;
+      player.manifestedEGOTurnsLeft = player.emotionLevel * 2;
       player.manifestedEGOCooldownLeft = 0;
       // ── PASSIVE RIÊNG THEO TỪNG MANIFESTED E.G.O (ego.js) ─────────────────
       // Bật cờ NGAY ở đây, TRƯỚC checkStaggerPanic bên dưới — nếu -30 Sanity
