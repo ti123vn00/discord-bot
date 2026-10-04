@@ -2336,7 +2336,8 @@ client.on("messageCreate", async (message) => {
   // không phụ thuộc slot), tách biệt hoàn toàn khỏi profileData.redeemedCodes
   // (vốn lưu theo TỪNG slot/profile).
   const REDEEM_CODES = {
-    GLORYTOPROJECTMOON: { lunacy: 1300, perUser: true }
+    GLORYTOPROJECTMOON: { lunacy: 1300, perUser: true },
+    NAUSEATINGLIGHT: { lunacy: 3900, perUser: true }
   };
   // ─── GACHA ──────────────────────────────────────────────────────────────────
 if (message.content.startsWith("-gacha")) {
