@@ -387,7 +387,7 @@ const GACHA_BANNERS = {
     ["hsr4", "Symphony of the Halovian", "Flowing Nightglow"],
     ["hsr5", "Elegance of Erudition", "Elation Brimming With Blessings"],
   ].map(([key, sub, rare]) => [key, {
-    name: `Honkai Star Rail - ${sub}`,
+    name: `Honkai: Star Rail - ${sub}`,
     poolHigh: RANDOM_BOOK_POOL,
     poolMid: HSR_POOL_MID,
     poolRare: [rare],
