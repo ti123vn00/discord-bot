@@ -1303,7 +1303,7 @@ function hasUnresolvedTargetPending(encounter, targetId) {
 // mốc 3, dư 1, hướng tới mốc 5 của Lv2 — xem transcript).
 const EMOTION_LEVEL_TABLE = [
   null, // index 0 = không có level nào active, không dùng tới
-  { coinNeeded: 3, healPct: 5, diceUp: 1, maxLightBonus: 1 },
+  { coinNeeded: 5, healPct: 5, diceUp: 1, maxLightBonus: 1 },
   { coinNeeded: 5, healPct: 10, diceUp: 2, maxLightBonus: 2 },
   { coinNeeded: 7, healPct: 15, diceUp: 3, maxLightBonus: 3 },
   { coinNeeded: 9, healPct: 20, diceUp: 4, maxLightBonus: 4 },
